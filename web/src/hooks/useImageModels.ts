@@ -20,6 +20,12 @@ export interface LiveImageModel {
     request: number;
   };
   contextLength: number | null;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
+  created?: number | null;
+  supportedParameters?: string[];
 }
 
 const GOOGLE_AI_STUDIO_MODEL: LiveImageModel = {
@@ -41,8 +47,8 @@ const GOOGLE_AI_STUDIO_MODEL: LiveImageModel = {
   contextLength: null,
 };
 
-async function fetchImageModels(): Promise<LiveImageModel[]> {
-  const models = await api.get<any[]>("/models/image");
+export async function fetchImageModels(refresh = false): Promise<LiveImageModel[]> {
+  const models = await api.get<LiveImageModel[]>(`/models/image${refresh ? "?refresh=true" : ""}`);
   return [...(Array.isArray(models) ? models : []), GOOGLE_AI_STUDIO_MODEL];
 }
 

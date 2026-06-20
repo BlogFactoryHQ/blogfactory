@@ -16,10 +16,16 @@ export interface LiveTextModel {
     request: number;
   };
   contextLength: number | null;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
+  created?: number | null;
+  supportedParameters?: string[];
 }
 
-async function fetchTextModels(): Promise<LiveTextModel[]> {
-  const models = await api.get<any[]>("/models/text");
+export async function fetchTextModels(refresh = false): Promise<LiveTextModel[]> {
+  const models = await api.get<LiveTextModel[]>(`/models/text${refresh ? "?refresh=true" : ""}`);
   return Array.isArray(models) ? models : [];
 }
 

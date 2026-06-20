@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,13 @@ import {
   KeyRound,
   Save,
   FileText,
-  Trash2
+  Trash2,
+  RefreshCw,
+  Search
 } from "lucide-react";
 import { toast } from "sonner";
-import { useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
-import { useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
+import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
+import { fetchTextModels, useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
 import {
   Select,
   SelectContent,
@@ -46,6 +48,41 @@ interface ApiKeyMetadata {
   updatedAt: string | null;
 }
 
+interface UserSettings {
+  image_style_prompt?: string | null;
+  image_model?: string | null;
+  cover_enabled?: boolean | null;
+  cover_resolution?: string | null;
+  cover_aspect_ratio?: string | null;
+  inline_enabled?: boolean | null;
+  inline_count?: number | null;
+  inline_resolution?: string | null;
+  inline_aspect_ratio?: string | null;
+}
+
+type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
+
+const priceBadgeClass = (pricing: ModelPriceFilter) => {
+  if (pricing === "free") return "bg-primary/10 text-primary";
+  if (pricing === "low") return "bg-[hsl(var(--status-success)/0.12)] text-status-success";
+  if (pricing === "medium") return "bg-accent text-accent-foreground";
+  return "bg-destructive/10 text-destructive";
+};
+
+const priceBadgeText = (pricing: ModelPriceFilter) => {
+  if (pricing === "free") return "FREE";
+  if (pricing === "low") return "$";
+  if (pricing === "medium") return "$$";
+  return "$$$";
+};
+
+const formatContextLength = (contextLength: number | null) => {
+  if (!contextLength) return "Context unknown";
+  if (contextLength >= 1_000_000) return `${(contextLength / 1_000_000).toFixed(1).replace(".0", "")}M context`;
+  if (contextLength >= 1_000) return `${Math.round(contextLength / 1_000)}K context`;
+  return `${contextLength.toLocaleString()} context`;
+};
+
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -56,14 +93,41 @@ export default function Settings() {
   const [selectedImageModel, setSelectedImageModel] = useState("google/gemini-2.5-flash-image");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
+
+  const modelProviders = useMemo(() => {
+    const providers = new Set([...imageModels, ...textModels].map((model) => model.provider).filter(Boolean));
+    return Array.from(providers).sort((a, b) => a.localeCompare(b));
+  }, [imageModels, textModels]);
+
+  const modelMatchesFilters = useCallback((model: LiveImageModel | LiveTextModel) => {
+    const query = modelSearch.trim().toLowerCase();
+    const matchesSearch = !query || [model.name, model.id, model.provider, model.description]
+      .some((value) => value?.toLowerCase().includes(query));
+    const matchesProvider = providerFilter === "all" || model.provider === providerFilter;
+    const matchesPrice = priceFilter === "all" || model.pricing === priceFilter;
+    return matchesSearch && matchesProvider && matchesPrice;
+  }, [modelSearch, providerFilter, priceFilter]);
+
+  const filteredImageModels = useMemo(
+    () => imageModels.filter(modelMatchesFilters),
+    [imageModels, modelMatchesFilters]
+  );
+
+  const filteredTextModels = useMemo(
+    () => textModels.filter(modelMatchesFilters),
+    [textModels, modelMatchesFilters]
+  );
 
   // Fetch user settings
   const { data: userSettings, isLoading: settingsLoading } = useQuery({
     queryKey: ["user-settings"],
     queryFn: async () => {
-      return api.get<any>("/settings");
+      return api.get<UserSettings>("/settings");
     },
     enabled: !!user,
   });
@@ -170,6 +234,22 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ["image-models"] });
       queryClient.invalidateQueries({ queryKey: ["text-models"] });
       toast.success("API key deleted");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const refreshModelsMutation = useMutation({
+    mutationFn: async () => {
+      const [images, texts] = await Promise.all([
+        fetchImageModels(true),
+        fetchTextModels(true),
+      ]);
+      return { images, texts };
+    },
+    onSuccess: ({ images, texts }) => {
+      queryClient.setQueryData(["image-models"], images);
+      queryClient.setQueryData(["text-models"], texts);
+      toast.success("OpenRouter model information refreshed");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -427,20 +507,78 @@ export default function Settings() {
           {/* OpenRouter Models Info */}
           <Card>
             <CardHeader>
-              <CardTitle>Available Models & Pricing</CardTitle>
-              <CardDescription>
-                Text and image generation models with approximate costs
-              </CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Available Models & Pricing</CardTitle>
+                  <CardDescription>
+                    Live OpenRouter metadata. The app caches this list and refreshes it only when you ask.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refreshModelsMutation.mutate()}
+                  disabled={refreshModelsMutation.isPending || !apiKeys?.hasOpenrouterKey}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${refreshModelsMutation.isPending ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="grid gap-3 md:grid-cols-[1fr_180px_160px]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={modelSearch}
+                    onChange={(event) => setModelSearch(event.target.value)}
+                    placeholder="Search models, providers, or IDs"
+                    className="pl-9"
+                  />
+                </div>
+                <Select value={providerFilter} onValueChange={setProviderFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All providers</SelectItem>
+                    {modelProviders.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={priceFilter} onValueChange={(value) => setPriceFilter(value as ModelPriceFilter)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Price" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All prices</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="low">$ Low</SelectItem>
+                    <SelectItem value="medium">$$ Medium</SelectItem>
+                    <SelectItem value="high">$$$ High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <CardDescription>
+                Showing {filteredImageModels.length} image models and {filteredTextModels.length} text models.
+              </CardDescription>
+
               {/* Image Generation Models */}
               <div>
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <ImageIcon className="h-4 w-4" />
                   Image Generation
                 </h4>
-                <div className="grid grid-cols-1 gap-3">
-                  {imageModels.map((model) => (
+                {imageModelsLoading ? (
+                  <div className="text-center py-4 text-muted-foreground">Loading models...</div>
+                ) : filteredImageModels.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">No image models match these filters.</div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {filteredImageModels.map((model) => (
                     <div
                       key={model.id}
                       className="flex items-start justify-between p-3 rounded-lg border border-border"
@@ -448,19 +586,15 @@ export default function Settings() {
                       <div className="flex-1 min-w-0 mr-3">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm truncate">{model.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                            model.pricing === "free"
-                              ? "bg-primary/10 text-primary"
-                              : model.pricing === "low"
-                              ? "bg-[hsl(var(--status-success)/0.12)] text-status-success"
-                              : model.pricing === "medium"
-                              ? "bg-accent text-accent-foreground"
-                              : "bg-destructive/10 text-destructive"
-                          }`}>
-                            {model.pricing === "free" ? "FREE" : model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$"}
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${priceBadgeClass(model.pricing)}`}>
+                            {priceBadgeText(model.pricing)}
                           </span>
                         </div>
+                        <p className="text-xs text-muted-foreground font-mono mb-1">{model.id}</p>
                         <p className="text-xs text-muted-foreground line-clamp-1">{model.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {model.provider} · {formatContextLength(model.contextLength)}
+                        </p>
                         {model.constraints && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {model.constraints.resolutions.join("/")} · Max {model.constraints.maxDimensionPx}px
@@ -474,8 +608,9 @@ export default function Settings() {
                         {model.costInfo}
                       </span>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Text Generation Models */}
@@ -486,29 +621,27 @@ export default function Settings() {
                 </h4>
                 {textModelsLoading ? (
                   <div className="text-center py-4 text-muted-foreground">Loading models...</div>
+                ) : filteredTextModels.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">No text models match these filters.</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {textModels.map((model) => (
+                    {filteredTextModels.map((model) => (
                       <div
                         key={model.id}
                         className="flex flex-col gap-2 p-3 rounded-lg border border-border"
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{model.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            model.pricing === "free"
-                              ? "bg-primary/10 text-primary"
-                              : model.pricing === "low"
-                              ? "bg-[hsl(var(--status-success)/0.12)] text-status-success"
-                              : model.pricing === "medium"
-                              ? "bg-accent text-accent-foreground"
-                              : "bg-destructive/10 text-destructive"
-                          }`}>
-                            {model.pricing === "free" ? "FREE" : model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$"}
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${priceBadgeClass(model.pricing)}`}>
+                            {priceBadgeText(model.pricing)}
                           </span>
                         </div>
+                        <span className="text-xs text-muted-foreground font-mono">{model.id}</span>
                         <span className="text-xs text-muted-foreground font-mono">
                           {model.costInfo}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {model.provider} · {formatContextLength(model.contextLength)}
                         </span>
                         {model.limits && (
                           <span className="text-xs text-muted-foreground italic">{model.limits}</span>
