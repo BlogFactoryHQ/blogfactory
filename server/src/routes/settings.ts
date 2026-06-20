@@ -7,6 +7,149 @@ import { deleteApiKey, getApiKeyMetadata, setApiKey } from "../services/api-keys
 
 export const settingsRoutes = new Hono();
 
+const asText = (value: unknown) => typeof value === "string" ? value : null;
+const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
+const asBool = (value: unknown) => typeof value === "boolean" ? value : undefined;
+const asNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return undefined;
+};
+const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined;
+
+function serializeSettings(settings: typeof userSettings.$inferSelect | undefined) {
+  if (!settings) return {};
+
+  return {
+    id: settings.id,
+    user_id: settings.userId,
+    userId: settings.userId,
+    image_model: settings.imageModel,
+    imageModel: settings.imageModel,
+    image_style_prompt: settings.imageStylePrompt,
+    imageStylePrompt: settings.imageStylePrompt,
+    image_advanced_options: settings.imageAdvancedOptions,
+    imageAdvancedOptions: settings.imageAdvancedOptions,
+    cover_enabled: settings.coverEnabled,
+    coverEnabled: settings.coverEnabled,
+    cover_image_count: settings.coverImageCount,
+    coverImageCount: settings.coverImageCount,
+    cover_resolution: settings.coverResolution,
+    coverResolution: settings.coverResolution,
+    cover_aspect_ratio: settings.coverAspectRatio,
+    coverAspectRatio: settings.coverAspectRatio,
+    inline_enabled: settings.inlineEnabled,
+    inlineEnabled: settings.inlineEnabled,
+    inline_count: settings.inlineCount,
+    inlineCount: settings.inlineCount,
+    inline_resolution: settings.inlineResolution,
+    inlineResolution: settings.inlineResolution,
+    inline_aspect_ratio: settings.inlineAspectRatio,
+    inlineAspectRatio: settings.inlineAspectRatio,
+    article_word_count: settings.articleWordCount,
+    articleWordCount: settings.articleWordCount,
+    article_language: settings.articleLanguage,
+    articleLanguage: settings.articleLanguage,
+    article_voice: settings.articleVoice,
+    articleVoice: settings.articleVoice,
+    include_table_of_contents: settings.includeTableOfContents,
+    includeTableOfContents: settings.includeTableOfContents,
+    enable_research: settings.enableResearch,
+    enableResearch: settings.enableResearch,
+    enable_internal_links: settings.enableInternalLinks,
+    enableInternalLinks: settings.enableInternalLinks,
+    brand_company_name: settings.brandCompanyName,
+    brandCompanyName: settings.brandCompanyName,
+    brand_description: settings.brandDescription,
+    brandDescription: settings.brandDescription,
+    brand_target_audience: settings.brandTargetAudience,
+    brandTargetAudience: settings.brandTargetAudience,
+    brand_mentions: settings.brandMentions,
+    brandMentions: settings.brandMentions,
+    brand_value_props: settings.brandValueProps ?? [],
+    brandValueProps: settings.brandValueProps ?? [],
+    brand_ctas: settings.brandCtas ?? [],
+    brandCtas: settings.brandCtas ?? [],
+    knowledge_base_enabled: settings.knowledgeBaseEnabled,
+    knowledgeBaseEnabled: settings.knowledgeBaseEnabled,
+    knowledge_documents: settings.knowledgeDocuments ?? [],
+    knowledgeDocuments: settings.knowledgeDocuments ?? [],
+    monthly_budget: settings.monthlyBudget,
+    monthlyBudget: settings.monthlyBudget,
+    budget_paused: settings.budgetPaused,
+    budgetPaused: settings.budgetPaused,
+    budget_alert_threshold: settings.budgetAlertThreshold,
+    budgetAlertThreshold: settings.budgetAlertThreshold,
+    created_at: settings.createdAt,
+    createdAt: settings.createdAt,
+    updated_at: settings.updatedAt,
+    updatedAt: settings.updatedAt,
+  };
+}
+
+function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof userSettings.$inferInsert> {
+  const update: Partial<typeof userSettings.$inferInsert> = {};
+
+  const setText = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const value = body[snake] ?? body[camelName];
+    if (value !== undefined) update[camel] = asText(value) as never;
+  };
+  const setOptionalText = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const value = body[snake] ?? body[camelName];
+    const parsed = asOptionalText(value);
+    if (parsed !== undefined) update[camel] = parsed as never;
+  };
+  const setBool = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const parsed = asBool(body[snake] ?? body[camelName]);
+    if (parsed !== undefined) update[camel] = parsed as never;
+  };
+  const setNumber = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const parsed = asNumber(body[snake] ?? body[camelName]);
+    if (parsed !== undefined) update[camel] = parsed as never;
+  };
+  const setArray = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const parsed = asJsonArray(body[snake] ?? body[camelName]);
+    if (parsed !== undefined) update[camel] = parsed as never;
+  };
+
+  setOptionalText("imageModel", "image_model");
+  setText("imageStylePrompt", "image_style_prompt");
+  if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
+    update.imageAdvancedOptions = (body.image_advanced_options ?? body.imageAdvancedOptions) as never;
+  }
+  setBool("coverEnabled", "cover_enabled");
+  setNumber("coverImageCount", "cover_image_count");
+  setOptionalText("coverResolution", "cover_resolution");
+  setOptionalText("coverAspectRatio", "cover_aspect_ratio");
+  setBool("inlineEnabled", "inline_enabled");
+  setNumber("inlineCount", "inline_count");
+  setOptionalText("inlineResolution", "inline_resolution");
+  setOptionalText("inlineAspectRatio", "inline_aspect_ratio");
+
+  setNumber("articleWordCount", "article_word_count");
+  setOptionalText("articleLanguage", "article_language");
+  setOptionalText("articleVoice", "article_voice");
+  setBool("includeTableOfContents", "include_table_of_contents");
+  setBool("enableResearch", "enable_research");
+  setBool("enableInternalLinks", "enable_internal_links");
+
+  setText("brandCompanyName", "brand_company_name");
+  setText("brandDescription", "brand_description");
+  setText("brandTargetAudience", "brand_target_audience");
+  setOptionalText("brandMentions", "brand_mentions");
+  setArray("brandValueProps", "brand_value_props");
+  setArray("brandCtas", "brand_ctas");
+  setBool("knowledgeBaseEnabled", "knowledge_base_enabled");
+  setArray("knowledgeDocuments", "knowledge_documents");
+
+  setNumber("monthlyBudget", "monthly_budget");
+  setBool("budgetPaused", "budget_paused");
+  setNumber("budgetAlertThreshold", "budget_alert_threshold");
+
+  update.updatedAt = new Date();
+  return update;
+}
+
 settingsRoutes.get("/api-keys", async (c) => {
   const userId = getUserId(c);
   return c.json(await getApiKeyMetadata(userId));
@@ -48,22 +191,27 @@ settingsRoutes.get("/", async (c) => {
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1);
-  return c.json(settings || {});
+  return c.json(serializeSettings(settings));
 });
 
 settingsRoutes.put("/", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
+  const update = buildSettingsUpdate(body);
+
+  if (Object.keys(update).length <= 1) {
+    return c.json({ error: "No supported settings fields provided" }, 400);
+  }
 
   // Upsert: insert or update on conflict
   const [result] = await db
     .insert(userSettings)
-    .values({ ...body, userId })
+    .values({ ...update, userId })
     .onConflictDoUpdate({
       target: userSettings.userId,
-      set: body,
+      set: update,
     })
     .returning();
 
-  return c.json(result);
+  return c.json(serializeSettings(result));
 });

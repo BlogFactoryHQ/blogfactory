@@ -21,6 +21,62 @@ interface GenerateOpts {
   schedulerUserId?: string;
 }
 
+type UserSettingsRecord = typeof userSettings.$inferSelect;
+
+function summarizeJsonList(value: unknown, maxItems = 5) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return [record.title, record.label, record.description, record.content, record.url]
+          .filter((part) => typeof part === "string" && part.trim())
+          .join(" — ");
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function buildSettingsInstructions(settings?: UserSettingsRecord) {
+  if (!settings) return "";
+
+  const instructions: string[] = [];
+
+  if (settings.articleWordCount) instructions.push(`Target article length: about ${settings.articleWordCount} words.`);
+  if (settings.articleLanguage) instructions.push(`Write in ${settings.articleLanguage}.`);
+  if (settings.articleVoice) instructions.push(`Use this default voice/style: ${settings.articleVoice}.`);
+  if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
+  if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
+  if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
+  if (settings.enableInternalLinks === true) instructions.push("Suggest natural internal link opportunities where relevant.");
+
+  const brand: string[] = [];
+  if (settings.brandCompanyName) brand.push(`Company name: ${settings.brandCompanyName}`);
+  if (settings.brandDescription) brand.push(`What the company does: ${settings.brandDescription}`);
+  if (settings.brandTargetAudience) brand.push(`Target audience: ${settings.brandTargetAudience}`);
+  if (settings.brandMentions) brand.push(`Brand mention style: ${settings.brandMentions}`);
+
+  const valueProps = summarizeJsonList(settings.brandValueProps);
+  if (valueProps.length) brand.push(`Value propositions: ${valueProps.join("; ")}`);
+
+  const ctas = summarizeJsonList(settings.brandCtas, 3);
+  if (ctas.length) brand.push(`Calls to action to weave in when natural: ${ctas.join("; ")}`);
+
+  const knowledge = settings.knowledgeBaseEnabled ? summarizeJsonList(settings.knowledgeDocuments, 4) : [];
+  if (knowledge.length) brand.push(`Knowledge base context: ${knowledge.join("; ")}`);
+
+  if (brand.length) {
+    instructions.push(`Brand context:\n${brand.map((line) => `- ${line}`).join("\n")}`);
+  }
+
+  return instructions.length
+    ? `\n\nFollow these saved BlogFactory article settings:\n${instructions.map((line) => `- ${line}`).join("\n")}`
+    : "";
+}
+
 export async function generateContent(opts: GenerateOpts) {
   const userId = opts.schedulerUserId || opts.userId;
   const openRouterKey = await getOpenRouterKey(userId);
@@ -80,6 +136,8 @@ export async function generateContent(opts: GenerateOpts) {
         personaModel = persona.baseModel;
       }
     }
+
+    systemPrompt += buildSettingsInstructions(settings);
 
     const modelId = opts.modelId || personaModel;
 
