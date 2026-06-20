@@ -2,15 +2,18 @@
   "name": "editorial-flow",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "workspaces": [
-    "api",
+    "server",
     "web"
   ],
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev --workspace=api\" \"npm run dev --workspace=web\"",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
     "build": "npm run build --workspace=web",
-    "db:generate": "npm run db:generate --workspace=api",
-    "db:migrate": "npm run db:migrate --workspace=api"
+    "db:generate": "npm run db:generate --workspace=server",
+    "db:migrate": "npm run db:migrate --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

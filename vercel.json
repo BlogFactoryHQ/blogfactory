@@ -2,6 +2,11 @@
   "buildCommand": "npm run build --workspace=web",
   "outputDirectory": "web/dist",
   "installCommand": "npm install",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
