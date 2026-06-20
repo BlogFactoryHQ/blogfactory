@@ -18,6 +18,7 @@ import { contentRoutes } from "./routes/content.js";
 import { schedulerRoutes } from "./routes/scheduler.js";
 import { webhooksRoutes } from "./routes/webhooks.js";
 import { adminRoutes } from "./routes/admin.js";
+import { sitesRoutes } from "./routes/sites.js";
 
 const app = new Hono();
 
@@ -40,6 +41,7 @@ app.route("/api/content", contentRoutes);
 app.route("/api/scheduler", schedulerRoutes);
 app.route("/api/webhooks", webhooksRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/sites", sitesRoutes);
 
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0" })

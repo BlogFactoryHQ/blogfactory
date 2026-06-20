@@ -165,10 +165,30 @@ export const imageAssets = pgTable("image_assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── sites ──
+export const sites = pgTable("sites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  domain: text("domain").notNull(),
+  sitemapUrl: text("sitemap_url"),
+  status: text("status").default("active").notNull(),
+  pageCount: integer("page_count").default(0),
+  vectorCount: integer("vector_count").default(0),
+  topics: text("topics").array(),
+  language: text("language"),
+  cta: text("cta"),
+  internalLinkIndex: jsonb("internal_link_index"),
+  internalLinkLastSyncedAt: timestamp("internal_link_last_synced_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── user_settings ──
 export const userSettings = pgTable("user_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  activeSiteId: uuid("active_site_id").references(() => sites.id, { onDelete: "set null" }),
   imageModel: text("image_model"),
   imageStylePrompt: text("image_style_prompt"),
   imageAdvancedOptions: jsonb("image_advanced_options"),

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { userSettings } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { sites, userSettings } from "../db/schema.js";
+import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteApiKey, getApiKeyMetadata, setApiKey } from "../services/api-keys.js";
 import { buildInternalLinkIndex } from "../services/internal-linking.js";
@@ -25,6 +25,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     id: settings.id,
     user_id: settings.userId,
     userId: settings.userId,
+    active_site_id: settings.activeSiteId,
+    activeSiteId: settings.activeSiteId,
     image_model: settings.imageModel,
     imageModel: settings.imageModel,
     image_style_prompt: settings.imageStylePrompt,
@@ -261,6 +263,22 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
       })
       .returning();
 
+    if (result?.activeSiteId) {
+      await db
+        .update(sites)
+        .set({
+          sitemapUrl: index.sitemapUrl,
+          domain: index.siteHost,
+          status: "active",
+          pageCount: index.pageCount,
+          vectorCount: index.vectorCount,
+          internalLinkIndex: index as never,
+          internalLinkLastSyncedAt: result.internalLinkLastSyncedAt,
+          updatedAt: new Date(),
+        } as never)
+        .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
+    }
+
     return c.json(serializeSettings(result));
   } catch (err: any) {
     return c.json({ error: err.message || "Failed to index sitemap" }, 400);
@@ -292,6 +310,18 @@ settingsRoutes.delete("/internal-linking", async (c) => {
       },
     })
     .returning();
+
+  if (result?.activeSiteId) {
+    await db
+      .update(sites)
+      .set({
+        status: "inactive",
+        internalLinkIndex: null,
+        internalLinkLastSyncedAt: null,
+        updatedAt: new Date(),
+      } as never)
+      .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
+  }
 
   return c.json(serializeSettings(result));
 });

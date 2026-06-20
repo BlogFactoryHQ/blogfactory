@@ -16,16 +16,29 @@ import {
   ChevronDown,
   BookOpen,
   Bell,
+  Globe2,
+  Plus,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useSites } from "@/hooks/useSites";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { useNavigate } from "react-router-dom";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
@@ -45,17 +58,22 @@ const lowerNavigation = [
   { name: "Learn", href: "/", icon: BookOpen },
   { name: "Integrations", href: "/integrations", icon: Plug },
   { name: "Article Settings", href: "/settings", icon: Settings },
+  { name: "Sites", href: "/sites", icon: Globe2 },
   { name: "Notifications", href: "/jobs", icon: Bell },
 ];
 
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { sites, activeSite, activeSiteId, activateSite } = useSites();
   const { isCollapsed, toggle } = useSidebar();
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
   const visibleNavigation = user?.role === "admin" ? [...primaryNavigation, ...adminNavigation] : primaryNavigation;
+  const workspaceName = activeSite?.domain || activeSite?.name || "Connect site";
+  const workspaceInitial = (activeSite?.name || activeSite?.domain || "B").charAt(0).toUpperCase();
 
   const handleSidebarClick = (e: React.MouseEvent) => {
     if (!isCollapsed) return;
@@ -76,26 +94,90 @@ export function AppSidebar() {
         )}
       >
         <div className="shrink-0 space-y-3 border-b border-sidebar-border p-3">
-          <div className="flex h-12 items-center gap-3 overflow-hidden rounded-md border border-sidebar-border bg-card px-3">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-byword-blue-soft text-byword-blue">
-              <span className="text-[11px] font-bold tracking-tight">BF</span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-foreground">BlogFactory</p>
-              <p className="truncate text-[11px] text-sidebar-muted">Private beta</p>
-            </div>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
-            <button
-              className={cn(
-                "ml-1 h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                isCollapsed ? "hidden" : "flex"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={isCollapsed}>
+              <button className="flex h-12 w-full items-center gap-3 overflow-hidden rounded-md border border-sidebar-border bg-card px-3 text-left transition-calm hover:border-byword-blue/50">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-byword-blue-soft text-byword-blue">
+                  <span className="text-[11px] font-bold tracking-tight">{workspaceInitial}</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">{workspaceName}</p>
+                  <p className="truncate text-[11px] text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
+                </div>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
+                <span
+                  className={cn(
+                    "ml-1 h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    isCollapsed ? "hidden" : "flex"
+                  )}
+                  onClick={(e) => { e.stopPropagation(); toggle(); }}
+                  aria-label="Collapse sidebar"
+                >
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-lg border-byword-border p-3">
+              {activeSite && (
+                <>
+                  <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                    Current domain
+                  </DropdownMenuLabel>
+                  <div className="mb-3 flex items-center gap-4 rounded-lg border border-byword-border bg-byword-blue-soft/60 p-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-md bg-card text-byword-blue">
+                      <span className="text-sm font-bold">{workspaceInitial}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-foreground">{activeSite.domain}</p>
+                      <p className="text-sm text-muted-foreground">Active</p>
+                    </div>
+                    <Check className="h-5 w-5 text-byword-blue" />
+                  </div>
+                </>
               )}
-              onClick={(e) => { e.stopPropagation(); toggle(); }}
-              aria-label="Collapse sidebar"
-            >
-              <ChevronsLeft className="h-3.5 w-3.5" />
-            </button>
-          </div>
+
+              <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                Switch to
+              </DropdownMenuLabel>
+              <div className="max-h-64 overflow-y-auto">
+                {sites.filter((site) => site.id !== activeSiteId).map((site) => (
+                  <DropdownMenuItem
+                    key={site.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-3"
+                    onClick={() => activateSite(site.id)}
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md border border-byword-border text-byword-blue">
+                      <span className="text-xs font-bold">{site.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{site.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{site.domain}</p>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+                {sites.length <= 1 && (
+                  <p className="px-3 py-3 text-sm text-muted-foreground">No other sites connected yet.</p>
+                )}
+              </div>
+              <DropdownMenuSeparator />
+              <div className="grid grid-cols-2 gap-2 p-1">
+                <DropdownMenuItem
+                  className="cursor-pointer justify-center gap-2 rounded-md border border-transparent py-2"
+                  onClick={() => navigate("/sites")}
+                >
+                  <Settings className="h-4 w-4" />
+                  Manage
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer justify-center gap-2 rounded-md border border-dashed border-byword-border py-2"
+                  onClick={() => navigate("/sites")}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </DropdownMenuItem>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className={cn("flex h-9 items-center gap-2 rounded-md bg-muted/60 px-3 text-sm text-muted-foreground", isCollapsed && "hidden")}>
             <Search className="h-4 w-4" />
             <span className="flex-1">Search</span>
