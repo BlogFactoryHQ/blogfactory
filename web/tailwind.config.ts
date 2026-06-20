@@ -74,6 +74,13 @@ export default {
           running: "hsl(var(--status-running))",
           "running-foreground": "hsl(var(--status-running-foreground))",
         },
+        byword: {
+          blue: "#0B7DB3",
+          "blue-soft": "#E5F5FF",
+          "blue-muted": "#8FA6BF",
+          border: "#DDE9F4",
+          ink: "#1E2A3A",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

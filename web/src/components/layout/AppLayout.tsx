@@ -10,8 +10,8 @@ function LayoutContent() {
     <div className="min-h-screen bg-background">
       <AppSidebar />
       <main className={cn(
-        "transition-all duration-300 min-h-screen",
-        isCollapsed ? "pl-[60px]" : "pl-60"
+        "min-h-screen transition-all duration-300",
+        isCollapsed ? "pl-[64px]" : "pl-[236px]"
       )}>
         <Outlet />
       </main>

@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    /* Warm paper white base */
-    --background: 40 10% 97.5%;
-    --foreground: 0 0% 9%;
+    /* Byword-inspired pale workspace */
+    --background: 207 100% 98.8%;
+    --foreground: 219 33% 17%;
 
     /* Pure white cards */
     --card: 0 0% 100%;
@@ -15,43 +15,43 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    /* Primary — ink black */
-    --primary: 0 0% 9%;
+    /* Primary — clear product blue */
+    --primary: 202 84% 38%;
     --primary-foreground: 0 0% 98%;
 
     /* Secondary — warm gray */
-    --secondary: 40 6% 93%;
-    --secondary-foreground: 0 0% 9%;
+    --secondary: 207 58% 94%;
+    --secondary-foreground: 214 35% 28%;
 
     /* Muted — soft gray */
-    --muted: 40 6% 93%;
-    --muted-foreground: 0 0% 45%;
+    --muted: 210 42% 95%;
+    --muted-foreground: 214 24% 58%;
 
     /* Accent — subtle warm tint */
-    --accent: 40 8% 94%;
-    --accent-foreground: 0 0% 9%;
+    --accent: 203 92% 94%;
+    --accent-foreground: 202 84% 32%;
 
     /* Destructive */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
     /* Borders & inputs — whisper-thin */
-    --border: 40 6% 90%;
-    --input: 40 6% 90%;
-    --ring: 0 0% 9%;
+    --border: 212 42% 89%;
+    --input: 212 42% 89%;
+    --ring: 202 84% 38%;
 
     --radius: 0.625rem;
 
     /* Sidebar — light, clean */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 0 0% 42%;
-    --sidebar-primary: 0 0% 9%;
+    --sidebar-foreground: 215 28% 54%;
+    --sidebar-primary: 202 84% 38%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 40 6% 95%;
-    --sidebar-accent-foreground: 0 0% 9%;
-    --sidebar-border: 40 6% 92%;
-    --sidebar-ring: 0 0% 9%;
-    --sidebar-muted: 0 0% 58%;
+    --sidebar-accent: 203 92% 94%;
+    --sidebar-accent-foreground: 202 84% 32%;
+    --sidebar-border: 212 42% 91%;
+    --sidebar-ring: 202 84% 38%;
+    --sidebar-muted: 214 24% 65%;
 
     /* Status — functional color only */
     --status-success: 152 56% 42%;
@@ -133,6 +133,12 @@
   .transition-gentle {
     @apply transition-all duration-300 ease-in-out;
   }
+
+  .byword-dot-bg {
+    background-color: hsl(var(--background));
+    background-image: radial-gradient(hsl(202 90% 74% / 0.45) 1.1px, transparent 1.1px);
+    background-size: 24px 24px;
+  }
 }
 
 @layer components {
@@ -168,7 +174,7 @@
 
   /* Card */
   .calm-card {
-    @apply bg-card rounded-xl border border-border;
+    @apply bg-card rounded-lg border border-border shadow-[0_12px_40px_rgba(22,82,125,0.04)];
   }
 
   /* Table row */

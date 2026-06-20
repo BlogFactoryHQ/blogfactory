@@ -17,6 +17,7 @@ import ContentCreator from "@/pages/ContentCreator";
 import Jobs from "@/pages/Jobs";
 import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
+import Integrations from "@/pages/Integrations";
 import UsageAnalytics from "@/pages/UsageAnalytics";
 import ImageGallery from "@/pages/ImageGallery";
 import AdminUsers from "@/pages/AdminUsers";
@@ -45,6 +46,7 @@ const App = () => (
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/personas" element={<Personas />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/integrations" element={<Integrations />} />
                   <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                   <Route path="/gallery" element={<ImageGallery />} />
                   <Route path="/admin/users" element={<AdminUsers />} />

@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -19,7 +17,13 @@ import {
   FileText,
   Trash2,
   RefreshCw,
-  Search
+  Search,
+  Brain,
+  SlidersHorizontal,
+  Building2,
+  MessageSquare,
+  ShieldCheck,
+  ImagePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
@@ -39,6 +43,13 @@ import {
   Resolution,
   AspectRatio
 } from "@/components/content/ImageGenerationSettings";
+import {
+  BywordCard,
+  BywordPageShell,
+  IconTile,
+  SectionHeader,
+  SettingNavItem,
+} from "@/components/layout/BywordSurface";
 
 interface ApiKeyMetadata {
   hasOpenrouterKey: boolean;
@@ -96,6 +107,7 @@ export default function Settings() {
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
+  const [activeSection, setActiveSection] = useState("api-keys");
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
 
@@ -254,40 +266,49 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const settingsSections = [
+    { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
+    { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
+    { id: "images", title: "Images", description: "Defaults, style", icon: ImageIcon },
+    { id: "brand", title: "Brand & Voice", description: "Identity scaffolding", icon: MessageSquare },
+    { id: "advanced", title: "Advanced", description: "Controls, safety", icon: SlidersHorizontal },
+  ];
+
   return (
-    <div className="p-8 max-w-5xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Settings"
-        description="Configure image generation models, defaults, and style preferences."
+        title="Article Settings"
+        description="Default configuration for generated articles."
       />
 
-      <Tabs defaultValue="openrouter" className="max-w-4xl">
-        <TabsList>
-          <TabsTrigger value="openrouter" className="gap-1.5">
-            <Zap className="h-4 w-4" />
-            OpenRouter
-          </TabsTrigger>
-        </TabsList>
+      <div className="grid gap-8 lg:grid-cols-[270px_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-lg border border-byword-border bg-card">
+          {settingsSections.map((section) => (
+            <SettingNavItem
+              key={section.id}
+              icon={section.icon}
+              title={section.title}
+              description={section.description}
+              active={activeSection === section.id}
+              onClick={() => setActiveSection(section.id)}
+            />
+          ))}
+        </aside>
 
-        <TabsContent value="openrouter" className="mt-6 space-y-6">
-          {/* API Keys */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5" />
-                API Keys
-              </CardTitle>
-              <CardDescription>
-                Store your own provider keys for beta usage. Keys are encrypted and never shown again.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+        <div className="min-w-0 space-y-6">
+          {activeSection === "api-keys" && (
+            <BywordCard>
+              <SectionHeader
+                icon={KeyRound}
+                title="API Keys"
+                description="Store your own provider keys for beta usage. Keys are encrypted and never shown again."
+              />
+              <div className="grid gap-6 p-6 md:grid-cols-2">
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="openrouter-key">OpenRouter</Label>
                     <Badge variant={apiKeys?.hasOpenrouterKey ? "default" : "secondary"}>
-                      {apiKeys?.hasOpenrouterKey ? `Saved ••••${apiKeys.openrouterKeyLast4}` : "Missing"}
+                      {apiKeys?.hasOpenrouterKey ? `Saved ****${apiKeys.openrouterKeyLast4}` : "Missing"}
                     </Badge>
                   </div>
                   <Input
@@ -298,7 +319,7 @@ export default function Settings() {
                     onChange={(e) => setOpenrouterKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "openrouter", apiKey: openrouterKey })}
@@ -319,11 +340,11 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="google-key">Google Gemini Image</Label>
                     <Badge variant={apiKeys?.hasGoogleAiKey ? "default" : "secondary"}>
-                      {apiKeys?.hasGoogleAiKey ? `Saved ••••${apiKeys.googleKeyLast4}` : "Missing"}
+                      {apiKeys?.hasGoogleAiKey ? `Saved ****${apiKeys.googleKeyLast4}` : "Missing"}
                     </Badge>
                   </div>
                   <Input
@@ -334,7 +355,7 @@ export default function Settings() {
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "google", apiKey: googleKey })}
@@ -355,318 +376,343 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </BywordCard>
+          )}
 
-          {/* Image Generation Model */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ImageIcon className="h-5 w-5" />
-                Image Generation Model
-              </CardTitle>
-              <CardDescription>
-                Select which AI model to use for generating blog images
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <Label>Model</Label>
-                <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {imageModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{model.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            model.pricing === "free"
-                              ? "bg-primary/10 text-primary"
-                              : model.pricing === "low"
-                              ? "bg-[hsl(var(--status-success)/0.12)] text-status-success"
-                              : model.pricing === "medium"
-                              ? "bg-accent text-accent-foreground"
-                              : "bg-destructive/10 text-destructive"
-                          }`}>
-                            {model.pricing === "free" ? "FREE" : model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$"}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Selected model details */}
-              {(() => {
-                const model = imageModels.find(m => m.id === selectedImageModel);
-                if (!model) return null;
-                return (
-                  <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{model.provider}</span>
-                      <span className="text-xs font-mono text-muted-foreground">{model.costInfo}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{model.description}</p>
-                    {model.isFree && model.limits && (
-                      <p className="text-xs text-primary font-medium">⚡ {model.limits}</p>
-                    )}
-                    {model.constraints && (
-                      <p className="text-xs text-muted-foreground">
-                        Resolutions: {model.constraints.resolutions.join(", ")} · Max {model.constraints.maxDimensionPx}px
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <Button
-                onClick={() => saveImageModelMutation.mutate(selectedImageModel)}
-                disabled={saveImageModelMutation.isPending}
-                size="sm"
-              >
-                {saveImageModelMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Save Model
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Image Generation Defaults */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ImageIcon className="h-5 w-5" />
-                Image Generation Defaults
-              </CardTitle>
-              <CardDescription>
-                Set default image count, resolution, and aspect ratio for all generations
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SplitImageGenerationSettings
-                config={imageConfig}
-                onConfigChange={setImageConfig}
-                onSaveDefaults={(defaults) => saveDefaultsMutation.mutate(defaults)}
-                showSaveOption
-                imageModelId={selectedImageModel}
+          {activeSection === "models" && (
+            <BywordCard>
+              <SectionHeader
+                icon={Zap}
+                title="Available Models & Pricing"
+                description="Live OpenRouter metadata. The app caches this list and refreshes it only when you ask."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshModelsMutation.mutate()}
+                    disabled={refreshModelsMutation.isPending || !apiKeys?.hasOpenrouterKey}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${refreshModelsMutation.isPending ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                }
               />
-              {saveDefaultsMutation.isPending && (
-                <div className="flex items-center gap-2 mt-4 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Saving...</span>
+              <div className="space-y-6 p-6">
+                <div className="grid gap-3 md:grid-cols-[1fr_180px_160px]">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={modelSearch}
+                      onChange={(event) => setModelSearch(event.target.value)}
+                      placeholder="Search models, providers, or IDs"
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={providerFilter} onValueChange={setProviderFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All providers</SelectItem>
+                      {modelProviders.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={priceFilter} onValueChange={(value) => setPriceFilter(value as ModelPriceFilter)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Price" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All prices</SelectItem>
+                      <SelectItem value="free">Free</SelectItem>
+                      <SelectItem value="low">$ Low</SelectItem>
+                      <SelectItem value="medium">$$ Medium</SelectItem>
+                      <SelectItem value="high">$$$ High</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Image Style Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ImageIcon className="h-5 w-5" />
-                Image Style Prompt
-              </CardTitle>
-              <CardDescription>
-                Customize the style description appended to all image generation prompts
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="imageStyle">Style Prompt</Label>
-                <Textarea
-                  id="imageStyle"
-                  placeholder="Describe the style for generated images..."
-                  value={imageStylePrompt}
-                  onChange={(e) => setImageStylePrompt(e.target.value)}
-                  className="min-h-[100px] resize-none"
-                />
-                <p className="text-xs text-muted-foreground">
-                  This style will be appended to all image generation prompts.
+                <p className="text-sm text-muted-foreground">
+                  Showing {filteredImageModels.length} image models and {filteredTextModels.length} text models.
                 </p>
-              </div>
-              <Button
-                onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
-                disabled={saveStyleMutation.isPending || settingsLoading}
-              >
-                {saveStyleMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Save Style
-              </Button>
-            </CardContent>
-          </Card>
 
-          {/* OpenRouter Models Info */}
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <CardTitle>Available Models & Pricing</CardTitle>
-                  <CardDescription>
-                    Live OpenRouter metadata. The app caches this list and refreshes it only when you ask.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refreshModelsMutation.mutate()}
-                  disabled={refreshModelsMutation.isPending || !apiKeys?.hasOpenrouterKey}
-                >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${refreshModelsMutation.isPending ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-3 md:grid-cols-[1fr_180px_160px]">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={modelSearch}
-                    onChange={(event) => setModelSearch(event.target.value)}
-                    placeholder="Search models, providers, or IDs"
-                    className="pl-9"
-                  />
-                </div>
-                <Select value={providerFilter} onValueChange={setProviderFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All providers</SelectItem>
-                    {modelProviders.map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {provider}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={priceFilter} onValueChange={(value) => setPriceFilter(value as ModelPriceFilter)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Price" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All prices</SelectItem>
-                    <SelectItem value="free">Free</SelectItem>
-                    <SelectItem value="low">$ Low</SelectItem>
-                    <SelectItem value="medium">$$ Medium</SelectItem>
-                    <SelectItem value="high">$$$ High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <CardDescription>
-                Showing {filteredImageModels.length} image models and {filteredTextModels.length} text models.
-              </CardDescription>
-
-              {/* Image Generation Models */}
-              <div>
-                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <ImageIcon className="h-4 w-4" />
-                  Image Generation
-                </h4>
-                {imageModelsLoading ? (
-                  <div className="text-center py-4 text-muted-foreground">Loading models...</div>
-                ) : filteredImageModels.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">No image models match these filters.</div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3">
-                    {filteredImageModels.map((model) => (
-                    <div
-                      key={model.id}
-                      className="flex items-start justify-between p-3 rounded-lg border border-border"
-                    >
-                      <div className="flex-1 min-w-0 mr-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm truncate">{model.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${priceBadgeClass(model.pricing)}`}>
-                            {priceBadgeText(model.pricing)}
+                  <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                    <ImageIcon className="h-4 w-4" />
+                    Image Generation
+                  </h4>
+                  {imageModelsLoading ? (
+                    <div className="py-4 text-center text-muted-foreground">Loading models...</div>
+                  ) : filteredImageModels.length === 0 ? (
+                    <div className="py-4 text-center text-muted-foreground">No image models match these filters.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                      {filteredImageModels.map((model) => (
+                        <div key={model.id} className="flex items-start justify-between rounded-lg border border-byword-border p-3">
+                          <div className="mr-3 min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="truncate text-sm font-medium">{model.name}</span>
+                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
+                                {priceBadgeText(model.pricing)}
+                              </span>
+                            </div>
+                            <p className="mb-1 font-mono text-xs text-muted-foreground">{model.id}</p>
+                            <p className="line-clamp-1 text-xs text-muted-foreground">{model.description}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {model.provider} · {formatContextLength(model.contextLength)}
+                            </p>
+                            {model.constraints && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {model.constraints.resolutions.join("/")} · Max {model.constraints.maxDimensionPx}px
+                              </p>
+                            )}
+                            {model.isFree && model.limits && (
+                              <p className="mt-0.5 text-xs text-primary">{model.limits}</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                            {model.costInfo}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground font-mono mb-1">{model.id}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{model.description}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {model.provider} · {formatContextLength(model.contextLength)}
-                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                    <FileText className="h-4 w-4" />
+                    Text Generation
+                  </h4>
+                  {textModelsLoading ? (
+                    <div className="py-4 text-center text-muted-foreground">Loading models...</div>
+                  ) : filteredTextModels.length === 0 ? (
+                    <div className="py-4 text-center text-muted-foreground">No text models match these filters.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {filteredTextModels.map((model) => (
+                        <div key={model.id} className="flex flex-col gap-2 rounded-lg border border-byword-border p-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{model.name}</span>
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
+                              {priceBadgeText(model.pricing)}
+                            </span>
+                          </div>
+                          <span className="font-mono text-xs text-muted-foreground">{model.id}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{model.costInfo}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {model.provider} · {formatContextLength(model.contextLength)}
+                          </span>
+                          {model.limits && (
+                            <span className="text-xs italic text-muted-foreground">{model.limits}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </BywordCard>
+          )}
+
+          {activeSection === "images" && (
+            <div className="space-y-6">
+              <BywordCard>
+                <SectionHeader
+                  icon={ImageIcon}
+                  title="Image Generation Model"
+                  description="Select which AI model to use for generated blog images."
+                />
+                <div className="space-y-4 p-6">
+                  <div className="space-y-3">
+                    <Label>Model</Label>
+                    <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {imageModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            <div className="flex items-center gap-2">
+                              <span>{model.name}</span>
+                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
+                                {priceBadgeText(model.pricing)}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {(() => {
+                    const model = imageModels.find(m => m.id === selectedImageModel);
+                    if (!model) return null;
+                    return (
+                      <div className="space-y-1.5 rounded-lg border border-byword-border bg-muted/30 p-3">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-sm font-medium">{model.provider}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{model.costInfo}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{model.description}</p>
+                        {model.isFree && model.limits && (
+                          <p className="text-xs font-medium text-primary">{model.limits}</p>
+                        )}
                         {model.constraints && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {model.constraints.resolutions.join("/")} · Max {model.constraints.maxDimensionPx}px
+                          <p className="text-xs text-muted-foreground">
+                            Resolutions: {model.constraints.resolutions.join(", ")} · Max {model.constraints.maxDimensionPx}px
                           </p>
                         )}
-                        {model.isFree && model.limits && (
-                          <p className="text-xs text-primary mt-0.5">⚡ {model.limits}</p>
-                        )}
                       </div>
-                      <span className="text-xs text-muted-foreground font-mono shrink-0">
-                        {model.costInfo}
-                      </span>
+                    );
+                  })()}
+
+                  <Button
+                    onClick={() => saveImageModelMutation.mutate(selectedImageModel)}
+                    disabled={saveImageModelMutation.isPending}
+                    size="sm"
+                  >
+                    {saveImageModelMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save Model
+                  </Button>
+                </div>
+              </BywordCard>
+
+              <BywordCard>
+                <SectionHeader
+                  icon={ImagePlus}
+                  title="Image Defaults"
+                  description="Set default image count, resolution, and aspect ratio for all generations."
+                />
+                <div className="p-6">
+                  <SplitImageGenerationSettings
+                    config={imageConfig}
+                    onConfigChange={setImageConfig}
+                    onSaveDefaults={(defaults) => saveDefaultsMutation.mutate(defaults)}
+                    showSaveOption
+                    imageModelId={selectedImageModel}
+                  />
+                  {saveDefaultsMutation.isPending && (
+                    <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Saving...</span>
                     </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </BywordCard>
 
-              {/* Text Generation Models */}
-              <div>
-                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Text Generation
-                </h4>
-                {textModelsLoading ? (
-                  <div className="text-center py-4 text-muted-foreground">Loading models...</div>
-                ) : filteredTextModels.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">No text models match these filters.</div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {filteredTextModels.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex flex-col gap-2 p-3 rounded-lg border border-border"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{model.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${priceBadgeClass(model.pricing)}`}>
-                            {priceBadgeText(model.pricing)}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground font-mono">{model.id}</span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {model.costInfo}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {model.provider} · {formatContextLength(model.contextLength)}
-                        </span>
-                        {model.limits && (
-                          <span className="text-xs text-muted-foreground italic">{model.limits}</span>
-                        )}
-                      </div>
-                    ))}
+              <BywordCard>
+                <SectionHeader
+                  icon={ImageIcon}
+                  title="Image Style Prompt"
+                  description="Customize the style description appended to all image generation prompts."
+                />
+                <div className="space-y-4 p-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="imageStyle">Style Prompt</Label>
+                    <Textarea
+                      id="imageStyle"
+                      placeholder="Describe the style for generated images..."
+                      value={imageStylePrompt}
+                      onChange={(e) => setImageStylePrompt(e.target.value)}
+                      className="min-h-[100px] resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This style will be appended to all image generation prompts.
+                    </p>
                   </div>
-                )}
-              </div>
+                  <Button
+                    onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
+                    disabled={saveStyleMutation.isPending || settingsLoading}
+                  >
+                    {saveStyleMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save Style
+                  </Button>
+                </div>
+              </BywordCard>
+            </div>
+          )}
 
-              <p className="text-xs text-muted-foreground">
-                Browse all models at{" "}
-                <a
-                  href="https://openrouter.ai/models"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  openrouter.ai/models
-                </a>
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          {activeSection === "brand" && (
+            <BywordCard>
+              <SectionHeader
+                icon={Building2}
+                title="Brand & Voice"
+                description="First-pass scaffolding for brand profile and writing voice."
+              />
+              <div className="space-y-6 p-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Company Name</Label>
+                    <Input placeholder="e.g. BlogFactory" disabled />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Target Audience</Label>
+                    <Input placeholder="e.g. founders, editors, agencies" disabled />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>What We Do</Label>
+                  <Textarea
+                    placeholder="Brief description of products, services, and editorial positioning."
+                    disabled
+                    className="min-h-[110px] resize-none"
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[
+                    ["Natural", "Human and direct", Brain],
+                    ["Professional", "Formal and precise", ShieldCheck],
+                    ["Conversational", "Relaxed and clear", MessageSquare],
+                  ].map(([title, description, Icon]) => (
+                    <div key={title as string} className="rounded-lg border border-byword-border p-5">
+                      <IconTile icon={Icon as typeof Brain} />
+                      <h3 className="mt-4 text-sm font-semibold">{title as string}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{description as string}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </BywordCard>
+          )}
+
+          {activeSection === "advanced" && (
+            <BywordCard>
+              <SectionHeader
+                icon={SlidersHorizontal}
+                title="Advanced"
+                description="Future controls for generation limits, compliance, and workspace safety."
+              />
+              <div className="grid gap-4 p-6 md:grid-cols-2">
+                <div className="rounded-lg border border-byword-border p-5">
+                  <IconTile icon={ShieldCheck} />
+                  <h3 className="mt-4 text-sm font-semibold">Private beta access</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Account approval and admin review stay enforced before users can access product routes.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-byword-border p-5">
+                  <IconTile icon={Zap} />
+                  <h3 className="mt-4 text-sm font-semibold">Provider usage</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Generation uses each approved user's own encrypted OpenRouter and Google Gemini keys.
+                  </p>
+                </div>
+              </div>
+            </BywordCard>
+          )}
+        </div>
+      </div>
+    </BywordPageShell>
   );
 }
