@@ -55,7 +55,7 @@ personasRoutes.post("/", async (c) => {
   const body = mapPersonaBody(await c.req.json());
   const [persona] = await db
     .insert(personas)
-    .values({ ...body, userId })
+    .values({ ...body, userId } as any)
     .returning();
   return c.json(mapPersonaResponse(persona as Record<string, unknown>), 201);
 });

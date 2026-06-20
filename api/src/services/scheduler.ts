@@ -49,7 +49,7 @@ export async function runScheduler(userId?: string) {
       const runningJobs = await db
         .select({ id: jobs.id })
         .from(jobs)
-        .where(and(eq(jobs.sourceValue, feed.sourceUrl), eq(jobs.status, "running")))
+        .where(and(eq(jobs.sourceValue, feed.sourceUrl as string), eq(jobs.status, "running")))
         .limit(1);
 
       if (runningJobs.length > 0) {
@@ -87,7 +87,7 @@ export async function runScheduler(userId?: string) {
       generateContent({
         userId: feed.userId,
         sourceType: "rss_feed",
-        sourceValue: feed.sourceUrl,
+        sourceValue: feed.sourceUrl || "",
         personaId: feed.personaId,
         modelId: feed.modelId,
         variations: feed.postsPerRun ?? 5,

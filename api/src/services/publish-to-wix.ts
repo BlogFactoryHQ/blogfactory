@@ -209,7 +209,7 @@ async function importImageToWix(pathOrUrl: string, altText: string): Promise<str
       return pathOrUrl.startsWith("http") ? importImageToWixByUrl(pathOrUrl, cleanName) : null;
     }
 
-    if (!webpBuffer) return importImageToWixByUrl(imageUrl, cleanName);
+    if (!webpBuffer) return importImageToWixByUrl(pathOrUrl, cleanName);
 
     console.log(`[publish-to-wix] Converted to WebP: ${sourceSizeKB}KB → ${Math.round(webpBuffer.length / 1024)}KB`);
 
@@ -230,13 +230,13 @@ async function importImageToWix(pathOrUrl: string, altText: string): Promise<str
     }
 
     const { uploadUrl } = await genUrlResp.json() as any;
-    if (!uploadUrl) return importImageToWixByUrl(imageUrl, cleanName);
+    if (!uploadUrl) return importImageToWixByUrl(pathOrUrl, cleanName);
 
     // Upload WebP bytes to Wix
     const uploadResp = await fetch(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/webp' },
-      body: webpBuffer,
+      body: webpBuffer as any,
     });
 
     if (!uploadResp.ok) {

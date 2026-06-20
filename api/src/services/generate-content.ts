@@ -460,10 +460,9 @@ async function generateSingleImage(
 
   if (!imageBuffer) return null;
 
-  // Convert to WebP with sharp
   try {
     const sharp = (await import("sharp")).default;
-    imageBuffer = await sharp(imageBuffer).webp({ quality: 85 }).toBuffer();
+    imageBuffer = (await sharp(imageBuffer).webp({ quality: 85 }).toBuffer()) as any;
   } catch {}
 
   const cost = parseFloat(data.usage?.total_cost || "0") || 0;
@@ -516,7 +515,7 @@ async function generateWithGoogleAI(
 
   try {
     const sharp = (await import("sharp")).default;
-    imageBuffer = await sharp(imageBuffer).webp({ quality: 85 }).toBuffer();
+    imageBuffer = (await sharp(imageBuffer).webp({ quality: 85 }).toBuffer()) as any;
   } catch {}
 
   const { storagePath } = await saveImageBuffer(imageBuffer, userId, {
