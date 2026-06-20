@@ -35,6 +35,11 @@ import {
   ListChecks,
   Megaphone,
   Gauge,
+  Check,
+  Database,
+  Clock,
+  Filter,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
@@ -96,6 +101,15 @@ interface UserSettings {
   brand_ctas?: BrandCta[] | null;
   knowledge_base_enabled?: boolean | null;
   knowledge_documents?: KnowledgeDocument[] | null;
+  internal_link_sitemap_url?: string | null;
+  internal_link_status?: string | null;
+  internal_link_mode?: string | null;
+  internal_link_density?: string | null;
+  internal_link_include_patterns?: string[] | null;
+  internal_link_exclude_patterns?: string[] | null;
+  internal_link_rules?: InternalLinkRule[] | null;
+  internal_link_index?: InternalLinkIndex | null;
+  internal_link_last_synced_at?: string | null;
 }
 
 interface BrandCta {
@@ -109,6 +123,28 @@ interface KnowledgeDocument {
   id: string;
   title: string;
   content: string;
+  createdAt: string;
+}
+
+interface InternalLinkRule {
+  id: string;
+  triggers: string;
+  url: string;
+}
+
+interface InternalLinkPage {
+  url: string;
+  title: string;
+  description?: string;
+  path: string;
+}
+
+interface InternalLinkIndex {
+  sitemapUrl: string;
+  siteHost: string;
+  pageCount: number;
+  vectorCount: number;
+  pages: InternalLinkPage[];
   createdAt: string;
 }
 
@@ -167,6 +203,13 @@ const brandMentionOptions = [
   { value: "prominent", label: "Prominent", description: "Featured throughout", icon: Megaphone },
 ];
 
+const linkDensityOptions = [
+  { value: "minimal", label: "Minimal", count: "1-2", description: "Light touch" },
+  { value: "light", label: "Light", count: "3-4", description: "Subtle linking" },
+  { value: "balanced", label: "Balanced", count: "5-7", description: "Recommended", badge: "Best" },
+  { value: "rich", label: "Rich", count: "8-12", description: "Comprehensive" },
+];
+
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -187,6 +230,17 @@ export default function Settings() {
   const [includeTableOfContents, setIncludeTableOfContents] = useState(false);
   const [enableResearch, setEnableResearch] = useState(false);
   const [enableInternalLinks, setEnableInternalLinks] = useState(false);
+  const [internalLinkSitemapUrl, setInternalLinkSitemapUrl] = useState("");
+  const [internalLinkMode, setInternalLinkMode] = useState("all");
+  const [internalLinkDensity, setInternalLinkDensity] = useState("balanced");
+  const [internalLinkIncludePatterns, setInternalLinkIncludePatterns] = useState("");
+  const [internalLinkExcludePatterns, setInternalLinkExcludePatterns] = useState("");
+  const [internalLinkRules, setInternalLinkRules] = useState<InternalLinkRule[]>([]);
+  const [internalRuleTriggers, setInternalRuleTriggers] = useState("");
+  const [internalRuleUrl, setInternalRuleUrl] = useState("");
+  const [internalLinkIndex, setInternalLinkIndex] = useState<InternalLinkIndex | null>(null);
+  const [internalLinkStatus, setInternalLinkStatus] = useState("disconnected");
+  const [internalLinkLastSyncedAt, setInternalLinkLastSyncedAt] = useState<string | null>(null);
   const [brandCompanyName, setBrandCompanyName] = useState("");
   const [brandDescription, setBrandDescription] = useState("");
   const [brandTargetAudience, setBrandTargetAudience] = useState("");
@@ -271,6 +325,15 @@ export default function Settings() {
       setIncludeTableOfContents(userSettings.include_table_of_contents ?? false);
       setEnableResearch(userSettings.enable_research ?? false);
       setEnableInternalLinks(userSettings.enable_internal_links ?? false);
+      setInternalLinkSitemapUrl(userSettings.internal_link_sitemap_url || "");
+      setInternalLinkStatus(userSettings.internal_link_status || (userSettings.internal_link_index ? "connected" : "disconnected"));
+      setInternalLinkMode(userSettings.internal_link_mode || "all");
+      setInternalLinkDensity(userSettings.internal_link_density || "balanced");
+      setInternalLinkIncludePatterns((userSettings.internal_link_include_patterns || []).join(", "));
+      setInternalLinkExcludePatterns((userSettings.internal_link_exclude_patterns || []).join(", "));
+      setInternalLinkRules(userSettings.internal_link_rules || []);
+      setInternalLinkIndex(userSettings.internal_link_index || null);
+      setInternalLinkLastSyncedAt(userSettings.internal_link_last_synced_at || null);
       setBrandCompanyName(userSettings.brand_company_name || "");
       setBrandDescription(userSettings.brand_description || "");
       setBrandTargetAudience(userSettings.brand_target_audience || "");
@@ -291,6 +354,9 @@ export default function Settings() {
         include_table_of_contents: includeTableOfContents,
         enable_research: enableResearch,
         enable_internal_links: enableInternalLinks,
+        internal_link_mode: internalLinkMode,
+        internal_link_density: internalLinkDensity,
+        internal_link_rules: internalLinkRules,
       });
     },
     onSuccess: () => {
@@ -298,6 +364,56 @@ export default function Settings() {
       toast.success("Article settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save article settings"),
+  });
+
+  const splitPatterns = (value: string) =>
+    value.split(",").map((item) => item.trim()).filter(Boolean);
+
+  const indexInternalLinksMutation = useMutation({
+    mutationFn: async () => {
+      return api.post<UserSettings>("/settings/internal-linking/index", {
+        sitemap_url: internalLinkSitemapUrl,
+        mode: internalLinkMode,
+        density: internalLinkDensity,
+        include_patterns: splitPatterns(internalLinkIncludePatterns),
+        exclude_patterns: splitPatterns(internalLinkExcludePatterns),
+      });
+    },
+    onSuccess: (settings) => {
+      queryClient.setQueryData(["user-settings"], settings);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Sitemap indexed");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to index sitemap"),
+  });
+
+  const saveInternalLinkSettingsMutation = useMutation({
+    mutationFn: async () => {
+      return api.put<UserSettings>("/settings", {
+        enable_internal_links: enableInternalLinks,
+        internal_link_mode: internalLinkMode,
+        internal_link_density: internalLinkDensity,
+        internal_link_include_patterns: splitPatterns(internalLinkIncludePatterns),
+        internal_link_exclude_patterns: splitPatterns(internalLinkExcludePatterns),
+        internal_link_rules: internalLinkRules,
+      });
+    },
+    onSuccess: (settings) => {
+      queryClient.setQueryData(["user-settings"], settings);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Internal linking settings saved");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to save internal linking settings"),
+  });
+
+  const disconnectInternalLinksMutation = useMutation({
+    mutationFn: async () => api.delete<UserSettings>("/settings/internal-linking"),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(["user-settings"], settings);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Internal linking disconnected");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to disconnect internal linking"),
   });
 
   const saveBrandSettingsMutation = useMutation({
@@ -437,6 +553,34 @@ export default function Settings() {
     setKnowledgeTitle("");
     setKnowledgeContent("");
   };
+
+  const addInternalLinkRule = () => {
+    const triggers = internalRuleTriggers.trim();
+    const url = internalRuleUrl.trim();
+    if (!triggers || !url) {
+      toast.error("Add trigger phrases and a destination URL");
+      return;
+    }
+    try {
+      new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    } catch {
+      toast.error("Add a valid destination URL");
+      return;
+    }
+    setInternalLinkRules((current) => [
+      ...current,
+      { id: crypto.randomUUID(), triggers, url: /^https?:\/\//i.test(url) ? url : `https://${url}` },
+    ]);
+    setInternalRuleTriggers("");
+    setInternalRuleUrl("");
+  };
+
+  const lastSyncLabel = internalLinkLastSyncedAt
+    ? new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(
+        Math.round((new Date(internalLinkLastSyncedAt).getTime() - Date.now()) / 60000),
+        "minute"
+      )
+    : "Never";
 
   const addCta = () => {
     const label = ctaLabel.trim();
@@ -910,13 +1054,13 @@ export default function Settings() {
               <SectionHeader
                 icon={LinkIcon}
                 title="Internal Linking"
-                description="Configure whether generated articles should suggest internal link opportunities."
+                description="Connect your sitemap for intelligent internal links."
                 action={
                   <Button
-                    onClick={() => saveArticleSettingsMutation.mutate()}
-                    disabled={saveArticleSettingsMutation.isPending}
+                    onClick={() => saveInternalLinkSettingsMutation.mutate()}
+                    disabled={saveInternalLinkSettingsMutation.isPending}
                   >
-                    {saveArticleSettingsMutation.isPending ? (
+                    {saveInternalLinkSettingsMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
@@ -925,24 +1069,257 @@ export default function Settings() {
                   </Button>
                 }
               />
-              <div className="space-y-6 p-6">
-                <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-5">
-                  <div>
-                    <h3 className="font-semibold">Enable internal link suggestions</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      BlogFactory will add natural internal link suggestions where they fit the article.
+              {indexInternalLinksMutation.isPending ? (
+                <div className="space-y-6 p-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <Loader2 className="h-7 w-7 animate-spin text-byword-blue" />
+                      <div>
+                        <h3 className="text-lg font-semibold">Indexing your site...</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Fetching sitemap pages and creating link candidates.</p>
+                      </div>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => indexInternalLinksMutation.reset()}>
+                      Cancel
+                    </Button>
+                  </div>
+                  <div className="h-3 rounded-full bg-muted">
+                    <div className="h-3 w-1/2 animate-pulse rounded-full bg-byword-blue" />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-lg border border-byword-border p-5 text-center">
+                      <p className="text-3xl font-bold text-byword-blue">...</p>
+                      <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Pages found</p>
+                    </div>
+                    <div className="rounded-lg border border-byword-border p-5 text-center">
+                      <p className="text-3xl font-bold text-byword-blue">...</p>
+                      <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Processed</p>
+                    </div>
+                    <div className="rounded-lg border border-byword-border p-5 text-center">
+                      <p className="text-3xl font-bold text-byword-blue">...</p>
+                      <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Remaining</p>
+                    </div>
+                  </div>
+                  <p className="text-center text-sm text-muted-foreground">Indexing runs in the background of this request.</p>
+                </div>
+              ) : internalLinkIndex && internalLinkStatus === "connected" ? (
+                <div className="divide-y divide-byword-border">
+                  <div className="space-y-5 p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 text-[hsl(158_64%_34%)]">
+                        <Check className="h-5 w-5" />
+                        <span className="text-lg font-semibold">Connected</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{internalLinkIndex.siteHost}</span>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-2xl font-semibold">{internalLinkIndex.pageCount}</span>
+                        <span className="text-sm text-muted-foreground">Pages</span>
+                      </div>
+                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                        <Database className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-2xl font-semibold">{internalLinkIndex.vectorCount}</span>
+                        <span className="text-sm text-muted-foreground">Vectors</span>
+                      </div>
+                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                        <Clock className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-lg font-semibold">{lastSyncLabel}</span>
+                        <span className="text-sm text-muted-foreground">Last sync</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-5 p-6">
+                    <div className="flex items-start gap-4">
+                      <IconTile icon={Filter} />
+                      <div>
+                        <h3 className="text-lg font-semibold">URL Filters</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Control which pages get indexed for linking.</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setInternalLinkMode("all")}
+                        className={cn(
+                          "rounded-lg border p-4 text-center font-semibold transition-calm",
+                          internalLinkMode === "all"
+                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                            : "border-byword-border hover:border-byword-blue/40"
+                        )}
+                      >
+                        Index all pages
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInternalLinkMode("filtered")}
+                        className={cn(
+                          "rounded-lg border p-4 text-center font-semibold transition-calm",
+                          internalLinkMode === "filtered"
+                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                            : "border-byword-border hover:border-byword-blue/40"
+                        )}
+                      >
+                        Filter pages
+                      </button>
+                    </div>
+                    {internalLinkMode === "filtered" && (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Input
+                          value={internalLinkIncludePatterns}
+                          onChange={(event) => setInternalLinkIncludePatterns(event.target.value)}
+                          placeholder="/blog, /guides"
+                        />
+                        <Input
+                          value={internalLinkExcludePatterns}
+                          onChange={(event) => setInternalLinkExcludePatterns(event.target.value)}
+                          placeholder="/tag, /author, /page"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-5 p-6">
+                    <div>
+                      <h3 className="text-lg font-semibold">Links per article</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">How many internal links to add when generating.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-4">
+                      {linkDensityOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setInternalLinkDensity(option.value)}
+                          className={cn(
+                            "relative rounded-lg border p-5 text-center transition-calm",
+                            internalLinkDensity === option.value
+                              ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                              : "border-byword-border hover:border-byword-blue/40"
+                          )}
+                        >
+                          {option.badge && (
+                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded bg-byword-blue px-3 py-1 text-[10px] font-bold uppercase text-white">
+                              {option.badge}
+                            </span>
+                          )}
+                          <p className="font-semibold">{option.label}</p>
+                          <p className="mt-2 text-2xl font-bold">{option.count}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-5 p-6">
+                    <div className="flex items-start gap-4">
+                      <IconTile icon={LinkIcon} />
+                      <div>
+                        <h3 className="text-lg font-semibold">Custom Link Rules</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Override AI linking for specific keywords.</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto]">
+                      <Input
+                        value={internalRuleTriggers}
+                        onChange={(event) => setInternalRuleTriggers(event.target.value)}
+                        placeholder="demo, free trial, book a call"
+                      />
+                      <ArrowRight className="hidden h-10 w-5 text-muted-foreground md:block" />
+                      <Input
+                        value={internalRuleUrl}
+                        onChange={(event) => setInternalRuleUrl(event.target.value)}
+                        placeholder="https://example.com/book-demo"
+                      />
+                      <Button type="button" onClick={addInternalLinkRule}>
+                        Add
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Separate multiple trigger phrases with commas. These rules take priority over AI-discovered links.
+                    </p>
+                    {internalLinkRules.length > 0 && (
+                      <div className="grid gap-3">
+                        {internalLinkRules.map((rule) => (
+                          <div key={rule.id} className="flex items-center gap-3 rounded-lg border border-byword-border p-3">
+                            <LinkIcon className="h-4 w-4 text-byword-blue" />
+                            <span className="min-w-0 flex-1 truncate text-sm">{rule.triggers}</span>
+                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{rule.url}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setInternalLinkRules((current) => current.filter((item) => item.id !== rule.id))}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap justify-between gap-3 p-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => indexInternalLinksMutation.mutate()}
+                      disabled={!internalLinkSitemapUrl || indexInternalLinksMutation.isPending}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh Index
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => disconnectInternalLinksMutation.mutate()}
+                      disabled={disconnectInternalLinksMutation.isPending}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6 p-6">
+                  <div className="rounded-lg border border-dashed border-byword-border p-10 text-center">
+                    <IconTile icon={LinkIcon} className="mx-auto" />
+                    <p className="mt-4 text-lg font-semibold">Connect Your Sitemap</p>
+                    <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
+                      We will index your pages to automatically add relevant internal links when generating articles.
                     </p>
                   </div>
-                  <Switch checked={enableInternalLinks} onCheckedChange={setEnableInternalLinks} />
+                  <div className="space-y-2">
+                    <Label htmlFor="sitemap-url" className="text-base font-semibold">Sitemap URL</Label>
+                    <div className="grid gap-3 md:grid-cols-[1fr_190px]">
+                      <div className="relative">
+                        <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="sitemap-url"
+                          value={internalLinkSitemapUrl}
+                          onChange={(event) => setInternalLinkSitemapUrl(event.target.value)}
+                          placeholder="yoursite.com/sitemap.xml"
+                          className="h-12 pl-11"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        className="h-12"
+                        onClick={() => indexInternalLinksMutation.mutate()}
+                        disabled={!internalLinkSitemapUrl || indexInternalLinksMutation.isPending}
+                      >
+                        Connect
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      We will fetch your sitemap, extract page metadata, and build a link index for generation.
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
-                  <IconTile icon={LinkIcon} className="mx-auto" />
-                  <p className="mt-4 font-semibold">Sitemap indexing is prepared</p>
-                  <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-                    The saved toggle already affects generation. Sitemap crawling can be connected later without changing this settings model.
-                  </p>
-                </div>
-              </div>
+              )}
             </BywordCard>
           )}
 

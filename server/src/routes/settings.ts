@@ -4,6 +4,7 @@ import { userSettings } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteApiKey, getApiKeyMetadata, setApiKey } from "../services/api-keys.js";
+import { buildInternalLinkIndex } from "../services/internal-linking.js";
 
 export const settingsRoutes = new Hono();
 
@@ -58,6 +59,24 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     enableResearch: settings.enableResearch,
     enable_internal_links: settings.enableInternalLinks,
     enableInternalLinks: settings.enableInternalLinks,
+    internal_link_sitemap_url: settings.internalLinkSitemapUrl,
+    internalLinkSitemapUrl: settings.internalLinkSitemapUrl,
+    internal_link_status: settings.internalLinkStatus,
+    internalLinkStatus: settings.internalLinkStatus,
+    internal_link_mode: settings.internalLinkMode,
+    internalLinkMode: settings.internalLinkMode,
+    internal_link_density: settings.internalLinkDensity,
+    internalLinkDensity: settings.internalLinkDensity,
+    internal_link_include_patterns: settings.internalLinkIncludePatterns ?? [],
+    internalLinkIncludePatterns: settings.internalLinkIncludePatterns ?? [],
+    internal_link_exclude_patterns: settings.internalLinkExcludePatterns ?? [],
+    internalLinkExcludePatterns: settings.internalLinkExcludePatterns ?? [],
+    internal_link_rules: settings.internalLinkRules ?? [],
+    internalLinkRules: settings.internalLinkRules ?? [],
+    internal_link_index: settings.internalLinkIndex,
+    internalLinkIndex: settings.internalLinkIndex,
+    internal_link_last_synced_at: settings.internalLinkLastSyncedAt,
+    internalLinkLastSyncedAt: settings.internalLinkLastSyncedAt,
     brand_company_name: settings.brandCompanyName,
     brandCompanyName: settings.brandCompanyName,
     brand_description: settings.brandDescription,
@@ -132,6 +151,13 @@ function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof user
   setBool("includeTableOfContents", "include_table_of_contents");
   setBool("enableResearch", "enable_research");
   setBool("enableInternalLinks", "enable_internal_links");
+  setOptionalText("internalLinkSitemapUrl", "internal_link_sitemap_url");
+  setOptionalText("internalLinkStatus", "internal_link_status");
+  setOptionalText("internalLinkMode", "internal_link_mode");
+  setOptionalText("internalLinkDensity", "internal_link_density");
+  setArray("internalLinkIncludePatterns", "internal_link_include_patterns");
+  setArray("internalLinkExcludePatterns", "internal_link_exclude_patterns");
+  setArray("internalLinkRules", "internal_link_rules");
 
   setText("brandCompanyName", "brand_company_name");
   setText("brandDescription", "brand_description");
@@ -182,6 +208,92 @@ settingsRoutes.delete("/api-keys", async (c) => {
   }
 
   return c.json(await deleteApiKey(userId, provider));
+});
+
+settingsRoutes.post("/internal-linking/index", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const sitemapUrl = asText(body.sitemap_url ?? body.sitemapUrl);
+
+  if (!sitemapUrl) {
+    return c.json({ error: "Sitemap URL is required" }, 400);
+  }
+
+  try {
+    const mode = asOptionalText(body.mode) || "all";
+    const density = asOptionalText(body.density) || "balanced";
+    const includePatterns = asJsonArray(body.include_patterns ?? body.includePatterns) as string[] | undefined;
+    const excludePatterns = asJsonArray(body.exclude_patterns ?? body.excludePatterns) as string[] | undefined;
+    const index = await buildInternalLinkIndex(sitemapUrl, {
+      mode,
+      includePatterns,
+      excludePatterns,
+    });
+    const [result] = await db
+      .insert(userSettings)
+      .values({
+        userId,
+        enableInternalLinks: true,
+        internalLinkSitemapUrl: index.sitemapUrl,
+        internalLinkStatus: "connected",
+        internalLinkMode: mode,
+        internalLinkDensity: density,
+        internalLinkIncludePatterns: includePatterns,
+        internalLinkExcludePatterns: excludePatterns,
+        internalLinkIndex: index as never,
+        internalLinkLastSyncedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: {
+          enableInternalLinks: true,
+          internalLinkSitemapUrl: index.sitemapUrl,
+          internalLinkStatus: "connected",
+          internalLinkMode: mode,
+          internalLinkDensity: density,
+          internalLinkIncludePatterns: includePatterns,
+          internalLinkExcludePatterns: excludePatterns,
+          internalLinkIndex: index as never,
+          internalLinkLastSyncedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return c.json(serializeSettings(result));
+  } catch (err: any) {
+    return c.json({ error: err.message || "Failed to index sitemap" }, 400);
+  }
+});
+
+settingsRoutes.delete("/internal-linking", async (c) => {
+  const userId = getUserId(c);
+  const [result] = await db
+    .insert(userSettings)
+    .values({
+      userId,
+      enableInternalLinks: false,
+      internalLinkSitemapUrl: null,
+      internalLinkStatus: "disconnected",
+      internalLinkIndex: null,
+      internalLinkLastSyncedAt: null,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: userSettings.userId,
+      set: {
+        enableInternalLinks: false,
+        internalLinkSitemapUrl: null,
+        internalLinkStatus: "disconnected",
+        internalLinkIndex: null,
+        internalLinkLastSyncedAt: null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  return c.json(serializeSettings(result));
 });
 
 settingsRoutes.get("/", async (c) => {

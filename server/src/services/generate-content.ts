@@ -40,7 +40,74 @@ function summarizeJsonList(value: unknown, maxItems = 5) {
     .slice(0, maxItems);
 }
 
-function buildSettingsInstructions(settings?: UserSettingsRecord) {
+function tokenize(value: string) {
+  return new Set(value.toLowerCase().match(/[a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi) || []);
+}
+
+function summarizeInternalLinks(settings: UserSettingsRecord, sourceText = "") {
+  if (settings.enableInternalLinks !== true) return [];
+
+  const index = settings.internalLinkIndex as
+    | { pages?: Array<{ url?: string; title?: string; description?: string; path?: string }> }
+    | null
+    | undefined;
+  const rules = Array.isArray(settings.internalLinkRules) ? settings.internalLinkRules as Array<Record<string, unknown>> : [];
+  const lines: string[] = [];
+
+  if (settings.internalLinkDensity) {
+    const densityMap: Record<string, string> = {
+      minimal: "1-2 internal links",
+      light: "3-4 internal links",
+      balanced: "5-7 internal links",
+      rich: "8-12 internal links",
+    };
+    lines.push(`Internal link density: ${densityMap[settings.internalLinkDensity] || settings.internalLinkDensity}.`);
+  }
+
+  const ruleLines = rules
+    .map((rule) => {
+      const triggers = typeof rule.triggers === "string" ? rule.triggers.trim() : "";
+      const url = typeof rule.url === "string" ? rule.url.trim() : "";
+      if (!triggers || !url) return "";
+      return `When relevant to "${triggers}", link to ${url}.`;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (ruleLines.length) {
+    lines.push(`Custom internal link rules:\n${ruleLines.map((line) => `  - ${line}`).join("\n")}`);
+  }
+
+  const pages = Array.isArray(index?.pages) ? index.pages : [];
+  if (pages.length) {
+    const sourceTokens = tokenize(sourceText);
+    const scored = pages
+      .map((page) => {
+        const haystack = `${page.title || ""} ${page.description || ""} ${page.path || ""}`;
+        const pageTokens = tokenize(haystack);
+        let score = 0;
+        for (const token of pageTokens) {
+          if (sourceTokens.has(token)) score += token.length > 4 ? 2 : 1;
+        }
+        return { page, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map(({ page }) => {
+        const title = page.title || page.path || page.url;
+        const description = page.description ? ` — ${page.description}` : "";
+        return `  - ${title}: ${page.url}${description}`;
+      });
+
+    lines.push(`Use these indexed site pages as internal-link candidates where natural:\n${scored.join("\n")}`);
+  } else {
+    lines.push("Suggest natural internal link opportunities where relevant.");
+  }
+
+  return lines;
+}
+
+function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "") {
   if (!settings) return "";
 
   const instructions: string[] = [];
@@ -51,7 +118,7 @@ function buildSettingsInstructions(settings?: UserSettingsRecord) {
   if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
   if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
   if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
-  if (settings.enableInternalLinks === true) instructions.push("Suggest natural internal link opportunities where relevant.");
+  instructions.push(...summarizeInternalLinks(settings, sourceText));
 
   const brand: string[] = [];
   if (settings.brandCompanyName) brand.push(`Company name: ${settings.brandCompanyName}`);
@@ -137,8 +204,6 @@ export async function generateContent(opts: GenerateOpts) {
       }
     }
 
-    systemPrompt += buildSettingsInstructions(settings);
-
     const modelId = opts.modelId || personaModel;
 
     // Update feed last_run_at
@@ -205,6 +270,8 @@ export async function generateContent(opts: GenerateOpts) {
       try {
         // Generate blog post via AI
         const genStart = Date.now();
+        const settingsInstructions = buildSettingsInstructions(settings, `${article.title}\n${article.url || ""}\n${article.content}`);
+        const draftSystemPrompt = `${systemPrompt}${settingsInstructions}`;
         const userMessage = article.url
           ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}`
           : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}`;
@@ -218,7 +285,7 @@ export async function generateContent(opts: GenerateOpts) {
           body: JSON.stringify({
             model: modelId,
             messages: [
-              { role: "system", content: systemPrompt },
+              { role: "system", content: draftSystemPrompt },
               { role: "user", content: userMessage },
             ],
             max_tokens: 4096,
