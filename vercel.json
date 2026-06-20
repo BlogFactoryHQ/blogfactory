@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm run build --workspace=web",
+  "outputDirectory": "web/dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    }
+  ]
+}

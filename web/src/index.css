@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm paper white base */
+    --background: 40 10% 97.5%;
+    --foreground: 0 0% 9%;
+
+    /* Pure white cards */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    /* Primary — ink black */
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+
+    /* Secondary — warm gray */
+    --secondary: 40 6% 93%;
+    --secondary-foreground: 0 0% 9%;
+
+    /* Muted — soft gray */
+    --muted: 40 6% 93%;
+    --muted-foreground: 0 0% 45%;
+
+    /* Accent — subtle warm tint */
+    --accent: 40 8% 94%;
+    --accent-foreground: 0 0% 9%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    /* Borders & inputs — whisper-thin */
+    --border: 40 6% 90%;
+    --input: 40 6% 90%;
+    --ring: 0 0% 9%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar — light, clean */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 42%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 40 6% 95%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 40 6% 92%;
+    --sidebar-ring: 0 0% 9%;
+    --sidebar-muted: 0 0% 58%;
+
+    /* Status — functional color only */
+    --status-success: 152 56% 42%;
+    --status-success-foreground: 0 0% 100%;
+    --status-warning: 38 92% 50%;
+    --status-warning-foreground: 0 0% 100%;
+    --status-error: 0 72% 51%;
+    --status-error-foreground: 0 0% 100%;
+    --status-pending: 0 0% 55%;
+    --status-pending-foreground: 0 0% 100%;
+    --status-running: 220 70% 55%;
+    --status-running-foreground: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 0 0% 5.5%;
+    --foreground: 0 0% 93%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 93%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 93%;
+
+    --primary: 0 0% 93%;
+    --primary-foreground: 0 0% 5.5%;
+
+    --secondary: 0 0% 13%;
+    --secondary-foreground: 0 0% 93%;
+
+    --muted: 0 0% 13%;
+    --muted-foreground: 0 0% 50%;
+
+    --accent: 0 0% 13%;
+    --accent-foreground: 0 0% 93%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 93%;
+
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 55%;
+    --sidebar-primary: 0 0% 93%;
+    --sidebar-primary-foreground: 0 0% 5.5%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 13%;
+    --sidebar-ring: 0 0% 93%;
+    --sidebar-muted: 0 0% 50%;
+
+    --status-success: 152 56% 50%;
+    --status-warning: 38 92% 55%;
+    --status-error: 0 72% 55%;
+    --status-pending: 0 0% 60%;
+    --status-running: 220 70% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.011em;
+  }
+}
+
+@layer utilities {
+  .transition-calm {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .transition-gentle {
+    @apply transition-all duration-300 ease-in-out;
+  }
+}
+
+@layer components {
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-md;
+  }
+
+  .status-badge-success {
+    @apply bg-[hsl(var(--status-success)/0.1)] text-[hsl(152_56%_32%)];
+  }
+
+  .status-badge-warning {
+    @apply bg-[hsl(var(--status-warning)/0.1)] text-[hsl(38_92%_35%)];
+  }
+
+  .status-badge-error {
+    @apply bg-[hsl(var(--status-error)/0.1)] text-[hsl(0_72%_40%)];
+  }
+
+  .status-badge-pending {
+    @apply bg-[hsl(var(--status-pending)/0.1)] text-[hsl(0_0%_40%)];
+  }
+
+  .status-badge-running {
+    @apply bg-[hsl(var(--status-running)/0.1)] text-[hsl(220_70%_45%)];
+  }
+
+  /* Section label */
+  .section-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground;
+  }
+
+  /* Card */
+  .calm-card {
+    @apply bg-card rounded-xl border border-border;
+  }
+
+  /* Table row */
+  .table-row-calm {
+    @apply transition-calm hover:bg-muted/50;
+  }
+}

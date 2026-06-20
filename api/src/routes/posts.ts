@@ -1,0 +1,160 @@
+import { Hono } from "hono";
+import { db } from "../db/index.js";
+import { posts, personas, imageAssets } from "../db/schema.js";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { getUserId } from "../middleware/auth.js";
+import { deleteFile } from "../services/image-storage.js";
+
+export const postsRoutes = new Hono();
+
+postsRoutes.get("/", async (c) => {
+  const userId = getUserId(c);
+  const rows = await db
+    .select({
+      id: posts.id,
+      title: posts.title,
+      content: posts.content,
+      summary: posts.summary,
+      status: posts.status,
+      sourceType: posts.sourceType,
+      sourceRefId: posts.sourceRefId,
+      sourceContentHash: posts.sourceContentHash,
+      jobId: posts.jobId,
+      personaId: posts.personaId,
+      modelId: posts.modelId,
+      coverImageUrl: posts.coverImageUrl,
+      inlineImages: posts.inlineImages,
+      createdAt: posts.createdAt,
+      updatedAt: posts.updatedAt,
+      personaName: personas.name,
+    })
+    .from(posts)
+    .leftJoin(personas, eq(posts.personaId, personas.id))
+    .where(eq(posts.userId, userId))
+    .orderBy(desc(posts.createdAt));
+
+  return c.json(rows);
+});
+
+postsRoutes.get("/:id", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+
+  const [post] = await db
+    .select({
+      id: posts.id,
+      title: posts.title,
+      content: posts.content,
+      summary: posts.summary,
+      status: posts.status,
+      sourceType: posts.sourceType,
+      sourceRefId: posts.sourceRefId,
+      sourceContentHash: posts.sourceContentHash,
+      jobId: posts.jobId,
+      personaId: posts.personaId,
+      modelId: posts.modelId,
+      coverImageUrl: posts.coverImageUrl,
+      inlineImages: posts.inlineImages,
+      createdAt: posts.createdAt,
+      updatedAt: posts.updatedAt,
+      personaName: personas.name,
+    })
+    .from(posts)
+    .leftJoin(personas, eq(posts.personaId, personas.id))
+    .where(and(eq(posts.id, id), eq(posts.userId, userId)))
+    .limit(1);
+
+  if (!post) return c.json({ error: "Post not found" }, 404);
+  return c.json(post);
+});
+
+postsRoutes.put("/:id", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const body = await c.req.json();
+
+  const [updated] = await db
+    .update(posts)
+    .set(body)
+    .where(and(eq(posts.id, id), eq(posts.userId, userId)))
+    .returning();
+
+  if (!updated) return c.json({ error: "Post not found" }, 404);
+  return c.json(updated);
+});
+
+postsRoutes.delete("/:id", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+
+  await cleanupPostFiles([id], userId);
+
+  const [deleted] = await db
+    .delete(posts)
+    .where(and(eq(posts.id, id), eq(posts.userId, userId)))
+    .returning({ id: posts.id });
+
+  if (!deleted) return c.json({ error: "Post not found" }, 404);
+  return c.json({ success: true });
+});
+
+postsRoutes.post("/bulk-delete", async (c) => {
+  const userId = getUserId(c);
+  const { ids } = await c.req.json();
+  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+
+  await cleanupPostFiles(ids, userId);
+  await db.delete(posts).where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
+  return c.json({ success: true, deleted: ids.length });
+});
+
+postsRoutes.post("/bulk-publish", async (c) => {
+  const userId = getUserId(c);
+  const { ids } = await c.req.json();
+  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+
+  await db
+    .update(posts)
+    .set({ status: "published" })
+    .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
+  return c.json({ success: true });
+});
+
+postsRoutes.post("/bulk-draft", async (c) => {
+  const userId = getUserId(c);
+  const { ids } = await c.req.json();
+  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+
+  await db
+    .update(posts)
+    .set({ status: "draft" })
+    .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
+  return c.json({ success: true });
+});
+
+async function cleanupPostFiles(postIds: string[], userId: string) {
+  const postRows = await db
+    .select({ id: posts.id, coverImageUrl: posts.coverImageUrl, inlineImages: posts.inlineImages })
+    .from(posts)
+    .where(and(inArray(posts.id, postIds), eq(posts.userId, userId)));
+
+  const pathsToDelete: string[] = [];
+  for (const post of postRows) {
+    if (post.coverImageUrl && !post.coverImageUrl.startsWith("http")) {
+      pathsToDelete.push(post.coverImageUrl);
+    }
+    if (post.inlineImages) {
+      for (const img of post.inlineImages) {
+        if (img && !img.startsWith("http")) pathsToDelete.push(img);
+      }
+    }
+  }
+
+  await Promise.all(pathsToDelete.map(deleteFile));
+
+  // Mark image_assets as orphaned
+  await db
+    .update(imageAssets)
+    .set({ status: "orphaned", postId: null })
+    .where(inArray(imageAssets.postId, postIds));
+}

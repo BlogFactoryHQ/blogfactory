@@ -1,0 +1,130 @@
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check } from "lucide-react";
+import { format } from "date-fns";
+import { Checkbox } from "@/components/ui/checkbox";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Button } from "@/components/ui/button";
+import {
+  TableCell,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+
+const sourceIcons: Record<string, typeof FileText> = {
+  rss_feed: Rss,
+  url: LinkIcon,
+  pdf: FileUp,
+  raw_text: FileText,
+  youtube: Youtube,
+  manual: FileText,
+};
+
+interface Post {
+  id: string;
+  title: string;
+  content: string;
+  status: string;
+  source_type: string;
+  source_ref_id: string | null;
+  persona_id: string | null;
+  model_id: string;
+  job_id: string | null;
+  created_at: string;
+  cover_image_url: string | null;
+  inline_images: string[] | null;
+  personas?: { name: string } | null;
+  feeds?: { name: string } | null;
+}
+
+interface PostTableRowProps {
+  post: Post;
+  isSelected: boolean;
+  onSelect: (checked: boolean) => void;
+  onClick: () => void;
+  onQuickPublish: (e: React.MouseEvent) => void;
+  onQuickDelete: (e: React.MouseEvent) => void;
+  formatModelName: (modelId: string) => string;
+}
+
+export function PostTableRow({
+  post,
+  isSelected,
+  onSelect,
+  onClick,
+  onQuickPublish,
+  onQuickDelete,
+  formatModelName,
+}: PostTableRowProps) {
+  const SourceIcon = sourceIcons[post.source_type] || FileText;
+
+  return (
+    <TableRow
+      className={cn(
+        "table-row-calm cursor-pointer group",
+        isSelected && "bg-primary/5"
+      )}
+      onClick={onClick}
+    >
+      <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={onSelect}
+          aria-label={`Select ${post.title}`}
+        />
+      </TableCell>
+      <TableCell className="font-medium">{post.title}</TableCell>
+      <TableCell>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <SourceIcon className="h-4 w-4 flex-shrink-0" />
+            <span className="capitalize text-sm">{post.source_type?.replace("_", " ")}</span>
+          </div>
+          {post.feeds?.name && (
+            <span className="text-xs text-muted-foreground/70 truncate max-w-[150px]" title={post.feeds.name}>
+              {post.feeds.name}
+            </span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>{post.personas?.name || "—"}</TableCell>
+      <TableCell>
+        <span className="inline-flex items-center px-2 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+          {formatModelName(post.model_id)}
+        </span>
+      </TableCell>
+      <TableCell>
+        <StatusBadge
+          status={post.status === "published" ? "success" : "draft"}
+          label={post.status === "published" ? "Published" : "Draft"}
+          showIcon={false}
+        />
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {format(new Date(post.created_at), "MMM d, yyyy")}
+      </TableCell>
+      <TableCell className="w-24">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {post.status !== "published" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary"
+              onClick={onQuickPublish}
+              title="Quick publish"
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={onQuickDelete}
+            title="Quick delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
