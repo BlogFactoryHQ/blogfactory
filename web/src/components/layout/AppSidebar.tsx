@@ -11,6 +11,7 @@ import {
   LogOut,
   Settings,
   ChevronsLeft,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -34,13 +35,18 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
+const adminNavigation = [
+  { name: "Admin Users", href: "/admin/users", icon: Shield },
+];
+
 export function AppSidebar() {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { isCollapsed, toggle } = useSidebar();
 
-  const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
+  const visibleNavigation = user?.role === "admin" ? [...navigation, ...adminNavigation] : navigation;
 
   const handleSidebarClick = (e: React.MouseEvent) => {
     if (!isCollapsed) return;
@@ -81,7 +87,7 @@ export function AppSidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 px-[14px] space-y-0.5 overflow-hidden">
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const isActive =
               item.href === "/"
                 ? location.pathname === "/"

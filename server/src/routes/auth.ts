@@ -5,6 +5,7 @@ import { users } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { signJwt, getUserId } from "../middleware/auth.js";
 import { randomBytes } from "crypto";
+import { bootstrapUserAccess, isAdminEmail, publicUser } from "../services/access-control.js";
 
 export const authRoutes = new Hono();
 
@@ -28,29 +29,36 @@ authRoutes.post("/signup", async (c) => {
   }
 
   const passwordHash = await hash(password, 10);
-  const verifyToken = randomBytes(32).toString("hex");
+  const admin = isAdminEmail(email);
 
-  const [user] = await db
+  let [user] = await db
     .insert(users)
     .values({
       email,
       passwordHash,
       displayName: displayName || null,
+      role: admin ? "admin" : "user",
+      approvalStatus: admin ? "approved" : "pending",
+      approvedAt: admin ? new Date() : null,
+      emailVerified: true,
       consentAcceptedAt: new Date(),
       marketingOptIn: marketingOptIn ?? false,
-      verifyToken,
     })
-    .returning({ id: users.id, email: users.email, displayName: users.displayName, emailVerified: users.emailVerified });
+    .returning({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      emailVerified: users.emailVerified,
+      role: users.role,
+      approvalStatus: users.approvalStatus,
+      rejectedReason: users.rejectedReason,
+      createdAt: users.createdAt,
+    });
 
-  // In production, send verification email here with verifyToken
-  // For dev, auto-verify
-  if (process.env.NODE_ENV !== "production") {
-    await db.update(users).set({ emailVerified: true, verifyToken: null }).where(eq(users.id, user.id));
-    user.emailVerified = true;
-  }
+  user = await bootstrapUserAccess(user);
 
   const token = await signJwt(user.id);
-  return c.json({ token, user });
+  return c.json({ token, user: publicUser(user) });
 });
 
 authRoutes.post("/login", async (c) => {
@@ -73,10 +81,13 @@ authRoutes.post("/login", async (c) => {
     return c.json({ error: "Please verify your email before signing in" }, 403);
   }
 
+  const bootstrapped = await bootstrapUserAccess(user);
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, bootstrapped.id));
+
   const token = await signJwt(user.id, rememberMe ?? false);
   return c.json({
     token,
-    user: { id: user.id, email: user.email, displayName: user.displayName },
+    user: publicUser(bootstrapped),
   });
 });
 
@@ -84,14 +95,24 @@ authRoutes.get("/me", async (c) => {
   const userId = getUserId(c);
   if (!userId) return c.json({ error: "Not authenticated" }, 401);
 
-  const [user] = await db
-    .select({ id: users.id, email: users.email, displayName: users.displayName, emailVerified: users.emailVerified, createdAt: users.createdAt })
+  const [rawUser] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      emailVerified: users.emailVerified,
+      role: users.role,
+      approvalStatus: users.approvalStatus,
+      rejectedReason: users.rejectedReason,
+      createdAt: users.createdAt,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
 
-  if (!user) return c.json({ error: "User not found" }, 404);
-  return c.json(user);
+  if (!rawUser) return c.json({ error: "User not found" }, 404);
+  const user = await bootstrapUserAccess(rawUser);
+  return c.json(publicUser(user));
 });
 
 authRoutes.post("/forgot-password", async (c) => {
@@ -173,57 +194,5 @@ authRoutes.post("/verify-email", async (c) => {
 });
 
 authRoutes.post("/google", async (c) => {
-  const { credential } = await c.req.json();
-  if (!credential) {
-    return c.json({ error: "Google credential is required" }, 400);
-  }
-
-  // Decode Google JWT ID token (header.payload.signature)
-  try {
-    const parts = credential.split(".");
-    if (parts.length !== 3) throw new Error("Invalid token format");
-
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
-    const { email, name, sub: googleId, email_verified } = payload;
-
-    if (!email) {
-      return c.json({ error: "Google account has no email" }, 400);
-    }
-
-    // Check if user exists by googleId or email
-    let [user] = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
-
-    if (!user) {
-      [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    }
-
-    if (user) {
-      // Link Google ID if not already linked
-      if (!user.googleId) {
-        await db.update(users).set({ googleId, emailVerified: true }).where(eq(users.id, user.id));
-      }
-      const token = await signJwt(user.id);
-      return c.json({ token, user: { id: user.id, email: user.email, displayName: user.displayName } });
-    }
-
-    // Create new user via Google
-    const dummyHash = await hash(randomBytes(32).toString("hex"), 10);
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email,
-        passwordHash: dummyHash,
-        displayName: name || null,
-        googleId,
-        emailVerified: true,
-        consentAcceptedAt: new Date(),
-      })
-      .returning({ id: users.id, email: users.email, displayName: users.displayName });
-
-    const token = await signJwt(newUser.id);
-    return c.json({ token, user: newUser });
-  } catch (err: any) {
-    console.error("Google auth error:", err);
-    return c.json({ error: "Failed to authenticate with Google" }, 400);
-  }
+  return c.json({ error: "Google sign-in is disabled during the private beta" }, 403);
 });

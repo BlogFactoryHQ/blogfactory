@@ -16,6 +16,13 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name"),
+  role: text("role").default("user").notNull(),
+  approvalStatus: text("approval_status").default("pending").notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvedBy: uuid("approved_by"),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+  rejectedReason: text("rejected_reason"),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   emailVerified: boolean("email_verified").default(false).notNull(),
   googleId: text("google_id").unique(),
   consentAcceptedAt: timestamp("consent_accepted_at", { withTimezone: true }),
@@ -176,6 +183,18 @@ export const userSettings = pgTable("user_settings", {
   monthlyBudget: real("monthly_budget"),
   budgetPaused: boolean("budget_paused"),
   budgetAlertThreshold: real("budget_alert_threshold"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ── user_api_keys ──
+export const userApiKeys = pgTable("user_api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  openrouterApiKeyEncrypted: text("openrouter_api_key_encrypted"),
+  openrouterKeyLast4: text("openrouter_key_last4"),
+  googleAiKeyEncrypted: text("google_ai_key_encrypted"),
+  googleKeyLast4: text("google_key_last4"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

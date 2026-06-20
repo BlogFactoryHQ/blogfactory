@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { getUserId } from "../middleware/auth.js";
+import { getOpenRouterKey } from "../services/api-keys.js";
 
 export const modelsRoutes = new Hono();
 
@@ -9,13 +11,12 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 modelsRoutes.get("/text", async (c) => {
   const refresh = c.req.query("refresh") === "true";
+  const apiKey = await getOpenRouterKey(getUserId(c));
+  if (!apiKey) return c.json({ error: "Add your OpenRouter API key in Settings to load live models" }, 400);
 
   if (!refresh && textModelsCache && Date.now() - textModelsCache.ts < CACHE_TTL) {
     return c.json(textModelsCache.data);
   }
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return c.json({ error: "OpenRouter API key not configured" }, 500);
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/models", {
@@ -45,13 +46,12 @@ modelsRoutes.get("/text", async (c) => {
 
 modelsRoutes.get("/image", async (c) => {
   const refresh = c.req.query("refresh") === "true";
+  const apiKey = await getOpenRouterKey(getUserId(c));
+  if (!apiKey) return c.json({ error: "Add your OpenRouter API key in Settings to load live image models" }, 400);
 
   if (!refresh && imageModelsCache && Date.now() - imageModelsCache.ts < CACHE_TTL) {
     return c.json(imageModelsCache.data);
   }
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return c.json({ error: "OpenRouter API key not configured" }, 500);
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/models", {

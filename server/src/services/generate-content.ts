@@ -2,9 +2,7 @@ import { db } from "../db/index.js";
 import { jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const GOOGLE_AI_KEY = process.env.GOOGLE_AI_KEY;
+import { getGoogleAiKey, getOpenRouterKey } from "./api-keys.js";
 
 interface GenerateOpts {
   userId: string;
@@ -25,9 +23,11 @@ interface GenerateOpts {
 
 export async function generateContent(opts: GenerateOpts) {
   const userId = opts.schedulerUserId || opts.userId;
-  const OPENROUTER_KEY = OPENROUTER_API_KEY;
+  const openRouterKey = await getOpenRouterKey(userId);
 
-  if (!OPENROUTER_KEY) throw new Error("OpenRouter API key not configured");
+  if (!openRouterKey) {
+    throw new Error("Add your OpenRouter API key in Settings before generating content");
+  }
 
   // Get or create job
   let jobId = opts.jobId;
@@ -153,8 +153,8 @@ export async function generateContent(opts: GenerateOpts) {
 
         const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${OPENROUTER_KEY}`,
+            headers: {
+            Authorization: `Bearer ${openRouterKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -217,6 +217,8 @@ export async function generateContent(opts: GenerateOpts) {
             imageConfig: opts.imageConfig,
             imageModel: settings?.imageModel || undefined,
             stylePrompt: settings?.imageStylePrompt || undefined,
+            openRouterKey,
+            googleAiKey: await getGoogleAiKey(userId),
           });
 
           coverImageUrl = imageResults.coverPath;
@@ -353,12 +355,16 @@ async function generateImages(opts: {
   imageConfig: any;
   imageModel?: string;
   stylePrompt?: string;
+  openRouterKey: string;
+  googleAiKey: string | null;
 }): Promise<{ coverPath: string | null; inlinePaths: string[]; cost: number }> {
   let coverPath: string | null = null;
   const inlinePaths: string[] = [];
   let totalCost = 0;
   const imageModel = opts.imageModel || "google/gemini-2.5-flash-image";
-  const OPENROUTER_KEY = OPENROUTER_API_KEY;
+  if (imageModel.startsWith("google-ai-studio/") && !opts.googleAiKey) {
+    throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
+  }
 
   // Generate cover image
   if (opts.imageConfig?.cover) {
@@ -369,7 +375,7 @@ async function generateImages(opts: {
     for (let i = 0; i < coverCount; i++) {
       try {
         const prompt = `Create a professional blog cover image for: "${opts.title}". ${opts.stylePrompt || "Modern, clean, professional style."}`;
-        const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "cover", i);
+        const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "cover", i, opts.openRouterKey, opts.googleAiKey);
         if (result) {
           if (i === 0) coverPath = result.storagePath;
           totalCost += result.cost;
@@ -389,7 +395,7 @@ async function generateImages(opts: {
     for (let i = 0; i < inlineCount; i++) {
       try {
         const prompt = `Create an illustrative image for a blog post titled "${opts.title}". Section ${i + 1}. ${opts.stylePrompt || "Clean, informative style."}`;
-        const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "inline", i);
+        const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "inline", i, opts.openRouterKey, opts.googleAiKey);
         if (result) {
           inlinePaths.push(result.storagePath);
           totalCost += result.cost;
@@ -411,20 +417,22 @@ async function generateSingleImage(
   userId: string,
   jobId: string,
   type: string,
-  position: number
+  position: number,
+  openRouterKey: string,
+  googleAiKey: string | null
 ): Promise<{ storagePath: string; cost: number } | null> {
-  const OPENROUTER_KEY = OPENROUTER_API_KEY;
-  if (!OPENROUTER_KEY) return null;
-
   // Use Google AI Studio for google-ai-studio models
-  if (modelId.startsWith("google-ai-studio/") && GOOGLE_AI_KEY) {
-    return generateWithGoogleAI(prompt, modelId, resolution, aspectRatio, userId, jobId, type, position);
+  if (modelId.startsWith("google-ai-studio/")) {
+    if (!googleAiKey) {
+      throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
+    }
+    return generateWithGoogleAI(prompt, modelId, resolution, aspectRatio, userId, jobId, type, position, googleAiKey);
   }
 
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
+      Authorization: `Bearer ${openRouterKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -489,12 +497,11 @@ async function generateWithGoogleAI(
   userId: string,
   jobId: string,
   type: string,
-  position: number
+  position: number,
+  googleAiKey: string
 ): Promise<{ storagePath: string; cost: number } | null> {
-  if (!GOOGLE_AI_KEY) return null;
-
   const geminiModel = modelId.replace("google-ai-studio/", "");
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GOOGLE_AI_KEY}`, {
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${googleAiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

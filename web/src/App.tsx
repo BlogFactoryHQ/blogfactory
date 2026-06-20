@@ -19,6 +19,7 @@ import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
 import UsageAnalytics from "@/pages/UsageAnalytics";
 import ImageGallery from "@/pages/ImageGallery";
+import AdminUsers from "@/pages/AdminUsers";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                   <Route path="/gallery" element={<ImageGallery />} />
+                  <Route path="/admin/users" element={<AdminUsers />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
@@ -12,8 +14,10 @@ import {
   Loader2,
   Zap,
   Image as ImageIcon,
+  KeyRound,
   Save,
-  FileText
+  FileText,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import { useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
@@ -34,6 +38,14 @@ import {
   AspectRatio
 } from "@/components/content/ImageGenerationSettings";
 
+interface ApiKeyMetadata {
+  hasOpenrouterKey: boolean;
+  openrouterKeyLast4: string | null;
+  hasGoogleAiKey: boolean;
+  googleKeyLast4: string | null;
+  updatedAt: string | null;
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -42,6 +54,8 @@ export default function Settings() {
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [selectedImageModel, setSelectedImageModel] = useState("google/gemini-2.5-flash-image");
+  const [openrouterKey, setOpenrouterKey] = useState("");
+  const [googleKey, setGoogleKey] = useState("");
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
 
@@ -51,6 +65,12 @@ export default function Settings() {
     queryFn: async () => {
       return api.get<any>("/settings");
     },
+    enabled: !!user,
+  });
+
+  const { data: apiKeys } = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
 
@@ -129,6 +149,31 @@ export default function Settings() {
     },
   });
 
+  const saveApiKeyMutation = useMutation({
+    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google"; apiKey: string }) =>
+      api.put<ApiKeyMetadata>("/settings/api-keys", { provider, apiKey }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["image-models"] });
+      queryClient.invalidateQueries({ queryKey: ["text-models"] });
+      if (variables.provider === "openrouter") setOpenrouterKey("");
+      if (variables.provider === "google") setGoogleKey("");
+      toast.success("API key saved");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteApiKeyMutation = useMutation({
+    mutationFn: (provider: "openrouter" | "google") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["image-models"] });
+      queryClient.invalidateQueries({ queryKey: ["text-models"] });
+      toast.success("API key deleted");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   return (
     <div className="p-8 max-w-5xl">
       <PageHeader
@@ -145,6 +190,94 @@ export default function Settings() {
         </TabsList>
 
         <TabsContent value="openrouter" className="mt-6 space-y-6">
+          {/* API Keys */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5" />
+                API Keys
+              </CardTitle>
+              <CardDescription>
+                Store your own provider keys for beta usage. Keys are encrypted and never shown again.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="openrouter-key">OpenRouter</Label>
+                    <Badge variant={apiKeys?.hasOpenrouterKey ? "default" : "secondary"}>
+                      {apiKeys?.hasOpenrouterKey ? `Saved ••••${apiKeys.openrouterKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="openrouter-key"
+                    type="password"
+                    placeholder="sk-or-..."
+                    value={openrouterKey}
+                    onChange={(e) => setOpenrouterKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "openrouter", apiKey: openrouterKey })}
+                      disabled={!openrouterKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("openrouter")}
+                      disabled={!apiKeys?.hasOpenrouterKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="google-key">Google Gemini Image</Label>
+                    <Badge variant={apiKeys?.hasGoogleAiKey ? "default" : "secondary"}>
+                      {apiKeys?.hasGoogleAiKey ? `Saved ••••${apiKeys.googleKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="google-key"
+                    type="password"
+                    placeholder="Google AI Studio API key"
+                    value={googleKey}
+                    onChange={(e) => setGoogleKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "google", apiKey: googleKey })}
+                      disabled={!googleKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("google")}
+                      disabled={!apiKeys?.hasGoogleAiKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Image Generation Model */}
           <Card>
             <CardHeader>

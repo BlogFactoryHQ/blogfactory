@@ -6,6 +6,9 @@ interface AuthUser {
   email: string;
   displayName: string | null;
   emailVerified?: boolean;
+  role: "admin" | "user";
+  approvalStatus: "pending" | "approved" | "rejected";
+  rejectedReason?: string | null;
   createdAt?: string;
 }
 
@@ -15,7 +18,6 @@ interface AuthContextType {
   signOut: () => void;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   signup: (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean) => Promise<void>;
-  googleLogin: (credential: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,21 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   };
 
-  const googleLogin = async (credential: string) => {
-    const { token, user: u } = await api.post<{ token: string; user: AuthUser }>("/auth/google", {
-      credential,
-    });
-    api.setToken(token);
-    setUser(u);
-  };
-
   const signOut = () => {
     api.setToken(null);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signOut, login, signup, googleLogin }}>
+    <AuthContext.Provider value={{ user, isLoading, signOut, login, signup }}>
       {children}
     </AuthContext.Provider>
   );
