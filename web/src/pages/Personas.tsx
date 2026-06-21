@@ -43,6 +43,7 @@ import {
   Building2,
   MessageSquare,
   Globe2,
+  HelpCircle,
   FileText,
   FileUp,
   ListChecks,
@@ -65,6 +66,7 @@ import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
 import { MODELS } from "@/lib/mock-data";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ToolDefinition {
   id: string;
@@ -184,6 +186,27 @@ function siteLanguageToArticleLanguage(language?: string | null) {
 function limitKnowledgeContent(content: string) {
   if (content.length <= KNOWLEDGE_IMPORT_CHAR_LIMIT) return content;
   return `${content.slice(0, KNOWLEDGE_IMPORT_CHAR_LIMIT)}\n\n[Imported file truncated at ${KNOWLEDGE_IMPORT_CHAR_LIMIT.toLocaleString()} characters.]`;
+}
+
+function HelpTip({ label, children }: { label: string; children: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={label}
+          onClick={(event) => event.stopPropagation()}
+          className="inline-flex text-muted-foreground hover:text-foreground"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs leading-5">
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 async function extractDocxText(file: File) {
@@ -591,6 +614,7 @@ export default function Personas() {
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-primary" />
             <h4 className="font-medium">Voice</h4>
+            <HelpTip label="Voice help">Default writing tone. The selected persona prompt can still be more specific.</HelpTip>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             {voiceOptions.map((voice) => (
@@ -609,7 +633,10 @@ export default function Personas() {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Language</Label>
+              <div className="flex items-center gap-2">
+                <Label>Language</Label>
+                <HelpTip label="Language help">Default output language for generated articles.</HelpTip>
+              </div>
               <Select value={articleLanguage} onValueChange={setArticleLanguage}>
                 <SelectTrigger>
                   <SelectValue />
@@ -622,7 +649,10 @@ export default function Personas() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Article Length</Label>
+              <div className="flex items-center gap-2">
+                <Label>Article Length</Label>
+                <HelpTip label="Article length help">Target length for the draft. Smart lets the model choose based on the topic.</HelpTip>
+              </div>
               <Select value={String(articleWordCount)} onValueChange={(value) => setArticleWordCount(Number(value))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -639,11 +669,19 @@ export default function Personas() {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="flex items-center justify-between rounded-lg border border-border p-4">
-              <span className="flex items-center gap-2 text-sm font-medium"><Globe2 className="h-4 w-4 text-primary" /> Research</span>
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <Globe2 className="h-4 w-4 text-primary" />
+                Research
+                <HelpTip label="Research help">Adds an instruction to include useful research context. It does not browse by itself unless the selected profile has web/search tools enabled.</HelpTip>
+              </span>
               <Switch checked={enableResearch} onCheckedChange={setEnableResearch} />
             </label>
             <label className="flex items-center justify-between rounded-lg border border-border p-4">
-              <span className="flex items-center gap-2 text-sm font-medium"><ListChecks className="h-4 w-4 text-primary" /> Table of contents</span>
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <ListChecks className="h-4 w-4 text-primary" />
+                Table of contents
+                <HelpTip label="Table of contents help">Adds a short clickable-style outline near the top of long articles.</HelpTip>
+              </span>
               <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
             </label>
           </div>
@@ -654,6 +692,7 @@ export default function Personas() {
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-primary" />
               <h4 className="font-medium">Brand</h4>
+              <HelpTip label="Brand help">Global company context used by every writing profile.</HelpTip>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={autofillFromActiveSite}>
               <Globe2 className="mr-2 h-4 w-4" />
@@ -717,10 +756,17 @@ export default function Personas() {
         <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-primary" /> Knowledge Base</span>
+              <span className="flex items-center gap-2 font-medium">
+                <FileText className="h-4 w-4 text-primary" />
+                Knowledge Base
+                <HelpTip label="Knowledge base help">When on, saved knowledge snippets are sent to the model. When off, files stay saved but are not used.</HelpTip>
+              </span>
               <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
             </div>
+            <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
+            <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
             <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
               <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
                 <label>
                   {isImportingKnowledge ? (
@@ -738,9 +784,6 @@ export default function Personas() {
                 </label>
               </Button>
             </div>
-            <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
-            <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
-            <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
             {knowledgeDocuments.map((document) => (
               <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
                 <div className="min-w-0">
@@ -755,7 +798,11 @@ export default function Personas() {
           </div>
 
           <div className="space-y-3">
-            <span className="flex items-center gap-2 font-medium"><Target className="h-4 w-4 text-primary" /> Calls to Action</span>
+            <span className="flex items-center gap-2 font-medium">
+              <Target className="h-4 w-4 text-primary" />
+              Calls to Action
+              <HelpTip label="Calls to action help">Optional offers or links the model can mention when it naturally fits.</HelpTip>
+            </span>
             <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
             <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
             <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />

@@ -23,6 +23,12 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 
+function truncatePromptText(value: string, maxChars = 1200) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  return `${cleaned.slice(0, maxChars)}...`;
+}
+
 function summarizeJsonList(value: unknown, maxItems = 5) {
   if (!Array.isArray(value)) return [];
   return value
@@ -32,12 +38,27 @@ function summarizeJsonList(value: unknown, maxItems = 5) {
         const record = item as Record<string, unknown>;
         return [record.title, record.label, record.description, record.content, record.url]
           .filter((part) => typeof part === "string" && part.trim())
+          .map((part) => truncatePromptText(part as string))
           .join(" — ");
       }
       return "";
     })
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function summarizeKnowledgeDocuments(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const record = item as Record<string, unknown>;
+      const title = typeof record.title === "string" ? record.title.trim() : "Knowledge document";
+      const content = typeof record.content === "string" ? truncatePromptText(record.content, 900) : "";
+      return content ? `${title}: ${content}` : "";
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function tokenize(value: string) {
@@ -132,7 +153,7 @@ function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "
   const ctas = summarizeJsonList(settings.brandCtas, 3);
   if (ctas.length) brand.push(`Calls to action to weave in when natural: ${ctas.join("; ")}`);
 
-  const knowledge = settings.knowledgeBaseEnabled ? summarizeJsonList(settings.knowledgeDocuments, 4) : [];
+  const knowledge = settings.knowledgeBaseEnabled ? summarizeKnowledgeDocuments(settings.knowledgeDocuments) : [];
   if (knowledge.length) brand.push(`Knowledge base context: ${knowledge.join("; ")}`);
 
   if (brand.length) {
