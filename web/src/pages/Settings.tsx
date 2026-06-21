@@ -1357,7 +1357,7 @@ export default function Settings() {
                       </SelectContent>
                     </Select>
                     {selectedImageModelUnavailable && (
-                      <p className="text-xs text-destructive">Unavailable: {selectedImageModel}. Pick a live OpenRouter image model.</p>
+                      <p className="text-xs text-destructive">Unavailable: {selectedImageModel}. Pick an available image model.</p>
                     )}
                   </div>
 

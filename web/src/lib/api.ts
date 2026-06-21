@@ -60,6 +60,10 @@ class ApiClient {
     return this.request<T>("PUT", path, body);
   }
 
+  patch<T>(path: string, body?: any): Promise<T> {
+    return this.request<T>("PATCH", path, body);
+  }
+
   delete<T>(path: string): Promise<T> {
     return this.request<T>("DELETE", path);
   }

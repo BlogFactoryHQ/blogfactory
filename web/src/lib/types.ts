@@ -144,6 +144,23 @@ export interface ImageAsset {
   postStatus?: string | null;
 }
 
+export interface ImageGenerationRequest {
+  id: string;
+  post_id: string | null;
+  job_id: string | null;
+  provider: string;
+  prompt: string;
+  type: string;
+  position: number | null;
+  aspect_ratio: string | null;
+  resolution: string | null;
+  status: string;
+  imported_asset_id: string | null;
+  created_at: string;
+  updated_at: string;
+  post_title?: string | null;
+}
+
 export interface UserSettings {
   id?: string;
   user_id?: string;

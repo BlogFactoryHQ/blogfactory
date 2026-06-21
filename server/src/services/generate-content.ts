@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
+import { imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenRouterKey } from "./api-keys.js";
@@ -432,6 +432,7 @@ export async function generateContent(opts: GenerateOpts) {
             content: genContent,
             title: postTitle,
             userId,
+            postId: post.id,
             jobId: jobId!,
             imageConfig: opts.imageConfig,
             imageModel: settings?.imageModel || undefined,
@@ -575,6 +576,7 @@ async function generateImages(opts: {
   content: string;
   title: string;
   userId: string;
+  postId: string;
   jobId: string;
   imageConfig: any;
   imageModel?: string;
@@ -587,6 +589,19 @@ async function generateImages(opts: {
   const inlinePaths: string[] = [];
   let totalCost = 0;
   const imageModel = opts.imageModel || "google/gemini-2.5-flash-image";
+  if (imageModel.startsWith("manual/")) {
+    await createManualImageRequests({
+      imageModel,
+      imageConfig: opts.imageConfig,
+      stylePrompt: opts.stylePrompt,
+      title: opts.title,
+      userId: opts.userId,
+      postId: opts.postId,
+      jobId: opts.jobId,
+    });
+    return { coverPath, inlinePaths, cost: 0 };
+  }
+
   await assertOpenRouterModelAvailable(opts.openRouterKey, imageModel, "image");
   if (imageModel.startsWith("google-ai-studio/") && !opts.googleAiKey) {
     throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
@@ -636,6 +651,59 @@ async function generateImages(opts: {
   }
 
   return { coverPath, inlinePaths, cost: totalCost };
+}
+
+async function createManualImageRequests(opts: {
+  imageModel: string;
+  imageConfig: any;
+  stylePrompt?: string;
+  title: string;
+  userId: string;
+  postId: string;
+  jobId: string;
+}) {
+  const rows: Array<typeof imageGenerationRequests.$inferInsert> = [];
+  const provider = opts.imageModel.replace("manual/", "");
+
+  if (opts.imageConfig?.cover) {
+    const coverCount = opts.imageConfig.cover.count || 1;
+    const resolution = opts.imageConfig.cover.resolution || "1K";
+    const aspectRatio = opts.imageConfig.cover.aspectRatio || "16:9";
+    for (let i = 0; i < coverCount; i++) {
+      rows.push({
+        userId: opts.userId,
+        postId: opts.postId,
+        jobId: opts.jobId,
+        provider,
+        type: "cover",
+        position: i,
+        aspectRatio,
+        resolution,
+        prompt: `Create a professional blog cover image for: "${opts.title}". ${opts.stylePrompt || "Modern, clean, professional style."}`,
+      });
+    }
+  }
+
+  if (opts.imageConfig?.inline) {
+    const inlineCount = opts.imageConfig.inline.count || 2;
+    const resolution = opts.imageConfig.inline.resolution || "1K";
+    const aspectRatio = opts.imageConfig.inline.aspectRatio || "3:2";
+    for (let i = 0; i < inlineCount; i++) {
+      rows.push({
+        userId: opts.userId,
+        postId: opts.postId,
+        jobId: opts.jobId,
+        provider,
+        type: "inline",
+        position: i,
+        aspectRatio,
+        resolution,
+        prompt: `Create an illustrative image for a blog post titled "${opts.title}". Section ${i + 1}. ${opts.stylePrompt || "Clean, informative style."}`,
+      });
+    }
+  }
+
+  if (rows.length) await db.insert(imageGenerationRequests).values(rows);
 }
 
 async function generateSingleImage(

@@ -165,6 +165,24 @@ export const imageAssets = pgTable("image_assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── manual image generation requests ──
+export const imageGenerationRequests = pgTable("image_generation_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  postId: uuid("post_id").references(() => posts.id, { onDelete: "cascade" }),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  provider: text("provider").notNull(),
+  prompt: text("prompt").notNull(),
+  type: text("type").default("cover").notNull(),
+  position: integer("position"),
+  aspectRatio: text("aspect_ratio"),
+  resolution: text("resolution"),
+  status: text("status").default("pending").notNull(),
+  importedAssetId: uuid("imported_asset_id").references(() => imageAssets.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── sites ──
 export const sites = pgTable("sites", {
   id: uuid("id").primaryKey().defaultRandom(),

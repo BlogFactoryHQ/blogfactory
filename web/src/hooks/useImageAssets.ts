@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import type { ImageAsset } from "@/lib/types";
+import type { ImageAsset, ImageGenerationRequest } from "@/lib/types";
 
 export type { ImageAsset };
+export type { ImageGenerationRequest };
 
 export interface GalleryFilters {
   type: "all" | "cover" | "inline";
@@ -108,6 +109,51 @@ export function useDetachImageAsset() {
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
       toast.success("Image detached", { description: "Image removed from post but kept in storage." });
+    },
+  });
+}
+
+export function useImageGenerationRequests(status = "pending") {
+  return useQuery({
+    queryKey: ["image-generation-requests", status],
+    queryFn: async () => api.get<ImageGenerationRequest[]>(`/images/requests?status=${status}`),
+  });
+}
+
+export function useCancelImageGenerationRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.patch(`/images/requests/${id}`, { status: "cancelled" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      toast.success("Image request cancelled");
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unable to cancel image request.";
+      toast.error("Cancel failed", { description: message });
+    },
+  });
+}
+
+export function useImportImageGenerationRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      await api.upload(`/images/requests/${id}/import`, formData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["image-assets"] });
+      queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
+      toast.success("Image imported");
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unable to import image.";
+      toast.error("Import failed", { description: message });
     },
   });
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { ImageIcon, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, ImageIcon, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -15,11 +15,15 @@ import {
 import {
   useImageAssets,
   useImageAssetStats,
+  useCancelImageGenerationRequest,
   useDeleteImageAssets,
   useDetachImageAsset,
+  useImageGenerationRequests,
+  useImportImageGenerationRequest,
   defaultFilters,
   type GalleryFilters as GalleryFiltersType,
   type ImageAsset,
+  type ImageGenerationRequest,
 } from "@/hooks/useImageAssets";
 import { useSignedUrls } from "@/hooks/useSignedUrl";
 import { GalleryStatsBar } from "@/components/gallery/GalleryStatsBar";
@@ -27,6 +31,87 @@ import { GalleryFilters } from "@/components/gallery/GalleryFilters";
 import { GalleryCard } from "@/components/gallery/GalleryCard";
 import { GalleryBulkActions } from "@/components/gallery/GalleryBulkActions";
 import { ImageDetailDrawer } from "@/components/gallery/ImageDetailDrawer";
+import { toast } from "sonner";
+
+function providerUrl(provider: string) {
+  if (provider.includes("midjourney")) return "https://www.midjourney.com/imagine";
+  if (provider.includes("higgsfield")) return "https://higgsfield.ai";
+  if (provider.includes("chatgpt")) return "https://chatgpt.com";
+  return null;
+}
+
+function ManualRequestCard({
+  request,
+  onImport,
+  onCancel,
+  importing,
+  cancelling,
+}: {
+  request: ImageGenerationRequest;
+  onImport: (request: ImageGenerationRequest, file: File) => void;
+  onCancel: (id: string) => void;
+  importing: boolean;
+  cancelling: boolean;
+}) {
+  const url = providerUrl(request.provider);
+  const fileInputId = `image-request-${request.id}`;
+  const title = request.post_title || "Untitled post";
+
+  const copyPrompt = async () => {
+    await navigator.clipboard.writeText(request.prompt);
+    toast.success("Prompt copied");
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="capitalize">{request.provider.replace("-", " ")}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="capitalize">{request.type}{request.position != null ? ` #${request.position + 1}` : ""}</span>
+          </div>
+          <p className="truncate text-sm text-muted-foreground">{title}</p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <p className="mt-3 line-clamp-3 text-sm">{request.prompt}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={copyPrompt}>
+          <Copy className="h-4 w-4" />
+          Copy prompt
+        </Button>
+        {url && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={url} target="_blank" rel="noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              Open
+            </a>
+          </Button>
+        )}
+        <input
+          id={fileInputId}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onImport(request, file);
+            event.currentTarget.value = "";
+          }}
+        />
+        <Button variant="default" size="sm" asChild disabled={importing}>
+          <label htmlFor={fileInputId}>
+            <Upload className="h-4 w-4" />
+            Import
+          </label>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function ImageGallery() {
   const [filters, setFilters] = useState<GalleryFiltersType>(defaultFilters);
@@ -36,8 +121,11 @@ export default function ImageGallery() {
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
+  const { data: pendingRequests = [] } = useImageGenerationRequests("pending");
   const deleteImages = useDeleteImageAssets();
   const detachImage = useDetachImageAsset();
+  const cancelRequest = useCancelImageGenerationRequest();
+  const importRequest = useImportImageGenerationRequest();
 
   const storagePaths = useMemo(() => (images || []).map((i) => i.storage_path), [images]);
   const signedUrls = useSignedUrls(storagePaths);
@@ -114,6 +202,27 @@ export default function ImageGallery() {
       </div>
 
       {/* Filters */}
+      {pendingRequests.length > 0 && (
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Manual image queue</h2>
+            <span className="text-xs text-muted-foreground">{pendingRequests.length} pending</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {pendingRequests.map((request) => (
+              <ManualRequestCard
+                key={request.id}
+                request={request}
+                onImport={(item, file) => importRequest.mutate({ id: item.id, file })}
+                onCancel={(id) => cancelRequest.mutate(id)}
+                importing={importRequest.isPending}
+                cancelling={cancelRequest.isPending}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <GalleryFilters filters={filters} onChange={setFilters} />
 
       {/* Grid */}
