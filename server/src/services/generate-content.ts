@@ -27,6 +27,8 @@ type UserSettingsRecord = typeof userSettings.$inferSelect;
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 12_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
+const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
+const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
 
 function truncatePromptText(value: string, maxChars = 1200) {
   const cleaned = value.replace(/\s+/g, " ").trim();
@@ -80,6 +82,35 @@ function generationErrorMessage(err: any) {
     return "AI provider timed out before content was created. Try again with a faster model or shorter source.";
   }
   return err?.message || "Draft generation failed";
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const numberOrZero = (value: unknown) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+
+async function getOpenRouterCost(openRouterKey: string, responseData: any) {
+  let stats: any = null;
+
+  if (responseData?.id) {
+    try {
+      await sleep(OPENROUTER_COST_LOOKUP_DELAY_MS);
+      const resp = await fetch(`https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(responseData.id)}`, {
+        signal: AbortSignal.timeout(OPENROUTER_COST_LOOKUP_TIMEOUT_MS),
+        headers: { Authorization: `Bearer ${openRouterKey}` },
+      });
+      if (resp.ok) stats = ((await resp.json()) as any).data;
+    } catch (err) {
+      console.warn("[openrouter] Cost lookup failed:", err);
+    }
+  }
+
+  return {
+    stats,
+    cost: numberOrZero(stats?.total_cost ?? responseData?.usage?.total_cost ?? responseData?.usage?.cost ?? responseData?.usage),
+  };
 }
 
 function tokenize(value: string) {
@@ -352,6 +383,7 @@ export async function generateContent(opts: GenerateOpts) {
         const aiData = await aiResp.json() as any;
         const genContent = aiData.choices?.[0]?.message?.content || "";
         const usage = aiData.usage;
+        const openRouterUsage = await getOpenRouterCost(openRouterKey, aiData);
         const genLatency = Date.now() - genStart;
 
         // Extract title from generated content
@@ -359,7 +391,7 @@ export async function generateContent(opts: GenerateOpts) {
         const postTitle = titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post";
 
         // Log generation
-        const cost = parseFloat(aiData.usage?.total_cost || "0") || 0;
+        const cost = openRouterUsage.cost;
         totalCost += cost;
         totalTokens += usage?.total_tokens || 0;
 
@@ -374,6 +406,7 @@ export async function generateContent(opts: GenerateOpts) {
           cost,
           latencyMs: genLatency,
           sessionId: jobId,
+          responseData: { id: aiData.id, generation: openRouterUsage.stats },
         });
 
         const [post] = await db.insert(posts).values({
@@ -571,8 +604,8 @@ async function generateImages(opts: {
         const prompt = `Create a professional blog cover image for: "${opts.title}". ${opts.stylePrompt || "Modern, clean, professional style."}`;
         const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "cover", i, opts.openRouterKey, opts.googleAiKey);
         if (result) {
-          if (i === 0) coverPath = result.storagePath;
           totalCost += result.cost;
+          if (i === 0 && result.storagePath) coverPath = result.storagePath;
         }
       } catch (err) {
         console.error("[generate] Cover image error:", err);
@@ -592,8 +625,9 @@ async function generateImages(opts: {
         const prompt = `Create an illustrative image for a blog post titled "${opts.title}". Section ${i + 1}. ${opts.stylePrompt || "Clean, informative style."}`;
         const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "inline", i, opts.openRouterKey, opts.googleAiKey);
         if (result) {
-          inlinePaths.push(result.storagePath);
           totalCost += result.cost;
+          if (!result.storagePath) continue;
+          inlinePaths.push(result.storagePath);
         }
       } catch (err) {
         console.error("[generate] Inline image error:", err);
@@ -615,7 +649,7 @@ async function generateSingleImage(
   position: number,
   openRouterKey: string,
   googleAiKey: string | null
-): Promise<{ storagePath: string; cost: number } | null> {
+): Promise<{ storagePath: string | null; cost: number } | null> {
   // Use Google AI Studio for google-ai-studio models
   if (modelId.startsWith("google-ai-studio/")) {
     if (!googleAiKey) {
@@ -624,6 +658,7 @@ async function generateSingleImage(
     return generateWithGoogleAI(prompt, modelId, resolution, aspectRatio, userId, jobId, type, position, googleAiKey);
   }
 
+  const startedAt = Date.now();
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
@@ -648,6 +683,12 @@ async function generateSingleImage(
   }
 
   const data = await resp.json() as any;
+  const openRouterUsage = await getOpenRouterCost(openRouterKey, data);
+  const usage = data.usage || {};
+  const promptTokens = usage.prompt_tokens ?? openRouterUsage.stats?.tokens_prompt ?? openRouterUsage.stats?.native_tokens_prompt ?? null;
+  const completionTokens = usage.completion_tokens ?? openRouterUsage.stats?.tokens_completion ?? openRouterUsage.stats?.native_tokens_completion ?? null;
+  const countedTokens = (promptTokens || 0) + (completionTokens || 0);
+  const totalTokens = usage.total_tokens ?? (countedTokens || null);
   // Extract base64 image or URL from response
   const message = data.choices?.[0]?.message;
   const imageUrl = message?.images?.[0]?.image_url?.url || message?.images?.[0]?.imageUrl?.url || "";
@@ -666,7 +707,21 @@ async function generateSingleImage(
     }
   }
 
-  if (!imageBuffer) return null;
+  await db.insert(generationLogs).values({
+    userId,
+    modelId,
+    provider: "openrouter-image",
+    status: imageBuffer ? "success" : "failed",
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cost: openRouterUsage.cost,
+    latencyMs: Date.now() - startedAt,
+    sessionId: jobId,
+    responseData: { id: data.id, generation: openRouterUsage.stats },
+  });
+
+  if (!imageBuffer) return { storagePath: null, cost: openRouterUsage.cost };
 
   try {
     const sharp = (await import("sharp")).default;
@@ -674,22 +729,21 @@ async function generateSingleImage(
   } catch {}
 
   const finalImageBuffer = imageBuffer;
-  if (!finalImageBuffer) return null;
+  if (!finalImageBuffer) return { storagePath: null, cost: openRouterUsage.cost };
 
-  const cost = parseFloat(data.usage?.total_cost || "0") || 0;
   const { storagePath } = await saveImageBuffer(finalImageBuffer, userId, {
     type,
     prompt,
     modelId,
-    provider: modelId.split("/")[0],
+    provider: "openrouter-image",
     aspectRatio,
     resolution,
     position,
-    cost,
+    cost: openRouterUsage.cost,
     jobId,
   });
 
-  return { storagePath, cost };
+  return { storagePath, cost: openRouterUsage.cost };
 }
 
 async function generateWithGoogleAI(
