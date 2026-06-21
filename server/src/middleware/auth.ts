@@ -18,6 +18,7 @@ export async function authMiddleware(c: Context, next: Next) {
   if (
     path === "/api/health" ||
     (path.startsWith("/api/auth/") && path !== "/api/auth/me") ||
+    path.startsWith("/api/storage/") ||
     path.startsWith("/api/webhooks/")
   ) {
     return next();

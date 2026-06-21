@@ -605,9 +605,9 @@ async function testGhost(credentials: GhostCredentials) {
 
 async function publishGhost(credentials: GhostCredentials, article: ArticlePayload, mode: PublishMode, options: PublishOptions): Promise<PublishResult> {
   const postType = options.postType === "page" ? "pages" : "posts";
-  const featureImage = article.coverImageUrl ? await uploadGhostImage(credentials, article.coverImageUrl, article.title).catch(() => null) : null;
+  const featureImage = article.coverImageUrl ? await uploadGhostImage(credentials, article.coverImageUrl, article.title) : null;
   const inlineImages = (await Promise.all(
-    article.inlineImages.map((image, index) => uploadGhostImage(credentials, image, `${article.title}-${index + 1}`).catch(() => null))
+    article.inlineImages.map((image, index) => uploadGhostImage(credentials, image, `${article.title}-${index + 1}`))
   )).filter((url): url is string => Boolean(url));
   const html = inlineImages.length
     ? `${article.html}\n${inlineImages.map((url) => `<figure><img src="${escapeAttribute(url)}" alt="" /></figure>`).join("\n")}`
@@ -655,9 +655,11 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
     body: formData,
   });
-  if (!response.ok) return null;
+  if (!response.ok) throw new Error(`Ghost image upload failed: ${await response.text()}`);
   const data = await response.json() as { images?: Array<{ url?: string }> };
-  return data.images?.[0]?.url || null;
+  const url = data.images?.[0]?.url;
+  if (!url) throw new Error("Ghost image upload failed: no image URL returned");
+  return url;
 }
 
 async function ghostJwt(adminApiKey: string) {
