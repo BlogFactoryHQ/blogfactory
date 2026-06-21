@@ -1,0 +1,279 @@
+import { useMemo, useState } from "react";
+import JSZip from "jszip";
+import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Archive, CheckCircle2, ExternalLink, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { toast } from "sonner";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { useIntegrations } from "@/hooks/useIntegrations";
+
+type ZipEntry = JSZip.JSZipObject;
+
+interface ImportItem {
+  id: string;
+  folder: string;
+  markdown: ZipEntry;
+  images: ZipEntry[];
+  status: "ready" | "importing" | "publishing" | "done" | "failed";
+  postId?: string;
+  message?: string;
+}
+
+const imageExt = /\.(png|jpe?g|webp|gif)$/i;
+
+function cleanPath(path: string) {
+  return path.replace(/^\/+|\/+$/g, "");
+}
+
+function folderFor(path: string) {
+  const cleaned = cleanPath(path);
+  const parts = cleaned.split("/");
+  parts.pop();
+  return parts.join("/") || "root";
+}
+
+function fileName(path: string) {
+  return cleanPath(path).split("/").pop() || path;
+}
+
+function mimeFor(name: string) {
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.webp$/i.test(name)) return "image/webp";
+  if (/\.gif$/i.test(name)) return "image/gif";
+  return "application/octet-stream";
+}
+
+async function zipEntryFile(entry: ZipEntry, type: string) {
+  const blob = await entry.async("blob");
+  return new File([blob], fileName(entry.name), { type });
+}
+
+export default function BatchImport() {
+  const [items, setItems] = useState<ImportItem[]>([]);
+  const [isReading, setIsReading] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [integrationId, setIntegrationId] = useState("none");
+  const [mode, setMode] = useState<"draft" | "publish">("draft");
+  const { integrations, isLoading } = useIntegrations();
+  const queryClient = useQueryClient();
+
+  const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+
+  const updateItem = (id: string, patch: Partial<ImportItem>) => {
+    setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  };
+
+  const readZip = async (file: File) => {
+    setIsReading(true);
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const groups = new Map<string, { markdown: ZipEntry[]; images: ZipEntry[] }>();
+
+      for (const entry of Object.values(zip.files)) {
+        if (entry.dir) continue;
+        const path = cleanPath(entry.name);
+        if (!path || path.startsWith("__MACOSX/") || fileName(path).startsWith(".")) continue;
+        const folder = folderFor(path);
+        const group = groups.get(folder) || { markdown: [], images: [] };
+        if (/\.md$/i.test(path)) group.markdown.push(entry);
+        if (imageExt.test(path)) group.images.push(entry);
+        groups.set(folder, group);
+      }
+
+      const detected = Array.from(groups.entries())
+        .filter(([, group]) => group.markdown.length > 0)
+        .map(([folder, group]) => ({
+          id: `${folder}-${group.markdown[0].name}`,
+          folder,
+          markdown: group.markdown.sort((a, b) => a.name.localeCompare(b.name))[0],
+          images: group.images.sort((a, b) => a.name.localeCompare(b.name)),
+          status: "ready" as const,
+        }));
+
+      setItems(detected);
+      toast.success(`Detected ${detected.length} article${detected.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not read zip");
+    } finally {
+      setIsReading(false);
+    }
+  };
+
+  const runImport = async () => {
+    setIsRunning(true);
+    try {
+      for (const item of items) {
+        if (item.status === "done") continue;
+        updateItem(item.id, { status: "importing", message: "Creating BlogFactory draft" });
+
+        try {
+          const formData = new FormData();
+          formData.append("folder", item.folder);
+          formData.append("markdown", await zipEntryFile(item.markdown, "text/markdown"));
+          for (const image of item.images) formData.append("images", await zipEntryFile(image, mimeFor(image.name)));
+
+          const imported = await api.upload<{ post: { id: string; title: string } }>("/posts/import-md", formData);
+          updateItem(item.id, { postId: imported.post.id, message: "Draft imported" });
+
+          if (integrationId !== "none") {
+            updateItem(item.id, { status: "publishing", message: mode === "publish" ? "Publishing live" : "Creating CMS draft" });
+            const result = await api.post<{ success: boolean; error?: string }>(`/posts/${imported.post.id}/publish`, {
+              integrationId,
+              mode,
+              postType: "post",
+            });
+            if (!result.success) throw new Error(result.error || "Publish failed");
+          }
+
+          updateItem(item.id, { status: "done", message: integrationId === "none" ? "Imported" : "Sent to integration" });
+        } catch (error) {
+          updateItem(item.id, { status: "failed", message: error instanceof Error ? error.message : "Failed" });
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success("Batch finished");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <BywordPageShell className="max-w-7xl">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">Batch Import</h1>
+        <p className="mt-2 text-muted-foreground">Upload a zip of folders containing markdown files and images.</p>
+      </div>
+
+      <BywordCard>
+        <SectionHeader
+          icon={Archive}
+          title="Import package"
+          description="Each folder should contain one .md file and any images for that article."
+        />
+        <div className="space-y-6 p-6">
+          <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+            <label className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-byword-border bg-muted/20 px-6 text-center hover:bg-muted/40">
+              {isReading ? <Loader2 className="mb-3 h-8 w-8 animate-spin text-muted-foreground" /> : <UploadCloud className="mb-3 h-8 w-8 text-byword-blue" />}
+              <span className="font-semibold">Choose zip file</span>
+              <span className="mt-1 text-sm text-muted-foreground">Folders, markdown, and images stay local until you run import.</span>
+              <input
+                type="file"
+                accept=".zip,application/zip"
+                className="sr-only"
+                disabled={isReading || isRunning}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void readZip(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+
+            <div className="space-y-4 rounded-lg border border-byword-border p-4">
+              <div className="space-y-2">
+                <Label>Destination</Label>
+                <Select value={integrationId} onValueChange={setIntegrationId} disabled={isLoading || isRunning}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Import only</SelectItem>
+                    {connected.map((integration) => (
+                      <SelectItem key={integration.id} value={integration.id}>
+                        {integration.provider} · {integration.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Platform mode</Label>
+                <RadioGroup value={mode} onValueChange={(value) => setMode(value as "draft" | "publish")} className="grid grid-cols-2 gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-byword-border p-3 text-sm">
+                    <RadioGroupItem value="draft" />
+                    CMS draft
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-byword-border p-3 text-sm">
+                    <RadioGroupItem value="publish" />
+                    Publish live
+                  </label>
+                </RadioGroup>
+              </div>
+
+              <Button className="w-full" disabled={items.length === 0 || isRunning} onClick={runImport}>
+                {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                Run batch
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-byword-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Folder</th>
+                  <th className="px-4 py-3 font-medium">Markdown</th>
+                  <th className="px-4 py-3 font-medium">Images</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Draft</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                      No zip loaded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item) => (
+                    <tr key={item.id} className="border-t border-byword-border">
+                      <td className="px-4 py-3 font-medium">{item.folder}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <span className="inline-flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          {fileName(item.markdown.name)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{item.images.length}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          {item.status === "failed" ? <XCircle className="h-4 w-4 text-destructive" /> : item.status === "done" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : item.status === "importing" || item.status === "publishing" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          <span>{item.message || item.status}</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {item.postId ? (
+                          <Button asChild variant="outline" size="sm">
+                            <Link to={`/posts/${item.postId}/edit`}>
+                              Open
+                              <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                            </Link>
+                          </Button>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </BywordCard>
+    </BywordPageShell>
+  );
+}

@@ -46,6 +46,68 @@ postsRoutes.get("/:id/publications", async (c) => {
   return c.json({ publications: await getPostPublications(userId, id) });
 });
 
+postsRoutes.post("/import-md", async (c) => {
+  const userId = getUserId(c);
+  const formData = await c.req.formData();
+  const markdownFile = formData.get("markdown") as File | null;
+  if (!markdownFile) return c.json({ error: "Markdown file is required" }, 400);
+
+  const content = await markdownFile.text();
+  const folder = String(formData.get("folder") || markdownFile.name.replace(/\.md$/i, ""));
+  const title = extractMarkdownTitle(content) || folder.replace(/[-_]+/g, " ");
+  const summary = plainText(content).slice(0, 220);
+
+  const [post] = await db
+    .insert(posts)
+    .values({
+      userId,
+      title,
+      content,
+      summary,
+      status: "draft",
+      sourceType: "batch_import",
+      sourceRefId: folder,
+      modelId: "manual/import",
+    })
+    .returning();
+
+  const images = formData.getAll("images").filter((value): value is File => value instanceof File);
+  const inlineImages: string[] = [];
+  let coverImageUrl: string | null = null;
+
+  for (const [position, image] of images.entries()) {
+    const { uploadFile } = await import("../services/image-storage.js");
+    const asset = await uploadFile(image, userId);
+    await db
+      .update(imageAssets)
+      .set({
+        postId: post.id,
+        status: "used",
+        type: position === 0 ? "cover" : "inline",
+        position,
+      })
+      .where(eq(imageAssets.id, asset.id));
+
+    if (position === 0) coverImageUrl = asset.storagePath;
+    else inlineImages.push(asset.storagePath);
+  }
+
+  const update: Partial<typeof posts.$inferInsert> = {};
+  if (coverImageUrl) update.coverImageUrl = coverImageUrl;
+  if (inlineImages.length) update.inlineImages = inlineImages;
+  if (Object.keys(update).length) await db.update(posts).set(update).where(eq(posts.id, post.id));
+
+  return c.json({
+    post: {
+      id: post.id,
+      title,
+      image_count: images.length,
+      cover_image_url: coverImageUrl,
+      inline_images: inlineImages,
+    },
+  }, 201);
+});
+
 postsRoutes.post("/:id/publish", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
@@ -104,6 +166,19 @@ postsRoutes.get("/:id", async (c) => {
 function parseList(value: unknown) {
   if (typeof value !== "string") return undefined;
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function extractMarkdownTitle(content: string) {
+  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+}
+
+function plainText(markdown: string) {
+  return markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 postsRoutes.put("/:id", async (c) => {

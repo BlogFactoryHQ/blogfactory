@@ -15,6 +15,7 @@ import PostEditorPage from "@/pages/PostEditorPage";
 import RSSFeeds from "@/pages/RSSFeeds";
 import RSSFeedNew from "@/pages/RSSFeedNew";
 import ContentCreator from "@/pages/ContentCreator";
+import BatchImport from "@/pages/BatchImport";
 import Jobs from "@/pages/Jobs";
 import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
@@ -48,6 +49,7 @@ const App = () => (
                       <Route path="/rss-feeds" element={<RSSFeeds />} />
                       <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                       <Route path="/content-creator" element={<ContentCreator />} />
+                      <Route path="/batch-import" element={<BatchImport />} />
                       <Route path="/jobs" element={<Jobs />} />
                       <Route path="/brand-voice" element={<Personas />} />
                       <Route path="/personas" element={<Personas />} />

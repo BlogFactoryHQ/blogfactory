@@ -19,6 +19,7 @@ import {
   Globe2,
   Plus,
   Check,
+  Archive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,6 +43,7 @@ import {
 
 const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
+  { name: "Batch Import", href: "/batch-import", icon: Archive },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
   { name: "Job Queue", href: "/jobs", icon: ListTodo },
