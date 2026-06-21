@@ -7,6 +7,27 @@ export const OPENROUTER_MODEL_UNAVAILABLE_MESSAGE =
 type ModelKind = "text" | "image";
 type NormalizedOpenRouterModel = ReturnType<typeof normalizeOpenRouterModel>;
 
+const BLOG_TEXT_MODEL_IDS = new Set([
+  "deepseek/deepseek-v4-flash",
+  "mistralai/mistral-small-3.2-24b-instruct",
+  "deepseek/deepseek-v3.2",
+  "openai/gpt-4o-mini",
+  "mistralai/mistral-small-2603",
+  "openai/gpt-5-mini",
+  "google/gemini-2.5-flash",
+  "x-ai/grok-4.3",
+  "google/gemini-3-flash-preview",
+  "anthropic/claude-3.5-haiku",
+  "google/gemini-2.5-pro",
+  "openai/gpt-4o",
+  "openai/gpt-5",
+  "openai/gpt-5.1",
+  "openai/gpt-5.2",
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-opus-4.5",
+]);
+
 let modelsCache: Record<ModelKind, { data: NormalizedOpenRouterModel[]; ts: number } | null> = {
   text: null,
   image: null,
@@ -76,6 +97,7 @@ export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
 export function catalogFromOpenRouterPayload(data: any, kind: ModelKind) {
   return (data.data || [])
     .filter((model: any) => model.architecture?.output_modalities?.includes(kind))
+    .filter((model: any) => kind !== "text" || BLOG_TEXT_MODEL_IDS.has(model.id))
     .map((model: any) => normalizeOpenRouterModel(model, kind));
 }
 
@@ -85,7 +107,7 @@ export async function getOpenRouterModels(apiKey: string, kind: ModelKind, refre
 
   const url = new URL(OPENROUTER_MODELS_URL);
   url.searchParams.set("output_modalities", kind);
-  url.searchParams.set("sort", "most-popular");
+  url.searchParams.set("sort", kind === "text" ? "pricing-low-to-high" : "most-popular");
 
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!resp.ok) throw new Error(`OpenRouter model refresh failed (${resp.status})`);

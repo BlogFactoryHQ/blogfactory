@@ -1,11 +1,11 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useMemo, useState } from "react";
+import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
+import { cn } from "@/lib/utils";
 
 function priceBadge(model: LiveTextModel) {
   if (model.pricing === "free") return { text: "FREE", className: "text-primary" };
@@ -28,32 +28,79 @@ export function LiveTextModelSelect({
   triggerClassName?: string;
 }) {
   const { data: textModels = [] } = useTextModels();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const unavailable = isUnavailableModel(value, textModels);
+  const selected = textModels.find((model) => model.id === value);
+  const filteredModels = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return textModels;
+    return textModels.filter((model) =>
+      [model.name, model.id, model.provider, model.costInfo]
+        .some((field) => field.toLowerCase().includes(needle))
+    );
+  }, [query, textModels]);
 
   return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className={triggerClassName}>
-        <SelectValue placeholder="Select model..." />
-      </SelectTrigger>
-      <SelectContent>
-        {unavailable && (
-          <SelectItem value={value}>
-            <span className="text-destructive">Unavailable: {value}</span>
-          </SelectItem>
-        )}
-        {textModels.map((model) => {
-          const badge = priceBadge(model);
-          return (
-            <SelectItem key={model.id} value={model.id}>
-              <span className="flex items-center gap-2">
-                <span className={`font-mono text-xs ${badge.className}`}>{badge.text}</span>
-                {model.name}
-                <span className="text-xs text-muted-foreground">({model.provider})</span>
-              </span>
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn("w-full justify-between px-3 font-normal", triggerClassName)}
+        >
+          <span className={cn("truncate", unavailable && "text-destructive")}>
+            {unavailable ? `Unavailable: ${value}` : selected?.name || "Select model..."}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(560px,calc(100vw-2rem))] p-0" align="start">
+        <div className="flex items-center border-b px-3">
+          <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search recommended blog models"
+            className="h-10 border-0 px-0 shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <ScrollArea className="h-72">
+          {unavailable && (
+            <div className="border-b px-3 py-2 text-sm text-destructive">Unavailable: {value}</div>
+          )}
+          {filteredModels.length === 0 ? (
+            <div className="px-3 py-6 text-center text-sm text-muted-foreground">No model found.</div>
+          ) : (
+            filteredModels.map((model) => {
+              const badge = priceBadge(model);
+              return (
+                <button
+                  type="button"
+                  key={model.id}
+                  onClick={() => {
+                    onValueChange(model.id);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <Check className={cn("mt-0.5 h-4 w-4", value === model.id ? "opacity-100" : "opacity-0")} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className={`font-mono text-xs ${badge.className}`}>{badge.text}</span>
+                      <span className="truncate font-medium">{model.name}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{model.id}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{model.costInfo}</span>
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   );
 }
