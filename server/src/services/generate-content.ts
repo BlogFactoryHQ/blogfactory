@@ -3,6 +3,7 @@ import { jobs, posts, feeds, generationLogs, personas, userSettings } from "../d
 import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenRouterKey } from "./api-keys.js";
+import { extractContent } from "./extract-content.js";
 
 interface GenerateOpts {
   userId: string;
@@ -59,6 +60,15 @@ function summarizeKnowledgeDocuments(value: unknown) {
     })
     .filter(Boolean)
     .slice(0, 4);
+}
+
+function openRouterErrorMessage(value: string) {
+  try {
+    const parsed = JSON.parse(value) as { error?: { message?: string }; message?: string };
+    return parsed.error?.message || parsed.message || value;
+  } catch {
+    return value;
+  }
 }
 
 function tokenize(value: string) {
@@ -241,7 +251,8 @@ export async function generateContent(opts: GenerateOpts) {
       // Fetch and parse RSS feed
       articles = await fetchRssArticles(opts.sourceValue, opts.variations || 5, opts.filterOldPostsDays);
     } else if (opts.sourceType === "url") {
-      articles = [{ title: "", content: opts.sourceValue, url: opts.sourceValue }];
+      const extracted = await extractContent({ userId, sourceType: "url", sourceValue: opts.sourceValue, extractModel: modelId });
+      articles = [{ title: extracted.title || "", content: extracted.content || opts.sourceValue, url: opts.sourceValue }];
     } else if (opts.sourceType === "raw_text") {
       articles = [{ title: "", content: opts.sourceValue }];
     } else if (opts.sourceType === "youtube") {
@@ -264,6 +275,8 @@ export async function generateContent(opts: GenerateOpts) {
     const createdPostIds: string[] = [];
     let totalCost = 0;
     let totalTokens = 0;
+    let lastGenerationError = "";
+    let skippedDuplicate = false;
 
     for (let i = 0; i < articles.length; i++) {
       const article = articles[i];
@@ -284,6 +297,7 @@ export async function generateContent(opts: GenerateOpts) {
           .limit(1);
         if (existing.length > 0) {
           console.log(`[generate] Skipping duplicate content: ${article.title}`);
+          skippedDuplicate = true;
           continue;
         }
       }
@@ -316,8 +330,9 @@ export async function generateContent(opts: GenerateOpts) {
 
         if (!aiResp.ok) {
           const errText = await aiResp.text();
-          console.error(`[generate] AI error for draft ${i + 1}:`, errText);
-          continue;
+          const message = openRouterErrorMessage(errText);
+          console.error(`[generate] AI error for draft ${i + 1}:`, message);
+          throw new Error(message);
         }
 
         const aiData = await aiResp.json() as any;
@@ -396,9 +411,25 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
       } catch (draftErr: any) {
-        console.error(`[generate] Error on draft ${i + 1}:`, draftErr.message);
-        await db.update(jobs).set({ generationError: draftErr.message }).where(eq(jobs.id, jobId));
+        lastGenerationError = draftErr.message || "Draft generation failed";
+        console.error(`[generate] Error on draft ${i + 1}:`, lastGenerationError);
+        await db.update(jobs).set({ generationError: lastGenerationError }).where(eq(jobs.id, jobId));
       }
+    }
+
+    if (createdPostIds.length === 0) {
+      const message = lastGenerationError || (skippedDuplicate ? "This source was already generated. Check My Content for the existing draft." : "No drafts were created from this source.");
+      await db.update(jobs).set({
+        status: "failed",
+        currentStep: "done",
+        errorMessage: message,
+        generationError: message,
+        resultPostIds: [],
+        tokenCost: totalTokens,
+        totalCost,
+        completedAt: new Date(),
+      }).where(eq(jobs.id, jobId));
+      return { jobId, status: "failed", error: message, postIds: [] };
     }
 
     // Finalize job

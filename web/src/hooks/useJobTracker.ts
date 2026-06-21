@@ -17,11 +17,25 @@ export interface TrackedJob {
 
 const MAX_PARALLEL_JOBS = 3;
 
-const parseDraftProgress = (step: string, plan: any, resultPostIds: string[]): DraftProgress | null => {
+interface JobPlan {
+  totalDrafts?: number;
+  items?: unknown[];
+}
+
+interface JobStatus {
+  status?: string;
+  current_step?: string;
+  error_message?: string | null;
+  generation_error?: string | null;
+  generation_plan?: JobPlan | null;
+  result_post_ids?: string[] | null;
+}
+
+const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resultPostIds: string[]): DraftProgress | null => {
   const total = plan?.totalDrafts || plan?.items?.length || 0;
   if (total <= 1) return null;
 
-  const match = step.match(/(?:generating_post|completed_post|generating_images|failed_post|retrying_draft)_(\d+)_of_(\d+)/);
+  const match = step.match(/(?:generating_draft|generating_post|completed_post|generating_images|failed_post|retrying_draft)_(\d+)_of_(\d+)/);
   if (match) {
     const current = parseInt(match[1], 10);
     const completed = (resultPostIds || []).length;
@@ -68,7 +82,7 @@ export function useJobTracker(onJobComplete?: () => void) {
         if (!pollingRefs.current.has(trackId)) return;
 
         try {
-          const job = await api.get<any>(`/jobs/${jobId}`);
+          const job = await api.get<JobStatus>(`/jobs/${jobId}`);
           if (!job) break;
 
           const step = job.current_step || "";
@@ -90,7 +104,7 @@ export function useJobTracker(onJobComplete?: () => void) {
             } else {
               updateJob(trackId, {
                 step: "error",
-                error: job.error_message || "No posts were generated",
+                error: job.error_message || job.generation_error || "No posts were generated",
               });
             }
             pollingRefs.current.delete(trackId);
