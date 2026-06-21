@@ -11,12 +11,6 @@ analyticsRoutes.get("/usage", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
-  let query = db
-    .select()
-    .from(generationLogs)
-    .where(eq(generationLogs.userId, userId));
-
-  // Build conditions array for additional filters
   const conditions = [eq(generationLogs.userId, userId)];
   if (from) conditions.push(gte(generationLogs.createdAt, new Date(from)));
   if (to) conditions.push(lte(generationLogs.createdAt, new Date(to)));
@@ -27,7 +21,24 @@ analyticsRoutes.get("/usage", async (c) => {
     .where(and(...conditions))
     .orderBy(generationLogs.createdAt);
 
-  return c.json(rows);
+  return c.json(rows.map((row) => ({
+    id: row.id,
+    user_id: row.userId,
+    model_id: row.modelId,
+    provider: row.provider,
+    status: row.status,
+    prompt_tokens: row.promptTokens,
+    completion_tokens: row.completionTokens,
+    total_tokens: row.totalTokens,
+    cost: row.cost,
+    latency_ms: row.latencyMs,
+    trace_id: row.traceId,
+    session_id: row.sessionId,
+    raw_trace: row.rawTrace,
+    request_data: row.requestData,
+    response_data: row.responseData,
+    created_at: row.createdAt?.toISOString(),
+  })));
 });
 
 analyticsRoutes.get("/openrouter-usage", async (c) => {

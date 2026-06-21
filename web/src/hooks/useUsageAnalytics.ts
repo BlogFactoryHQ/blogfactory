@@ -28,6 +28,11 @@ export interface DailyUsage {
   cost: number;
 }
 
+export const usageDayKey = (value?: string | null) => {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? format(date, "yyyy-MM-dd") : null;
+};
+
 export function useUsageAnalytics(days = 30) {
   const { user } = useAuth();
 
@@ -74,7 +79,8 @@ export function useUsageAnalytics(days = 30) {
   const dailyUsage: DailyUsage[] = useMemo(() => {
     const map = new Map<string, DailyUsage>();
     for (const l of logs) {
-      const date = format(new Date(l.created_at), "yyyy-MM-dd");
+      const date = usageDayKey(l.created_at);
+      if (!date) continue;
       const existing = map.get(date) || { date, requests: 0, tokens: 0, cost: 0 };
       existing.requests += 1;
       existing.tokens += l.total_tokens || 0;

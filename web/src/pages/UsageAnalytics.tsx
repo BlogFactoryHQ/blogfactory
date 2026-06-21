@@ -19,7 +19,7 @@ import {
   BarChart3,
   TrendingUp,
 } from "lucide-react";
-import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { UsageCostChart } from "@/components/usage/UsageCostChart";
 import { UsageTokenChart } from "@/components/usage/UsageTokenChart";
 import { ModelBreakdownTable } from "@/components/usage/ModelBreakdownTable";
@@ -34,7 +34,10 @@ export default function UsageAnalytics() {
   const currentMonthSpend = useMemo(() => {
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     return logs
-      .filter((l) => l.created_at >= monthStart)
+      .filter((l) => {
+        const date = usageDayKey(l.created_at);
+        return date && date >= monthStart;
+      })
       .reduce((sum, l) => sum + (Number(l.cost) || 0), 0);
   }, [logs]);
 
