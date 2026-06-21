@@ -1,115 +1,128 @@
-# Editorial Flow
+# Blogfactory
 
-Internal editorial tooling — AI-assisted content creation and publishing.
+AI-assisted content operations for generating, managing, scheduling, and publishing blog posts across sites.
 
 ## Stack
 
-| Layer    | Tech                                              |
-|----------|---------------------------------------------------|
-| Frontend | React 18 + Vite + TailwindCSS + shadcn/ui         |
-| Backend  | Hono (TypeScript) running as Vercel Functions     |
-| Database | PostgreSQL via [Neon](https://neon.tech)          |
-| Storage  | S3-compatible (Cloudflare R2 or local MinIO)      |
-| Deploy   | [Vercel](https://vercel.com) (single project)     |
+| Layer    | Tech                                         |
+|----------|----------------------------------------------|
+| Frontend | React 18 + Vite + TailwindCSS + shadcn/ui    |
+| Backend  | Hono (TypeScript) with Bun for local dev     |
+| Database | PostgreSQL via Drizzle ORM                   |
+| Storage  | S3-compatible storage, such as Cloudflare R2 |
+| Deploy   | Vercel, with the frontend and API together   |
 
 ## Project Structure
 
-```
+```text
 /
-├── api/                  # Hono backend (Vercel serverless functions)
-│   ├── index.ts          # Vercel entrypoint (wraps Hono with hono/vercel)
+├── api/                  # Vercel serverless entrypoint
+│   └── index.ts          # Loads the Hono app from server/src/index.ts
+│
+├── server/               # Hono backend
 │   └── src/
-│       ├── index.ts      # Hono app definition + Bun local server entry
-│       ├── db/           # Drizzle ORM schema, migrations, db client
+│       ├── db/           # Drizzle schema, migrations, and database client
 │       ├── middleware/   # Auth middleware
 │       ├── routes/       # API route handlers
-│       └── services/     # Business logic (AI, S3, publishing)
+│       └── services/     # Content, storage, publishing, and scheduler logic
 │
 ├── web/                  # React + Vite frontend
 │   └── src/
-│       ├── lib/api.ts    # Calls /api/* (relative — works both local & prod)
+│       ├── lib/api.ts    # Calls /api/* relative URLs
+│       ├── pages/        # App screens
 │       └── ...
 │
-├── vercel.json           # Vercel build & routing config
-├── package.json          # Root npm workspaces + dev scripts
-└── .env.example          # Copy to .env and fill in your values
+├── vercel.json           # Vercel build, functions, and routing config
+├── package.json          # Root npm workspaces and scripts
+└── .env.example          # Copy to .env and fill in local values
 ```
 
 ## Local Development
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (for API)
-- [Node.js 20+](https://nodejs.org) (for frontend / npm workspaces)
-- A PostgreSQL database (Neon free tier works great)
-- S3-compatible storage (Cloudflare R2 or run MinIO locally via Docker)
+- [Node.js 22](https://nodejs.org)
+- [Bun](https://bun.sh) for the backend dev server
+- A PostgreSQL database, such as Neon
+- S3-compatible object storage, such as Cloudflare R2 or local MinIO
 
 ### Setup
 
 ```bash
 # 1. Clone and install dependencies
-git clone <your-repo-url>
-cd editorial-flow
-npm install        # Installs workspace dependencies for both api and web
+git clone https://github.com/Ladresss/blogfactory.git
+cd blogfactory
+npm install
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your DATABASE_URL, JWT_SECRET, S3 credentials, etc.
+# Edit .env with DATABASE_URL, JWT_SECRET, storage credentials, and integrations.
 
 # 3. Run database migrations
 npm run db:migrate
 
-# 4. Start both API and frontend concurrently
+# 4. Start the backend and frontend together
 npm run dev
-# → API available at  http://localhost:3000
-# → Frontend at       http://localhost:8080  (proxies /api → localhost:3000)
 ```
 
-### Individual workspace commands
+Local services:
+
+| Service  | URL                   |
+|----------|-----------------------|
+| API      | http://localhost:3000 |
+| Frontend | http://localhost:8080 |
+
+The frontend calls `/api/*`. In local development, Vite proxies those requests to the backend.
+
+### Workspace Commands
 
 ```bash
 # Frontend only
 npm run dev --workspace=web
 
-# Backend only (uses Bun)
-npm run dev --workspace=api
+# Backend only
+npm run dev --workspace=server
 
-# Generate new migration from schema changes
+# Build frontend
+npm run build
+
+# Generate a migration from schema changes
 npm run db:generate
 
-# Apply migrations to database
+# Apply migrations
 npm run db:migrate
 ```
 
+## Environment Variables
+
+Copy `.env.example` to `.env` for local development. The main values are:
+
+| Variable                    | Description                                      |
+|-----------------------------|--------------------------------------------------|
+| `DATABASE_URL`              | PostgreSQL connection string                     |
+| `JWT_SECRET`                | Secret used for auth tokens                      |
+| `ADMIN_EMAILS`              | Comma-separated admin email list                 |
+| `API_KEY_ENCRYPTION_SECRET` | Secret used to encrypt stored API keys           |
+| `S3_ENDPOINT`               | S3-compatible endpoint URL                       |
+| `S3_ACCESS_KEY_ID`          | Storage access key                               |
+| `S3_SECRET_ACCESS_KEY`      | Storage secret key                               |
+| `S3_BUCKET`                 | Storage bucket name                              |
+| `S3_REGION`                 | Storage region, or `auto` for Cloudflare R2      |
+| `S3_PUBLIC_URL`             | Optional public CDN URL for stored assets        |
+| `WIX_API_KEY`               | Optional Wix publishing API key                  |
+| `WIX_SITE_ID`               | Optional Wix site ID                             |
+| `WIX_MEMBER_ID`             | Optional Wix member ID                           |
+
+OpenRouter and Google Gemini API keys are stored per user from the app's Settings area.
+
 ## Deploying to Vercel
 
-1. Push this repo to GitHub.
-2. Go to [vercel.com](https://vercel.com) → **Add New Project** → import your repo.
-3. Leave **Root Directory** as `./` (default).
-4. In **Environment Variables**, add:
+1. Push this repository to GitHub.
+2. In [Vercel](https://vercel.com), create a new project from `Ladresss/blogfactory`.
+3. Leave the root directory as `./`.
+4. Add the required environment variables from `.env.example`.
+5. Deploy.
 
-   | Variable              | Description                                    |
-   |-----------------------|------------------------------------------------|
-   | `DATABASE_URL`        | Neon PostgreSQL connection string              |
-   | `JWT_SECRET`          | Random secret: `openssl rand -base64 32`       |
-   | `S3_ENDPOINT`         | R2 S3 API endpoint URL                         |
-   | `S3_ACCESS_KEY_ID`    | R2 access key                                  |
-   | `S3_SECRET_ACCESS_KEY`| R2 secret key                                  |
-   | `S3_BUCKET`           | Bucket name                                    |
-   | `S3_REGION`           | `auto` for R2                                  |
-   | `S3_PUBLIC_URL`       | (Optional) CDN URL for images                  |
-   | `OPENROUTER_API_KEY`  | (Optional) For AI content generation           |
-   | `GOOGLE_AI_KEY`       | (Optional) For Google AI features              |
-   | `WIX_API_KEY`         | (Optional) Wix publishing integration          |
-   | `WIX_SITE_ID`         | (Optional) Wix site ID                         |
-   | `WIX_MEMBER_ID`       | (Optional) Wix member ID                       |
+Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests to `api/index.ts`, which runs the Hono backend from `server/src/index.ts`.
 
-5. Click **Deploy**. That's it. ✅
-
-> **Database migrations:** Run `npm run db:migrate` locally (with your production `DATABASE_URL`) before or after your first deploy.
-
-## Architecture Notes
-
-- In **production on Vercel**, both the frontend and backend run on the same domain (`yourdomain.vercel.app`). The frontend calls `/api/*` and Vercel routes those requests to the Hono serverless function.
-- In **local development**, Vite proxies `/api` → `http://localhost:3000` (configured in `web/vite.config.ts`), so no `VITE_API_URL` env var is needed.
-- The `sharp` library is used for image processing. On Vercel, it will automatically use the correct pre-built binary for the Lambda runtime.
+Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
