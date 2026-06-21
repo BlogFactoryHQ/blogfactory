@@ -3,10 +3,11 @@ import { db } from "../db/index.js";
 import { sites, userSettings } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenRouterKey, setApiKey } from "../services/api-keys.js";
+import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenRouterKey, setApiKey, type Provider } from "../services/api-keys.js";
 import { buildInternalLinkIndex } from "../services/internal-linking.js";
 
 export const settingsRoutes = new Hono();
+const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -261,7 +262,7 @@ settingsRoutes.put("/api-keys", async (c) => {
   const userId = getUserId(c);
   const { provider, apiKey } = await c.req.json();
 
-  if (provider !== "openrouter" && provider !== "google") {
+  if (!API_KEY_PROVIDERS.has(provider)) {
     return c.json({ error: "Invalid provider" }, 400);
   }
   if (!apiKey || typeof apiKey !== "string") {
@@ -269,7 +270,7 @@ settingsRoutes.put("/api-keys", async (c) => {
   }
 
   try {
-    return c.json(await setApiKey(userId, provider, apiKey));
+    return c.json(await setApiKey(userId, provider as Provider, apiKey));
   } catch (err: any) {
     return c.json({ error: err.message || "Failed to save API key" }, 400);
   }
@@ -279,11 +280,11 @@ settingsRoutes.delete("/api-keys", async (c) => {
   const userId = getUserId(c);
   const provider = c.req.query("provider");
 
-  if (provider !== "openrouter" && provider !== "google") {
+  if (!provider || !API_KEY_PROVIDERS.has(provider)) {
     return c.json({ error: "Invalid provider" }, 400);
   }
 
-  return c.json(await deleteApiKey(userId, provider));
+  return c.json(await deleteApiKey(userId, provider as Provider));
 });
 
 settingsRoutes.post("/internal-linking/index", async (c) => {

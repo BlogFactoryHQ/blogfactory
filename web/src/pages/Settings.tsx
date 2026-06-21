@@ -73,6 +73,10 @@ interface ApiKeyMetadata {
   openrouterKeyLast4: string | null;
   hasGoogleAiKey: boolean;
   googleKeyLast4: string | null;
+  hasOpenaiKey: boolean;
+  openaiKeyLast4: string | null;
+  hasReplicateKey: boolean;
+  replicateKeyLast4: string | null;
   updatedAt: string | null;
 }
 
@@ -217,9 +221,11 @@ export default function Settings() {
     "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays."
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
-  const [selectedImageModel, setSelectedImageModel] = useState("google/gemini-2.5-flash-image");
+  const [selectedImageModel, setSelectedImageModel] = useState("openai/gpt-image-2");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [replicateKey, setReplicateKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
@@ -491,7 +497,7 @@ export default function Settings() {
   });
 
   const saveApiKeyMutation = useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google"; apiKey: string }) =>
+    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "replicate"; apiKey: string }) =>
       api.put<ApiKeyMetadata>("/settings/api-keys", { provider, apiKey }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -499,13 +505,15 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ["text-models"] });
       if (variables.provider === "openrouter") setOpenrouterKey("");
       if (variables.provider === "google") setGoogleKey("");
+      if (variables.provider === "openai") setOpenaiKey("");
+      if (variables.provider === "replicate") setReplicateKey("");
       toast.success("API key saved");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteApiKeyMutation = useMutation({
-    mutationFn: (provider: "openrouter" | "google") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
+    mutationFn: (provider: "openrouter" | "google" | "openai" | "replicate") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       queryClient.invalidateQueries({ queryKey: ["image-models"] });
@@ -828,6 +836,78 @@ export default function Settings() {
                       variant="outline"
                       onClick={() => deleteApiKeyMutation.mutate("google")}
                       disabled={!apiKeys?.hasGoogleAiKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="openai-key">OpenAI Images</Label>
+                    <Badge variant={apiKeys?.hasOpenaiKey ? "default" : "secondary"}>
+                      {apiKeys?.hasOpenaiKey ? `Saved ****${apiKeys.openaiKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="openai-key"
+                    type="password"
+                    placeholder="sk-..."
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "openai", apiKey: openaiKey })}
+                      disabled={!openaiKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("openai")}
+                      disabled={!apiKeys?.hasOpenaiKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="replicate-key">Replicate</Label>
+                    <Badge variant={apiKeys?.hasReplicateKey ? "default" : "secondary"}>
+                      {apiKeys?.hasReplicateKey ? `Saved ****${apiKeys.replicateKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="replicate-key"
+                    type="password"
+                    placeholder="Replicate API token"
+                    value={replicateKey}
+                    onChange={(e) => setReplicateKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "replicate", apiKey: replicateKey })}
+                      disabled={!replicateKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("replicate")}
+                      disabled={!apiKeys?.hasReplicateKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete

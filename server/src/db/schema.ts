@@ -294,6 +294,10 @@ export const userApiKeys = pgTable("user_api_keys", {
   openrouterKeyLast4: text("openrouter_key_last4"),
   googleAiKeyEncrypted: text("google_ai_key_encrypted"),
   googleKeyLast4: text("google_key_last4"),
+  openaiApiKeyEncrypted: text("openai_api_key_encrypted"),
+  openaiKeyLast4: text("openai_key_last4"),
+  replicateApiKeyEncrypted: text("replicate_api_key_encrypted"),
+  replicateKeyLast4: text("replicate_key_last4"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

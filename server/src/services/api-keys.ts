@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
-type Provider = "openrouter" | "google";
+export type Provider = "openrouter" | "google" | "openai" | "replicate";
 
 function encryptionKey(): Buffer {
   const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
@@ -49,6 +49,10 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
     openrouterKeyLast4: row?.openrouterKeyLast4 || null,
     hasGoogleAiKey: Boolean(row?.googleAiKeyEncrypted),
     googleKeyLast4: row?.googleKeyLast4 || null,
+    hasOpenaiKey: Boolean(row?.openaiApiKeyEncrypted),
+    openaiKeyLast4: row?.openaiKeyLast4 || null,
+    hasReplicateKey: Boolean(row?.replicateApiKeyEncrypted),
+    replicateKeyLast4: row?.replicateKeyLast4 || null,
     updatedAt: row?.updatedAt || null,
   };
 }
@@ -66,6 +70,12 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
   if (provider === "google" && trimmed.length < 20) {
     throw new Error("Google API key looks too short");
   }
+  if (provider === "openai" && !trimmed.startsWith("sk-")) {
+    throw new Error("OpenAI keys should start with sk-");
+  }
+  if (provider === "replicate" && trimmed.length < 20) {
+    throw new Error("Replicate API token looks too short");
+  }
 
   const values =
     provider === "openrouter"
@@ -75,10 +85,24 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
           openrouterKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
-      : {
+      : provider === "google"
+      ? {
           userId,
           googleAiKeyEncrypted: encryptSecret(trimmed),
           googleKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "openai"
+      ? {
+          userId,
+          openaiApiKeyEncrypted: encryptSecret(trimmed),
+          openaiKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : {
+          userId,
+          replicateApiKeyEncrypted: encryptSecret(trimmed),
+          replicateKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         };
 
@@ -101,9 +125,21 @@ export async function deleteApiKey(userId: string, provider: Provider) {
           openrouterKeyLast4: null,
           updatedAt: new Date(),
         }
-      : {
+      : provider === "google"
+      ? {
           googleAiKeyEncrypted: null,
           googleKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : provider === "openai"
+      ? {
+          openaiApiKeyEncrypted: null,
+          openaiKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : {
+          replicateApiKeyEncrypted: null,
+          replicateKeyLast4: null,
           updatedAt: new Date(),
         };
 
@@ -123,6 +159,24 @@ export async function getOpenRouterKey(userId: string): Promise<string | null> {
 export async function getGoogleAiKey(userId: string): Promise<string | null> {
   const [row] = await db
     .select({ key: userApiKeys.googleAiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return row?.key ? decryptSecret(row.key) : null;
+}
+
+export async function getOpenAiKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.openaiApiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return row?.key ? decryptSecret(row.key) : null;
+}
+
+export async function getReplicateKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.replicateApiKeyEncrypted })
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
