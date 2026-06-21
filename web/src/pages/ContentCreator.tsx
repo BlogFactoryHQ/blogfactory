@@ -69,6 +69,7 @@ interface PersonaOption {
   id: string;
   name: string;
   status: string;
+  base_model: string;
 }
 
 interface RecentPost {
@@ -205,6 +206,26 @@ export default function ContentCreator() {
   const activePersonas = personas.filter((p) => p.status === "active");
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
+  const fallbackTextModelId = textModels[0]?.id;
+
+  const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
+    if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
+      return preferredModelId;
+    }
+    return fallbackTextModelId || preferredModelId || modelId;
+  }, [fallbackTextModelId, modelId, textModels]);
+
+  const handlePersonaChange = (nextPersonaId: string) => {
+    setPersonaId(nextPersonaId);
+    const selectedPersona = activePersonas.find((persona) => persona.id === nextPersonaId);
+    setModelId(resolveLiveModelId(selectedPersona?.base_model));
+  };
+
+  useEffect(() => {
+    if (!personaId || !selectedModelUnavailable || !fallbackTextModelId) return;
+    const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
+    if (selectedPersona?.base_model === modelId) setModelId(fallbackTextModelId);
+  }, [activePersonas, fallbackTextModelId, modelId, personaId, selectedModelUnavailable]);
 
   // Fetch recent posts
   const { data: recentPosts = [], refetch: refetchPosts } = useQuery({
@@ -559,7 +580,7 @@ export default function ContentCreator() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Voice Persona</Label>
-                <Select value={personaId} onValueChange={setPersonaId}>
+                <Select value={personaId} onValueChange={handlePersonaChange}>
                   <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select persona..." />
                   </SelectTrigger>
