@@ -1,5 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Check, FileText } from "lucide-react";
+import { Loader2, Trash2, Check, FileText, Send } from "lucide-react";
+import { SiteIntegration } from "@/hooks/useIntegrations";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,10 +24,15 @@ interface BulkActionsBarProps {
   selectedCount: number;
   onDelete: () => void;
   onPublish: () => void;
+  onPushIntegration: () => void;
   onDraft: () => void;
   onClear: () => void;
+  integrations: SiteIntegration[];
+  integrationId: string;
+  onIntegrationChange: (id: string) => void;
   isDeleting: boolean;
   isPublishing: boolean;
+  isPushingIntegration: boolean;
   isDrafting: boolean;
 }
 
@@ -27,13 +40,18 @@ export function BulkActionsBar({
   selectedCount,
   onDelete,
   onPublish,
+  onPushIntegration,
   onDraft,
   onClear,
+  integrations,
+  integrationId,
+  onIntegrationChange,
   isDeleting,
   isPublishing,
+  isPushingIntegration,
   isDrafting,
 }: BulkActionsBarProps) {
-  const isLoading = isDeleting || isPublishing || isDrafting;
+  const isLoading = isDeleting || isPublishing || isDrafting || isPushingIntegration;
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border border-primary/20 rounded-lg mb-4 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -72,6 +90,35 @@ export function BulkActionsBar({
           )}
           Publish
         </Button>
+        {integrations.length > 0 && (
+          <>
+            <Select value={integrationId || integrations[0]?.id} onValueChange={onIntegrationChange} disabled={isLoading}>
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {integrations.map((integration) => (
+                  <SelectItem key={integration.id} value={integration.id}>
+                    {integration.provider} · {integration.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPushIntegration}
+              disabled={isLoading}
+            >
+              {isPushingIntegration ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-1.5" />
+              )}
+              Push draft
+            </Button>
+          </>
+        )}
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button

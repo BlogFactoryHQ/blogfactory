@@ -16,6 +16,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Loader2, Edit3, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -23,6 +30,7 @@ import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
+import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
@@ -85,10 +93,13 @@ export default function Posts() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [quickDeletePost, setQuickDeletePost] = useState<Post | null>(null);
-  const postsPerPage = 10;
+  const [postsPerPage, setPostsPerPage] = useState(25);
+  const [bulkIntegrationId, setBulkIntegrationId] = useState("");
 
   const queryClient = useQueryClient();
   const { bulkDelete, bulkPublish, bulkDraft, isDeleting, isPublishing, isDrafting, isLoading } = useBulkPostActions();
+  const { integrations } = useIntegrations();
+  const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
 
   const { data: posts = [], isLoading: isLoadingPosts } = useQuery({
     queryKey: ["posts"],
@@ -148,6 +159,31 @@ export default function Posts() {
     },
     onError: (error) => {
       toast.error("Failed to publish: " + error.message);
+    },
+  });
+
+  const bulkPushIntegrationMutation = useMutation({
+    mutationFn: async (postIds: string[]) => {
+      const integrationId = bulkIntegrationId || connectedIntegrations[0]?.id;
+      if (!integrationId) throw new Error("Connect an integration first");
+      let failed = 0;
+      for (const id of postIds) {
+        const result = await api.post<{ success: boolean; error?: string }>(`/posts/${id}/publish`, {
+          integrationId,
+          mode: "draft",
+          postType: "post",
+        });
+        if (!result.success) failed += 1;
+      }
+      return { total: postIds.length, failed };
+    },
+    onSuccess: ({ total, failed }) => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success(failed ? `${total - failed}/${total} posts pushed` : `${total} post${total > 1 ? "s" : ""} pushed`);
+      clearSelection();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to push posts");
     },
   });
 
@@ -262,6 +298,11 @@ export default function Posts() {
     bulkDraft(ids, { onSuccess: clearSelection });
   };
 
+  const handleBulkPushIntegration = () => {
+    const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
+    bulkPushIntegrationMutation.mutate(ids);
+  };
+
   const copyContent = () => {
     if (selectedPost) {
       navigator.clipboard.writeText(selectedPost.content);
@@ -329,10 +370,15 @@ export default function Posts() {
             selectedCount={selectAllAcrossPages ? filteredPosts.length : selectedIds.size}
             onDelete={handleBulkDelete}
             onPublish={handleBulkPublish}
+            onPushIntegration={handleBulkPushIntegration}
             onDraft={handleBulkDraft}
             onClear={clearSelection}
+            integrations={connectedIntegrations}
+            integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
+            onIntegrationChange={setBulkIntegrationId}
             isDeleting={isDeleting}
             isPublishing={isPublishing}
+            isPushingIntegration={bulkPushIntegrationMutation.isPending}
             isDrafting={isDrafting}
           />
           {allPageSelected && !selectAllAcrossPages && filteredPosts.length > postsPerPage && (
@@ -413,7 +459,7 @@ export default function Posts() {
         </Table>
 
         {/* Pagination */}
-        {filteredPosts.length > postsPerPage && (
+        {filteredPosts.length > 0 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <p className="text-sm text-muted-foreground">
               Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
@@ -421,6 +467,24 @@ export default function Posts() {
               {filteredPosts.length} posts
             </p>
             <div className="flex items-center gap-2">
+              <Select
+                value={String(postsPerPage)}
+                onValueChange={(value) => {
+                  setPostsPerPage(Number(value));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-9 w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map((count) => (
+                    <SelectItem key={count} value={String(count)}>
+                      {count} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 size="sm"
