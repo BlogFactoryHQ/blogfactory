@@ -28,6 +28,8 @@ import {
 interface PublishDialogProps {
   postId: string;
   title: string;
+  content: string;
+  summary?: string | null;
   disabled?: boolean;
   disabledReason?: string;
 }
@@ -39,7 +41,32 @@ const providerLabels: Record<string, string> = {
   framer: "Framer",
 };
 
-export function PublishDialog({ postId, title, disabled, disabledReason }: PublishDialogProps) {
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 90) || "article";
+}
+
+function plainText(markdown: string) {
+  return markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferTags(title: string, content: string) {
+  const match = content.match(/(?:tags?|categories?):\s*(.+)/i);
+  const values = match ? match[1].split(",") : title.split(/\s+/).filter((word) => word.length > 3).slice(0, 5);
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 20).join(", ");
+}
+
+export function PublishDialog({ postId, title, content, summary, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -47,12 +74,21 @@ export function PublishDialog({ postId, title, disabled, disabledReason }: Publi
   const [tags, setTags] = useState("");
   const [categories, setCategories] = useState("");
   const [slug, setSlug] = useState("");
+  const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
   const { integrations, isLoading } = useIntegrations();
   const queryClient = useQueryClient();
 
   const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const selected = connected.find((integration) => integration.id === integrationId) || connected[0];
+
+  const fillDefaults = () => {
+    const excerpt = (summary || plainText(content)).slice(0, 220);
+    setSlug(slugify(title));
+    setTags(inferTags(title, content));
+    setMetaTitle(title.slice(0, 70));
+    setMetaDescription(excerpt.slice(0, 160));
+  };
 
   const publishMutation = useMutation({
     mutationFn: async () => {
@@ -65,6 +101,7 @@ export function PublishDialog({ postId, title, disabled, disabledReason }: Publi
         tags,
         categories,
         slug,
+        metaTitle,
         metaDescription,
       });
     },
@@ -100,7 +137,10 @@ export function PublishDialog({ postId, title, disabled, disabledReason }: Publi
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (nextOpen) fillDefaults();
+      setOpen(nextOpen);
+    }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
@@ -186,6 +226,11 @@ export function PublishDialog({ postId, title, disabled, disabledReason }: Publi
                 <Label>Categories</Label>
                 <Input value={categories} onChange={(event) => setCategories(event.target.value)} placeholder="Blog, Guides" />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Meta title</Label>
+              <Input value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} />
             </div>
 
             <div className="space-y-2">

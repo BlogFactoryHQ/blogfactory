@@ -37,6 +37,7 @@ interface Post {
   id: string;
   title: string;
   content: string;
+  summary: string | null;
   status: string;
   source_type: string;
   persona_id: string | null;
@@ -319,6 +320,8 @@ export default function PostEditorPage() {
             <PublishDialog
               postId={id!}
               title={title}
+              content={content}
+              summary={post?.summary}
               disabled={isSaving || Boolean(hasChanges)}
               disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}
             />
