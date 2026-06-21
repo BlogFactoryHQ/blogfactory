@@ -158,12 +158,24 @@ export default function BatchImport() {
           const formData = new FormData();
           formData.append("folder", item.folder);
           formData.append("markdown", await zipEntryFile(item.markdown, "text/markdown"));
-          if (integrationId === "none") {
-            for (const image of item.images) formData.append("images", await zipEntryFile(image, mimeFor(image.name)));
-          }
 
           const imported = await api.upload<{ post: { id: string; title: string } }>("/posts/import-md", formData, { signal: controller.signal });
           updateItem(item.id, { postId: imported.post.id, message: "Draft imported" });
+
+          if (item.images.length) {
+            updateItem(item.id, { message: `Uploading ${item.images.length} image${item.images.length === 1 ? "" : "s"}` });
+            for (const [position, image] of item.images.entries()) {
+              if (stopRequestedRef.current) {
+                updateItem(item.id, { status: "done", message: "Imported, image upload stopped" });
+                break;
+              }
+              const imageData = new FormData();
+              imageData.append("image", await zipEntryFile(image, mimeFor(image.name)));
+              imageData.append("type", position === 0 ? "cover" : "inline");
+              imageData.append("position", String(position));
+              await api.upload(`/posts/${imported.post.id}/images`, imageData, { signal: controller.signal });
+            }
+          }
 
           if (integrationId !== "none") {
             if (stopRequestedRef.current) {
@@ -291,7 +303,7 @@ export default function BatchImport() {
               )}
               {integrationId !== "none" && (
                 <p className="text-xs text-muted-foreground">
-                  Direct platform runs import markdown only to avoid upload-size failures. Use Import only when you need images stored in BlogFactory.
+                  Images upload one at a time to avoid upload-size failures, then the post is sent to the selected platform.
                 </p>
               )}
             </div>

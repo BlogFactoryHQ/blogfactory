@@ -62,6 +62,7 @@ interface ArticlePayload {
   metaTitle: string;
   metaDescription: string;
   coverImageUrl: string | null;
+  inlineImages: string[];
 }
 
 interface PublishResult {
@@ -368,6 +369,7 @@ function buildArticlePayload(post: PostRow, options: PublishOptions): ArticlePay
     metaTitle,
     metaDescription,
     coverImageUrl: post.coverImageUrl || null,
+    inlineImages: post.inlineImages || [],
   };
 }
 
@@ -603,6 +605,13 @@ async function testGhost(credentials: GhostCredentials) {
 
 async function publishGhost(credentials: GhostCredentials, article: ArticlePayload, mode: PublishMode, options: PublishOptions): Promise<PublishResult> {
   const postType = options.postType === "page" ? "pages" : "posts";
+  const featureImage = article.coverImageUrl ? await uploadGhostImage(credentials, article.coverImageUrl, article.title).catch(() => null) : null;
+  const inlineImages = (await Promise.all(
+    article.inlineImages.map((image, index) => uploadGhostImage(credentials, image, `${article.title}-${index + 1}`).catch(() => null))
+  )).filter((url): url is string => Boolean(url));
+  const html = inlineImages.length
+    ? `${article.html}\n${inlineImages.map((url) => `<figure><img src="${escapeAttribute(url)}" alt="" /></figure>`).join("\n")}`
+    : article.html;
   const response = await fetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
     method: "POST",
     headers: {
@@ -612,7 +621,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     body: JSON.stringify({
       [postType]: [{
         title: article.title,
-        html: article.html,
+        html,
         status: mode === "publish" ? "published" : "draft",
         slug: article.slug,
         excerpt: article.excerpt,
@@ -620,7 +629,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
         meta_title: article.metaTitle,
         meta_description: article.metaDescription,
         tags: article.tags.map((name) => ({ name })),
-        ...(article.coverImageUrl?.startsWith("http") ? { feature_image: article.coverImageUrl } : {}),
+        ...(featureImage ? { feature_image: featureImage } : {}),
       }],
     }),
   });
@@ -633,6 +642,22 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     externalUrl: row?.url || null,
     responseData: { id: row?.id, status: row?.status },
   };
+}
+
+async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string, title: string) {
+  const image = await fetchImage(pathOrUrl);
+  if (!image) return null;
+  const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
+  const formData = new FormData();
+  formData.append("file", new Blob([image.buffer as BlobPart], { type: image.mimeType }), filename);
+  const response = await fetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
+    method: "POST",
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
+    body: formData,
+  });
+  if (!response.ok) return null;
+  const data = await response.json() as { images?: Array<{ url?: string }> };
+  return data.images?.[0]?.url || null;
 }
 
 async function ghostJwt(adminApiKey: string) {

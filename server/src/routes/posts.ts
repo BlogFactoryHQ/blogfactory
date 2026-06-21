@@ -129,6 +129,50 @@ postsRoutes.post("/:id/publish", async (c) => {
   return c.json(result, result.success ? 200 : 502);
 });
 
+postsRoutes.post("/:id/images", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const formData = await c.req.formData();
+  const file = formData.get("image") as File | null;
+  if (!file) return c.json({ error: "Image file is required" }, 400);
+
+  const [post] = await db
+    .select({ id: posts.id, inlineImages: posts.inlineImages })
+    .from(posts)
+    .where(and(eq(posts.id, id), eq(posts.userId, userId)))
+    .limit(1);
+  if (!post) return c.json({ error: "Post not found" }, 404);
+
+  const { uploadFile } = await import("../services/image-storage.js");
+  const asset = await uploadFile(file, userId);
+  const type = String(formData.get("type") || "inline") === "cover" ? "cover" : "inline";
+  const position = Number(formData.get("position") || 0);
+
+  await db
+    .update(imageAssets)
+    .set({
+      postId: id,
+      status: "used",
+      type,
+      position: Number.isFinite(position) ? position : 0,
+    })
+    .where(eq(imageAssets.id, asset.id));
+
+  const update: Partial<typeof posts.$inferInsert> = {};
+  if (type === "cover") update.coverImageUrl = asset.storagePath;
+  else update.inlineImages = [...(post.inlineImages || []), asset.storagePath];
+  await db.update(posts).set(update).where(and(eq(posts.id, id), eq(posts.userId, userId)));
+
+  return c.json({
+    asset: {
+      id: asset.id,
+      storage_path: asset.storagePath,
+      type,
+      position: Number.isFinite(position) ? position : 0,
+    },
+  }, 201);
+});
+
 postsRoutes.get("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
