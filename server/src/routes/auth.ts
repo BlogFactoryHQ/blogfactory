@@ -43,7 +43,7 @@ authRoutes.post("/signup", async (c) => {
       emailVerified: true,
       consentAcceptedAt: new Date(),
       marketingOptIn: marketingOptIn ?? false,
-    })
+    } as any)
     .returning({
       id: users.id,
       email: users.email,
