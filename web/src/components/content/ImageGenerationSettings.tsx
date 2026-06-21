@@ -35,7 +35,7 @@ import {
   LayoutTemplate,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type ImageModelConstraints } from "@/lib/mock-data";
+import { type ImageModelConstraints } from "@/lib/types";
 import { useImageModels } from "@/hooks/useImageModels";
 
 export type Resolution = "Web" | "1K" | "2K" | "4K";

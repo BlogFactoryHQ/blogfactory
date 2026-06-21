@@ -109,11 +109,7 @@ Copy `.env.example` to `.env` for local development. The main values are:
 | `S3_BUCKET`                 | Storage bucket name                              |
 | `S3_REGION`                 | Storage region, or `auto` for Cloudflare R2      |
 | `S3_PUBLIC_URL`             | Optional public CDN URL for stored assets        |
-| `WIX_API_KEY`               | Optional Wix publishing API key                  |
-| `WIX_SITE_ID`               | Optional Wix site ID                             |
-| `WIX_MEMBER_ID`             | Optional Wix member ID                           |
-
-OpenRouter and Google Gemini API keys are stored per user from the app's Settings area.
+OpenRouter, Google Gemini, and publishing integration credentials are stored per user from the app's Settings and Integrations areas.
 
 ## Deploying to Vercel
 
@@ -123,6 +119,6 @@ OpenRouter and Google Gemini API keys are stored per user from the app's Setting
 4. Add the required environment variables from `.env.example`.
 5. Deploy.
 
-Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests to `api/index.ts`, which runs the Hono backend from `server/src/index.ts`.
+Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through the single serverless entrypoint at `api/index.ts`, which loads the Hono backend from `server/src/index.ts`.
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.

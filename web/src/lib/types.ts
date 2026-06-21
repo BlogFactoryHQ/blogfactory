@@ -5,6 +5,12 @@ export interface User {
   createdAt: string;
 }
 
+export interface ImageModelConstraints {
+  resolutions: ("Web" | "1K" | "2K" | "4K")[];
+  aspectRatios: string[];
+  maxDimensionPx?: number;
+}
+
 export interface Feed {
   id: string;
   user_id: string;

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { ImageModelConstraints } from "@/lib/mock-data";
+import type { ImageModelConstraints } from "@/lib/types";
 
 export interface LiveImageModel {
   id: string;

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import type { ImageAsset } from "@/lib/types";
 
 export type { ImageAsset };
@@ -89,10 +89,11 @@ export function useDeleteImageAssets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
-      toast({ title: "Images deleted", description: "Selected images have been removed." });
+      toast.success("Images deleted", { description: "Selected images have been removed." });
     },
-    onError: (err: any) => {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unable to delete selected images.";
+      toast.error("Delete failed", { description: message });
     },
   });
 }
@@ -106,7 +107,7 @@ export function useDetachImageAsset() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
-      toast({ title: "Image detached", description: "Image removed from post but kept in storage." });
+      toast.success("Image detached", { description: "Image removed from post but kept in storage." });
     },
   });
 }
