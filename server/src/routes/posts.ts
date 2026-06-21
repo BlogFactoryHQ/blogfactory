@@ -53,9 +53,11 @@ postsRoutes.post("/import-md", async (c) => {
   if (!markdownFile) return c.json({ error: "Markdown file is required" }, 400);
 
   const content = await markdownFile.text();
+  const meta = parseMarkdownMeta(content);
+  const body = articleBody(content);
   const folder = String(formData.get("folder") || markdownFile.name.replace(/\.md$/i, ""));
-  const title = extractMarkdownTitle(content) || folder.replace(/[-_]+/g, " ");
-  const summary = plainText(content).slice(0, 220);
+  const title = extractMarkdownTitle(body) || meta.metaTitle || folder.replace(/[-_]+/g, " ");
+  const summary = (meta.metaDescription || plainText(body)).slice(0, 220);
 
   const [post] = await db
     .insert(posts)
@@ -170,6 +172,24 @@ function parseList(value: unknown) {
 
 function extractMarkdownTitle(content: string) {
   return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+}
+
+function markdownSection(content: string, heading: string) {
+  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
+  return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
+}
+
+function parseMarkdownMeta(content: string) {
+  return {
+    slug: markdownSection(content, "Slug"),
+    metaTitle: markdownSection(content, "Meta Title"),
+    metaDescription: markdownSection(content, "Meta Description"),
+  };
+}
+
+function articleBody(content: string) {
+  const index = content.search(/^#\s+/m);
+  return (index >= 0 ? content.slice(index) : content).trim();
 }
 
 function plainText(markdown: string) {

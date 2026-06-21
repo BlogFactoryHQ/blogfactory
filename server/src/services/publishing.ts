@@ -348,17 +348,19 @@ function last4(value: string) {
 function buildArticlePayload(post: PostRow, options: PublishOptions): ArticlePayload {
   const title = post.title.trim();
   const content = post.content || "";
-  const excerpt = (options.excerpt || plainText(content)).slice(0, 220);
-  const tags = normalizeStringList(options.tags?.length ? options.tags : inferTags(title, content));
+  const meta = parseMarkdownMeta(content);
+  const body = articleBody(content);
+  const excerpt = (options.excerpt || meta.metaDescription || plainText(body)).slice(0, 220);
+  const tags = normalizeStringList(options.tags?.length ? options.tags : meta.tags.length ? meta.tags : inferTags(title, body));
   const categories = normalizeStringList(options.categories || []);
-  const slug = slugify(options.slug || title);
-  const metaTitle = (options.metaTitle || title).slice(0, 70);
-  const metaDescription = (options.metaDescription || excerpt).slice(0, 160);
+  const slug = slugify(options.slug || meta.slug || title);
+  const metaTitle = (options.metaTitle || meta.metaTitle || title).slice(0, 70);
+  const metaDescription = (options.metaDescription || meta.metaDescription || excerpt).slice(0, 160);
 
   return {
     title,
-    markdown: content,
-    html: markdownToHtml(content),
+    markdown: body,
+    html: markdownToHtml(body),
     excerpt,
     slug,
     tags,
@@ -367,6 +369,30 @@ function buildArticlePayload(post: PostRow, options: PublishOptions): ArticlePay
     metaDescription,
     coverImageUrl: post.coverImageUrl || null,
   };
+}
+
+function markdownSection(content: string, heading: string) {
+  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
+  return cleanMetaValue(content.match(pattern)?.[1] || "");
+}
+
+function cleanMetaValue(value: string) {
+  return value.replace(/^`|`$/g, "").trim();
+}
+
+function parseMarkdownMeta(content: string) {
+  const keywords = markdownSection(content, "SEO Anahtar Kelimeleri|SEO Keywords|Keywords");
+  return {
+    slug: markdownSection(content, "Slug"),
+    metaTitle: markdownSection(content, "Meta Title"),
+    metaDescription: markdownSection(content, "Meta Description"),
+    tags: keywords ? keywords.split(",") : [],
+  };
+}
+
+function articleBody(content: string) {
+  const index = content.search(/^#\s+/m);
+  return (index >= 0 ? content.slice(index) : content).trim();
 }
 
 function normalizeStringList(values: string[]) {

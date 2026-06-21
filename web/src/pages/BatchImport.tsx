@@ -25,9 +25,17 @@ interface ImportItem {
   folder: string;
   markdown: ZipEntry;
   images: ZipEntry[];
+  metadata: MarkdownMeta;
   status: "ready" | "importing" | "publishing" | "done" | "failed";
   postId?: string;
   message?: string;
+}
+
+interface MarkdownMeta {
+  slug: string;
+  metaTitle: string;
+  metaDescription: string;
+  tags: string[];
 }
 
 const imageExt = /\.(png|jpe?g|webp|gif)$/i;
@@ -58,6 +66,21 @@ function mimeFor(name: string) {
 async function zipEntryFile(entry: ZipEntry, type: string) {
   const blob = await entry.async("blob");
   return new File([blob], fileName(entry.name), { type });
+}
+
+function markdownSection(content: string, heading: string) {
+  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
+  return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
+}
+
+function parseMarkdownMeta(content: string): MarkdownMeta {
+  const keywords = markdownSection(content, "SEO Anahtar Kelimeleri|SEO Keywords|Keywords");
+  return {
+    slug: markdownSection(content, "Slug"),
+    metaTitle: markdownSection(content, "Meta Title"),
+    metaDescription: markdownSection(content, "Meta Description"),
+    tags: keywords ? keywords.split(",").map((tag) => tag.trim()).filter(Boolean) : [],
+  };
 }
 
 export default function BatchImport() {
@@ -92,15 +115,19 @@ export default function BatchImport() {
         groups.set(folder, group);
       }
 
-      const detected = Array.from(groups.entries())
-        .filter(([, group]) => group.markdown.length > 0)
-        .map(([folder, group]) => ({
+      const detected: ImportItem[] = [];
+      for (const [folder, group] of Array.from(groups.entries()).filter(([, group]) => group.markdown.length > 0)) {
+        const markdown = group.markdown.sort((a, b) => a.name.localeCompare(b.name))[0];
+        const content = await markdown.async("text");
+        detected.push({
           id: `${folder}-${group.markdown[0].name}`,
           folder,
-          markdown: group.markdown.sort((a, b) => a.name.localeCompare(b.name))[0],
+          markdown,
           images: group.images.sort((a, b) => a.name.localeCompare(b.name)),
+          metadata: parseMarkdownMeta(content),
           status: "ready" as const,
-        }));
+        });
+      }
 
       setItems(detected);
       toast.success(`Detected ${detected.length} article${detected.length === 1 ? "" : "s"}`);
@@ -133,6 +160,10 @@ export default function BatchImport() {
               integrationId,
               mode,
               postType: "post",
+              slug: item.metadata.slug,
+              tags: item.metadata.tags,
+              metaTitle: item.metadata.metaTitle,
+              metaDescription: item.metadata.metaDescription,
             });
             if (!result.success) throw new Error(result.error || "Publish failed");
           }
@@ -227,6 +258,7 @@ export default function BatchImport() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Folder</th>
                   <th className="px-4 py-3 font-medium">Markdown</th>
+                  <th className="px-4 py-3 font-medium">SEO</th>
                   <th className="px-4 py-3 font-medium">Images</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Draft</th>
@@ -235,7 +267,7 @@ export default function BatchImport() {
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                       No zip loaded yet.
                     </td>
                   </tr>
@@ -248,6 +280,13 @@ export default function BatchImport() {
                           <FileText className="h-4 w-4" />
                           {fileName(item.markdown.name)}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <div className="max-w-[280px] space-y-1">
+                          <p className="truncate"><span className="font-medium text-foreground">Slug:</span> {item.metadata.slug || "auto"}</p>
+                          <p className="truncate"><span className="font-medium text-foreground">Title:</span> {item.metadata.metaTitle || "auto"}</p>
+                          <p className="truncate"><span className="font-medium text-foreground">Desc:</span> {item.metadata.metaDescription || "auto"}</p>
+                        </div>
                       </td>
                       <td className="px-4 py-3">{item.images.length}</td>
                       <td className="px-4 py-3">

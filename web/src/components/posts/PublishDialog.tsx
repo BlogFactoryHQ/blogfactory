@@ -61,9 +61,24 @@ function plainText(markdown: string) {
 }
 
 function inferTags(title: string, content: string) {
-  const match = content.match(/(?:tags?|categories?):\s*(.+)/i);
-  const values = match ? match[1].split(",") : title.split(/\s+/).filter((word) => word.length > 3).slice(0, 5);
+  const meta = parseMarkdownMeta(content);
+  const values = meta.tags.length ? meta.tags : title.split(/\s+/).filter((word) => word.length > 3).slice(0, 5);
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 20).join(", ");
+}
+
+function markdownSection(content: string, heading: string) {
+  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
+  return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
+}
+
+function parseMarkdownMeta(content: string) {
+  const keywords = markdownSection(content, "SEO Anahtar Kelimeleri|SEO Keywords|Keywords");
+  return {
+    slug: markdownSection(content, "Slug"),
+    metaTitle: markdownSection(content, "Meta Title"),
+    metaDescription: markdownSection(content, "Meta Description"),
+    tags: keywords ? keywords.split(",") : [],
+  };
 }
 
 export function PublishDialog({ postId, title, content, summary, disabled, disabledReason }: PublishDialogProps) {
@@ -83,10 +98,11 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
   const selected = connected.find((integration) => integration.id === integrationId) || connected[0];
 
   const fillDefaults = () => {
-    const excerpt = (summary || plainText(content)).slice(0, 220);
-    setSlug(slugify(title));
+    const meta = parseMarkdownMeta(content);
+    const excerpt = (meta.metaDescription || summary || plainText(content)).slice(0, 220);
+    setSlug(slugify(meta.slug || title));
     setTags(inferTags(title, content));
-    setMetaTitle(title.slice(0, 70));
+    setMetaTitle((meta.metaTitle || title).slice(0, 70));
     setMetaDescription(excerpt.slice(0, 160));
   };
 
