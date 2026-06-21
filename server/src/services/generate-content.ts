@@ -25,6 +25,8 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 const AI_REQUEST_TIMEOUT_MS = 35_000;
+const IMAGE_REQUEST_TIMEOUT_MS = 12_000;
+const JOB_SYNC_BUDGET_MS = 52_000;
 
 function truncatePromptText(value: string, maxChars = 1200) {
   const cleaned = value.replace(/\s+/g, " ").trim();
@@ -187,6 +189,7 @@ function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "
 export async function generateContent(opts: GenerateOpts) {
   const userId = opts.schedulerUserId || opts.userId;
   const openRouterKey = await getOpenRouterKey(userId);
+  const startedAt = Date.now();
 
   if (!openRouterKey) {
     throw new Error("Add your OpenRouter API key in Settings before generating content");
@@ -373,11 +376,22 @@ export async function generateContent(opts: GenerateOpts) {
           sessionId: jobId,
         });
 
-        // Create post
-        let coverImageUrl: string | null = null;
-        let inlineImages: string[] | null = null;
+        const [post] = await db.insert(posts).values({
+          userId,
+          title: postTitle,
+          content: genContent,
+          status: "draft",
+          sourceType: opts.sourceType,
+          sourceRefId: article.url || opts.feedId || null,
+          sourceContentHash: contentHash,
+          jobId,
+          personaId: opts.personaId || null,
+          modelId,
+        }).returning();
 
-        // Generate images if enabled
+        createdPostIds.push(post.id);
+
+        // Generate images after the draft exists so image timeouts cannot lose the post.
         if (opts.generateImages && opts.imageConfig) {
           await db.update(jobs).set({ currentStep: `generating_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
 
@@ -391,34 +405,23 @@ export async function generateContent(opts: GenerateOpts) {
             stylePrompt: settings?.imageStylePrompt || undefined,
             openRouterKey,
             googleAiKey: await getGoogleAiKey(userId),
+            deadlineMs: startedAt + JOB_SYNC_BUDGET_MS,
           });
 
-          coverImageUrl = imageResults.coverPath;
-          inlineImages = imageResults.inlinePaths.length > 0 ? imageResults.inlinePaths : null;
           totalCost += imageResults.cost;
-        }
+          const inlineImages = imageResults.inlinePaths.length > 0 ? imageResults.inlinePaths : null;
 
-        const [post] = await db.insert(posts).values({
-          userId,
-          title: postTitle,
-          content: genContent,
-          status: "draft",
-          sourceType: opts.sourceType,
-          sourceRefId: article.url || opts.feedId || null,
-          sourceContentHash: contentHash,
-          jobId,
-          personaId: opts.personaId || null,
-          modelId,
-          coverImageUrl,
-          inlineImages,
-        }).returning();
+          if (imageResults.coverPath || inlineImages) {
+            const imageUpdate: Partial<typeof posts.$inferInsert> = {};
+            if (imageResults.coverPath) imageUpdate.coverImageUrl = imageResults.coverPath;
+            if (inlineImages) imageUpdate.inlineImages = inlineImages;
+            await db.update(posts).set(imageUpdate).where(eq(posts.id, post.id));
+          }
 
-        createdPostIds.push(post.id);
-
-        // Update image assets with post ID
-        if (coverImageUrl) {
-          const { imageAssets: ia } = await import("../db/schema.js");
-          await db.update(ia).set({ postId: post.id, status: "used" }).where(and(eq(ia.storagePath, coverImageUrl), eq(ia.userId, userId)));
+          if (imageResults.coverPath) {
+            const { imageAssets: ia } = await import("../db/schema.js");
+            await db.update(ia).set({ postId: post.id, status: "used" }).where(and(eq(ia.storagePath, imageResults.coverPath), eq(ia.userId, userId)));
+          }
         }
 
       } catch (draftErr: any) {
@@ -545,6 +548,7 @@ async function generateImages(opts: {
   stylePrompt?: string;
   openRouterKey: string;
   googleAiKey: string | null;
+  deadlineMs: number;
 }): Promise<{ coverPath: string | null; inlinePaths: string[]; cost: number }> {
   let coverPath: string | null = null;
   const inlinePaths: string[] = [];
@@ -562,6 +566,7 @@ async function generateImages(opts: {
     const aspectRatio = opts.imageConfig.cover.aspectRatio || "16:9";
 
     for (let i = 0; i < coverCount; i++) {
+      if (Date.now() + IMAGE_REQUEST_TIMEOUT_MS > opts.deadlineMs) break;
       try {
         const prompt = `Create a professional blog cover image for: "${opts.title}". ${opts.stylePrompt || "Modern, clean, professional style."}`;
         const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "cover", i, opts.openRouterKey, opts.googleAiKey);
@@ -582,6 +587,7 @@ async function generateImages(opts: {
     const aspectRatio = opts.imageConfig.inline.aspectRatio || "3:2";
 
     for (let i = 0; i < inlineCount; i++) {
+      if (Date.now() + IMAGE_REQUEST_TIMEOUT_MS > opts.deadlineMs) break;
       try {
         const prompt = `Create an illustrative image for a blog post titled "${opts.title}". Section ${i + 1}. ${opts.stylePrompt || "Clean, informative style."}`;
         const result = await generateSingleImage(prompt, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "inline", i, opts.openRouterKey, opts.googleAiKey);
@@ -620,6 +626,7 @@ async function generateSingleImage(
 
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
+    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${openRouterKey}`,
       "Content-Type": "application/json",
@@ -627,6 +634,11 @@ async function generateSingleImage(
     body: JSON.stringify({
       model: modelId,
       messages: [{ role: "user", content: prompt }],
+      modalities: ["image", "text"],
+      image_config: {
+        aspect_ratio: aspectRatio,
+        image_size: resolution,
+      },
     }),
   });
 
@@ -636,11 +648,10 @@ async function generateSingleImage(
   }
 
   const data = await resp.json() as any;
-  const imageContent = data.choices?.[0]?.message?.content;
-
-  if (!imageContent) return null;
-
   // Extract base64 image or URL from response
+  const message = data.choices?.[0]?.message;
+  const imageUrl = message?.images?.[0]?.image_url?.url || message?.images?.[0]?.imageUrl?.url || "";
+  const imageContent = `${imageUrl}\n${message?.content || ""}`;
   const base64Match = imageContent.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/=]+)/);
   const urlMatch = imageContent.match(/https?:\/\/[^\s"'\)]+\.(png|jpg|jpeg|webp|gif)/i);
 
@@ -649,7 +660,7 @@ async function generateSingleImage(
   if (base64Match) {
     imageBuffer = Buffer.from(base64Match[1], "base64");
   } else if (urlMatch) {
-    const imgResp = await fetch(urlMatch[0]);
+    const imgResp = await fetch(urlMatch[0], { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
     if (imgResp.ok) {
       imageBuffer = Buffer.from(await imgResp.arrayBuffer());
     }
@@ -695,6 +706,7 @@ async function generateWithGoogleAI(
   const geminiModel = modelId.replace("google-ai-studio/", "");
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${googleAiKey}`, {
     method: "POST",
+    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
