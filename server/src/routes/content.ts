@@ -69,10 +69,7 @@ contentRoutes.post("/fetch-social", async (c) => {
 });
 
 contentRoutes.post("/publish-wix", async (c) => {
-  const userId = getUserId(c);
-  const body = await c.req.json();
-
-  const { publishToWix } = await import("../services/publish-to-wix.js");
-  const result = await publishToWix({ ...body, userId });
-  return c.json(result);
+  return c.json({
+    error: "Use the per-site publishing integrations flow from /api/posts/:id/publish.",
+  }, 410);
 });

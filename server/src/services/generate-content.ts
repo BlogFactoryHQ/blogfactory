@@ -598,8 +598,11 @@ async function generateSingleImage(
     imageBuffer = (await sharp(imageBuffer).webp({ quality: 85 }).toBuffer()) as any;
   } catch {}
 
+  const finalImageBuffer = imageBuffer;
+  if (!finalImageBuffer) return null;
+
   const cost = parseFloat(data.usage?.total_cost || "0") || 0;
-  const { storagePath } = await saveImageBuffer(imageBuffer, userId, {
+  const { storagePath } = await saveImageBuffer(finalImageBuffer, userId, {
     type,
     prompt,
     modelId,

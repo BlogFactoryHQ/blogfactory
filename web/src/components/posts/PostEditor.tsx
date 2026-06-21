@@ -92,50 +92,13 @@ export function PostEditor({ post, onClose }: PostEditorProps) {
     },
   });
 
-  const wixPublishMutation = useMutation({
-    mutationFn: async (publishImmediately: boolean = true) => {
-      const data = await api.post<any>("/content/publish-wix", {
-        title,
-        content,
-        coverImageUrl,
-        inlineImages,
-        publishImmediately,
-      });
-      if (!data.success) throw new Error(data.error);
-      return data;
-    },
-    onSuccess: (data) => {
-      const imgInfo = data.imagesImported ? ` • ${data.imagesImported} image(s)` : '';
-      const seoInfo = data.seoData 
-        ? `SEO: "${data.seoData.titleTag}" | /${data.seoData.urlSlug}${imgInfo}`
-        : imgInfo;
-      
-      if (data.postUrl) {
-        toast.success("Published to Wix with images & SEO!", {
-          description: seoInfo,
-          action: {
-            label: "View",
-            onClick: () => window.open(data.postUrl, '_blank'),
-          },
-        });
-      } else {
-        toast.success("Draft saved to Wix!", {
-          description: seoInfo || "AI-generated SEO metadata applied",
-        });
-      }
-    },
-    onError: (error) => {
-      toast.error("Failed to publish to Wix: " + error.message);
-    },
-  });
-
   const hasChanges = title !== post.title || 
     content !== post.content || 
     status !== post.status ||
     coverImageUrl !== (post.cover_image_url || null) ||
     JSON.stringify(inlineImages) !== JSON.stringify(post.inline_images || []);
   
-  const isSaving = updateMutation.isPending || publishMutation.isPending || wixPublishMutation.isPending;
+  const isSaving = updateMutation.isPending || publishMutation.isPending;
 
   // Image management handlers
   const handleSetCoverImage = (url: string) => {
@@ -165,18 +128,17 @@ export function PostEditor({ post, onClose }: PostEditorProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <PostEditorHeader
+        postId={post.id}
+        title={title}
         status={status}
         hasChanges={hasChanges}
         isSaving={isSaving}
         isUpdatePending={updateMutation.isPending}
         isPublishPending={publishMutation.isPending}
-        isWixPending={wixPublishMutation.isPending}
         onStatusChange={setStatus}
         onSave={() => updateMutation.mutate()}
         onPublish={() => publishMutation.mutate()}
         onDelete={() => deleteMutation.mutate()}
-        onWixDraft={() => wixPublishMutation.mutate(false)}
-        onWixPublish={() => wixPublishMutation.mutate(true)}
       />
 
       {/* Generated Images Panel */}

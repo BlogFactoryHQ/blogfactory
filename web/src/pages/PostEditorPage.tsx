@@ -10,8 +10,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { MarkdownEditor } from "@/components/posts/MarkdownEditor";
 import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { WixExportPreview } from "@/components/posts/WixExportPreview";
+import { PublishDialog } from "@/components/posts/PublishDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { UserSettings } from "@/lib/types";
 import {
   Select,
   SelectContent,
@@ -57,7 +58,7 @@ export default function PostEditorPage() {
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
     queryFn: async () => {
-      return api.get<any>("/settings");
+      return api.get<UserSettings>("/settings");
     },
     enabled: !!user,
   });
@@ -78,6 +79,25 @@ export default function PostEditorPage() {
     queryFn: async () => {
       if (!id) throw new Error("No post ID");
       return api.get<Post>(`/posts/${id}`);
+    },
+    enabled: !!id,
+  });
+
+  const { data: publicationData } = useQuery({
+    queryKey: ["post-publications", id],
+    queryFn: async () => {
+      if (!id) throw new Error("No post ID");
+      return api.get<{ publications: Array<{
+        id: string;
+        provider: string;
+        status: string;
+        externalUrl: string | null;
+        external_url: string | null;
+        publishedAt: string | null;
+        published_at: string | null;
+        errorMessage: string | null;
+        error_message: string | null;
+      }> }>(`/posts/${id}/publications`);
     },
     enabled: !!id,
   });
@@ -152,42 +172,6 @@ export default function PostEditorPage() {
     },
   });
 
-  const wixPublishMutation = useMutation({
-    mutationFn: async (publishImmediately: boolean = true) => {
-      const data = await api.post<any>("/content/publish-wix", {
-        title,
-        content,
-        coverImageUrl,
-        inlineImages,
-        publishImmediately,
-      });
-      if (!data.success) throw new Error(data.error);
-      return data;
-    },
-    onSuccess: (data) => {
-      const seoInfo = data.seoData
-        ? `SEO: "${data.seoData.titleTag}" | /${data.seoData.urlSlug}`
-        : '';
-
-      if (data.postUrl) {
-        toast.success("Published to Wix with AI SEO!", {
-          description: seoInfo,
-          action: {
-            label: "View",
-            onClick: () => window.open(data.postUrl, '_blank'),
-          },
-        });
-      } else {
-        toast.success("Draft saved to Wix!", {
-          description: seoInfo || "AI-generated SEO metadata applied",
-        });
-      }
-    },
-    onError: (error) => {
-      toast.error("Failed to publish to Wix: " + error.message);
-    },
-  });
-
   const hasChanges = post && (
     title !== post.title ||
     content !== post.content ||
@@ -196,7 +180,7 @@ export default function PostEditorPage() {
     JSON.stringify(inlineImages) !== JSON.stringify(post.inline_images || [])
   );
 
-  const isSaving = updateMutation.isPending || publishMutation.isPending || wixPublishMutation.isPending;
+  const isSaving = updateMutation.isPending || publishMutation.isPending;
 
   // Image management handlers
   const handleSetCoverImage = (url: string) => {
@@ -329,38 +313,15 @@ export default function PostEditorPage() {
               ) : (
                 <Check className="h-4 w-4 mr-1.5" />
               )}
-              Publish
+              Mark Published
             </Button>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => wixPublishMutation.mutate(false)}
-              disabled={isSaving}
-              title="Save as draft to Wix with AI-generated SEO"
-            >
-              {wixPublishMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <ExternalLink className="h-4 w-4 mr-1.5" />
-              )}
-              Draft to Wix
-            </Button>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => wixPublishMutation.mutate(true)}
-              disabled={isSaving}
-              title="Publish to Wix with AI-generated SEO"
-            >
-              {wixPublishMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <ExternalLink className="h-4 w-4 mr-1.5" />
-              )}
-              Publish to Wix
-            </Button>
+            <PublishDialog
+              postId={id!}
+              title={title}
+              disabled={isSaving || Boolean(hasChanges)}
+              disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}
+            />
           </div>
         </div>
       </header>
@@ -388,11 +349,6 @@ export default function PostEditorPage() {
               />
             </div>
           )}
-
-          {/* Wix Export Preview */}
-          <div className="mb-8">
-            <WixExportPreview content={content} title={title} onContentChange={setContent} />
-          </div>
 
           {/* Title */}
           <div className="mb-6">
@@ -423,6 +379,38 @@ export default function PostEditorPage() {
           {/* Metadata Section */}
           {post && (
             <div className="border-t border-border pt-6">
+              {publicationData?.publications && publicationData.publications.length > 0 && (
+                <div className="mb-8">
+                  <p className="section-label mb-4">Publishing</p>
+                  <div className="space-y-2">
+                    {publicationData.publications.slice(0, 5).map((publication) => (
+                      <div key={publication.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-sm">
+                        <div>
+                          <span className="font-medium capitalize">{publication.provider}</span>
+                          <span className="ml-2 text-muted-foreground">{publication.status}</span>
+                          {(publication.errorMessage || publication.error_message) && (
+                            <span className="ml-2 text-destructive">{publication.errorMessage || publication.error_message}</span>
+                          )}
+                        </div>
+                        {(publication.externalUrl || publication.external_url) ? (
+                          <a
+                            href={publication.externalUrl || publication.external_url || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center text-byword-blue"
+                          >
+                            View <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {publication.publishedAt || publication.published_at ? new Date(publication.publishedAt || publication.published_at || "").toLocaleDateString() : "Just now"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <p className="section-label mb-4">Post Metadata</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>

@@ -18,36 +18,35 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Save, Loader2, Check, Trash2, ExternalLink } from "lucide-react";
+import { Save, Loader2, Check, Trash2 } from "lucide-react";
+import { PublishDialog } from "@/components/posts/PublishDialog";
 
 interface PostEditorHeaderProps {
+  postId: string;
+  title: string;
   status: string;
   hasChanges: boolean;
   isSaving: boolean;
   isUpdatePending: boolean;
   isPublishPending: boolean;
-  isWixPending: boolean;
   onStatusChange: (status: string) => void;
   onSave: () => void;
   onPublish: () => void;
   onDelete: () => void;
-  onWixDraft: () => void;
-  onWixPublish: () => void;
 }
 
 export function PostEditorHeader({
+  postId,
+  title,
   status,
   hasChanges,
   isSaving,
   isUpdatePending,
   isPublishPending,
-  isWixPending,
   onStatusChange,
   onSave,
   onPublish,
   onDelete,
-  onWixDraft,
-  onWixPublish,
 }: PostEditorHeaderProps) {
   return (
     <div className="flex items-center justify-between pb-4 border-b border-border shrink-0">
@@ -120,36 +119,14 @@ export function PostEditorHeader({
           ) : (
             <Check className="h-4 w-4 mr-1.5" />
           )}
-          Publish
+          Mark Published
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onWixDraft}
-          disabled={isSaving}
-          title="Save as draft to Wix with AI-generated SEO"
-        >
-          {isWixPending ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <ExternalLink className="h-4 w-4 mr-1.5" />
-          )}
-          Draft to Wix
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onWixPublish}
-          disabled={isSaving}
-          title="Publish to Wix with AI-generated SEO"
-        >
-          {isWixPending ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <ExternalLink className="h-4 w-4 mr-1.5" />
-          )}
-          Publish to Wix
-        </Button>
+        <PublishDialog
+          postId={postId}
+          title={title}
+          disabled={isSaving || hasChanges}
+          disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}
+        />
       </div>
     </div>
   );

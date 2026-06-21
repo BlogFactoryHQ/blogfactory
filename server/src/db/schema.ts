@@ -184,6 +184,44 @@ export const sites = pgTable("sites", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── publishing integrations ──
+export const siteIntegrations = pgTable("site_integrations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  displayName: text("display_name").notNull(),
+  status: text("status").default("connected").notNull(),
+  credentialsEncrypted: text("credentials_encrypted").notNull(),
+  credentialHint: text("credential_hint"),
+  config: jsonb("config"),
+  lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+  lastTestResult: text("last_test_result"),
+  lastPublishAt: timestamp("last_publish_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const postPublications = pgTable("post_publications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  postId: uuid("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  integrationId: uuid("integration_id").references(() => siteIntegrations.id, { onDelete: "set null" }),
+  provider: text("provider").notNull(),
+  publishMode: text("publish_mode").default("draft").notNull(),
+  status: text("status").notNull(),
+  externalId: text("external_id"),
+  externalUrl: text("external_url"),
+  externalEditUrl: text("external_edit_url"),
+  title: text("title"),
+  errorMessage: text("error_message"),
+  responseData: jsonb("response_data"),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── user_settings ──
 export const userSettings = pgTable("user_settings", {
   id: uuid("id").primaryKey().defaultRandom(),

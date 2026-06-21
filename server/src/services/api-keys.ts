@@ -13,7 +13,7 @@ function encryptionKey(): Buffer {
   return createHash("sha256").update(secret).digest();
 }
 
-function encrypt(value: string): string {
+export function encryptSecret(value: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -26,7 +26,7 @@ function encrypt(value: string): string {
   ].join(":");
 }
 
-function decrypt(value: string): string {
+export function decryptSecret(value: string): string {
   const [version, iv, tag, encrypted] = value.split(":");
   if (version !== "v1" || !iv || !tag || !encrypted) {
     throw new Error("Invalid encrypted API key format");
@@ -71,13 +71,13 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
     provider === "openrouter"
       ? {
           userId,
-          openrouterApiKeyEncrypted: encrypt(trimmed),
+          openrouterApiKeyEncrypted: encryptSecret(trimmed),
           openrouterKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
       : {
           userId,
-          googleAiKeyEncrypted: encrypt(trimmed),
+          googleAiKeyEncrypted: encryptSecret(trimmed),
           googleKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         };
@@ -117,7 +117,7 @@ export async function getOpenRouterKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decrypt(row.key) : null;
+  return row?.key ? decryptSecret(row.key) : null;
 }
 
 export async function getGoogleAiKey(userId: string): Promise<string | null> {
@@ -126,5 +126,5 @@ export async function getGoogleAiKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decrypt(row.key) : null;
+  return row?.key ? decryptSecret(row.key) : null;
 }

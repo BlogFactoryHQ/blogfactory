@@ -4,6 +4,7 @@ import { posts, personas, imageAssets } from "../db/schema.js";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
+import { getPostPublications, publishPost } from "../services/publishing.js";
 
 export const postsRoutes = new Hono();
 
@@ -34,6 +35,31 @@ postsRoutes.get("/", async (c) => {
     .orderBy(desc(posts.createdAt));
 
   return c.json(rows);
+});
+
+postsRoutes.get("/:id/publications", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  return c.json({ publications: await getPostPublications(userId, id) });
+});
+
+postsRoutes.post("/:id/publish", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const integrationId = String(body.integrationId || body.integration_id || "");
+  if (!integrationId) return c.json({ error: "Integration is required" }, 400);
+  const result = await publishPost(userId, id, integrationId, {
+    mode: body.mode === "publish" ? "publish" : "draft",
+    postType: body.postType === "page" ? "page" : "post",
+    slug: body.slug,
+    tags: Array.isArray(body.tags) ? body.tags : parseList(body.tags),
+    categories: Array.isArray(body.categories) ? body.categories : parseList(body.categories),
+    metaTitle: body.metaTitle || body.meta_title,
+    metaDescription: body.metaDescription || body.meta_description,
+    excerpt: body.excerpt,
+  });
+  return c.json(result, result.success ? 200 : 502);
 });
 
 postsRoutes.get("/:id", async (c) => {
@@ -67,6 +93,11 @@ postsRoutes.get("/:id", async (c) => {
   if (!post) return c.json({ error: "Post not found" }, 404);
   return c.json(post);
 });
+
+function parseList(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
 
 postsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
