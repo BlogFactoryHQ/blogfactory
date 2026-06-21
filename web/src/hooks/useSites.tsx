@@ -10,8 +10,8 @@ export interface Site {
   domain: string;
   sitemapUrl?: string | null;
   sitemap_url?: string | null;
-  internalLinkIndex?: { sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
-  internal_link_index?: { sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
+  internalLinkIndex?: { pages?: Array<{ title?: string; description?: string; url?: string; path?: string }>; sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
+  internal_link_index?: { pages?: Array<{ title?: string; description?: string; url?: string; path?: string }>; sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
   status: string;
   pageCount: number;
   page_count?: number;

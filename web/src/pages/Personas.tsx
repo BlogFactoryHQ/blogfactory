@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
+import { useSites } from "@/hooks/useSites";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -159,6 +160,27 @@ const brandMentionOptions = [
 
 const KNOWLEDGE_IMPORT_CHAR_LIMIT = 30000;
 
+function titleCaseDomain(value: string) {
+  const first = value.replace(/^www\./, "").split(".")[0] || value;
+  return first
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function siteLanguageToArticleLanguage(language?: string | null) {
+  if (!language) return "";
+  const value = language.toLowerCase();
+  if (value.startsWith("tr")) return "Turkish";
+  if (value.startsWith("de")) return "German";
+  if (value.startsWith("fr")) return "French";
+  if (value.startsWith("es")) return "Spanish";
+  if (value.startsWith("en-gb") || value === "uk") return "UK English";
+  if (value.startsWith("en")) return "US English";
+  return "";
+}
+
 function limitKnowledgeContent(content: string) {
   if (content.length <= KNOWLEDGE_IMPORT_CHAR_LIMIT) return content;
   return `${content.slice(0, KNOWLEDGE_IMPORT_CHAR_LIMIT)}\n\n[Imported file truncated at ${KNOWLEDGE_IMPORT_CHAR_LIMIT.toLocaleString()} characters.]`;
@@ -180,6 +202,7 @@ export default function Personas() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { isAdvanced, toggleAdvanced } = useAdvancedMode();
+  const { activeSite } = useSites();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [editedPersona, setEditedPersona] = useState<Persona | null>(null);
@@ -447,6 +470,38 @@ export default function Personas() {
     setKnowledgeContent("");
   };
 
+  const autofillFromActiveSite = () => {
+    if (!activeSite) {
+      toast.error("Connect a site first.");
+      return;
+    }
+
+    let changed = false;
+    const siteName = activeSite.name || titleCaseDomain(activeSite.domain);
+    const pages = activeSite.internalLinkIndex?.pages || [];
+    const siteDescription = pages.find((page) => page.description)?.description?.trim() || "";
+    const siteLanguage = siteLanguageToArticleLanguage(activeSite.language);
+
+    if (!brandCompanyName.trim() && siteName) {
+      setBrandCompanyName(siteName);
+      changed = true;
+    }
+    if (!brandDescription.trim() && siteDescription) {
+      setBrandDescription(siteDescription);
+      changed = true;
+    }
+    if (brandValueProps.length === 0 && activeSite.topics?.length) {
+      setBrandValueProps(activeSite.topics.slice(0, 5));
+      changed = true;
+    }
+    if (!userSettings?.article_language && siteLanguage) {
+      setArticleLanguage(siteLanguage);
+      changed = true;
+    }
+
+    toast[changed ? "success" : "info"](changed ? "Autofilled blank brand fields. Review and save." : "No blank site-backed fields to autofill.");
+  };
+
   const importKnowledgeFile = async (file: File) => {
     const extension = file.name.split(".").pop()?.toLowerCase();
     let content = "";
@@ -514,6 +569,214 @@ export default function Personas() {
   ).length;
   const hasAdvancedConfig = toolCount > 0 || pluginCount > 0 ||
     (editedPersona?.validation_rules && Object.keys(editedPersona.validation_rules).length > 0);
+
+  const brandVoiceDefaults = (
+    <div className="rounded-lg border border-border">
+      <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+        <div className="flex items-start gap-3">
+          <Building2 className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h3 className="font-semibold">Brand Voice Defaults</h3>
+            <p className="text-sm text-muted-foreground">Global brand, voice, and article defaults used with every profile.</p>
+          </div>
+        </div>
+        <Button onClick={() => saveBrandVoiceMutation.mutate()} disabled={saveBrandVoiceMutation.isPending}>
+          <Save className="h-4 w-4 mr-2" />
+          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+        </Button>
+      </div>
+
+      <div className="space-y-6 p-5">
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-primary" />
+            <h4 className="font-medium">Voice</h4>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {voiceOptions.map((voice) => (
+              <button
+                key={voice}
+                type="button"
+                onClick={() => setArticleVoice(voice)}
+                className={cn(
+                  "rounded-lg border p-3 text-left text-sm font-medium transition-calm",
+                  articleVoice === voice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                )}
+              >
+                {voice}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Language</Label>
+              <Select value={articleLanguage} onValueChange={setArticleLanguage}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {languageOptions.map((language) => (
+                    <SelectItem key={language} value={language}>{language}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Article Length</Label>
+              <Select value={String(articleWordCount)} onValueChange={(value) => setArticleWordCount(Number(value))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {articleLengthOptions.map((option) => (
+                    <SelectItem key={option.label} value={String(option.words)}>
+                      {option.label} {option.words ? `(${option.words.toLocaleString()} words)` : "(Auto)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center justify-between rounded-lg border border-border p-4">
+              <span className="flex items-center gap-2 text-sm font-medium"><Globe2 className="h-4 w-4 text-primary" /> Research</span>
+              <Switch checked={enableResearch} onCheckedChange={setEnableResearch} />
+            </label>
+            <label className="flex items-center justify-between rounded-lg border border-border p-4">
+              <span className="flex items-center gap-2 text-sm font-medium"><ListChecks className="h-4 w-4 text-primary" /> Table of contents</span>
+              <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
+            </label>
+          </div>
+        </section>
+
+        <section className="space-y-4 border-t border-border pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" />
+              <h4 className="font-medium">Brand</h4>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={autofillFromActiveSite}>
+              <Globe2 className="mr-2 h-4 w-4" />
+              Autofill from active site
+            </Button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input value={brandCompanyName} onChange={(event) => setBrandCompanyName(event.target.value)} placeholder="Company name" />
+            <Input value={brandTargetAudience} onChange={(event) => setBrandTargetAudience(event.target.value)} placeholder="Target audience" />
+          </div>
+          <Textarea
+            value={brandDescription}
+            onChange={(event) => setBrandDescription(event.target.value)}
+            placeholder="What your company does"
+            className="min-h-[100px]"
+          />
+          <div className="grid gap-3 md:grid-cols-3">
+            {brandMentionOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setBrandMentions(option.value)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-calm",
+                  brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                )}
+              >
+                <p className="text-sm font-medium">{option.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newValueProp}
+              onChange={(event) => setNewValueProp(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addValueProp();
+                }
+              }}
+              placeholder="Add value proposition"
+            />
+            <Button type="button" variant="outline" onClick={addValueProp}>Add</Button>
+          </div>
+          {brandValueProps.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {brandValueProps.map((prop) => (
+                <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                  {prop}
+                  <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-primary" /> Knowledge Base</span>
+              <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
+                <label>
+                  {isImportingKnowledge ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="mr-2 h-4 w-4" />
+                  )}
+                  Import File
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    onChange={handleKnowledgeFileChange}
+                  />
+                </label>
+              </Button>
+            </div>
+            <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
+            <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
+            <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
+            {knowledgeDocuments.map((document) => (
+              <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{document.title}</p>
+                  <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <span className="flex items-center gap-2 font-medium"><Target className="h-4 w-4 text-primary" /> Calls to Action</span>
+            <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
+            <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
+            <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
+            <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
+            {brandCtas.map((cta) => (
+              <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{cta.label}</p>
+                  <p className="text-sm text-muted-foreground">{cta.description}</p>
+                  {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-8 h-[calc(100vh-2rem)] max-w-7xl">
@@ -644,12 +907,14 @@ export default function Personas() {
               </div>
 
               {/* Content Area */}
-              <div className="flex-1 overflow-y-auto p-6">
-                {/* Simple Mode - Always Visible */}
-                <div className="space-y-6">
-                  {/* Prompt Builder - Advanced Only */}
-                  {isAdvanced && (
-                    <PromptBuilder
+	              <div className="flex-1 overflow-y-auto p-6">
+	                {/* Simple Mode - Always Visible */}
+	                <div className="space-y-6">
+	                  {brandVoiceDefaults}
+
+	                  {/* Prompt Builder - Advanced Only */}
+	                  {isAdvanced && (
+	                    <PromptBuilder
                       onApply={(prompt) =>
                         updateEditedPersona({ system_prompt: prompt })
                       }
@@ -659,210 +924,10 @@ export default function Personas() {
                   {/* Core Simple View */}
                   <SimplePromptView
                     persona={editedPersona}
-                    onChange={updateEditedPersona}
-                  />
+	                    onChange={updateEditedPersona}
+	                  />
 
-                  <div className="rounded-lg border border-border">
-                    <div className="flex items-start justify-between gap-4 border-b border-border p-5">
-                      <div className="flex items-start gap-3">
-                        <Building2 className="mt-1 h-5 w-5 text-primary" />
-                        <div>
-                          <h3 className="font-semibold">Brand Voice Defaults</h3>
-                          <p className="text-sm text-muted-foreground">Global brand, voice, and article defaults used with every profile.</p>
-                        </div>
-                      </div>
-                      <Button onClick={() => saveBrandVoiceMutation.mutate()} disabled={saveBrandVoiceMutation.isPending}>
-                        <Save className="h-4 w-4 mr-2" />
-                        {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
-                      </Button>
-                    </div>
-
-                    <div className="space-y-6 p-5">
-                      <section className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <MessageSquare className="h-4 w-4 text-primary" />
-                          <h4 className="font-medium">Voice</h4>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-3">
-                          {voiceOptions.map((voice) => (
-                            <button
-                              key={voice}
-                              type="button"
-                              onClick={() => setArticleVoice(voice)}
-                              className={cn(
-                                "rounded-lg border p-3 text-left text-sm font-medium transition-calm",
-                                articleVoice === voice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
-                              )}
-                            >
-                              {voice}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>Language</Label>
-                            <Select value={articleLanguage} onValueChange={setArticleLanguage}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {languageOptions.map((language) => (
-                                  <SelectItem key={language} value={language}>{language}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Article Length</Label>
-                            <Select value={String(articleWordCount)} onValueChange={(value) => setArticleWordCount(Number(value))}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {articleLengthOptions.map((option) => (
-                                  <SelectItem key={option.label} value={String(option.words)}>
-                                    {option.label} {option.words ? `(${option.words.toLocaleString()} words)` : "(Auto)"}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label className="flex items-center justify-between rounded-lg border border-border p-4">
-                            <span className="flex items-center gap-2 text-sm font-medium"><Globe2 className="h-4 w-4 text-primary" /> Research</span>
-                            <Switch checked={enableResearch} onCheckedChange={setEnableResearch} />
-                          </label>
-                          <label className="flex items-center justify-between rounded-lg border border-border p-4">
-                            <span className="flex items-center gap-2 text-sm font-medium"><ListChecks className="h-4 w-4 text-primary" /> Table of contents</span>
-                            <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
-                          </label>
-                        </div>
-                      </section>
-
-                      <section className="space-y-4 border-t border-border pt-6">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-primary" />
-                          <h4 className="font-medium">Brand</h4>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <Input value={brandCompanyName} onChange={(event) => setBrandCompanyName(event.target.value)} placeholder="Company name" />
-                          <Input value={brandTargetAudience} onChange={(event) => setBrandTargetAudience(event.target.value)} placeholder="Target audience" />
-                        </div>
-                        <Textarea
-                          value={brandDescription}
-                          onChange={(event) => setBrandDescription(event.target.value)}
-                          placeholder="What your company does"
-                          className="min-h-[100px]"
-                        />
-                        <div className="grid gap-3 md:grid-cols-3">
-                          {brandMentionOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setBrandMentions(option.value)}
-                              className={cn(
-                                "rounded-lg border p-3 text-left transition-calm",
-                                brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
-                              )}
-                            >
-                              <p className="text-sm font-medium">{option.label}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newValueProp}
-                            onChange={(event) => setNewValueProp(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                addValueProp();
-                              }
-                            }}
-                            placeholder="Add value proposition"
-                          />
-                          <Button type="button" variant="outline" onClick={addValueProp}>Add</Button>
-                        </div>
-                        {brandValueProps.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {brandValueProps.map((prop) => (
-                              <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                                {prop}
-                                <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </section>
-
-                      <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-primary" /> Knowledge Base</span>
-                            <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
-                              <label>
-                                {isImportingKnowledge ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <FileUp className="mr-2 h-4 w-4" />
-                                )}
-                                Import File
-                                <input
-                                  type="file"
-                                  accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                  className="hidden"
-                                  onChange={handleKnowledgeFileChange}
-                                />
-                              </label>
-                            </Button>
-                          </div>
-                          <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
-                          <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
-                          <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
-                          {knowledgeDocuments.map((document) => (
-                            <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                              <div className="min-w-0">
-                                <p className="font-medium">{document.title}</p>
-                                <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
-                              </div>
-                              <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}>
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="space-y-3">
-                          <span className="flex items-center gap-2 font-medium"><Target className="h-4 w-4 text-primary" /> Calls to Action</span>
-                          <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
-                          <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
-                          <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
-                          <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
-                          {brandCtas.map((cta) => (
-                            <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                              <div className="min-w-0">
-                                <p className="font-medium">{cta.label}</p>
-                                <p className="text-sm text-muted-foreground">{cta.description}</p>
-                                {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
-                              </div>
-                              <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-
-                  {/* Advanced Toggle */}
+	                  {/* Advanced Toggle */}
                   <button
                     onClick={toggleAdvanced}
                     className={cn(
@@ -976,15 +1041,28 @@ export default function Personas() {
                 </div>
               </div>
             </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              {isLoading ? (
-                <Loader2 className="h-8 w-8 animate-spin" />
-              ) : (
-                "Select a brand voice profile to edit or create a new one."
-              )}
-            </div>
-          )}
+	          ) : (
+	            <div className="flex-1 overflow-y-auto p-6">
+	              <div className="space-y-6">
+	                {brandVoiceDefaults}
+	                <div className="rounded-lg border border-dashed border-border p-6 text-center">
+	                  {isLoading ? (
+	                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+	                  ) : (
+	                    <>
+	                      <Bot className="mx-auto h-8 w-8 text-muted-foreground" />
+	                      <p className="mt-3 font-medium">No writer profiles yet</p>
+	                      <p className="mt-1 text-sm text-muted-foreground">Brand defaults are global. Add a profile when you want a specific writing behavior or model.</p>
+	                      <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
+	                        <Plus className="mr-2 h-4 w-4" />
+	                        Create Profile
+	                      </Button>
+	                    </>
+	                  )}
+	                </div>
+	              </div>
+	            </div>
+	          )}
         </div>
       </div>
 
