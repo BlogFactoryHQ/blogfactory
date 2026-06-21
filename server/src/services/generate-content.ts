@@ -4,6 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
+import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 
 interface GenerateOpts {
   userId: string;
@@ -236,6 +237,7 @@ export async function generateContent(opts: GenerateOpts) {
     }
 
     const modelId = opts.modelId || personaModel;
+    await assertOpenRouterModelAvailable(openRouterKey, modelId);
 
     // Update feed last_run_at
     if (opts.feedId) {
@@ -539,6 +541,7 @@ async function generateImages(opts: {
   const inlinePaths: string[] = [];
   let totalCost = 0;
   const imageModel = opts.imageModel || "google/gemini-2.5-flash-image";
+  await assertOpenRouterModelAvailable(opts.openRouterKey, imageModel, "image");
   if (imageModel.startsWith("google-ai-studio/") && !opts.googleAiKey) {
     throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
   }

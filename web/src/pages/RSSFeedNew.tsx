@@ -29,6 +29,7 @@ import {
 import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, Eye, FileText } from "lucide-react";
 import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS } from "@/lib/mock-data";
 import { useTextModels } from "@/hooks/useTextModels";
+import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -92,6 +93,7 @@ export default function RSSFeedNew() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const { data: textModels = [] } = useTextModels();
+  const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
@@ -330,6 +332,10 @@ export default function RSSFeedNew() {
       toast.error(error);
       return;
     }
+    if (selectedModelUnavailable) {
+      toast.error("Selected model is no longer available on OpenRouter.");
+      return;
+    }
     createFeedMutation.mutate(false);
   };
 
@@ -341,6 +347,10 @@ export default function RSSFeedNew() {
     }
     if (!personaId) {
       toast.error("Please select a persona to run the feed.");
+      return;
+    }
+    if (selectedModelUnavailable) {
+      toast.error("Selected model is no longer available on OpenRouter.");
       return;
     }
     createFeedMutation.mutate(true);
@@ -718,28 +728,10 @@ export default function RSSFeedNew() {
 
               <div className="space-y-2">
                 <Label>LLM Model</Label>
-                <Select value={modelId} onValueChange={setModelId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select model..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {textModels.map((model) => {
-                      const priceIcon = model.pricing === "free" ? "FREE" : model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$";
-                      const priceColor = model.pricing === "free" ? "text-primary" : model.pricing === "low" ? "text-green-600" : model.pricing === "medium" ? "text-amber-600" : "text-red-500";
-                      return (
-                        <SelectItem key={model.id} value={model.id}>
-                          <span className="flex items-center gap-2">
-                            <span className={`font-mono text-xs ${priceColor}`}>{priceIcon}</span>
-                            {model.name}
-                            <span className="text-xs text-muted-foreground">
-                              ({model.provider})
-                            </span>
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
+                {selectedModelUnavailable && (
+                  <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
+                )}
               </div>
             </div>
           </section>
@@ -915,7 +907,7 @@ export default function RSSFeedNew() {
             <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
               Cancel
             </Button>
-          <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting}>
+          <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || selectedModelUnavailable}>
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -923,7 +915,7 @@ export default function RSSFeedNew() {
             )}
             Save & Run Now
           </Button>
-          <Button onClick={handleSave} disabled={isSubmitting}>
+          <Button onClick={handleSave} disabled={isSubmitting || selectedModelUnavailable}>
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (

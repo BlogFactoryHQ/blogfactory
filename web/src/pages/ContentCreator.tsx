@@ -33,8 +33,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { MODELS } from "@/lib/mock-data";
 import { SourceType } from "@/components/content/GenerationProgress";
+import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -53,6 +53,7 @@ import {
   OptionCard,
   SectionHeader,
 } from "@/components/layout/BywordSurface";
+import { useTextModels } from "@/hooks/useTextModels";
 
 interface ContentUserSettings {
   cover_enabled?: boolean | null;
@@ -202,6 +203,8 @@ export default function ContentCreator() {
 
   // Filter to only active personas for the dropdown
   const activePersonas = personas.filter((p) => p.status === "active");
+  const { data: textModels = [] } = useTextModels();
+  const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
 
   // Fetch recent posts
   const { data: recentPosts = [], refetch: refetchPosts } = useQuery({
@@ -344,6 +347,10 @@ export default function ContentCreator() {
   const handleGenerate = async () => {
     if (!personaId) {
       toast.error("Please select a persona.");
+      return;
+    }
+    if (selectedModelUnavailable) {
+      toast.error("Selected model is no longer available on OpenRouter.");
       return;
     }
 
@@ -574,28 +581,10 @@ export default function ContentCreator() {
 
               <div className="space-y-2">
                 <Label>AI Model</Label>
-                <Select value={modelId} onValueChange={setModelId}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Select model..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MODELS.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex w-full items-center justify-between gap-3">
-                          <span>{model.name}</span>
-                          <span className={cn(
-                            "rounded px-1.5 py-0.5 text-xs font-medium",
-                            model.pricing === "low" && "bg-[hsl(var(--status-success)/0.12)] text-status-success",
-                            model.pricing === "medium" && "bg-accent text-accent-foreground",
-                            model.pricing === "high" && "bg-destructive/10 text-destructive"
-                          )}>
-                            {model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$"}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <LiveTextModelSelect value={modelId} onValueChange={setModelId} triggerClassName="h-11" />
+                {selectedModelUnavailable && (
+                  <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   $ = low cost, $$ = medium, $$$ = high.
                 </p>
@@ -641,7 +630,7 @@ export default function ContentCreator() {
 
             <Button
               onClick={handleGenerate}
-              disabled={activePersonas.length === 0}
+              disabled={activePersonas.length === 0 || selectedModelUnavailable}
               className="h-12 w-full text-base"
             >
               <Sparkles className="mr-2 h-5 w-5" />

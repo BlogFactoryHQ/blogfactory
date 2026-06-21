@@ -1,6 +1,8 @@
 import { db } from "../db/index.js";
 import { personas } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
+import { getOpenRouterKey } from "./api-keys.js";
+import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 
 interface ToolDefinition {
   id: string;
@@ -36,8 +38,8 @@ export async function testPersona(opts: {
     trace.push({ timestamp: new Date().toISOString(), type, content, metadata });
   };
 
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-  if (!OPENROUTER_API_KEY) throw new Error("OpenRouter API key not configured");
+  const openRouterKey = await getOpenRouterKey(opts.userId);
+  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before testing personas");
 
   const [persona] = await db
     .select()
@@ -49,6 +51,7 @@ export async function testPersona(opts: {
 
   addTrace("input", `Test prompt: ${opts.prompt.substring(0, 100)}...`);
   addTrace("input", `Using agent: ${persona.name} with model ${persona.baseModel}`);
+  await assertOpenRouterModelAvailable(openRouterKey, persona.baseModel);
 
   const toolsConfig = (persona.toolsConfig as ToolDefinition[] | null) || [];
   const enabledTools = toolsConfig.filter((t) => t.enabled);
@@ -98,7 +101,7 @@ export async function testPersona(opts: {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${openRouterKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),

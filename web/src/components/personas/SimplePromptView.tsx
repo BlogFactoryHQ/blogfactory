@@ -3,13 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { MODELS } from "@/lib/mock-data";
+  LiveTextModelSelect,
+  isUnavailableModel,
+} from "@/components/content/LiveTextModelSelect";
+import { useTextModels } from "@/hooks/useTextModels";
 
 interface SimplePromptViewProps {
   persona: {
@@ -22,6 +19,9 @@ interface SimplePromptViewProps {
 }
 
 export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
+  const { data: textModels = [] } = useTextModels();
+  const unavailable = isUnavailableModel(persona.base_model, textModels);
+
   return (
     <div className="space-y-6">
       {/* Two-column layout for name and model */}
@@ -40,28 +40,13 @@ export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Base Model
           </Label>
-          <Select
+          <LiveTextModelSelect
             value={persona.base_model}
             onValueChange={(v) => onChange({ base_model: v })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODELS.map((model) => {
-                const priceIcon = model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$";
-                const priceColor = model.pricing === "low" ? "text-green-600" : model.pricing === "medium" ? "text-amber-600" : "text-red-500";
-                return (
-                  <SelectItem key={model.id} value={model.id}>
-                    <div className="flex items-center justify-between w-full gap-2">
-                      <span>{model.name}</span>
-                      <span className={`text-xs font-medium ${priceColor}`}>{priceIcon}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          />
+          {unavailable && (
+            <p className="text-xs text-destructive">Unavailable: {persona.base_model}. Pick a live OpenRouter model.</p>
+          )}
         </div>
       </div>
 

@@ -281,6 +281,9 @@ export default function Settings() {
     () => textModels.filter(modelMatchesFilters),
     [textModels, modelMatchesFilters]
   );
+  const selectedImageModelUnavailable = Boolean(
+    selectedImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedImageModel)
+  );
 
   // Fetch user settings
   const { data: userSettings, isLoading: settingsLoading } = useQuery({
@@ -1336,6 +1339,11 @@ export default function Settings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {selectedImageModelUnavailable && (
+                          <SelectItem value={selectedImageModel}>
+                            <span className="text-destructive">Unavailable: {selectedImageModel}</span>
+                          </SelectItem>
+                        )}
                         {imageModels.map((model) => (
                           <SelectItem key={model.id} value={model.id}>
                             <div className="flex items-center gap-2">
@@ -1348,6 +1356,9 @@ export default function Settings() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedImageModelUnavailable && (
+                      <p className="text-xs text-destructive">Unavailable: {selectedImageModel}. Pick a live OpenRouter image model.</p>
+                    )}
                   </div>
 
                   {(() => {
@@ -1374,7 +1385,7 @@ export default function Settings() {
 
                   <Button
                     onClick={() => saveImageModelMutation.mutate(selectedImageModel)}
-                    disabled={saveImageModelMutation.isPending}
+                    disabled={saveImageModelMutation.isPending || selectedImageModelUnavailable}
                     size="sm"
                   >
                     {saveImageModelMutation.isPending ? (

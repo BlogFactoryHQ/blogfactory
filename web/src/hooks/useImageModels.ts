@@ -28,28 +28,9 @@ export interface LiveImageModel {
   supportedParameters?: string[];
 }
 
-const GOOGLE_AI_STUDIO_MODEL: LiveImageModel = {
-  id: "google-ai-studio/gemini-2.5-flash-image",
-  name: "Gemini 2.5 Flash (Google AI Studio Direct)",
-  provider: "google-ai-studio",
-  pricing: "low",
-  costInfo: "~$0.04 per image",
-  description: "Direct Google AI Studio — lower latency, uses your own API key. Max ~1024px.",
-  apiProvider: "google-ai-studio",
-  isFree: false,
-  limits: null,
-  constraints: {
-    resolutions: ["Web", "1K"],
-    aspectRatios: ["1:1", "3:2", "4:3", "16:9", "9:16", "21:9", "2:3", "3:4", "4:5", "5:4"],
-    maxDimensionPx: 1024,
-  },
-  rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 },
-  contextLength: null,
-};
-
 export async function fetchImageModels(refresh = false): Promise<LiveImageModel[]> {
   const models = await api.get<LiveImageModel[]>(`/models/image${refresh ? "?refresh=true" : ""}`);
-  return [...(Array.isArray(models) ? models : []), GOOGLE_AI_STUDIO_MODEL];
+  return Array.isArray(models) ? models : [];
 }
 
 export function useImageModels() {

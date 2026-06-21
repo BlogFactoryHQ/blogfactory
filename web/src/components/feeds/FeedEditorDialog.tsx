@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { FREQUENCIES } from "@/lib/mock-data";
 import { useTextModels } from "@/hooks/useTextModels";
+import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { format } from "date-fns";
 import {
   SplitImageGenerationSettings,
@@ -112,12 +113,15 @@ export function FeedEditorDialog({
   }, [isOpen, feed?.id, defaultImageConfig]);
 
   if (!editedFeed) return null;
+  const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
 
   const handleSave = () => {
+    if (selectedModelUnavailable) return;
     onSave(editedFeed);
   };
 
   const handleRunNow = () => {
+    if (selectedModelUnavailable) return;
     onRunNow(editedFeed, imageConfig);
   };
 
@@ -221,33 +225,13 @@ export function FeedEditorDialog({
 
                 <div className="space-y-2">
                   <Label>LLM Model</Label>
-                  <Select
+                  <LiveTextModelSelect
                     value={editedFeed.model_id}
-                    onValueChange={(v) =>
-                      setEditedFeed({ ...editedFeed, model_id: v })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select model..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {textModels.map((model) => {
-                        const priceIcon = model.pricing === "free" ? "FREE" : model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$";
-                        const priceColor = model.pricing === "free" ? "text-primary" : model.pricing === "low" ? "text-green-600" : model.pricing === "medium" ? "text-amber-600" : "text-red-500";
-                        return (
-                          <SelectItem key={model.id} value={model.id}>
-                            <span className="flex items-center gap-2">
-                              <span className={`font-mono text-xs ${priceColor}`}>{priceIcon}</span>
-                              {model.name}
-                              <span className="text-xs text-muted-foreground">
-                                ({model.provider})
-                              </span>
-                            </span>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                    onValueChange={(v) => setEditedFeed({ ...editedFeed, model_id: v })}
+                  />
+                  {selectedModelUnavailable && (
+                    <p className="text-xs text-destructive">Unavailable: {editedFeed.model_id}. Pick a live OpenRouter model.</p>
+                  )}
                   {(() => {
                     const selectedPersona = personas.find((p) => p.id === editedFeed.persona_id);
                     if (selectedPersona && editedFeed.model_id !== selectedPersona.base_model) {
@@ -513,7 +497,7 @@ export function FeedEditorDialog({
               <Button
                 variant="outline"
                 onClick={handleRunNow}
-                disabled={isRunning || !editedFeed.persona_id}
+                disabled={isRunning || !editedFeed.persona_id || selectedModelUnavailable}
                 className="gap-2"
               >
                 {isRunning ? (
@@ -528,7 +512,7 @@ export function FeedEditorDialog({
                 Cancel
               </Button>
 
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={handleSave} disabled={isSaving || selectedModelUnavailable}>
                 {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save Changes
               </Button>

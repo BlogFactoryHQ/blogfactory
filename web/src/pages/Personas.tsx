@@ -59,14 +59,15 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SimplePromptView } from "@/components/personas/SimplePromptView";
+import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { PromptBuilder } from "@/components/personas/PromptBuilder";
 import { SEOGuardrails } from "@/components/personas/SEOGuardrails";
 import { PersonaToolsTab } from "@/components/personas/PersonaToolsTab";
 import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
-import { MODELS } from "@/lib/mock-data";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTextModels } from "@/hooks/useTextModels";
 
 interface ToolDefinition {
   id: string;
@@ -234,7 +235,7 @@ export default function Personas() {
   const [activeTab, setActiveTab] = useState("tools");
   const [newPersona, setNewPersona] = useState({
     name: "",
-    base_model: "google/gemini-2.5-flash-preview",
+    base_model: "",
     system_prompt: "",
   });
   const [articleWordCount, setArticleWordCount] = useState(1500);
@@ -275,6 +276,7 @@ export default function Personas() {
       })) as Persona[];
     },
   });
+  const { data: textModels = [] } = useTextModels();
 
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
@@ -324,7 +326,7 @@ export default function Personas() {
       };
       setSelectedPersona(persona);
       setEditedPersona(persona);
-      setNewPersona({ name: "", base_model: "google/gemini-2.5-flash-preview", system_prompt: "" });
+      setNewPersona({ name: "", base_model: "", system_prompt: "" });
       setIsCreateOpen(false);
       toast.success("Brand voice profile created.");
     },
@@ -442,12 +444,20 @@ export default function Personas() {
 
   const handleSave = () => {
     if (!editedPersona) return;
+    if (isUnavailableModel(editedPersona.base_model, textModels)) {
+      toast.error("Selected model is no longer available on OpenRouter.");
+      return;
+    }
     updateMutation.mutate(editedPersona);
   };
 
   const handleCreate = () => {
-    if (!newPersona.name || !newPersona.system_prompt) {
+    if (!newPersona.name || !newPersona.base_model || !newPersona.system_prompt) {
       toast.error("Please fill in all required fields.");
+      return;
+    }
+    if (isUnavailableModel(newPersona.base_model, textModels)) {
+      toast.error("Selected model is no longer available on OpenRouter.");
       return;
     }
     createMutation.mutate(newPersona);
@@ -946,7 +956,10 @@ export default function Personas() {
                     <Copy className="h-4 w-4 mr-2" />
                     {duplicateMutation.isPending ? "Duplicating..." : "Duplicate"}
                   </Button>
-                  <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                  <Button
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending || isUnavailableModel(editedPersona?.base_model, textModels)}
+                  >
                     <Save className="h-4 w-4 mr-2" />
                     {updateMutation.isPending ? "Saving..." : "Save Profile"}
                   </Button>
@@ -1130,28 +1143,13 @@ export default function Personas() {
             </div>
             <div className="space-y-2">
               <Label>Base Model</Label>
-              <Select
+              <LiveTextModelSelect
                 value={newPersona.base_model}
                 onValueChange={(v) => setNewPersona({ ...newPersona, base_model: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODELS.map((model) => {
-                    const priceIcon = model.pricing === "low" ? "$" : model.pricing === "medium" ? "$$" : "$$$";
-                    const priceColor = model.pricing === "low" ? "text-green-600" : model.pricing === "medium" ? "text-amber-600" : "text-red-500";
-                    return (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span>{model.name}</span>
-                          <span className={`text-xs font-medium ${priceColor}`}>{priceIcon}</span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              />
+              {isUnavailableModel(newPersona.base_model, textModels) && (
+                <p className="text-xs text-destructive">Unavailable: {newPersona.base_model}. Pick a live OpenRouter model.</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Different models have varying strengths in reasoning and creativity.
               </p>
@@ -1175,7 +1173,10 @@ export default function Personas() {
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending || !newPersona.base_model || isUnavailableModel(newPersona.base_model, textModels)}
+            >
               {createMutation.isPending ? "Creating..." : "Create Profile"}
             </Button>
           </DialogFooter>
