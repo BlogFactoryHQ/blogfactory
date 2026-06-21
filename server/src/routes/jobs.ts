@@ -1,13 +1,27 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { jobs, personas } from "../db/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
+const STALE_RUNNING_MS = 2 * 60 * 1000;
+const TIMEOUT_MESSAGE = "Generation timed out before creating content. Try again with a faster model or shorter source.";
 
 jobsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
+
+  await db
+    .update(jobs)
+    .set({
+      status: "failed",
+      currentStep: "timeout",
+      errorMessage: TIMEOUT_MESSAGE,
+      completedAt: new Date(),
+    })
+    .where(and(eq(jobs.userId, userId), eq(jobs.status, "running"), lt(jobs.createdAt, staleBefore)));
+
   const rows = await db
     .select({
       id: jobs.id,
@@ -43,9 +57,39 @@ jobsRoutes.get("/", async (c) => {
 jobsRoutes.get("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
+
+  await db
+    .update(jobs)
+    .set({
+      status: "failed",
+      currentStep: "timeout",
+      errorMessage: TIMEOUT_MESSAGE,
+      completedAt: new Date(),
+    })
+    .where(and(eq(jobs.id, id), eq(jobs.userId, userId), eq(jobs.status, "running"), lt(jobs.createdAt, staleBefore)));
 
   const [job] = await db
-    .select()
+    .select({
+      id: jobs.id,
+      user_id: jobs.userId,
+      source_type: jobs.sourceType,
+      source_value: jobs.sourceValue,
+      model_id: jobs.modelId,
+      persona_id: jobs.personaId,
+      status: jobs.status,
+      current_step: jobs.currentStep,
+      error_message: jobs.errorMessage,
+      generation_error: jobs.generationError,
+      generation_plan: jobs.generationPlan,
+      result_post_ids: jobs.resultPostIds,
+      summary_result: jobs.summaryResult,
+      summary_completed_at: jobs.summaryCompletedAt,
+      token_cost: jobs.tokenCost,
+      total_cost: jobs.totalCost,
+      created_at: jobs.createdAt,
+      completed_at: jobs.completedAt,
+    })
     .from(jobs)
     .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
     .limit(1);

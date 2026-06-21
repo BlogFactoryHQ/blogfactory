@@ -24,6 +24,7 @@ interface GenerateOpts {
 }
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
+const AI_REQUEST_TIMEOUT_MS = 35_000;
 
 function truncatePromptText(value: string, maxChars = 1200) {
   const cleaned = value.replace(/\s+/g, " ").trim();
@@ -70,6 +71,13 @@ function openRouterErrorMessage(value: string) {
   } catch {
     return value;
   }
+}
+
+function generationErrorMessage(err: any) {
+  if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+    return "AI provider timed out before content was created. Try again with a faster model or shorter source.";
+  }
+  return err?.message || "Draft generation failed";
 }
 
 function tokenize(value: string) {
@@ -315,7 +323,8 @@ export async function generateContent(opts: GenerateOpts) {
 
         const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
-            headers: {
+          signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+          headers: {
             Authorization: `Bearer ${openRouterKey}`,
             "Content-Type": "application/json",
           },
@@ -413,7 +422,7 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
       } catch (draftErr: any) {
-        lastGenerationError = draftErr.message || "Draft generation failed";
+        lastGenerationError = generationErrorMessage(draftErr);
         console.error(`[generate] Error on draft ${i + 1}:`, lastGenerationError);
         await db.update(jobs).set({ generationError: lastGenerationError }).where(eq(jobs.id, jobId));
       }
