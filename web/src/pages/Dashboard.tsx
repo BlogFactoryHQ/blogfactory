@@ -143,37 +143,43 @@ export default function Dashboard() {
                 No jobs yet. Generate content to see activity here.
               </div>
             ) : (
-              recentJobs.map((job: any) => (
-                <div
-                  key={job.id}
-                  className="flex items-center gap-3 px-4 py-3 transition-calm hover:bg-muted/40"
-                >
+              recentJobs.map((job: any) => {
+                const sourceType = job.source_type ?? job.sourceType ?? "unknown";
+                const modelId = job.model_id ?? job.modelId ?? "";
+                const createdAt = job.created_at ?? job.createdAt;
+
+                return (
                   <div
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0",
-                      job.status === "completed"
-                        ? "bg-status-success"
-                        : job.status === "failed"
-                        ? "bg-status-error"
-                        : "bg-status-running animate-pulse"
-                    )}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">
-                      #{job.id.slice(0, 8)}
+                    key={job.id}
+                    className="flex items-center gap-3 px-4 py-3 transition-calm hover:bg-muted/40"
+                  >
+                    <div
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full shrink-0",
+                        job.status === "completed"
+                          ? "bg-status-success"
+                          : job.status === "failed"
+                          ? "bg-status-error"
+                          : "bg-status-running animate-pulse"
+                      )}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium">
+                        #{job.id.slice(0, 8)}
+                      </span>
+                      <span className="text-sm text-muted-foreground ml-2 capitalize">
+                        {sourceType.replace("_", " ")}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {modelId.split("/").pop()}
                     </span>
-                    <span className="text-sm text-muted-foreground ml-2 capitalize">
-                      {job.source_type.replace("_", " ")}
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : "—"}
                     </span>
                   </div>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {job.model_id.split("/").pop()}
-                  </span>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

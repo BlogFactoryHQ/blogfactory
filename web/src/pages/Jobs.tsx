@@ -55,6 +55,24 @@ interface Post {
   created_at: string;
 }
 
+const normalizeJob = (job: any): Job => ({
+  id: job.id,
+  source_type: job.source_type ?? job.sourceType ?? "unknown",
+  source_value: job.source_value ?? job.sourceValue ?? "",
+  persona_id: job.persona_id ?? job.personaId ?? null,
+  model_id: job.model_id ?? job.modelId ?? "",
+  status: job.status,
+  current_step: job.current_step ?? job.currentStep ?? "queued",
+  error_message: job.error_message ?? job.errorMessage ?? null,
+  generation_error: job.generation_error ?? job.generationError ?? null,
+  token_cost: job.token_cost ?? job.tokenCost ?? null,
+  result_post_ids: job.result_post_ids ?? job.resultPostIds ?? null,
+  created_at: job.created_at ?? job.createdAt,
+  completed_at: job.completed_at ?? job.completedAt ?? null,
+  generation_plan: job.generation_plan ?? job.generationPlan,
+  personas: job.personas ?? (job.personaName ? { name: job.personaName } : null),
+});
+
 export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -92,7 +110,7 @@ export default function Jobs() {
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => {
-      const result = await api.get<Job[]>("/jobs");
+      const result = (await api.get<any[]>("/jobs")).map(normalizeJob);
       // Keep selected job detail in sync during polling
       if (selectedJob) {
         const updated = result.find((j) => j.id === selectedJob.id);
