@@ -11,30 +11,33 @@ jobsRoutes.get("/", async (c) => {
   const rows = await db
     .select({
       id: jobs.id,
-      sourceType: jobs.sourceType,
-      sourceValue: jobs.sourceValue,
-      modelId: jobs.modelId,
-      personaId: jobs.personaId,
+      source_type: jobs.sourceType,
+      source_value: jobs.sourceValue,
+      model_id: jobs.modelId,
+      persona_id: jobs.personaId,
       status: jobs.status,
-      currentStep: jobs.currentStep,
-      errorMessage: jobs.errorMessage,
-      generationError: jobs.generationError,
-      generationPlan: jobs.generationPlan,
-      resultPostIds: jobs.resultPostIds,
-      summaryResult: jobs.summaryResult,
-      summaryCompletedAt: jobs.summaryCompletedAt,
-      tokenCost: jobs.tokenCost,
-      totalCost: jobs.totalCost,
-      createdAt: jobs.createdAt,
-      completedAt: jobs.completedAt,
-      personaName: personas.name,
+      current_step: jobs.currentStep,
+      error_message: jobs.errorMessage,
+      generation_error: jobs.generationError,
+      generation_plan: jobs.generationPlan,
+      result_post_ids: jobs.resultPostIds,
+      summary_result: jobs.summaryResult,
+      summary_completed_at: jobs.summaryCompletedAt,
+      token_cost: jobs.tokenCost,
+      total_cost: jobs.totalCost,
+      created_at: jobs.createdAt,
+      completed_at: jobs.completedAt,
+      persona_name: personas.name,
     })
     .from(jobs)
     .leftJoin(personas, eq(jobs.personaId, personas.id))
     .where(eq(jobs.userId, userId))
     .orderBy(desc(jobs.createdAt));
 
-  return c.json(rows);
+  return c.json(rows.map(({ persona_name, ...job }) => ({
+    ...job,
+    personas: persona_name ? { name: persona_name } : null,
+  })));
 });
 
 jobsRoutes.get("/:id", async (c) => {
