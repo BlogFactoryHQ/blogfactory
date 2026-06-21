@@ -50,6 +50,10 @@ function defaultSitemapUrl(inputUrl: string) {
   return parsed.toString();
 }
 
+function comparableSiteHost(hostname: string) {
+  return hostname.toLowerCase().replace(/^www\./, "");
+}
+
 function titleCaseDomain(domain: string) {
   const first = domain.split(".")[0] || domain;
   return first
@@ -231,13 +235,48 @@ sitesRoutes.post("/", async (c) => {
     }
 
     const now = new Date();
+    const domain = index?.siteHost || normalized.domain;
+    const sitemapUrl = index?.sitemapUrl || defaultSitemapUrl(normalized.url);
+    const existingSites = await listSitesForUser(userId);
+    const existingSite = existingSites.find((site) => comparableSiteHost(site.domain) === comparableSiteHost(domain));
+
+    if (existingSite) {
+      const [site] = await db
+        .update(sites)
+        .set({
+          name: requestedName || existingSite.name || titleCaseDomain(domain),
+          domain,
+          sitemapUrl,
+          status: "active",
+          pageCount: index?.pageCount || existingSite.pageCount || 0,
+          vectorCount: index?.vectorCount || existingSite.vectorCount || 0,
+          topics: index ? extractTopics(index) : existingSite.topics || [],
+          language: index ? detectLanguage(index) : existingSite.language,
+          internalLinkIndex: index ? index as never : existingSite.internalLinkIndex as never,
+          internalLinkLastSyncedAt: index ? now : existingSite.internalLinkLastSyncedAt,
+          updatedAt: now,
+        } as never)
+        .where(and(eq(sites.id, existingSite.id), eq(sites.userId, userId)))
+        .returning();
+
+      await syncActiveSite(userId, site);
+
+      return c.json({
+        site: serializeSite(site),
+        active_site_id: site.id,
+        activeSiteId: site.id,
+        indexing_error: indexingError,
+        indexingError,
+      });
+    }
+
     const [site] = await db
       .insert(sites)
       .values({
         userId,
-        name: requestedName || titleCaseDomain(index?.siteHost || normalized.domain),
-        domain: index?.siteHost || normalized.domain,
-        sitemapUrl: index?.sitemapUrl || defaultSitemapUrl(normalized.url),
+        name: requestedName || titleCaseDomain(domain),
+        domain,
+        sitemapUrl,
         status: "active",
         pageCount: index?.pageCount || 0,
         vectorCount: index?.vectorCount || 0,

@@ -12,6 +12,9 @@ export interface InternalLinkIndex {
   vectorCount: number;
   pages: IndexedPage[];
   createdAt: string;
+  sitemapSource?: "provided" | "standard" | "robots";
+  sitemapRedirected?: boolean;
+  sitemapMessages?: string[];
 }
 
 interface InternalLinkIndexOptions {
@@ -24,6 +27,26 @@ const MAX_SITEMAPS = 12;
 const MAX_PAGES = 150;
 const PAGE_FETCH_CONCURRENCY = 8;
 
+interface FetchedText {
+  text: string;
+  finalUrl: string;
+  contentType: string;
+}
+
+interface SitemapCandidate {
+  url: string;
+  source: "provided" | "standard" | "robots";
+}
+
+interface SitemapDiscovery {
+  sitemapUrl: string;
+  source: "provided" | "standard" | "robots";
+  redirected: boolean;
+  siteHost: string;
+  rootHost: string;
+  messages: string[];
+}
+
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
@@ -34,7 +57,15 @@ function isPrivateHost(hostname: string): boolean {
   return false;
 }
 
-function normalizeSitemapUrl(input: string): URL {
+function comparableHost(hostname: string) {
+  return hostname.toLowerCase().replace(/^www\./, "");
+}
+
+function isSameSiteHost(hostname: string, expectedRootHost: string) {
+  return comparableHost(hostname) === comparableHost(expectedRootHost);
+}
+
+function normalizeInputUrl(input: string): URL {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("Sitemap URL is required");
 
@@ -47,14 +78,41 @@ function normalizeSitemapUrl(input: string): URL {
   if (isPrivateHost(parsed.hostname)) {
     throw new Error("Private or internal sitemap URLs are not allowed");
   }
-  if (parsed.pathname === "/" || parsed.pathname === "") {
-    parsed.pathname = "/sitemap.xml";
-  }
 
   return parsed;
 }
 
-async function fetchText(url: string, timeoutMs = 10000) {
+function looksLikeSitemapPath(pathname: string) {
+  return /(^|\/)sitemap[^/]*\.xml$/i.test(pathname) || pathname.toLowerCase().includes("sitemap");
+}
+
+function standardSitemapUrl(url: URL) {
+  const sitemapUrl = new URL(url.origin);
+  sitemapUrl.pathname = "/sitemap.xml";
+  sitemapUrl.search = "";
+  sitemapUrl.hash = "";
+  return sitemapUrl.toString();
+}
+
+function robotsUrl(url: URL) {
+  const robots = new URL(url.origin);
+  robots.pathname = "/robots.txt";
+  robots.search = "";
+  robots.hash = "";
+  return robots.toString();
+}
+
+function alternateWwwUrl(url: URL) {
+  const alternate = new URL(url.toString());
+  if (alternate.hostname.startsWith("www.")) {
+    alternate.hostname = alternate.hostname.replace(/^www\./, "");
+  } else if (alternate.hostname.split(".").length >= 2) {
+    alternate.hostname = `www.${alternate.hostname}`;
+  }
+  return alternate.hostname === url.hostname ? null : alternate;
+}
+
+async function fetchText(url: string, timeoutMs = 10000): Promise<FetchedText> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -66,7 +124,11 @@ async function fetchText(url: string, timeoutMs = 10000) {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Fetch failed with ${response.status}`);
-    return await response.text();
+    return {
+      text: await response.text(),
+      finalUrl: response.url || url,
+      contentType: response.headers.get("content-type") || "",
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -98,18 +160,116 @@ function isSitemapIndex(xml: string) {
   return /<sitemapindex[\s>]/i.test(xml);
 }
 
-async function collectSitemapUrls(url: string, seen = new Set<string>()): Promise<string[]> {
+function isUrlset(xml: string) {
+  return /<urlset[\s>]/i.test(xml);
+}
+
+function parseRobotsSitemaps(robots: string) {
+  const sitemaps: string[] = [];
+  const regex = /^sitemap:\s*(\S+)/gim;
+  let match;
+  while ((match = regex.exec(robots)) !== null) {
+    sitemaps.push(match[1].trim());
+  }
+  return sitemaps;
+}
+
+async function buildSitemapCandidates(inputUrl: URL, rootHost: string): Promise<SitemapCandidate[]> {
+  const candidates: SitemapCandidate[] = [];
+  const addCandidate = (url: string, source: SitemapCandidate["source"]) => {
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) return;
+      if (isPrivateHost(parsed.hostname)) return;
+      if (!isSameSiteHost(parsed.hostname, rootHost)) return;
+      if (!candidates.some((candidate) => candidate.url === parsed.toString())) {
+        candidates.push({ url: parsed.toString(), source });
+      }
+    } catch {
+      // Ignore malformed sitemap hints.
+    }
+  };
+
+  if (looksLikeSitemapPath(inputUrl.pathname)) {
+    addCandidate(inputUrl.toString(), "provided");
+  } else {
+    addCandidate(standardSitemapUrl(inputUrl), "standard");
+  }
+
+  for (const baseUrl of [inputUrl, alternateWwwUrl(inputUrl)].filter((url): url is URL => Boolean(url))) {
+    if (!isSameSiteHost(baseUrl.hostname, rootHost)) continue;
+    addCandidate(standardSitemapUrl(baseUrl), "standard");
+    try {
+      const robots = await fetchText(robotsUrl(baseUrl), 5000);
+      for (const sitemapUrl of parseRobotsSitemaps(robots.text)) {
+        addCandidate(sitemapUrl, "robots");
+      }
+    } catch {
+      // robots.txt is optional; standard sitemap probing continues without it.
+    }
+  }
+
+  return candidates;
+}
+
+async function discoverSitemap(input: string): Promise<SitemapDiscovery> {
+  const inputUrl = normalizeInputUrl(input);
+  const rootHost = comparableHost(inputUrl.hostname);
+  const messages: string[] = [];
+  const candidates = await buildSitemapCandidates(inputUrl, rootHost);
+
+  for (const candidate of candidates) {
+    try {
+      const fetched = await fetchText(candidate.url);
+      const locs = extractLocs(fetched.text);
+      const final = new URL(fetched.finalUrl);
+      if (!isSameSiteHost(final.hostname, rootHost)) {
+        messages.push(`Skipped ${candidate.url}: redirected outside this site`);
+        continue;
+      }
+      if (locs.length === 0 || (!isUrlset(fetched.text) && !isSitemapIndex(fetched.text))) {
+        messages.push(`Skipped ${candidate.url}: no sitemap entries found`);
+        continue;
+      }
+
+      return {
+        sitemapUrl: final.toString(),
+        source: candidate.source,
+        redirected: final.toString() !== candidate.url,
+        siteHost: rootHost,
+        rootHost,
+        messages: [
+          ...messages,
+          candidate.source === "robots" ? "Sitemap discovered from robots.txt" : "Sitemap discovered at standard location",
+          final.toString() !== candidate.url ? `Sitemap redirected to ${final.toString()}` : "Sitemap loaded without redirect",
+          `${locs.length} sitemap entr${locs.length === 1 ? "y" : "ies"} found`,
+        ],
+      };
+    } catch (err: any) {
+      messages.push(`Skipped ${candidate.url}: ${err.message || "fetch failed"}`);
+    }
+  }
+
+  throw new Error(messages.length ? `No sitemap found. ${messages.join("; ")}` : "No sitemap found at standard locations");
+}
+
+async function collectSitemapUrls(url: string, expectedRootHost: string, seen = new Set<string>()): Promise<string[]> {
   if (seen.size >= MAX_SITEMAPS || seen.has(url)) return [];
   seen.add(url);
 
-  const xml = await fetchText(url);
-  const locs = extractLocs(xml);
+  const fetched = await fetchText(url);
+  const finalUrl = new URL(fetched.finalUrl);
+  if (!isSameSiteHost(finalUrl.hostname, expectedRootHost)) return [];
 
-  if (isSitemapIndex(xml)) {
+  const locs = extractLocs(fetched.text);
+
+  if (isSitemapIndex(fetched.text)) {
     const nested: string[] = [];
     for (const loc of locs.slice(0, MAX_SITEMAPS)) {
       try {
-        nested.push(...await collectSitemapUrls(loc, seen));
+        const parsed = new URL(loc);
+        if (!isSameSiteHost(parsed.hostname, expectedRootHost)) continue;
+        nested.push(...await collectSitemapUrls(parsed.toString(), expectedRootHost, seen));
       } catch (err) {
         console.warn("[internal-linking] Skipping nested sitemap:", loc, err);
       }
@@ -160,7 +320,7 @@ async function indexPage(url: string): Promise<IndexedPage | null> {
   }
 
   try {
-    const html = await fetchText(url, 5000);
+    const { text: html } = await fetchText(url, 5000);
     const title = extractTitle(html) || titleFromUrl(parsed);
     const description = stripHtml(decodeXml(
       extractMeta(html, "description") || extractMeta(html, "og:description") || ""
@@ -216,12 +376,12 @@ function applyUrlFilters(urls: string[], options?: InternalLinkIndexOptions) {
 }
 
 export async function buildInternalLinkIndex(input: string, options?: InternalLinkIndexOptions): Promise<InternalLinkIndex> {
-  const sitemapUrl = normalizeSitemapUrl(input);
-  const urls = applyUrlFilters(Array.from(new Set(await collectSitemapUrls(sitemapUrl.toString())))
+  const discovery = await discoverSitemap(input);
+  const urls = applyUrlFilters(Array.from(new Set(await collectSitemapUrls(discovery.sitemapUrl, discovery.rootHost)))
     .filter((url) => {
       try {
         const parsed = new URL(url);
-        return parsed.hostname === sitemapUrl.hostname && ["http:", "https:"].includes(parsed.protocol);
+        return isSameSiteHost(parsed.hostname, discovery.rootHost) && ["http:", "https:"].includes(parsed.protocol);
       } catch {
         return false;
       }
@@ -236,11 +396,14 @@ export async function buildInternalLinkIndex(input: string, options?: InternalLi
     .filter((page): page is IndexedPage => Boolean(page));
 
   return {
-    sitemapUrl: sitemapUrl.toString(),
-    siteHost: sitemapUrl.hostname,
+    sitemapUrl: discovery.sitemapUrl,
+    siteHost: discovery.siteHost,
     pageCount: pages.length,
     vectorCount: pages.length,
     pages,
     createdAt: new Date().toISOString(),
+    sitemapSource: discovery.source,
+    sitemapRedirected: discovery.redirected,
+    sitemapMessages: discovery.messages,
   };
 }

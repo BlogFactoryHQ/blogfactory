@@ -10,6 +10,8 @@ export interface Site {
   domain: string;
   sitemapUrl?: string | null;
   sitemap_url?: string | null;
+  internalLinkIndex?: { sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
+  internal_link_index?: { sitemapMessages?: string[]; sitemapRedirected?: boolean; sitemapSource?: string } | null;
   status: string;
   pageCount: number;
   page_count?: number;
@@ -56,6 +58,7 @@ function normalizeSite(site: Site): Site {
   return {
     ...site,
     sitemapUrl: site.sitemapUrl ?? site.sitemap_url,
+    internalLinkIndex: site.internalLinkIndex ?? site.internal_link_index,
     pageCount: site.pageCount ?? site.page_count ?? 0,
     vectorCount: site.vectorCount ?? site.vector_count ?? 0,
     internalLinkLastSyncedAt: site.internalLinkLastSyncedAt ?? site.internal_link_last_synced_at,

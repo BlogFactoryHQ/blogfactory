@@ -22,7 +22,14 @@ export default function Sites() {
       const site = await createSite({ url: siteUrl.trim() });
       setSiteUrl("");
       if (site.pageCount > 0) {
-        toast.success("Site connected");
+        const redirectMessage = site.internalLinkIndex?.sitemapMessages?.find((message) =>
+          message.toLowerCase().includes("redirected")
+        );
+        toast.success(
+          redirectMessage
+            ? `Sitemap found: ${site.pageCount} pages indexed, ${redirectMessage.replace("Sitemap redirected to ", "redirected to ")}`
+            : `Sitemap found: ${site.pageCount} pages indexed.`
+        );
       } else {
         toast.success("Domain added. No sitemap pages were found yet; you can refresh it later.");
       }
