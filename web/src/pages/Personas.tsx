@@ -38,12 +38,19 @@ import {
   Save,
   Loader2,
   Bot,
+  Building2,
+  MessageSquare,
+  Globe2,
+  FileText,
+  ListChecks,
+  Target,
   Wrench,
   Plug,
   FlaskConical,
   Copy,
   Settings2,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -54,6 +61,7 @@ import { PersonaToolsTab } from "@/components/personas/PersonaToolsTab";
 import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
 import { MODELS } from "@/lib/mock-data";
+import { Switch } from "@/components/ui/switch";
 
 interface ToolDefinition {
   id: string;
@@ -100,6 +108,53 @@ interface Persona {
   validation_rules: ValidationRules;
 }
 
+interface BrandCta {
+  id: string;
+  label: string;
+  url: string;
+  description: string;
+}
+
+interface KnowledgeDocument {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+interface UserSettings {
+  article_word_count?: number | null;
+  article_language?: string | null;
+  article_voice?: string | null;
+  include_table_of_contents?: boolean | null;
+  enable_research?: boolean | null;
+  brand_company_name?: string | null;
+  brand_description?: string | null;
+  brand_target_audience?: string | null;
+  brand_mentions?: string | null;
+  brand_value_props?: string[] | null;
+  brand_ctas?: BrandCta[] | null;
+  knowledge_base_enabled?: boolean | null;
+  knowledge_documents?: KnowledgeDocument[] | null;
+}
+
+const articleLengthOptions = [
+  { label: "Short", words: 500 },
+  { label: "Standard", words: 1500 },
+  { label: "Detailed", words: 2500 },
+  { label: "Long", words: 3500 },
+  { label: "Smart", words: 0 },
+];
+
+const languageOptions = ["US English", "UK English", "Turkish", "German", "French", "Spanish"];
+const voiceOptions = ["Natural", "Professional", "Conversational", "Technical", "Friendly", "Authoritative"];
+
+const brandMentionOptions = [
+  { value: "subtle", label: "Subtle", description: "Mention once if relevant" },
+  { value: "moderate", label: "Moderate", description: "Use in examples naturally" },
+  { value: "prominent", label: "Prominent", description: "Feature throughout" },
+];
+
 export default function Personas() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -115,12 +170,31 @@ export default function Personas() {
     base_model: "google/gemini-2.5-flash-preview",
     system_prompt: "",
   });
+  const [articleWordCount, setArticleWordCount] = useState(1500);
+  const [articleLanguage, setArticleLanguage] = useState("US English");
+  const [articleVoice, setArticleVoice] = useState("Natural");
+  const [includeTableOfContents, setIncludeTableOfContents] = useState(false);
+  const [enableResearch, setEnableResearch] = useState(false);
+  const [brandCompanyName, setBrandCompanyName] = useState("");
+  const [brandDescription, setBrandDescription] = useState("");
+  const [brandTargetAudience, setBrandTargetAudience] = useState("");
+  const [brandMentions, setBrandMentions] = useState("moderate");
+  const [brandValueProps, setBrandValueProps] = useState<string[]>([]);
+  const [newValueProp, setNewValueProp] = useState("");
+  const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(false);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeContent, setKnowledgeContent] = useState("");
+  const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
+  const [ctaLabel, setCtaLabel] = useState("");
+  const [ctaUrl, setCtaUrl] = useState("");
+  const [ctaDescription, setCtaDescription] = useState("");
 
   // Fetch personas
   const { data: personas = [], isLoading } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      const data = await api.get<any[]>("/personas");
+      const data = await api.get<Persona[]>("/personas");
       return (data || []).map((p) => ({
         ...p,
         tools_config: (Array.isArray(p.tools_config) ? p.tools_config : []) as unknown as ToolDefinition[],
@@ -134,10 +208,33 @@ export default function Personas() {
     },
   });
 
+  const { data: userSettings } = useQuery({
+    queryKey: ["user-settings"],
+    queryFn: () => api.get<UserSettings>("/settings"),
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (!userSettings) return;
+    setArticleWordCount(userSettings.article_word_count ?? 1500);
+    setArticleLanguage(userSettings.article_language || "US English");
+    setArticleVoice(userSettings.article_voice || "Natural");
+    setIncludeTableOfContents(userSettings.include_table_of_contents ?? false);
+    setEnableResearch(userSettings.enable_research ?? false);
+    setBrandCompanyName(userSettings.brand_company_name || "");
+    setBrandDescription(userSettings.brand_description || "");
+    setBrandTargetAudience(userSettings.brand_target_audience || "");
+    setBrandMentions(userSettings.brand_mentions || "moderate");
+    setBrandValueProps(userSettings.brand_value_props || []);
+    setBrandCtas(userSettings.brand_ctas || []);
+    setKnowledgeBaseEnabled(userSettings.knowledge_base_enabled ?? false);
+    setKnowledgeDocuments(userSettings.knowledge_documents || []);
+  }, [userSettings]);
+
   // Create persona mutation
   const createMutation = useMutation({
     mutationFn: async (data: typeof newPersona) => {
-      const created = await api.post<any>("/personas", {
+      const created = await api.post<Persona>("/personas", {
         name: data.name,
         base_model: data.base_model,
         system_prompt: data.system_prompt,
@@ -161,10 +258,10 @@ export default function Personas() {
       setEditedPersona(persona);
       setNewPersona({ name: "", base_model: "google/gemini-2.5-flash-preview", system_prompt: "" });
       setIsCreateOpen(false);
-      toast.success("Agent created successfully.");
+      toast.success("Brand voice profile created.");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to create agent");
+      toast.error(err instanceof Error ? err.message : "Failed to create profile");
     },
   });
 
@@ -189,10 +286,10 @@ export default function Personas() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["personas"] });
-      toast.success("Agent saved successfully.");
+      toast.success("Brand voice profile saved.");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to save agent");
+      toast.error(err instanceof Error ? err.message : "Failed to save profile");
     },
   });
 
@@ -207,17 +304,17 @@ export default function Personas() {
       setSelectedPersona(remaining[0] || null);
       setEditedPersona(remaining[0] || null);
       setIsDeleteOpen(false);
-      toast.success("Agent deleted.");
+      toast.success("Brand voice profile deleted.");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to delete agent");
+      toast.error(err instanceof Error ? err.message : "Failed to delete profile");
     },
   });
 
   // Duplicate persona mutation
   const duplicateMutation = useMutation({
     mutationFn: async (persona: Persona) => {
-      const created = await api.post<any>(`/personas/${persona.id}/duplicate`);
+      const created = await api.post<Persona>(`/personas/${persona.id}/duplicate`);
       return created;
     },
     onSuccess: (created) => {
@@ -234,11 +331,36 @@ export default function Personas() {
       };
       setSelectedPersona(persona);
       setEditedPersona(persona);
-      toast.success("Agent duplicated successfully.");
+      toast.success("Brand voice profile duplicated.");
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Failed to duplicate agent");
     },
+  });
+
+  const saveBrandVoiceMutation = useMutation({
+    mutationFn: async () => {
+      await api.put("/settings", {
+        article_word_count: articleWordCount,
+        article_language: articleLanguage,
+        article_voice: articleVoice,
+        include_table_of_contents: includeTableOfContents,
+        enable_research: enableResearch,
+        brand_company_name: brandCompanyName,
+        brand_description: brandDescription,
+        brand_target_audience: brandTargetAudience,
+        brand_mentions: brandMentions,
+        brand_value_props: brandValueProps,
+        brand_ctas: brandCtas,
+        knowledge_base_enabled: knowledgeBaseEnabled,
+        knowledge_documents: knowledgeDocuments,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Brand voice settings saved.");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to save brand voice settings"),
   });
 
   const filteredPersonas = personas.filter((p) =>
@@ -280,6 +402,42 @@ export default function Personas() {
     setEditedPersona({ ...editedPersona, ...updates });
   };
 
+  const addValueProp = () => {
+    const value = newValueProp.trim();
+    if (!value) return;
+    if (brandValueProps.length >= 5) {
+      toast.error("You can add up to 5 value props");
+      return;
+    }
+    setBrandValueProps((current) => [...current, value]);
+    setNewValueProp("");
+  };
+
+  const addKnowledgeDocument = () => {
+    const title = knowledgeTitle.trim();
+    const content = knowledgeContent.trim();
+    if (!title || !content) {
+      toast.error("Add a title and content for the knowledge document");
+      return;
+    }
+    setKnowledgeDocuments((current) => [...current, { id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() }]);
+    setKnowledgeTitle("");
+    setKnowledgeContent("");
+  };
+
+  const addCta = () => {
+    const label = ctaLabel.trim();
+    const description = ctaDescription.trim();
+    if (!label || !description) {
+      toast.error("Add at least a CTA label and description");
+      return;
+    }
+    setBrandCtas((current) => [...current, { id: crypto.randomUUID(), label, url: ctaUrl.trim(), description }]);
+    setCtaLabel("");
+    setCtaUrl("");
+    setCtaDescription("");
+  };
+
   // Count configured tools and plugins for badges
   const toolCount = editedPersona?.tools_config?.filter((t) => t.enabled).length || 0;
   const pluginCount = Object.values(editedPersona?.plugins_config || {}).filter(
@@ -294,7 +452,7 @@ export default function Personas() {
         {/* Left Panel - List */}
         <div className="w-80 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Agent Profiles</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Brand Voice Profiles</p>
             <Button size="icon" variant="ghost" onClick={() => setIsCreateOpen(true)}>
               <Plus className="h-4 w-4" />
             </Button>
@@ -303,7 +461,7 @@ export default function Personas() {
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Filter agents..."
+              placeholder="Filter profiles..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -317,7 +475,7 @@ export default function Personas() {
               </div>
             ) : filteredPersonas.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                {searchQuery ? "No agents found" : "No agents yet. Create one!"}
+                {searchQuery ? "No profiles found" : "No profiles yet. Create one."}
               </div>
             ) : (
               filteredPersonas.map((persona) => (
@@ -411,7 +569,7 @@ export default function Personas() {
                   </Button>
                   <Button onClick={handleSave} disabled={updateMutation.isPending}>
                     <Save className="h-4 w-4 mr-2" />
-                    {updateMutation.isPending ? "Saving..." : "Save Changes"}
+                    {updateMutation.isPending ? "Saving..." : "Save Profile"}
                   </Button>
                 </div>
               </div>
@@ -434,6 +592,188 @@ export default function Personas() {
                     persona={editedPersona}
                     onChange={updateEditedPersona}
                   />
+
+                  <div className="rounded-lg border border-border">
+                    <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+                      <div className="flex items-start gap-3">
+                        <Building2 className="mt-1 h-5 w-5 text-primary" />
+                        <div>
+                          <h3 className="font-semibold">Brand Voice Defaults</h3>
+                          <p className="text-sm text-muted-foreground">Global brand, voice, and article defaults used with every profile.</p>
+                        </div>
+                      </div>
+                      <Button onClick={() => saveBrandVoiceMutation.mutate()} disabled={saveBrandVoiceMutation.isPending}>
+                        <Save className="h-4 w-4 mr-2" />
+                        {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+                      </Button>
+                    </div>
+
+                    <div className="space-y-6 p-5">
+                      <section className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-primary" />
+                          <h4 className="font-medium">Voice</h4>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {voiceOptions.map((voice) => (
+                            <button
+                              key={voice}
+                              type="button"
+                              onClick={() => setArticleVoice(voice)}
+                              className={cn(
+                                "rounded-lg border p-3 text-left text-sm font-medium transition-calm",
+                                articleVoice === voice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                              )}
+                            >
+                              {voice}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Language</Label>
+                            <Select value={articleLanguage} onValueChange={setArticleLanguage}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {languageOptions.map((language) => (
+                                  <SelectItem key={language} value={language}>{language}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Article Length</Label>
+                            <Select value={String(articleWordCount)} onValueChange={(value) => setArticleWordCount(Number(value))}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {articleLengthOptions.map((option) => (
+                                  <SelectItem key={option.label} value={String(option.words)}>
+                                    {option.label} {option.words ? `(${option.words.toLocaleString()} words)` : "(Auto)"}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="flex items-center justify-between rounded-lg border border-border p-4">
+                            <span className="flex items-center gap-2 text-sm font-medium"><Globe2 className="h-4 w-4 text-primary" /> Research</span>
+                            <Switch checked={enableResearch} onCheckedChange={setEnableResearch} />
+                          </label>
+                          <label className="flex items-center justify-between rounded-lg border border-border p-4">
+                            <span className="flex items-center gap-2 text-sm font-medium"><ListChecks className="h-4 w-4 text-primary" /> Table of contents</span>
+                            <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
+                          </label>
+                        </div>
+                      </section>
+
+                      <section className="space-y-4 border-t border-border pt-6">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-primary" />
+                          <h4 className="font-medium">Brand</h4>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Input value={brandCompanyName} onChange={(event) => setBrandCompanyName(event.target.value)} placeholder="Company name" />
+                          <Input value={brandTargetAudience} onChange={(event) => setBrandTargetAudience(event.target.value)} placeholder="Target audience" />
+                        </div>
+                        <Textarea
+                          value={brandDescription}
+                          onChange={(event) => setBrandDescription(event.target.value)}
+                          placeholder="What your company does"
+                          className="min-h-[100px]"
+                        />
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {brandMentionOptions.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => setBrandMentions(option.value)}
+                              className={cn(
+                                "rounded-lg border p-3 text-left transition-calm",
+                                brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                              )}
+                            >
+                              <p className="text-sm font-medium">{option.label}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newValueProp}
+                            onChange={(event) => setNewValueProp(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                addValueProp();
+                              }
+                            }}
+                            placeholder="Add value proposition"
+                          />
+                          <Button type="button" variant="outline" onClick={addValueProp}>Add</Button>
+                        </div>
+                        {brandValueProps.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {brandValueProps.map((prop) => (
+                              <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                                {prop}
+                                <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+
+                      <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-primary" /> Knowledge Base</span>
+                            <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
+                          </div>
+                          <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
+                          <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
+                          <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
+                          {knowledgeDocuments.map((document) => (
+                            <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                              <div className="min-w-0">
+                                <p className="font-medium">{document.title}</p>
+                                <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                              </div>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="space-y-3">
+                          <span className="flex items-center gap-2 font-medium"><Target className="h-4 w-4 text-primary" /> Calls to Action</span>
+                          <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
+                          <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
+                          <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
+                          <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
+                          {brandCtas.map((cta) => (
+                            <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                              <div className="min-w-0">
+                                <p className="font-medium">{cta.label}</p>
+                                <p className="text-sm text-muted-foreground">{cta.description}</p>
+                                {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
+                              </div>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+                  </div>
 
                   {/* Advanced Toggle */}
                   <button
@@ -554,22 +894,22 @@ export default function Personas() {
               {isLoading ? (
                 <Loader2 className="h-8 w-8 animate-spin" />
               ) : (
-                "Select an agent to edit or create a new one."
+                "Select a brand voice profile to edit or create a new one."
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Create Agent Dialog */}
+      {/* Create Profile Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Create New Agent</DialogTitle>
+            <DialogTitle>Create Brand Voice Profile</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Agent Name</Label>
+              <Label>Profile Name</Label>
               <Input
                 placeholder="e.g., Senior Technical Writer, Brand Voice Lead"
                 value={newPersona.name}
@@ -615,7 +955,7 @@ export default function Personas() {
                 className="min-h-[150px]"
               />
               <p className="text-xs text-muted-foreground">
-                Define the agent's tone, style constraints, and knowledge base.
+                Define the profile's tone, style constraints, and knowledge base.
               </p>
             </div>
           </div>
@@ -624,7 +964,7 @@ export default function Personas() {
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Agent"}
+              {createMutation.isPending ? "Creating..." : "Create Profile"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -634,7 +974,7 @@ export default function Personas() {
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+            <AlertDialogTitle>Delete Brand Voice Profile</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{selectedPersona?.name}"? This action cannot be undone.
             </AlertDialogDescription>

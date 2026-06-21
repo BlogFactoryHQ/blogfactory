@@ -78,7 +78,7 @@ export default function Dashboard() {
       value: personaStats?.active || 0,
       detail: personaStats?.total ? `/ ${personaStats.total}` : undefined,
       icon: Users,
-      href: "/personas",
+      href: "/brand-voice",
     },
   ];
 
@@ -265,7 +265,7 @@ export default function Dashboard() {
               {[
                 { label: "Generate Content", sub: "Create new drafts", href: "/content-creator", icon: PenTool },
                 { label: "Add RSS Feed", sub: "New content source", href: "/rss-feeds/new", icon: Rss },
-                { label: "Create Persona", sub: "New writing voice", href: "/personas", icon: Users },
+                { label: "Brand Voice", sub: "Profiles and brand defaults", href: "/brand-voice", icon: Users },
               ].map((action) => (
                 <Link key={action.href} to={action.href}>
                   <div className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-foreground/15 hover:bg-muted/30 transition-calm cursor-pointer">

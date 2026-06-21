@@ -45,7 +45,7 @@ const primaryNavigation = [
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
   { name: "Job Queue", href: "/jobs", icon: ListTodo },
-  { name: "Personas", href: "/personas", icon: Users },
+  { name: "Brand Voice", href: "/brand-voice", icon: Users },
   { name: "Image Gallery", href: "/gallery", icon: ImageIcon },
   { name: "Usage", href: "/usage", icon: BarChart3 },
 ];

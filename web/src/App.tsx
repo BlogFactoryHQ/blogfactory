@@ -49,6 +49,7 @@ const App = () => (
                       <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                       <Route path="/content-creator" element={<ContentCreator />} />
                       <Route path="/jobs" element={<Jobs />} />
+                      <Route path="/brand-voice" element={<Personas />} />
                       <Route path="/personas" element={<Personas />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/sites" element={<Sites />} />

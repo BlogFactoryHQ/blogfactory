@@ -601,8 +601,6 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
-    { id: "brand", title: "Brand Settings", description: "Identity, products, CTAs", icon: Building2 },
-    { id: "voice", title: "Voice & Style", description: "Tone, vocab, training", icon: MessageSquare },
     { id: "internal", title: "Internal Linking", description: "Sitemap index", icon: LinkIcon },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
@@ -732,7 +730,6 @@ export default function Settings() {
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Other Defaults</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { label: "Voice", value: articleVoice, icon: MessageSquare, section: "voice" },
                       { label: "Images", value: imageConfig.cover.enabled || imageConfig.inline.enabled ? "On" : "Off", icon: ImageIcon, section: "images" },
                       { label: "Links", value: enableInternalLinks ? "On" : "Off", icon: LinkIcon, section: "internal" },
                       { label: "Research", value: enableResearch ? "On" : "Off", icon: Globe2, section: "advanced" },

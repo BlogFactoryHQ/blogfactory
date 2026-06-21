@@ -711,7 +711,7 @@ export default function RSSFeedNew() {
                 </Select>
                 {personas.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No active personas. <a href="/personas" className="text-primary underline">Create one first</a>.
+                    No active personas. <a href="/brand-voice" className="text-primary underline">Create one first</a>.
                   </p>
                 )}
               </div>
