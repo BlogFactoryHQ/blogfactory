@@ -17,16 +17,37 @@ function asText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isPrivateHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return true;
+  if (host.includes("metadata.google") || host.includes("instance-data")) return true;
+  return false;
+}
+
 function normalizeSiteInput(input: string) {
   const withProtocol = /^https?:\/\//i.test(input) ? input : `https://${input}`;
   const parsed = new URL(withProtocol);
   if (!["http:", "https:"].includes(parsed.protocol)) {
     throw new Error("Only HTTP and HTTPS sites are supported");
   }
+  if (isPrivateHost(parsed.hostname)) {
+    throw new Error("Private or internal sites are not allowed");
+  }
   return {
     url: parsed.toString(),
     domain: parsed.hostname.replace(/^www\./, ""),
   };
+}
+
+function defaultSitemapUrl(inputUrl: string) {
+  const parsed = new URL(inputUrl);
+  if (parsed.pathname === "/" || parsed.pathname === "") {
+    parsed.pathname = "/sitemap.xml";
+  }
+  return parsed.toString();
 }
 
 function titleCaseDomain(domain: string) {
@@ -200,22 +221,30 @@ sitesRoutes.post("/", async (c) => {
 
   try {
     const normalized = normalizeSiteInput(input);
-    const index = await buildInternalLinkIndex(normalized.url);
+    let index: InternalLinkIndex | null = null;
+    let indexingError: string | null = null;
+
+    try {
+      index = await buildInternalLinkIndex(normalized.url);
+    } catch (err: any) {
+      indexingError = err.message || "We could not index this site's sitemap yet";
+    }
+
     const now = new Date();
     const [site] = await db
       .insert(sites)
       .values({
         userId,
-        name: requestedName || titleCaseDomain(index.siteHost || normalized.domain),
-        domain: index.siteHost || normalized.domain,
-        sitemapUrl: index.sitemapUrl,
+        name: requestedName || titleCaseDomain(index?.siteHost || normalized.domain),
+        domain: index?.siteHost || normalized.domain,
+        sitemapUrl: index?.sitemapUrl || defaultSitemapUrl(normalized.url),
         status: "active",
-        pageCount: index.pageCount,
-        vectorCount: index.vectorCount,
-        topics: extractTopics(index),
-        language: detectLanguage(index),
+        pageCount: index?.pageCount || 0,
+        vectorCount: index?.vectorCount || 0,
+        topics: index ? extractTopics(index) : [],
+        language: index ? detectLanguage(index) : null,
         internalLinkIndex: index as never,
-        internalLinkLastSyncedAt: now,
+        internalLinkLastSyncedAt: index ? now : null,
         updatedAt: now,
       } as never)
       .returning();
@@ -226,6 +255,8 @@ sitesRoutes.post("/", async (c) => {
       site: serializeSite(site),
       active_site_id: site.id,
       activeSiteId: site.id,
+      indexing_error: indexingError,
+      indexingError,
     }, 201);
   } catch (err: any) {
     return c.json({ error: err.message || "Failed to connect site" }, 400);

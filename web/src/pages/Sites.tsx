@@ -19,9 +19,13 @@ export default function Sites() {
     event.preventDefault();
     if (!siteUrl.trim()) return;
     try {
-      await createSite({ url: siteUrl.trim() });
+      const site = await createSite({ url: siteUrl.trim() });
       setSiteUrl("");
-      toast.success("Site connected");
+      if (site.pageCount > 0) {
+        toast.success("Site connected");
+      } else {
+        toast.success("Domain added. No sitemap pages were found yet; you can refresh it later.");
+      }
     } catch (err: unknown) {
       toast.error(errorMessage(err, "Failed to connect site"));
     }
