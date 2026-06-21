@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -87,6 +87,8 @@ export default function BatchImport() {
   const [items, setItems] = useState<ImportItem[]>([]);
   const [isReading, setIsReading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const stopRequestedRef = useRef(false);
+  const currentAbortRef = useRef<AbortController | null>(null);
   const [integrationId, setIntegrationId] = useState("none");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
   const { integrations, isLoading } = useIntegrations();
@@ -139,22 +141,35 @@ export default function BatchImport() {
   };
 
   const runImport = async () => {
+    stopRequestedRef.current = false;
     setIsRunning(true);
     try {
       for (const item of items) {
+        if (stopRequestedRef.current) {
+          updateItem(item.id, { message: "Stopped" });
+          continue;
+        }
         if (item.status === "done") continue;
         updateItem(item.id, { status: "importing", message: "Creating BlogFactory draft" });
 
         try {
+          const controller = new AbortController();
+          currentAbortRef.current = controller;
           const formData = new FormData();
           formData.append("folder", item.folder);
           formData.append("markdown", await zipEntryFile(item.markdown, "text/markdown"));
-          for (const image of item.images) formData.append("images", await zipEntryFile(image, mimeFor(image.name)));
+          if (integrationId === "none") {
+            for (const image of item.images) formData.append("images", await zipEntryFile(image, mimeFor(image.name)));
+          }
 
-          const imported = await api.upload<{ post: { id: string; title: string } }>("/posts/import-md", formData);
+          const imported = await api.upload<{ post: { id: string; title: string } }>("/posts/import-md", formData, { signal: controller.signal });
           updateItem(item.id, { postId: imported.post.id, message: "Draft imported" });
 
           if (integrationId !== "none") {
+            if (stopRequestedRef.current) {
+              updateItem(item.id, { status: "done", message: "Imported, publish skipped" });
+              continue;
+            }
             updateItem(item.id, { status: "publishing", message: mode === "publish" ? "Publishing live" : "Creating CMS draft" });
             const result = await api.post<{ success: boolean; error?: string }>(`/posts/${imported.post.id}/publish`, {
               integrationId,
@@ -164,20 +179,31 @@ export default function BatchImport() {
               tags: item.metadata.tags,
               metaTitle: item.metadata.metaTitle,
               metaDescription: item.metadata.metaDescription,
-            });
+            }, { signal: controller.signal });
             if (!result.success) throw new Error(result.error || "Publish failed");
           }
 
           updateItem(item.id, { status: "done", message: integrationId === "none" ? "Imported" : "Sent to integration" });
         } catch (error) {
-          updateItem(item.id, { status: "failed", message: error instanceof Error ? error.message : "Failed" });
+          if (stopRequestedRef.current && error instanceof DOMException && error.name === "AbortError") {
+            updateItem(item.id, { status: "ready", message: "Stopped" });
+            continue;
+          }
+          const message = error instanceof Error ? error.message : "Failed";
+          updateItem(item.id, {
+            status: "failed",
+            message: message.includes("413") ? "Upload too large. Run again with a platform destination or fewer images." : message,
+          });
+        } finally {
+          currentAbortRef.current = null;
         }
       }
 
       queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success("Batch finished");
+      toast.success(stopRequestedRef.current ? "Batch stopped" : "Batch finished");
     } finally {
       setIsRunning(false);
+      stopRequestedRef.current = false;
     }
   };
 
@@ -245,10 +271,29 @@ export default function BatchImport() {
                 </RadioGroup>
               </div>
 
-              <Button className="w-full" disabled={items.length === 0 || isRunning} onClick={runImport}>
-                {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-                Run batch
-              </Button>
+              {isRunning ? (
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() => {
+                    stopRequestedRef.current = true;
+                    currentAbortRef.current?.abort();
+                    toast.info("Stopping batch");
+                  }}
+                >
+                  Stop batch
+                </Button>
+              ) : (
+                <Button className="w-full" disabled={items.length === 0} onClick={runImport}>
+                  <UploadCloud className="mr-2 h-4 w-4" />
+                  Run batch
+                </Button>
+              )}
+              {integrationId !== "none" && (
+                <p className="text-xs text-muted-foreground">
+                  Direct platform runs import markdown only to avoid upload-size failures. Use Import only when you need images stored in BlogFactory.
+                </p>
+              )}
             </div>
           </div>
 

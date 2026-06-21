@@ -21,7 +21,7 @@ class ApiClient {
     return this.token;
   }
 
-  private async request<T>(method: string, path: string, body?: any): Promise<T> {
+  private async request<T>(method: string, path: string, body?: any, signal?: AbortSignal): Promise<T> {
     const headers: Record<string, string> = {};
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
     if (body && !(body instanceof FormData)) {
@@ -32,6 +32,7 @@ class ApiClient {
       method,
       headers,
       body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+      signal,
     });
 
     if (resp.status === 401) {
@@ -52,8 +53,8 @@ class ApiClient {
     return this.request<T>("GET", path);
   }
 
-  post<T>(path: string, body?: any): Promise<T> {
-    return this.request<T>("POST", path, body);
+  post<T>(path: string, body?: any, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>("POST", path, body, options?.signal);
   }
 
   put<T>(path: string, body?: any): Promise<T> {
@@ -68,8 +69,8 @@ class ApiClient {
     return this.request<T>("DELETE", path);
   }
 
-  upload<T>(path: string, formData: FormData): Promise<T> {
-    return this.request<T>("POST", path, formData);
+  upload<T>(path: string, formData: FormData, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>("POST", path, formData, options?.signal);
   }
 }
 
