@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { sites, userSettings } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { deleteApiKey, getApiKeyMetadata, setApiKey } from "../services/api-keys.js";
+import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenRouterKey, setApiKey } from "../services/api-keys.js";
 import { buildInternalLinkIndex } from "../services/internal-linking.js";
 
 export const settingsRoutes = new Hono();
@@ -17,6 +17,80 @@ const asNumber = (value: unknown) => {
   return undefined;
 };
 const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined;
+const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
+
+function firstTextFromGemini(data: unknown) {
+  const record = data as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  return record.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() || "";
+}
+
+function firstTextFromOpenRouter(data: unknown) {
+  const record = data as { choices?: Array<{ message?: { content?: unknown } }> };
+  const content = record.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part?.text === "string" ? part.text : "")
+      .join("")
+      .trim();
+  }
+  return "";
+}
+
+async function extractKnowledgePdf(file: File, userId: string) {
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const base64 = bytes.toString("base64");
+  const googleKey = await getGoogleAiKey(userId);
+
+  if (googleKey) {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inlineData: { mimeType: "application/pdf", data: base64 } },
+              { text: "Extract all useful text from this PDF for an SEO writing knowledge base. Preserve headings, lists, templates, and examples. Output clean markdown only." },
+            ],
+          }],
+        }),
+      }
+    );
+    if (resp.ok) {
+      const text = firstTextFromGemini(await resp.json());
+      if (text) return text;
+    }
+  }
+
+  const openRouterKey = await getOpenRouterKey(userId);
+  if (openRouterKey) {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Extract all useful text from this PDF for an SEO writing knowledge base. Preserve headings, lists, templates, and examples. Output clean markdown only." },
+            { type: "file", file: { filename: file.name, file_data: `data:application/pdf;base64,${base64}` } },
+          ],
+        }],
+      }),
+    });
+    if (resp.ok) {
+      const text = firstTextFromOpenRouter(await resp.json());
+      if (text) return text;
+    }
+  }
+
+  throw new Error("Add a Google AI or OpenRouter API key before importing PDF knowledge");
+}
 
 function serializeSettings(settings: typeof userSettings.$inferSelect | undefined) {
   if (!settings) return {};
@@ -324,6 +398,32 @@ settingsRoutes.delete("/internal-linking", async (c) => {
   }
 
   return c.json(serializeSettings(result));
+});
+
+settingsRoutes.post("/knowledge/import", async (c) => {
+  const userId = getUserId(c);
+  const formData = await c.req.raw.formData();
+  const file = formData.get("file");
+
+  if (!(file instanceof File)) {
+    return c.json({ error: "Knowledge file is required" }, 400);
+  }
+  if (file.size > MAX_KNOWLEDGE_FILE_BYTES) {
+    return c.json({ error: "Knowledge file must be 10 MB or smaller" }, 400);
+  }
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    return c.json({ error: "Only PDF files are imported by the server" }, 400);
+  }
+
+  try {
+    const content = await extractKnowledgePdf(file, userId);
+    return c.json({
+      title: file.name.replace(/\.[^.]+$/, ""),
+      content,
+    });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Failed to import knowledge file" }, 400);
+  }
 });
 
 settingsRoutes.get("/", async (c) => {

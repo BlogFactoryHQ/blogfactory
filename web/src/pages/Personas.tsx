@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import JSZip from "jszip";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
@@ -42,6 +43,7 @@ import {
   MessageSquare,
   Globe2,
   FileText,
+  FileUp,
   ListChecks,
   Target,
   Wrench,
@@ -155,6 +157,25 @@ const brandMentionOptions = [
   { value: "prominent", label: "Prominent", description: "Feature throughout" },
 ];
 
+const KNOWLEDGE_IMPORT_CHAR_LIMIT = 30000;
+
+function limitKnowledgeContent(content: string) {
+  if (content.length <= KNOWLEDGE_IMPORT_CHAR_LIMIT) return content;
+  return `${content.slice(0, KNOWLEDGE_IMPORT_CHAR_LIMIT)}\n\n[Imported file truncated at ${KNOWLEDGE_IMPORT_CHAR_LIMIT.toLocaleString()} characters.]`;
+}
+
+async function extractDocxText(file: File) {
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const documentXml = await zip.file("word/document.xml")?.async("text");
+  if (!documentXml) throw new Error("Could not read DOCX content");
+  const xml = new DOMParser().parseFromString(documentXml, "application/xml");
+  return Array.from(xml.getElementsByTagName("w:t"))
+    .map((node) => node.textContent || "")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function Personas() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -185,6 +206,7 @@ export default function Personas() {
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
+  const [isImportingKnowledge, setIsImportingKnowledge] = useState(false);
   const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
   const [ctaLabel, setCtaLabel] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
@@ -339,7 +361,7 @@ export default function Personas() {
   });
 
   const saveBrandVoiceMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
       await api.put("/settings", {
         article_word_count: articleWordCount,
         article_language: articleLanguage,
@@ -352,8 +374,8 @@ export default function Personas() {
         brand_mentions: brandMentions,
         brand_value_props: brandValueProps,
         brand_ctas: brandCtas,
-        knowledge_base_enabled: knowledgeBaseEnabled,
-        knowledge_documents: knowledgeDocuments,
+        knowledge_base_enabled: knowledgeBaseEnabled || Boolean(nextKnowledgeDocuments?.length),
+        knowledge_documents: nextKnowledgeDocuments || knowledgeDocuments,
       });
     },
     onSuccess: () => {
@@ -423,6 +445,53 @@ export default function Personas() {
     setKnowledgeDocuments((current) => [...current, { id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() }]);
     setKnowledgeTitle("");
     setKnowledgeContent("");
+  };
+
+  const importKnowledgeFile = async (file: File) => {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    let content = "";
+
+    if (extension === "txt" || file.type === "text/plain") {
+      content = await file.text();
+    } else if (extension === "docx") {
+      content = await extractDocxText(file);
+    } else if (extension === "pdf" || file.type === "application/pdf") {
+      const formData = new FormData();
+      formData.append("file", file);
+      const imported = await api.upload<{ title: string; content: string }>("/settings/knowledge/import", formData);
+      content = imported.content;
+    } else {
+      throw new Error("Upload a PDF, DOCX, or TXT file");
+    }
+
+    const trimmed = limitKnowledgeContent(content.trim());
+    if (!trimmed) throw new Error("No readable text found in that file");
+
+    const document = {
+      id: crypto.randomUUID(),
+      title: file.name.replace(/\.[^.]+$/, ""),
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+    const nextDocuments = [...knowledgeDocuments, document];
+    setKnowledgeDocuments(nextDocuments);
+    setKnowledgeBaseEnabled(true);
+    saveBrandVoiceMutation.mutate(nextDocuments);
+    toast.success("Knowledge file imported");
+  };
+
+  const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setIsImportingKnowledge(true);
+    try {
+      await importKnowledgeFile(file);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import knowledge file");
+    } finally {
+      setIsImportingKnowledge(false);
+    }
   };
 
   const addCta = () => {
@@ -735,6 +804,24 @@ export default function Personas() {
                           <div className="flex items-center justify-between gap-3">
                             <span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-primary" /> Knowledge Base</span>
                             <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
+                              <label>
+                                {isImportingKnowledge ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileUp className="mr-2 h-4 w-4" />
+                                )}
+                                Import File
+                                <input
+                                  type="file"
+                                  accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                  className="hidden"
+                                  onChange={handleKnowledgeFileChange}
+                                />
+                              </label>
+                            </Button>
                           </div>
                           <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
                           <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
