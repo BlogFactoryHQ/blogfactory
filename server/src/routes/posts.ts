@@ -17,24 +17,27 @@ postsRoutes.get("/", async (c) => {
       content: posts.content,
       summary: posts.summary,
       status: posts.status,
-      sourceType: posts.sourceType,
-      sourceRefId: posts.sourceRefId,
-      sourceContentHash: posts.sourceContentHash,
-      jobId: posts.jobId,
-      personaId: posts.personaId,
-      modelId: posts.modelId,
-      coverImageUrl: posts.coverImageUrl,
-      inlineImages: posts.inlineImages,
-      createdAt: posts.createdAt,
-      updatedAt: posts.updatedAt,
-      personaName: personas.name,
+      source_type: posts.sourceType,
+      source_ref_id: posts.sourceRefId,
+      source_content_hash: posts.sourceContentHash,
+      job_id: posts.jobId,
+      persona_id: posts.personaId,
+      model_id: posts.modelId,
+      cover_image_url: posts.coverImageUrl,
+      inline_images: posts.inlineImages,
+      created_at: posts.createdAt,
+      updated_at: posts.updatedAt,
+      persona_name: personas.name,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
     .where(eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 
-  return c.json(rows);
+  return c.json(rows.map(({ persona_name, ...post }) => ({
+    ...post,
+    personas: persona_name ? { name: persona_name } : null,
+  })));
 });
 
 postsRoutes.get("/:id/publications", async (c) => {
@@ -73,17 +76,17 @@ postsRoutes.get("/:id", async (c) => {
       content: posts.content,
       summary: posts.summary,
       status: posts.status,
-      sourceType: posts.sourceType,
-      sourceRefId: posts.sourceRefId,
-      sourceContentHash: posts.sourceContentHash,
-      jobId: posts.jobId,
-      personaId: posts.personaId,
-      modelId: posts.modelId,
-      coverImageUrl: posts.coverImageUrl,
-      inlineImages: posts.inlineImages,
-      createdAt: posts.createdAt,
-      updatedAt: posts.updatedAt,
-      personaName: personas.name,
+      source_type: posts.sourceType,
+      source_ref_id: posts.sourceRefId,
+      source_content_hash: posts.sourceContentHash,
+      job_id: posts.jobId,
+      persona_id: posts.personaId,
+      model_id: posts.modelId,
+      cover_image_url: posts.coverImageUrl,
+      inline_images: posts.inlineImages,
+      created_at: posts.createdAt,
+      updated_at: posts.updatedAt,
+      persona_name: personas.name,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
@@ -91,7 +94,11 @@ postsRoutes.get("/:id", async (c) => {
     .limit(1);
 
   if (!post) return c.json({ error: "Post not found" }, 404);
-  return c.json(post);
+  const { persona_name, ...result } = post;
+  return c.json({
+    ...result,
+    personas: persona_name ? { name: persona_name } : null,
+  });
 });
 
 function parseList(value: unknown) {
