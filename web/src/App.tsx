@@ -14,6 +14,7 @@ const Auth = lazy(() => import("@/pages/Auth"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Posts = lazy(() => import("@/pages/Posts"));
 const PostEditorPage = lazy(() => import("@/pages/PostEditorPage"));
+const News = lazy(() => import("@/pages/News"));
 const RSSFeeds = lazy(() => import("@/pages/RSSFeeds"));
 const RSSFeedNew = lazy(() => import("@/pages/RSSFeedNew"));
 const ContentCreator = lazy(() => import("@/pages/ContentCreator"));
@@ -53,6 +54,7 @@ const App = () => (
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/posts" element={<Posts />} />
                         <Route path="/posts/:id/edit" element={<PostEditorPage />} />
+                        <Route path="/news" element={<News />} />
                         <Route path="/rss-feeds" element={<RSSFeeds />} />
                         <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                         <Route path="/content-creator" element={<ContentCreator />} />

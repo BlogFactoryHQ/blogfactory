@@ -114,14 +114,6 @@ export function FeedEditorDialog({
 
   if (!editedFeed) return null;
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
-  const sportsNewsMode = editedFeed.platform_config?.editorialMode === "news" || editedFeed.platform_config?.editorialMode === "sports_news";
-
-  const setSportsNewsMode = (checked: boolean) => {
-    const nextConfig = { ...(editedFeed.platform_config || {}) };
-    if (checked) nextConfig.editorialMode = "news";
-    else delete nextConfig.editorialMode;
-    setEditedFeed({ ...editedFeed, platform_config: nextConfig });
-  };
 
   const handleSave = () => {
     if (selectedModelUnavailable) return;
@@ -185,17 +177,6 @@ export function FeedEditorDialog({
                 </div>
               </div>
 
-              {editedFeed.platform === "rss" && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
-                  <div>
-                    <p className="font-medium">News Mode</p>
-                    <p className="text-sm text-muted-foreground">
-                      Use imported source rules before drafting
-                    </p>
-                  </div>
-                  <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
-                </div>
-              )}
             </section>
 
             <Separator />

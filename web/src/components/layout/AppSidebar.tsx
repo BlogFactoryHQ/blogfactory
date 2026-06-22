@@ -18,6 +18,7 @@ import {
   Globe2,
   Plus,
   Check,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const primaryNavigation = [
+  { name: "News", href: "/news", icon: Newspaper },
   { name: "Create Content", href: "/content-creator", icon: PenTool },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },

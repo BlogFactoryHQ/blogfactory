@@ -79,7 +79,6 @@ export default function RSSFeedNew() {
   const [blurNsfw, setBlurNsfw] = useState(true);
   const [filterOldPostsDays, setFilterOldPostsDays] = useState<number | undefined>();
   const [extractFullContent, setExtractFullContent] = useState(false);
-  const [sportsNewsMode, setSportsNewsMode] = useState(false);
   const [postsPerRun, setPostsPerRun] = useState(5);
 
   // Keywords & scheduling
@@ -136,23 +135,22 @@ export default function RSSFeedNew() {
 
   // Build platform config object
   const buildPlatformConfig = () => {
-    const editorial = sportsNewsMode && platform === "rss" ? { editorialMode: "news" } : {};
     switch (platform) {
       case "reddit":
-        return { subreddit, redditDomain, ...editorial };
+        return { subreddit, redditDomain };
       case "hackernews":
-        return { type: hnType, ...editorial };
+        return { type: hnType };
       case "github":
-        return { language: githubLanguage, topic: githubTopic, since: githubPeriod, ...editorial };
+        return { language: githubLanguage, topic: githubTopic, since: githubPeriod };
       case "lemmy":
-        return { instance: lemmyInstance, community: lemmyCommunity, ...editorial };
+        return { instance: lemmyInstance, community: lemmyCommunity };
       case "lobsters":
-        return { tag: lobstersTag, ...editorial };
+        return { tag: lobstersTag };
       case "youtube":
-        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl, ...editorial };
+        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl };
       case "rss":
       default:
-        return { url: sourceUrl, ...editorial };
+        return { url: sourceUrl };
     }
   };
 
@@ -454,13 +452,6 @@ export default function RSSFeedNew() {
                         className="pl-9"
                       />
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
-                    <div>
-                      <p className="font-medium text-sm">News Mode</p>
-                      <p className="text-xs text-muted-foreground">Use imported source rules before drafting</p>
-                    </div>
-                    <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
                   </div>
                 </>
               )}
