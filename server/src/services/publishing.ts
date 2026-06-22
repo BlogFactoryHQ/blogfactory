@@ -3,8 +3,9 @@ import { SignJWT } from "jose";
 import { connect } from "framer-api";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
+import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
+import { normalizeImagePlacement, placeInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
@@ -53,6 +54,8 @@ interface PublishOptions {
 
 interface ArticlePayload {
   title: string;
+  baseMarkdown: string;
+  baseHtml: string;
   markdown: string;
   html: string;
   excerpt: string;
@@ -62,7 +65,8 @@ interface ArticlePayload {
   metaTitle: string;
   metaDescription: string;
   coverImageUrl: string | null;
-  inlineImages: string[];
+  coverAltText: string;
+  inlineImages: PlacementImage[];
 }
 
 interface PublishResult {
@@ -197,7 +201,21 @@ export async function publishPost(userId: string, postId: string, integrationId:
 
   const provider = integration.provider as IntegrationProvider;
   const credentials = decryptProviderCredentials(integration);
-  const article = buildArticlePayload(post, options);
+  const [settings] = await db
+    .select({
+      imagePlacement: userSettings.imagePlacement,
+    })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const assetRows = await db
+    .select({
+      storagePath: imageAssets.storagePath,
+      altText: imageAssets.altText,
+    })
+    .from(imageAssets)
+    .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
+  const article = buildArticlePayload(post, options, normalizeImagePlacement(settings?.imagePlacement), new Map(assetRows.map((asset) => [asset.storagePath, asset.altText])));
   const mode = options.mode === "publish" ? "publish" : "draft";
 
   try {
@@ -355,7 +373,11 @@ function last4(value: string) {
   return value.slice(-4);
 }
 
-function buildArticlePayload(post: PostRow, options: PublishOptions): ArticlePayload {
+function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
+  return `${type === "cover" ? "Featured image" : `Article image ${index + 1}`} for ${title}`.slice(0, 180);
+}
+
+function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, altByPath: Map<string, string | null>): ArticlePayload {
   const title = post.title.trim();
   const content = post.content || "";
   const meta = parseMarkdownMeta(content);
@@ -366,19 +388,33 @@ function buildArticlePayload(post: PostRow, options: PublishOptions): ArticlePay
   const slug = slugify(options.slug || meta.slug || title);
   const metaTitle = (options.metaTitle || meta.metaTitle || title).slice(0, 70);
   const metaDescription = (options.metaDescription || meta.metaDescription || excerpt).slice(0, 160);
+  const storedInlineImages = (post.inlineImages || []).map((url, index) => ({
+    url,
+    altText: altByPath.get(url) || fallbackImageAlt(title, "inline", index),
+  }));
+  const autoPromotedCover = !post.coverImageUrl && imagePlacement === "auto" && storedInlineImages.length === 1
+    ? storedInlineImages[0]
+    : null;
+  const coverImageUrl = post.coverImageUrl || autoPromotedCover?.url || null;
+  const coverAltText = coverImageUrl ? altByPath.get(coverImageUrl) || autoPromotedCover?.altText || fallbackImageAlt(title, "cover") : fallbackImageAlt(title, "cover");
+  const inlineImages = autoPromotedCover ? [] : storedInlineImages;
+  const placedMarkdown = placeInlineImages(body, inlineImages, imagePlacement);
 
   return {
     title,
-    markdown: body,
-    html: markdownToHtml(body),
+    baseMarkdown: body,
+    baseHtml: markdownToHtml(body),
+    markdown: placedMarkdown,
+    html: markdownToHtml(placedMarkdown),
     excerpt,
     slug,
     tags,
     categories,
     metaTitle,
     metaDescription,
-    coverImageUrl: post.coverImageUrl || null,
-    inlineImages: post.inlineImages || [],
+    coverImageUrl,
+    coverAltText,
+    inlineImages,
   };
 }
 
@@ -500,6 +536,10 @@ function escapeAttribute(value: string) {
   return escapeHtml(value).replace(/"/g, "&quot;");
 }
 
+function replaceImageUrls(html: string, images: Array<{ from: string; to: string }>) {
+  return images.reduce((next, image) => next.split(escapeAttribute(image.from)).join(escapeAttribute(image.to)), html);
+}
+
 function basicAuth(username: string, password: string) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
@@ -520,7 +560,13 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
   };
   const tagIds = await resolveWordPressTerms(credentials, "tags", article.tags);
   const categoryIds = await resolveWordPressTerms(credentials, "categories", article.categories);
-  const featuredMedia = article.coverImageUrl ? await uploadWordPressMedia(credentials, article.coverImageUrl, article.title).catch(() => null) : null;
+  const featuredMedia = article.coverImageUrl ? await uploadWordPressMedia(credentials, article.coverImageUrl, article.title, article.coverAltText).catch(() => null) : null;
+  const uploadedInlineImages = await Promise.all(
+    article.inlineImages.map(async (image, index) => ({
+      from: image.url,
+      to: (await uploadWordPressMedia(credentials, image.url, `${article.title}-${index + 1}`, image.altText || article.title).catch(() => null))?.url || image.url,
+    }))
+  );
   const postType = options.postType === "page" ? "pages" : "posts";
 
   const response = await fetch(`${credentials.url}/wp-json/wp/v2/${postType}`, {
@@ -528,13 +574,13 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
     headers,
     body: JSON.stringify({
       title: article.title,
-      content: article.html,
+      content: replaceImageUrls(article.html, uploadedInlineImages),
       excerpt: article.excerpt,
       slug: article.slug,
       status: mode === "publish" ? "publish" : "draft",
       ...(tagIds.length && postType === "posts" ? { tags: tagIds } : {}),
       ...(categoryIds.length && postType === "posts" ? { categories: categoryIds } : {}),
-      ...(featuredMedia ? { featured_media: featuredMedia } : {}),
+      ...(featuredMedia?.id ? { featured_media: featuredMedia.id } : {}),
       meta: {
         _yoast_wpseo_title: article.metaTitle,
         _yoast_wpseo_metadesc: article.metaDescription,
@@ -585,7 +631,7 @@ async function resolveWordPressTerms(credentials: WordPressCredentials, taxonomy
   return ids;
 }
 
-async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl: string, title: string) {
+async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl: string, title: string, altText?: string) {
   const image = await fetchImage(pathOrUrl);
   if (!image) return null;
   const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
@@ -599,8 +645,18 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
     body: image.buffer as unknown as BodyInit,
   });
   if (!response.ok) return null;
-  const data = await response.json() as { id?: number };
-  return data.id || null;
+  const data = await response.json() as { id?: number; source_url?: string };
+  if (data.id && altText) {
+    await fetch(`${credentials.url}/wp-json/wp/v2/media/${data.id}`, {
+      method: "POST",
+      headers: {
+        Authorization: basicAuth(credentials.username, credentials.applicationPassword),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ alt_text: altText }),
+    }).catch(() => null);
+  }
+  return data.id ? { id: data.id, url: data.source_url || pathOrUrl } : null;
 }
 
 async function testGhost(credentials: GhostCredentials) {
@@ -615,12 +671,13 @@ async function testGhost(credentials: GhostCredentials) {
 async function publishGhost(credentials: GhostCredentials, article: ArticlePayload, mode: PublishMode, options: PublishOptions): Promise<PublishResult> {
   const postType = options.postType === "page" ? "pages" : "posts";
   const featureImage = article.coverImageUrl ? await uploadGhostImage(credentials, article.coverImageUrl, article.title) : null;
-  const inlineImages = (await Promise.all(
-    article.inlineImages.map((image, index) => uploadGhostImage(credentials, image, `${article.title}-${index + 1}`))
-  )).filter((url): url is string => Boolean(url));
-  const html = inlineImages.length
-    ? `${article.html}\n${inlineImages.map((url) => `<figure><img src="${escapeAttribute(url)}" alt="" /></figure>`).join("\n")}`
-    : article.html;
+  const uploadedInlineImages = await Promise.all(
+    article.inlineImages.map(async (image, index) => ({
+      from: image.url,
+      to: await uploadGhostImage(credentials, image.url, `${article.title}-${index + 1}`).catch(() => image.url) || image.url,
+    }))
+  );
+  const html = replaceImageUrls(article.html, uploadedInlineImages);
   const response = await fetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
     method: "POST",
     headers: {
@@ -691,7 +748,7 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
   const createResponse = await wixApi(credentials, "POST", "/blog/v3/draft-posts", {
     draftPost: {
       title: article.title,
-      richContent: markdownToWixRichContent(article.markdown, coverMedia),
+      richContent: markdownToWixRichContent(article.baseMarkdown, coverMedia),
       ...(credentials.memberId ? { memberId: credentials.memberId } : {}),
       slug: article.slug,
       excerpt: article.excerpt,
@@ -806,7 +863,7 @@ async function publishFramer(credentials: FramerCredentials, article: ArticlePay
     };
 
     setField("title", article.title, "string");
-    setField("content", article.html, "formattedText");
+    setField("content", article.baseHtml, "formattedText");
     setField("excerpt", article.excerpt, "string");
     if (article.coverImageUrl?.startsWith("http")) setField("coverImage", article.coverImageUrl, "image");
 

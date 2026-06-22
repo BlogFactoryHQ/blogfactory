@@ -65,6 +65,8 @@ export async function runScheduler(userId?: string) {
         .limit(1);
 
       const imageConfig: any = {};
+      imageConfig.imagePlacement = settings?.imagePlacement ?? "auto";
+      imageConfig.compressionEnabled = settings?.imageCompressionEnabled ?? true;
       if (settings?.coverEnabled) {
         imageConfig.cover = {
           count: settings.coverImageCount ?? 1,

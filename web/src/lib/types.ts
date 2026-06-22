@@ -129,6 +129,7 @@ export interface ImageAsset {
   type: string;
   status: string;
   prompt: string | null;
+  alt_text: string | null;
   model_id: string | null;
   provider: string | null;
   aspect_ratio: string | null;
@@ -150,6 +151,7 @@ export interface ImageGenerationRequest {
   job_id: string | null;
   provider: string;
   prompt: string;
+  alt_text: string | null;
   type: string;
   position: number | null;
   aspect_ratio: string | null;
@@ -166,6 +168,14 @@ export interface UserSettings {
   user_id?: string;
   image_model: string | null;
   image_style_prompt: string | null;
+  image_placement: string | null;
+  image_compression_enabled: boolean | null;
+  image_source_mode: string | null;
+  source_image_allowed: boolean | null;
+  ai_fallback_enabled: boolean | null;
+  max_ai_images_per_day: number | null;
+  max_ai_images_per_post: number | null;
+  min_minutes_between_ai_images: number | null;
   image_advanced_options: any;
   cover_enabled: boolean | null;
   cover_image_count: number | null;

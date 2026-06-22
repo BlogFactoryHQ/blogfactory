@@ -159,9 +159,10 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
 
   // Try to extract main content
   const content = extractMainContent(html);
+  const sourceImages = extractSourceImages(html, url);
 
   if (content.length > 200) {
-    return { content, title, metadata: { type: "url", method: "html-extraction" } };
+    return { content, title, metadata: { type: "url", method: "html-extraction", sourceImages } };
   }
 
   // Fallback to AI extraction if content is too short
@@ -185,11 +186,50 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
     if (aiResp.ok) {
       const aiData = await aiResp.json() as any;
       const aiContent = aiData.choices?.[0]?.message?.content || content;
-      return { content: aiContent, title, metadata: { type: "url", method: "ai-extraction" } };
+      return { content: aiContent, title, metadata: { type: "url", method: "ai-extraction", sourceImages } };
     }
   }
 
-  return { content, title, metadata: { type: "url", method: "html-extraction" } };
+  return { content, title, metadata: { type: "url", method: "html-extraction", sourceImages } };
+}
+
+function decodeEntities(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function absoluteUrl(value: string, baseUrl: string) {
+  try {
+    return new URL(decodeEntities(value), baseUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+function extractMetaContent(html: string, key: string) {
+  const property = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i").exec(html);
+  if (property) return property[1];
+  const reverse = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${key}["'][^>]*>`, "i").exec(html);
+  return reverse?.[1] || "";
+}
+
+function extractSourceImages(html: string, pageUrl: string) {
+  const urls = [
+    extractMetaContent(html, "og:image"),
+    extractMetaContent(html, "twitter:image"),
+  ];
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = imgRegex.exec(html)) !== null && urls.length < 6) {
+    urls.push(match[1]);
+  }
+  return Array.from(new Set(urls.map((url) => absoluteUrl(url, pageUrl)).filter(Boolean)))
+    .slice(0, 5)
+    .map((url) => ({ url }));
 }
 
 function extractMainContent(html: string): string {

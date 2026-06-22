@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ import { useImageModels } from "@/hooks/useImageModels";
 
 export type Resolution = "Web" | "1K" | "2K" | "4K";
 export type AspectRatio = "1:1" | "3:2" | "2:3" | "3:4" | "4:3" | "4:5" | "5:4" | "16:9" | "9:16" | "21:9";
+export type ImagePlacement = "auto" | "featured_only" | "after_intro" | "between_sections";
 
 export interface CoverImageConfig {
   enabled: boolean;
@@ -56,11 +57,15 @@ export interface InlineImageConfig {
 export interface SplitImageConfig {
   cover: CoverImageConfig;
   inline: InlineImageConfig;
+  imagePlacement?: ImagePlacement;
+  compressionEnabled?: boolean;
 }
 
 export interface SplitImageDefaults {
   cover: Omit<CoverImageConfig, "enabled"> & { enabled?: boolean };
   inline: Omit<InlineImageConfig, "enabled"> & { enabled?: boolean };
+  imagePlacement?: ImagePlacement;
+  compressionEnabled?: boolean;
 }
 
 // Aspect ratio to pixel dimensions mapping
@@ -102,6 +107,8 @@ export const DEFAULT_INLINE_CONFIG: InlineImageConfig = {
 export const DEFAULT_SPLIT_CONFIG: SplitImageConfig = {
   cover: DEFAULT_COVER_CONFIG,
   inline: DEFAULT_INLINE_CONFIG,
+  imagePlacement: "auto",
+  compressionEnabled: true,
 };
 
 interface SplitImageGenerationSettingsProps {
@@ -129,12 +136,15 @@ export function SplitImageGenerationSettings({
 }: SplitImageGenerationSettingsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { data: imageModels = [] } = useImageModels();
+  const selectedImageModel = useMemo(
+    () => imageModels.find((m) => m.id === imageModelId),
+    [imageModelId, imageModels]
+  );
 
   // Get constraints from selected model
   const constraints = useMemo(() => {
-    if (!imageModelId) return undefined;
-    return imageModels.find((m) => m.id === imageModelId)?.constraints ?? undefined;
-  }, [imageModelId, imageModels]);
+    return selectedImageModel?.constraints ?? undefined;
+  }, [selectedImageModel]);
 
   const updateCover = (updates: Partial<CoverImageConfig>) => {
     onConfigChange({
@@ -150,10 +160,33 @@ export function SplitImageGenerationSettings({
     });
   };
 
+  useEffect(() => {
+    if (!constraints) return;
+    const resolution = constraints.resolutions[0];
+    const aspectRatio = constraints.aspectRatios[0] as AspectRatio | undefined;
+    if (!resolution) return;
+    const nextConfig: SplitImageConfig = {
+      cover: {
+        ...config.cover,
+        resolution: constraints.resolutions.includes(config.cover.resolution) ? config.cover.resolution : resolution,
+        aspectRatio: aspectRatio && !constraints.aspectRatios.includes(config.cover.aspectRatio) ? aspectRatio : config.cover.aspectRatio,
+      },
+      inline: {
+        ...config.inline,
+        resolution: constraints.resolutions.includes(config.inline.resolution) ? config.inline.resolution : resolution,
+        aspectRatio: aspectRatio && !constraints.aspectRatios.includes(config.inline.aspectRatio) ? aspectRatio : config.inline.aspectRatio,
+      },
+    };
+    if (nextConfig.cover.resolution !== config.cover.resolution || nextConfig.cover.aspectRatio !== config.cover.aspectRatio || nextConfig.inline.resolution !== config.inline.resolution || nextConfig.inline.aspectRatio !== config.inline.aspectRatio) {
+      onConfigChange(nextConfig);
+    }
+  }, [config, constraints, onConfigChange]);
+
   // Calculate costs
-  const coverCost = config.cover.enabled ? RESOLUTION_CONFIG[config.cover.resolution].cost : 0;
+  const getUnitCost = (resolution: Resolution) => selectedImageModel?.rawPricing.image || RESOLUTION_CONFIG[resolution].cost;
+  const coverCost = config.cover.enabled ? getUnitCost(config.cover.resolution) : 0;
   const inlineCost = config.inline.enabled 
-    ? config.inline.count * RESOLUTION_CONFIG[config.inline.resolution].cost 
+    ? config.inline.count * getUnitCost(config.inline.resolution)
     : 0;
   const totalCost = coverCost + inlineCost;
 
@@ -171,6 +204,11 @@ export function SplitImageGenerationSettings({
   };
 
   const imagesEnabled = config.cover.enabled || config.inline.enabled;
+  const imagePlacement = config.imagePlacement || "auto";
+  const compressionEnabled = config.compressionEnabled ?? true;
+  const updateOutputSettings = (updates: Pick<SplitImageConfig, "imagePlacement" | "compressionEnabled">) => {
+    onConfigChange({ ...config, ...updates });
+  };
 
   const handleSaveDefaults = () => {
     if (onSaveDefaults) {
@@ -186,6 +224,8 @@ export function SplitImageGenerationSettings({
           resolution: config.inline.resolution,
           aspectRatio: config.inline.aspectRatio,
         },
+        imagePlacement,
+        compressionEnabled,
       });
     }
   };
@@ -266,11 +306,20 @@ export function SplitImageGenerationSettings({
               coverCost={coverCost}
               inlineCost={inlineCost}
               totalCost={totalCost}
+              imagesEnabled={imagesEnabled}
+              imagePlacement={imagePlacement}
+              compressionEnabled={compressionEnabled}
+              onImagesEnabledChange={(enabled) => {
+                updateCover({ enabled });
+                updateInline({ enabled });
+              }}
+              updateOutputSettings={updateOutputSettings}
               showSaveOption={showSaveOption}
               onSaveDefaults={handleSaveDefaults}
               onResetToDefaults={onResetToDefaults}
               defaults={defaults}
               constraints={constraints}
+              unitCostForResolution={getUnitCost}
             />
           </CollapsibleContent>
         </Collapsible>
@@ -296,12 +345,21 @@ export function SplitImageGenerationSettings({
         coverCost={coverCost}
         inlineCost={inlineCost}
         totalCost={totalCost}
+        imagesEnabled={imagesEnabled}
+        imagePlacement={imagePlacement}
+        compressionEnabled={compressionEnabled}
+        onImagesEnabledChange={(enabled) => {
+          updateCover({ enabled });
+          updateInline({ enabled });
+        }}
+        updateOutputSettings={updateOutputSettings}
         showSaveOption={showSaveOption}
         onSaveDefaults={handleSaveDefaults}
         onResetToDefaults={onResetToDefaults}
         defaults={defaults}
         showCostSummary
         constraints={constraints}
+        unitCostForResolution={getUnitCost}
       />
     </div>
   );
@@ -315,12 +373,18 @@ interface ImageSettingsTabsProps {
   coverCost: number;
   inlineCost: number;
   totalCost: number;
+  imagesEnabled: boolean;
+  imagePlacement: ImagePlacement;
+  compressionEnabled: boolean;
+  onImagesEnabledChange: (enabled: boolean) => void;
+  updateOutputSettings: (updates: Pick<SplitImageConfig, "imagePlacement" | "compressionEnabled">) => void;
   showSaveOption?: boolean;
   onSaveDefaults?: () => void;
   onResetToDefaults?: () => void;
   defaults?: SplitImageDefaults;
   showCostSummary?: boolean;
   constraints?: ImageModelConstraints;
+  unitCostForResolution: (resolution: Resolution) => number;
 }
 
 const ALL_RESOLUTIONS: Resolution[] = ["Web", "1K", "2K", "4K"];
@@ -345,12 +409,18 @@ function ImageSettingsTabs({
   coverCost,
   inlineCost,
   totalCost,
+  imagesEnabled,
+  imagePlacement,
+  compressionEnabled,
+  onImagesEnabledChange,
+  updateOutputSettings,
   showSaveOption,
   onSaveDefaults,
   onResetToDefaults,
   defaults,
   showCostSummary,
   constraints,
+  unitCostForResolution,
 }: ImageSettingsTabsProps) {
   const coverDimensions = getPixelDimensions(config.cover.aspectRatio, config.cover.resolution);
   const inlineDimensions = getPixelDimensions(config.inline.aspectRatio, config.inline.resolution);
@@ -366,6 +436,47 @@ function ImageSettingsTabs({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div>
+          <Label>Include Images</Label>
+          <p className="text-xs text-muted-foreground">Generate article visuals with alt text.</p>
+        </div>
+        <Switch checked={imagesEnabled} onCheckedChange={onImagesEnabledChange} />
+      </div>
+
+      {imagesEnabled && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Placement</Label>
+            <Select
+              value={imagePlacement}
+              onValueChange={(value: ImagePlacement) => updateOutputSettings({ imagePlacement: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto (Recommended)</SelectItem>
+                <SelectItem value="featured_only">Featured Only</SelectItem>
+                <SelectItem value="after_intro">After Introduction</SelectItem>
+                <SelectItem value="between_sections">Between Sections</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border p-3">
+            <div>
+              <Label>Compression</Label>
+              <p className="text-xs text-muted-foreground">Smaller files, faster pages.</p>
+            </div>
+            <Switch
+              checked={compressionEnabled}
+              onCheckedChange={(enabled) => updateOutputSettings({ compressionEnabled: enabled })}
+            />
+          </div>
+        </div>
+      )}
+
+      {imagesEnabled && (
       <Tabs defaultValue="cover" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="cover" className="gap-1.5">
@@ -422,7 +533,7 @@ function ImageSettingsTabs({
                     >
                       <p className="font-medium">{res}</p>
                       <p className="text-xs text-muted-foreground">
-                        ${RESOLUTION_CONFIG[res].cost.toFixed(3)}
+                        ${unitCostForResolution(res).toFixed(3)}
                       </p>
                     </button>
                   ))}
@@ -517,7 +628,7 @@ function ImageSettingsTabs({
                         >
                           <p className="font-medium">{res}</p>
                           <p className="text-xs text-muted-foreground">
-                            ${RESOLUTION_CONFIG[res].cost.toFixed(3)}
+                            ${unitCostForResolution(res).toFixed(3)}
                           </p>
                         </button>
                       ))}
@@ -553,7 +664,7 @@ function ImageSettingsTabs({
               {/* Inline Cost */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
                 <span className="text-muted-foreground">
-                  Inline cost ({config.inline.count} × ${RESOLUTION_CONFIG[config.inline.resolution].cost.toFixed(2)})
+                  Inline cost ({config.inline.count} × ${unitCostForResolution(config.inline.resolution).toFixed(2)})
                 </span>
                 <span className="font-medium">${inlineCost.toFixed(3)}</span>
               </div>
@@ -561,9 +672,10 @@ function ImageSettingsTabs({
           )}
         </TabsContent>
       </Tabs>
+      )}
 
       {/* Total Cost Summary */}
-      {showCostSummary && (
+      {showCostSummary && imagesEnabled && (
         <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50 border border-border">
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-muted-foreground" />

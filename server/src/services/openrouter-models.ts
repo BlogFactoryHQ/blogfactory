@@ -59,6 +59,15 @@ function formatTokenCost(input: number, output: number): string {
   return `${formatMoney(input)} in / ${formatMoney(output)} out per 1M tokens`;
 }
 
+function openRouterImageConstraints(modelId: string) {
+  const aspectRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+  return {
+    resolutions: modelId === "google/gemini-3.1-flash-image-preview" ? ["Web", "1K", "2K", "4K"] : ["1K", "2K", "4K"],
+    aspectRatios,
+    maxDimensionPx: 4096,
+  };
+}
+
 function modelDescription(model: any): string {
   const description = model.description || model.architecture?.modality || "";
   return typeof description === "string" ? description : "";
@@ -69,20 +78,23 @@ export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
   const completion = dollarsPerMillion(model.pricing?.completion);
   const image = Number(model.pricing?.image ?? 0);
   const request = Number(model.pricing?.request ?? 0);
+  const webSearch = Number(model.pricing?.web_search ?? 0);
   const pricing = classifyPricing(prompt, completion, image, request);
+  const tokenCost = formatTokenCost(prompt, completion);
 
   return {
     id: model.id,
     name: model.name || model.id,
     provider: String(model.id || "").split("/")[0] || "openrouter",
     pricing,
-    costInfo: kind === "image" && image > 0
-      ? `${formatTokenCost(prompt, completion)} · ${formatMoney(image)} per image`
-      : formatTokenCost(prompt, completion),
+    costInfo: [
+      kind === "image" && image > 0 ? `${tokenCost} · ${formatMoney(image)} per image` : tokenCost,
+      webSearch > 0 ? `${formatMoney(webSearch)} web search` : "",
+    ].filter(Boolean).join(" · "),
     description: modelDescription(model),
     isFree: pricing === "free",
     limits: pricing === "free" ? "Free model availability may be rate-limited by OpenRouter" : null,
-    rawPricing: { prompt, completion, image, request },
+    rawPricing: { prompt, completion, image, request, webSearch },
     contextLength: model.context_length ?? null,
     modalities: {
       input: model.architecture?.input_modalities || [],
@@ -90,7 +102,7 @@ export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
     },
     created: model.created ?? null,
     supportedParameters: model.supported_parameters || [],
-    ...(kind === "image" ? { apiProvider: "openrouter", constraints: null } : {}),
+    ...(kind === "image" ? { apiProvider: "openrouter", constraints: openRouterImageConstraints(model.id) } : {}),
   };
 }
 

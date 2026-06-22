@@ -57,8 +57,17 @@ import {
   SectionHeader,
 } from "@/components/layout/BywordSurface";
 import { useTextModels } from "@/hooks/useTextModels";
+import { useImageModels } from "@/hooks/useImageModels";
 
 interface ContentUserSettings {
+  image_model?: string | null;
+  image_style_prompt?: string | null;
+  image_placement?: string | null;
+  image_compression_enabled?: boolean | null;
+  image_source_mode?: string | null;
+  ai_fallback_enabled?: boolean | null;
+  max_ai_images_per_day?: number | null;
+  max_ai_images_per_post?: number | null;
   cover_enabled?: boolean | null;
   cover_resolution?: string | null;
   cover_aspect_ratio?: string | null;
@@ -73,6 +82,7 @@ interface PersonaOption {
   name: string;
   status: string;
   base_model: string;
+  system_prompt: string;
 }
 
 interface RecentPost {
@@ -207,6 +217,8 @@ export default function ContentCreator() {
           resolution: (userSettings.inline_resolution as Resolution) || "Web",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
+        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
+        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
     }
   }, [userSettings]);
@@ -225,6 +237,8 @@ export default function ContentCreator() {
           resolution: (userSettings.inline_resolution as Resolution) || "Web",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
+        imagePlacement: (userSettings.image_placement as SplitImageDefaults["imagePlacement"]) || "auto",
+        compressionEnabled: userSettings.image_compression_enabled ?? true,
       }
     : undefined;
 
@@ -239,6 +253,8 @@ export default function ContentCreator() {
         inline_count: defaults.inline.count,
         inline_resolution: defaults.inline.resolution,
         inline_aspect_ratio: defaults.inline.aspectRatio,
+        image_placement: defaults.imagePlacement || "auto",
+        image_compression_enabled: defaults.compressionEnabled ?? true,
       });
     },
     onSuccess: () => {
@@ -256,6 +272,8 @@ export default function ContentCreator() {
       setImageConfig({
         cover: { ...imageDefaults.cover, enabled: imageDefaults.cover.enabled ?? true },
         inline: { ...imageDefaults.inline, enabled: imageDefaults.inline.enabled ?? true },
+        imagePlacement: imageDefaults.imagePlacement || "auto",
+        compressionEnabled: imageDefaults.compressionEnabled ?? true,
       });
       toast.success("Reset to your saved defaults");
     }
@@ -272,8 +290,28 @@ export default function ContentCreator() {
   // Filter to only active personas for the dropdown
   const activePersonas = useMemo(() => personas.filter((p) => p.status === "active"), [personas]);
   const { data: textModels = [] } = useTextModels();
+  const { data: imageModels = [] } = useImageModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
   const fallbackTextModelId = textModels[0]?.id;
+  const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
+  const selectedTextModel = textModels.find((model) => model.id === modelId);
+  const selectedImageModelId = userSettings?.image_model || "auto/consistent-cover";
+  const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
+  const imageStylePrompt = userSettings?.image_style_prompt?.trim() || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.";
+  const imagePlacement = imageConfig.imagePlacement || "auto";
+  const placementLabels: Record<string, string> = {
+    auto: "Auto placement",
+    featured_only: "Featured only",
+    after_intro: "After introduction",
+    between_sections: "Between sections",
+  };
+  const sourceModeLabels: Record<string, string> = {
+    stock_first: "Stock first",
+    manual_first: "Local/manual first",
+    ai_first: "AI covers first",
+  };
+  const formatOutputs = (outputs?: string[]) => outputs?.length ? `Outputs: ${outputs.join(" + ")}` : "";
+  const formatWebSearch = (cost?: number) => cost ? `Web search: $${cost.toFixed(3)}/use` : "";
 
   const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
     if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
@@ -459,6 +497,8 @@ export default function ContentCreator() {
         enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
+          imagePlacement: imageConfig.imagePlacement || "auto",
+          compressionEnabled: imageConfig.compressionEnabled ?? true,
           cover: imageConfig.cover.enabled ? {
             resolution: imageConfig.cover.resolution,
             aspectRatio: imageConfig.cover.aspectRatio,
@@ -966,6 +1006,35 @@ export default function ContentCreator() {
               </div>
             </div>
 
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Persona prompt</p>
+                <p className="mt-1 line-clamp-2 text-sm">{selectedPersona?.system_prompt || "Select a persona to preview its prompt."}</p>
+              </div>
+              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Text model</p>
+                <p className="mt-1 truncate text-sm font-medium">{selectedTextModel?.name || modelId}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{selectedTextModel?.costInfo || "Loading live pricing..."}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{formatOutputs(selectedTextModel?.modalities?.output)} {formatWebSearch(selectedTextModel?.rawPricing.webSearch)}</p>
+              </div>
+              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image model</p>
+                <p className="mt-1 truncate text-sm font-medium">{selectedImageModel?.name || selectedImageModelId}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{selectedImageModel?.costInfo || "Loading image pricing..."}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{formatOutputs(selectedImageModel?.modalities?.output)} {formatWebSearch(selectedImageModel?.rawPricing.webSearch)}</p>
+              </div>
+              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image style prompt</p>
+                <p className="mt-1 line-clamp-2 text-sm">{imageStylePrompt}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {placementLabels[imagePlacement]} · Compression {imageConfig.compressionEnabled ?? true ? "on" : "off"}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {sourceModeLabels[userSettings?.image_source_mode || "stock_first"] || "Stock first"} · AI fallback {userSettings?.ai_fallback_enabled ?? true ? "queued" : "off"} · {userSettings?.max_ai_images_per_post ?? 1}/post
+                </p>
+              </div>
+            </div>
+
             <SplitImageGenerationSettings
               config={imageConfig}
               onConfigChange={setImageConfig}
@@ -974,6 +1043,7 @@ export default function ContentCreator() {
               onResetToDefaults={handleResetToDefaults}
               showSaveOption
               compact
+              imageModelId={selectedImageModelId}
             />
 
             <div className="space-y-3">

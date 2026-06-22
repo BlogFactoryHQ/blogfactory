@@ -142,6 +142,8 @@ export default function RSSFeeds() {
         resolution: (userSettings.inline_resolution as Resolution) || "2K",
         aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
       },
+      imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
+      compressionEnabled: userSettings.image_compression_enabled ?? true,
     };
   }, [userSettings]);
 
@@ -265,6 +267,8 @@ export default function RSSFeeds() {
         platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
+          imagePlacement: ic.imagePlacement || "auto",
+          compressionEnabled: ic.compressionEnabled ?? true,
           cover: ic.cover.enabled ? {
             resolution: ic.cover.resolution,
             aspectRatio: ic.cover.aspectRatio,

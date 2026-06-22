@@ -129,6 +129,8 @@ export default function RSSFeedNew() {
           resolution: (userSettings.inline_resolution as Resolution) || "2K",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
+        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
+        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
     }
   }, [userSettings]);
@@ -211,6 +213,8 @@ export default function RSSFeedNew() {
             filterOldPostsDays: filterOldPostsDays || undefined,
             generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
             imageConfig: (imageConfig.cover.enabled || imageConfig.inline.enabled) ? {
+              imagePlacement: imageConfig.imagePlacement || "auto",
+              compressionEnabled: imageConfig.compressionEnabled ?? true,
               cover: imageConfig.cover.enabled ? {
                 resolution: imageConfig.cover.resolution,
                 aspectRatio: imageConfig.cover.aspectRatio,

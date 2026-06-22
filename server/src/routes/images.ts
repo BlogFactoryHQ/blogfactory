@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
+import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db/schema.js";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
+import { processNextDeferredImage } from "../services/low-cost-images.js";
 
 export const imagesRoutes = new Hono();
 
@@ -11,9 +12,14 @@ function serializeAsset(row: any) {
   return {
     ...row,
     storage_path: row.storagePath,
+    alt_text: row.altText,
     model_id: row.modelId,
     aspect_ratio: row.aspectRatio,
     file_size_bytes: row.fileSizeBytes,
+    source_url: row.sourceUrl,
+    license_label: row.licenseLabel,
+    attribution_url: row.attributionUrl,
+    source_kind: row.sourceKind,
     job_id: row.jobId,
     post_id: row.postId,
     created_at: row.createdAt,
@@ -27,7 +33,14 @@ function serializeRequest(row: any) {
     ...row,
     post_id: row.postId,
     job_id: row.jobId,
+    alt_text: row.altText,
     aspect_ratio: row.aspectRatio,
+    model_id: row.modelId,
+    retry_count: row.retryCount,
+    available_at: row.availableAt,
+    source_url: row.sourceUrl,
+    license_label: row.licenseLabel,
+    attribution_url: row.attributionUrl,
     imported_asset_id: row.importedAssetId,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -45,6 +58,7 @@ imagesRoutes.get("/", async (c) => {
       type: imageAssets.type,
       status: imageAssets.status,
       prompt: imageAssets.prompt,
+      altText: imageAssets.altText,
       modelId: imageAssets.modelId,
       provider: imageAssets.provider,
       aspectRatio: imageAssets.aspectRatio,
@@ -52,6 +66,11 @@ imagesRoutes.get("/", async (c) => {
       position: imageAssets.position,
       cost: imageAssets.cost,
       fileSizeBytes: imageAssets.fileSizeBytes,
+      sourceUrl: imageAssets.sourceUrl,
+      credit: imageAssets.credit,
+      licenseLabel: imageAssets.licenseLabel,
+      attributionUrl: imageAssets.attributionUrl,
+      sourceKind: imageAssets.sourceKind,
       jobId: imageAssets.jobId,
       postId: imageAssets.postId,
       createdAt: imageAssets.createdAt,
@@ -79,11 +98,19 @@ imagesRoutes.get("/requests", async (c) => {
       jobId: imageGenerationRequests.jobId,
       provider: imageGenerationRequests.provider,
       prompt: imageGenerationRequests.prompt,
+      altText: imageGenerationRequests.altText,
+      modelId: imageGenerationRequests.modelId,
       type: imageGenerationRequests.type,
       position: imageGenerationRequests.position,
       aspectRatio: imageGenerationRequests.aspectRatio,
       resolution: imageGenerationRequests.resolution,
       status: imageGenerationRequests.status,
+      retryCount: imageGenerationRequests.retryCount,
+      availableAt: imageGenerationRequests.availableAt,
+      sourceUrl: imageGenerationRequests.sourceUrl,
+      credit: imageGenerationRequests.credit,
+      licenseLabel: imageGenerationRequests.licenseLabel,
+      attributionUrl: imageGenerationRequests.attributionUrl,
       importedAssetId: imageGenerationRequests.importedAssetId,
       createdAt: imageGenerationRequests.createdAt,
       updatedAt: imageGenerationRequests.updatedAt,
@@ -95,6 +122,12 @@ imagesRoutes.get("/requests", async (c) => {
     .orderBy(desc(imageGenerationRequests.createdAt));
 
   return c.json(rows.map(serializeRequest));
+});
+
+imagesRoutes.post("/queue/process", async (c) => {
+  const userId = getUserId(c);
+  const result = await processNextDeferredImage(userId);
+  return c.json(result);
 });
 
 imagesRoutes.patch("/requests/:id", async (c) => {
@@ -131,20 +164,31 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
   if (request.status === "done") return c.json({ error: "Image request was already imported" }, 400);
 
   let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
+  const [settings] = await db
+    .select({ imageCompressionEnabled: userSettings.imageCompressionEnabled })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
   try {
     const sharp = (await import("sharp")).default;
-    buffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
+    buffer = await sharp(buffer).webp({ quality: (settings?.imageCompressionEnabled ?? true) ? 85 : 100 }).toBuffer();
   } catch {}
 
   const { asset, storagePath } = await saveImageBuffer(buffer, userId, {
     type: request.type,
     prompt: request.prompt,
+    altText: request.altText || undefined,
     modelId: `manual/${request.provider}`,
     provider: request.provider,
     aspectRatio: request.aspectRatio || undefined,
     resolution: request.resolution || undefined,
     position: request.position ?? undefined,
     cost: 0,
+    sourceUrl: request.sourceUrl || undefined,
+    credit: request.credit || undefined,
+    licenseLabel: request.licenseLabel || "Manual/local",
+    attributionUrl: request.attributionUrl || undefined,
+    sourceKind: "manual",
     jobId: request.jobId || undefined,
     postId: request.postId || undefined,
   });

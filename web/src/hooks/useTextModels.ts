@@ -14,6 +14,7 @@ export interface LiveTextModel {
     prompt: number;
     completion: number;
     request: number;
+    webSearch?: number;
   };
   contextLength: number | null;
   modalities?: {

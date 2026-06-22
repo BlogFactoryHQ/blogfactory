@@ -32,12 +32,18 @@ export async function saveImageBuffer(
   opts: {
     type?: string;
     prompt?: string;
+    altText?: string;
     modelId?: string;
     provider?: string;
     aspectRatio?: string;
     resolution?: string;
     position?: number;
     cost?: number;
+    sourceUrl?: string;
+    credit?: string;
+    licenseLabel?: string;
+    attributionUrl?: string;
+    sourceKind?: string;
     jobId?: string;
     postId?: string;
   } = {}
@@ -56,12 +62,18 @@ export async function saveImageBuffer(
       type: opts.type || "cover",
       status: opts.postId ? "used" : "unused",
       prompt: opts.prompt,
+      altText: opts.altText,
       modelId: opts.modelId,
       provider: opts.provider,
       aspectRatio: opts.aspectRatio,
       resolution: opts.resolution,
       position: opts.position,
       cost: opts.cost,
+      sourceUrl: opts.sourceUrl,
+      credit: opts.credit,
+      licenseLabel: opts.licenseLabel,
+      attributionUrl: opts.attributionUrl,
+      sourceKind: opts.sourceKind,
       fileSizeBytes: buffer.length,
       jobId: opts.jobId,
       postId: opts.postId,

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
-export type Provider = "openrouter" | "google" | "openai" | "replicate";
+export type Provider = "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay";
 
 function encryptionKey(): Buffer {
   const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
@@ -53,6 +53,10 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
     openaiKeyLast4: row?.openaiKeyLast4 || null,
     hasReplicateKey: Boolean(row?.replicateApiKeyEncrypted),
     replicateKeyLast4: row?.replicateKeyLast4 || null,
+    hasPexelsKey: Boolean(row?.pexelsApiKeyEncrypted),
+    pexelsKeyLast4: row?.pexelsKeyLast4 || null,
+    hasPixabayKey: Boolean(row?.pixabayApiKeyEncrypted),
+    pixabayKeyLast4: row?.pixabayKeyLast4 || null,
     updatedAt: row?.updatedAt || null,
   };
 }
@@ -75,6 +79,9 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
   }
   if (provider === "replicate" && trimmed.length < 20) {
     throw new Error("Replicate API token looks too short");
+  }
+  if ((provider === "pexels" || provider === "pixabay") && trimmed.length < 10) {
+    throw new Error("Stock photo API key looks too short");
   }
 
   const values =
@@ -99,10 +106,24 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
           openaiKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
-      : {
+      : provider === "replicate"
+      ? {
           userId,
           replicateApiKeyEncrypted: encryptSecret(trimmed),
           replicateKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "pexels"
+      ? {
+          userId,
+          pexelsApiKeyEncrypted: encryptSecret(trimmed),
+          pexelsKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : {
+          userId,
+          pixabayApiKeyEncrypted: encryptSecret(trimmed),
+          pixabayKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         };
 
@@ -137,9 +158,21 @@ export async function deleteApiKey(userId: string, provider: Provider) {
           openaiKeyLast4: null,
           updatedAt: new Date(),
         }
-      : {
+      : provider === "replicate"
+      ? {
           replicateApiKeyEncrypted: null,
           replicateKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : provider === "pexels"
+      ? {
+          pexelsApiKeyEncrypted: null,
+          pexelsKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : {
+          pixabayApiKeyEncrypted: null,
+          pixabayKeyLast4: null,
           updatedAt: new Date(),
         };
 
@@ -177,6 +210,24 @@ export async function getOpenAiKey(userId: string): Promise<string | null> {
 export async function getReplicateKey(userId: string): Promise<string | null> {
   const [row] = await db
     .select({ key: userApiKeys.replicateApiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return row?.key ? decryptSecret(row.key) : null;
+}
+
+export async function getPexelsKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.pexelsApiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return row?.key ? decryptSecret(row.key) : null;
+}
+
+export async function getPixabayKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.pixabayApiKeyEncrypted })
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);

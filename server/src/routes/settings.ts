@@ -16,7 +16,9 @@ import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
 
 export const settingsRoutes = new Hono();
-const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
+const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate", "pexels", "pixabay"]);
+const IMAGE_PLACEMENTS = new Set(["auto", "featured_only", "after_intro", "between_sections"]);
+const IMAGE_SOURCE_MODES = new Set(["stock_first", "manual_first", "ai_first"]);
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -115,6 +117,22 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     imageModel: settings.imageModel,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
+    image_placement: settings.imagePlacement || "auto",
+    imagePlacement: settings.imagePlacement || "auto",
+    image_compression_enabled: settings.imageCompressionEnabled ?? true,
+    imageCompressionEnabled: settings.imageCompressionEnabled ?? true,
+    image_source_mode: settings.imageSourceMode || "stock_first",
+    imageSourceMode: settings.imageSourceMode || "stock_first",
+    source_image_allowed: settings.sourceImageAllowed ?? false,
+    sourceImageAllowed: settings.sourceImageAllowed ?? false,
+    ai_fallback_enabled: settings.aiFallbackEnabled ?? true,
+    aiFallbackEnabled: settings.aiFallbackEnabled ?? true,
+    max_ai_images_per_day: settings.maxAiImagesPerDay ?? 30,
+    maxAiImagesPerDay: settings.maxAiImagesPerDay ?? 30,
+    max_ai_images_per_post: settings.maxAiImagesPerPost ?? 1,
+    maxAiImagesPerPost: settings.maxAiImagesPerPost ?? 1,
+    min_minutes_between_ai_images: settings.minMinutesBetweenAiImages ?? 5,
+    minMinutesBetweenAiImages: settings.minMinutesBetweenAiImages ?? 5,
     image_advanced_options: settings.imageAdvancedOptions,
     imageAdvancedOptions: settings.imageAdvancedOptions,
     cover_enabled: settings.coverEnabled,
@@ -235,6 +253,22 @@ function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof user
 
   setOptionalText("imageModel", "image_model");
   setText("imageStylePrompt", "image_style_prompt");
+  const imagePlacement = body.image_placement ?? body.imagePlacement;
+  if (imagePlacement !== undefined) {
+    if (typeof imagePlacement !== "string" || !IMAGE_PLACEMENTS.has(imagePlacement)) throw new Error("Invalid image placement");
+    update.imagePlacement = imagePlacement;
+  }
+  setBool("imageCompressionEnabled", "image_compression_enabled");
+  const imageSourceMode = body.image_source_mode ?? body.imageSourceMode;
+  if (imageSourceMode !== undefined) {
+    if (typeof imageSourceMode !== "string" || !IMAGE_SOURCE_MODES.has(imageSourceMode)) throw new Error("Invalid image source mode");
+    update.imageSourceMode = imageSourceMode;
+  }
+  setBool("sourceImageAllowed", "source_image_allowed");
+  setBool("aiFallbackEnabled", "ai_fallback_enabled");
+  setNumber("maxAiImagesPerDay", "max_ai_images_per_day");
+  setNumber("maxAiImagesPerPost", "max_ai_images_per_post");
+  setNumber("minMinutesBetweenAiImages", "min_minutes_between_ai_images");
   if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
     update.imageAdvancedOptions = (body.image_advanced_options ?? body.imageAdvancedOptions) as never;
   }
@@ -664,9 +698,14 @@ settingsRoutes.get("/", async (c) => {
 settingsRoutes.put("/", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
-  const update = buildSettingsUpdate(body);
+  let update: Partial<typeof userSettings.$inferInsert>;
+  try {
+    update = buildSettingsUpdate(body);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Invalid settings" }, 400);
+  }
 
-  if (Object.keys(update).length <= 1) {
+  if (Object.keys(update).length < 1) {
     return c.json({ error: "No supported settings fields provided" }, 400);
   }
 

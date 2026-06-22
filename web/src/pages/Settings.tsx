@@ -81,12 +81,24 @@ interface ApiKeyMetadata {
   openaiKeyLast4: string | null;
   hasReplicateKey: boolean;
   replicateKeyLast4: string | null;
+  hasPexelsKey: boolean;
+  pexelsKeyLast4: string | null;
+  hasPixabayKey: boolean;
+  pixabayKeyLast4: string | null;
   updatedAt: string | null;
 }
 
 interface UserSettings {
   image_style_prompt?: string | null;
   image_model?: string | null;
+  image_placement?: string | null;
+  image_compression_enabled?: boolean | null;
+  image_source_mode?: string | null;
+  source_image_allowed?: boolean | null;
+  ai_fallback_enabled?: boolean | null;
+  max_ai_images_per_day?: number | null;
+  max_ai_images_per_post?: number | null;
+  min_minutes_between_ai_images?: number | null;
   cover_enabled?: boolean | null;
   cover_image_count?: number | null;
   cover_resolution?: string | null;
@@ -231,11 +243,19 @@ export default function Settings() {
     "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays."
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
-  const [selectedImageModel, setSelectedImageModel] = useState("openai/gpt-image-2");
+  const [selectedImageModel, setSelectedImageModel] = useState("auto/consistent-cover");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [replicateKey, setReplicateKey] = useState("");
+  const [pexelsKey, setPexelsKey] = useState("");
+  const [pixabayKey, setPixabayKey] = useState("");
+  const [imageSourceMode, setImageSourceMode] = useState("stock_first");
+  const [sourceImageAllowed, setSourceImageAllowed] = useState(false);
+  const [aiFallbackEnabled, setAiFallbackEnabled] = useState(true);
+  const [maxAiImagesPerDay, setMaxAiImagesPerDay] = useState(30);
+  const [maxAiImagesPerPost, setMaxAiImagesPerPost] = useState(1);
+  const [minMinutesBetweenAiImages, setMinMinutesBetweenAiImages] = useState(5);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
@@ -339,10 +359,18 @@ export default function Settings() {
           resolution: (userSettings.inline_resolution as Resolution) || "Web",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
+        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
+        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
       if (userSettings.image_model) {
         setSelectedImageModel(userSettings.image_model);
       }
+      setImageSourceMode(userSettings.image_source_mode || "stock_first");
+      setSourceImageAllowed(userSettings.source_image_allowed ?? false);
+      setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
+      setMaxAiImagesPerDay(userSettings.max_ai_images_per_day ?? 30);
+      setMaxAiImagesPerPost(userSettings.max_ai_images_per_post ?? 1);
+      setMinMinutesBetweenAiImages(userSettings.min_minutes_between_ai_images ?? 5);
       setArticleWordCount(userSettings.article_word_count ?? 1500);
       setArticleLanguage(userSettings.article_language || "US English");
       setArticleVoice(userSettings.article_voice || "Natural");
@@ -511,6 +539,8 @@ export default function Settings() {
         inline_count: defaults.inline.count,
         inline_resolution: defaults.inline.resolution,
         inline_aspect_ratio: defaults.inline.aspectRatio,
+        image_placement: defaults.imagePlacement || "auto",
+        image_compression_enabled: defaults.compressionEnabled ?? true,
       });
     },
     onSuccess: () => {
@@ -523,8 +553,26 @@ export default function Settings() {
     },
   });
 
+  const saveImageCostSettingsMutation = useMutation({
+    mutationFn: async () => {
+      await api.put("/settings", {
+        image_source_mode: imageSourceMode,
+        source_image_allowed: sourceImageAllowed,
+        ai_fallback_enabled: aiFallbackEnabled,
+        max_ai_images_per_day: maxAiImagesPerDay,
+        max_ai_images_per_post: maxAiImagesPerPost,
+        min_minutes_between_ai_images: minMinutesBetweenAiImages,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Image cost settings saved");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to save image cost settings"),
+  });
+
   const saveApiKeyMutation = useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "replicate"; apiKey: string }) =>
+    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay"; apiKey: string }) =>
       api.put<ApiKeyMetadata>("/settings/api-keys", { provider, apiKey }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -534,13 +582,15 @@ export default function Settings() {
       if (variables.provider === "google") setGoogleKey("");
       if (variables.provider === "openai") setOpenaiKey("");
       if (variables.provider === "replicate") setReplicateKey("");
+      if (variables.provider === "pexels") setPexelsKey("");
+      if (variables.provider === "pixabay") setPixabayKey("");
       toast.success("API key saved");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteApiKeyMutation = useMutation({
-    mutationFn: (provider: "openrouter" | "google" | "openai" | "replicate") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
+    mutationFn: (provider: "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       queryClient.invalidateQueries({ queryKey: ["image-models"] });
@@ -1011,6 +1061,80 @@ export default function Settings() {
                       variant="outline"
                       onClick={() => deleteApiKeyMutation.mutate("replicate")}
                       disabled={!apiKeys?.hasReplicateKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="pixabay-key">Pixabay Stock Photos</Label>
+                    <Badge variant={apiKeys?.hasPixabayKey ? "default" : "secondary"}>
+                      {apiKeys?.hasPixabayKey ? `Saved ****${apiKeys.pixabayKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="pixabay-key"
+                    type="password"
+                    placeholder="Pixabay API key"
+                    value={pixabayKey}
+                    onChange={(e) => setPixabayKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Used first for free stock images before paid AI fallback.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "pixabay", apiKey: pixabayKey })}
+                      disabled={!pixabayKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("pixabay")}
+                      disabled={!apiKeys?.hasPixabayKey || deleteApiKeyMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="pexels-key">Pexels Stock Photos</Label>
+                    <Badge variant={apiKeys?.hasPexelsKey ? "default" : "secondary"}>
+                      {apiKeys?.hasPexelsKey ? `Saved ****${apiKeys.pexelsKeyLast4}` : "Missing"}
+                    </Badge>
+                  </div>
+                  <Input
+                    id="pexels-key"
+                    type="password"
+                    placeholder="Pexels API key"
+                    value={pexelsKey}
+                    onChange={(e) => setPexelsKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Fallback stock provider with photographer attribution stored on assets.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveApiKeyMutation.mutate({ provider: "pexels", apiKey: pexelsKey })}
+                      disabled={!pexelsKey || saveApiKeyMutation.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteApiKeyMutation.mutate("pexels")}
+                      disabled={!apiKeys?.hasPexelsKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
@@ -1652,6 +1776,96 @@ export default function Settings() {
                     )}
                     Save Model
                   </Button>
+                </div>
+              </BywordCard>
+
+              <BywordCard>
+                <SectionHeader
+                  icon={Gauge}
+                  title="Low-Cost Image Pipeline"
+                  description="Use stock and manual/local options first; queue paid AI slowly only when needed."
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => saveImageCostSettingsMutation.mutate()}
+                      disabled={saveImageCostSettingsMutation.isPending}
+                    >
+                      {saveImageCostSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  }
+                />
+                <div className="grid gap-5 p-6 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Source Mode</Label>
+                    <Select value={imageSourceMode} onValueChange={setImageSourceMode}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="stock_first">Stock first</SelectItem>
+                        <SelectItem value="manual_first">Local/manual first</SelectItem>
+                        <SelectItem value="ai_first">AI covers first</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">With $10+ OpenRouter credits, use AI covers first at 1/post, 30/day, 5 minutes apart.</p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
+                    <div>
+                      <Label>AI Fallback</Label>
+                      <p className="text-xs text-muted-foreground">When stock fails, create a deferred one-at-a-time AI request.</p>
+                    </div>
+                    <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
+                    <div>
+                      <Label>Conservative Source Images</Label>
+                      <p className="text-xs text-muted-foreground">Only reuse source images with clear reusable license metadata.</p>
+                    </div>
+                    <Switch checked={sourceImageAllowed} onCheckedChange={setSourceImageAllowed} />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-per-post">AI/Post</Label>
+                      <Input
+                        id="ai-per-post"
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={maxAiImagesPerPost}
+                        onChange={(e) => setMaxAiImagesPerPost(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-per-day">AI/Day</Label>
+                      <Input
+                        id="ai-per-day"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={maxAiImagesPerDay}
+                        onChange={(e) => setMaxAiImagesPerDay(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-spacing">Minutes</Label>
+                      <Input
+                        id="ai-spacing"
+                        type="number"
+                        min={0}
+                        max={240}
+                        value={minMinutesBetweenAiImages}
+                        onChange={(e) => setMinMinutesBetweenAiImages(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
                 </div>
               </BywordCard>
 

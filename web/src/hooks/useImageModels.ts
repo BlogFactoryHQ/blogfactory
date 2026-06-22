@@ -9,7 +9,7 @@ export interface LiveImageModel {
   pricing: "free" | "low" | "medium" | "high";
   costInfo: string;
   description: string;
-  apiProvider: "openrouter" | "google-ai-studio" | "manual" | "openai" | "replicate";
+  apiProvider: "openrouter" | "google-ai-studio" | "manual" | "openai" | "replicate" | "auto";
   isFree: boolean;
   limits: string | null;
   constraints: ImageModelConstraints | null;
@@ -18,6 +18,7 @@ export interface LiveImageModel {
     completion: number;
     image: number;
     request: number;
+    webSearch?: number;
   };
   contextLength: number | null;
   modalities?: {
