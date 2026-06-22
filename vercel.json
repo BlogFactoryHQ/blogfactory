@@ -3,7 +3,7 @@
   "outputDirectory": "web/dist",
   "installCommand": "npm install",
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 60
     }
   },
@@ -16,7 +16,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.ts"
+      "destination": "/api/index.js"
     },
     {
       "source": "/((?!api/).*)",
