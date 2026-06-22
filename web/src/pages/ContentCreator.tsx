@@ -86,18 +86,25 @@ interface GenerateResponse {
   postIds?: string[];
 }
 
+interface ArticlePlanResponse {
+  title: string;
+  outline: string;
+}
+
 export default function ContentCreator() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [sourceType, setSourceType] = useState("url");
   const [articleKeyword, setArticleKeyword] = useState("");
   const [articleTitle, setArticleTitle] = useState("");
+  const [articleTitlePreview, setArticleTitlePreview] = useState("");
   const [articleRelatedKeywords, setArticleRelatedKeywords] = useState("");
   const [articleOutline, setArticleOutline] = useState("");
   const [articleDirection, setArticleDirection] = useState("");
   const [articleWordCount, setArticleWordCount] = useState("");
   const [articleIncludeToc, setArticleIncludeToc] = useState(false);
   const [articleResearchFocus, setArticleResearchFocus] = useState(false);
+  const [isPlanningArticle, setIsPlanningArticle] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -236,6 +243,10 @@ export default function ContentCreator() {
     if (selectedPersona?.base_model === modelId) setModelId(fallbackTextModelId);
   }, [activePersonas, fallbackTextModelId, modelId, personaId, selectedModelUnavailable]);
 
+  useEffect(() => {
+    setArticleTitlePreview("");
+  }, [articleKeyword]);
+
   // Fetch recent posts
   const { data: recentPosts = [], refetch: refetchPosts } = useQuery({
     queryKey: ["recent-posts"],
@@ -350,6 +361,7 @@ export default function ContentCreator() {
           : undefined,
         outline: isArticleSource ? articleOutline : undefined,
         articleDirection: isArticleSource ? articleDirection : undefined,
+        articleTitleOverride: sourceType === "article_keyword" ? articleTitlePreview : undefined,
         articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
         includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
         enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
@@ -412,6 +424,44 @@ export default function ContentCreator() {
     }
 
     await executeGeneration();
+  };
+
+  const handleGenerateArticlePlan = async () => {
+    if (selectedModelUnavailable) {
+      toast.error("Selected model is no longer available on OpenRouter.");
+      return;
+    }
+
+    const sourceValue = getSourceValue();
+    if (!sourceValue.trim()) {
+      toast.error(sourceType === "article_title" ? "Enter a title first." : "Enter a keyword first.");
+      return;
+    }
+
+    setIsPlanningArticle(true);
+    try {
+      const plan = await api.post<ArticlePlanResponse>("/content/article-plan", {
+        sourceType,
+        sourceValue,
+        personaId,
+        modelId,
+        relatedKeywords: articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5),
+        articleDirection,
+        articleWordCount: articleWordCount ? Number(articleWordCount) : undefined,
+        includeTableOfContents: articleIncludeToc || undefined,
+        enableResearch: articleResearchFocus || undefined,
+      });
+
+      if (sourceType === "article_keyword") setArticleTitlePreview(plan.title);
+      else setArticleTitle(plan.title);
+      setArticleOutline(plan.outline);
+      toast.success("Title and outline ready.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate article plan";
+      toast.error(message);
+    } finally {
+      setIsPlanningArticle(false);
+    }
   };
 
   const handleConcurrentAction = async (action: ConcurrentAction) => {
@@ -515,6 +565,17 @@ export default function ContentCreator() {
                   </TabsContent>
                 </Tabs>
 
+                {sourceType === "article_keyword" && articleTitlePreview && (
+                  <div className="space-y-2">
+                    <Label>Title Preview</Label>
+                    <Input
+                      value={articleTitlePreview}
+                      onChange={(e) => setArticleTitlePreview(e.target.value)}
+                      className="h-11"
+                    />
+                  </div>
+                )}
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Related Keywords</Label>
@@ -566,7 +627,23 @@ export default function ContentCreator() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Outline</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>Outline</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateArticlePlan}
+                      disabled={isPlanningArticle || selectedModelUnavailable}
+                    >
+                      {isPlanningArticle ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-2 h-4 w-4" />
+                      )}
+                      Generate title + outline
+                    </Button>
+                  </div>
                   <Textarea
                     placeholder={"H2: What to look for\nH2: Top options\nH3: Budget picks"}
                     value={articleOutline}

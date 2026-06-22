@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
+import { campaignItems, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
@@ -24,6 +24,7 @@ interface GenerateOpts {
   relatedKeywords?: string[] | string;
   outline?: string;
   articleDirection?: string;
+  articleTitleOverride?: string;
   articleWordCount?: number | string;
   includeTableOfContents?: boolean;
   enableResearch?: boolean;
@@ -251,8 +252,10 @@ function buildArticleExtras(opts: GenerateOpts) {
   const relatedKeywords = normalizeList(opts.relatedKeywords);
   const outline = typeof opts.outline === "string" ? opts.outline.trim() : "";
   const direction = typeof opts.articleDirection === "string" ? opts.articleDirection.trim() : "";
+  const titleOverride = cleanPostTitle(typeof opts.articleTitleOverride === "string" ? opts.articleTitleOverride : "");
   const wordCount = Number(opts.articleWordCount);
 
+  if (titleOverride) lines.push(`Use this exact H1 title: ${titleOverride}.`);
   if (relatedKeywords.length) lines.push(`Naturally cover these related keywords: ${relatedKeywords.join(", ")}.`);
   if (Number.isFinite(wordCount) && wordCount > 0) lines.push(`Target article length: about ${Math.round(wordCount)} words.`);
   if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
@@ -296,7 +299,7 @@ function buildDraftUserMessage(article: { title: string; content: string; url?: 
   if (sourceType === "article_keyword") {
     return `Write a complete, publish-ready SEO article for this target keyword: "${article.content}".
 
-Generate an SEO-optimized H1 title that matches search intent, then write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
+${opts.articleTitleOverride ? "Use the provided H1 title, then" : "Generate an SEO-optimized H1 title that matches search intent, then"} write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
   }
 
   if (sourceType === "article_title") {
@@ -308,6 +311,101 @@ Keep the title unchanged, then write the article in markdown with a clear intro,
   return article.url
     ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}`
     : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}`;
+}
+
+function parseArticlePlan(value: string) {
+  const jsonText = value.match(/\{[\s\S]*\}/)?.[0] || value;
+  try {
+    const parsed = JSON.parse(jsonText) as { title?: unknown; outline?: unknown };
+    const outline = Array.isArray(parsed.outline)
+      ? normalizeOutline(parsed.outline.map((item) => String(item)))
+      : typeof parsed.outline === "string" ? normalizeOutline(parsed.outline.split("\n")) : "";
+    return {
+      title: typeof parsed.title === "string" ? cleanPostTitle(parsed.title) : "",
+      outline,
+    };
+  } catch {
+    const lines = value.split("\n").map((line) => line.trim()).filter(Boolean);
+    const title = cleanPostTitle(lines.find((line) => !/^h[23]:/i.test(line))?.replace(/^title:\s*/i, "") || "");
+    const outline = normalizeOutline(lines);
+    return { title, outline };
+  }
+}
+
+function normalizeOutline(lines: string[]) {
+  return lines
+    .map((line) => line.trim().replace(/^#{2,3}\s+/, (hashes) => `${hashes.startsWith("###") ? "H3" : "H2"}: `))
+    .filter((line) => /^H[23]:\s+\S/i.test(line))
+    .map((line) => line.replace(/^h([23]):/i, "H$1:"))
+    .join("\n");
+}
+
+export async function generateArticlePlan(opts: Pick<GenerateOpts,
+  "userId" | "sourceType" | "sourceValue" | "modelId" | "personaId" | "relatedKeywords" | "articleDirection" | "articleWordCount" | "includeTableOfContents" | "enableResearch"
+>) {
+  const userId = opts.userId;
+  if (!isArticleSource(opts.sourceType)) throw new Error("Article planning only supports article keyword or title sources");
+  const sourceValue = String(opts.sourceValue || "").trim();
+  if (!sourceValue) throw new Error(opts.sourceType === "article_title" ? "Article title is required" : "Article keyword is required");
+
+  const openRouterKey = await getOpenRouterKey(userId);
+  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before planning articles");
+
+  let systemPrompt = "You are an SEO content strategist. Return only valid JSON.";
+  let personaModel = opts.modelId || "openai/gpt-4o";
+  if (opts.personaId) {
+    const [persona] = await db.select().from(personas).where(and(eq(personas.id, opts.personaId), eq(personas.userId, userId))).limit(1);
+    if (persona) {
+      systemPrompt = `${persona.systemPrompt}\n\nReturn only valid JSON.`;
+      personaModel = persona.baseModel;
+    }
+  }
+
+  const modelId = opts.modelId || personaModel;
+  await assertOpenRouterModelAvailable(openRouterKey, modelId);
+
+  const relatedKeywords = normalizeList(opts.relatedKeywords);
+  const wordCount = Number(opts.articleWordCount);
+  const prompt = [
+    opts.sourceType === "article_title"
+      ? `Create an SEO article outline for this exact title: ${sourceValue}`
+      : `Create an SEO article title and outline for this target keyword: ${sourceValue}`,
+    relatedKeywords.length ? `Related keywords: ${relatedKeywords.join(", ")}` : "",
+    opts.articleDirection ? `Direction: ${opts.articleDirection}` : "",
+    Number.isFinite(wordCount) && wordCount > 0 ? `Target length: about ${Math.round(wordCount)} words.` : "",
+    opts.includeTableOfContents ? "The article may include a table of contents." : "",
+    opts.enableResearch ? "Favor sections that support useful research context and examples." : "",
+    'Return JSON exactly like {"title":"...","outline":["H2: ...","H2: ...","H3: ..."]}. Use 5-8 outline lines.',
+  ].filter(Boolean).join("\n");
+
+  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 1200,
+      plugins: [],
+    }),
+  });
+
+  if (!resp.ok) {
+    const message = openRouterErrorMessage(await resp.text());
+    throw new Error(message);
+  }
+
+  const data = await resp.json() as any;
+  const plan = parseArticlePlan(data.choices?.[0]?.message?.content || "");
+  if (opts.sourceType === "article_title") plan.title = cleanPostTitle(sourceValue);
+  if (!plan.title || !plan.outline) throw new Error("Article plan could not be parsed. Try again.");
+  return plan;
 }
 
 export async function generateContent(opts: GenerateOpts) {
@@ -334,6 +432,9 @@ export async function generateContent(opts: GenerateOpts) {
       currentStep: "starting",
     }).returning();
     jobId = job.id;
+    if (opts.campaignItemId) {
+      await db.update(campaignItems).set({ jobId }).where(eq(campaignItems.id, opts.campaignItemId));
+    }
   } else {
     await db.update(jobs).set({ status: "running", currentStep: "starting" }).where(eq(jobs.id, jobId));
   }
@@ -367,7 +468,7 @@ export async function generateContent(opts: GenerateOpts) {
     let personaModel = opts.modelId || "openai/gpt-4o";
 
     if (opts.personaId) {
-      const [persona] = await db.select().from(personas).where(eq(personas.id, opts.personaId)).limit(1);
+      const [persona] = await db.select().from(personas).where(and(eq(personas.id, opts.personaId), eq(personas.userId, userId))).limit(1);
       if (persona) {
         systemPrompt = persona.systemPrompt;
         personaModel = persona.baseModel;

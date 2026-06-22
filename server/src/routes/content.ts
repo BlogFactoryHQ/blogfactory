@@ -17,6 +17,24 @@ contentRoutes.post("/generate", async (c) => {
   }
 });
 
+contentRoutes.post("/article-plan", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+
+  try {
+    const { generateArticlePlan } = await import("../services/generate-content.js");
+    const result = await generateArticlePlan({ ...body, userId });
+    return c.json(result);
+  } catch (err: any) {
+    const message = err.message || "Article planning failed";
+    if (message.includes("only supports") || message.includes("is required")) {
+      return c.json({ error: message }, 400);
+    }
+    console.error("article plan error:", err);
+    return c.json({ error: message }, 500);
+  }
+});
+
 contentRoutes.post("/extract", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
