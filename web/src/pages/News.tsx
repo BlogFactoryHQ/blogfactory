@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,6 +54,35 @@ const isNewsFeed = (feed: Feed) => {
 
 const isActiveMatrixRow = (row: SportsMatrixRow) => (row.status || "").toLocaleLowerCase("tr").includes("aktif");
 
+const isMonitorableMatrixRow = (row: SportsMatrixRow) => {
+  const sourceType = (row.sourceType || "").toLocaleLowerCase("tr");
+  const rule = (row.publishRule || "").toLocaleLowerCase("tr");
+  return isActiveMatrixRow(row) && !/veri|scout/.test(sourceType) && !rule.startsWith("veri");
+};
+
+const normalizeUrl = (value?: string | null) => {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!/^https?:$/.test(url.protocol)) return "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+};
+
+const firstUsableFeedUrl = (row: SportsMatrixRow) => {
+  for (const value of [row.siteLink, row.otherLink]) {
+    const url = normalizeUrl(value);
+    if (!url) continue;
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (["x.com", "twitter.com"].includes(host)) continue;
+    return url;
+  }
+  return "";
+};
+
 export default function News() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -74,6 +104,7 @@ export default function News() {
   const [runningFeedId, setRunningFeedId] = useState<string | null>(null);
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
   const [ruleDraft, setRuleDraft] = useState<SportsMatrixRow | null>(null);
+  const [selectedMatrixFeedKeys, setSelectedMatrixFeedKeys] = useState<string[]>([]);
 
   const { data: settings } = useQuery({
     queryKey: ["user-settings"],
@@ -96,6 +127,21 @@ export default function News() {
   const activePersonas = useMemo(() => personas, [personas]);
   const newsFeeds = useMemo(() => feeds.filter(isNewsFeed), [feeds]);
   const activePreviewRows = useMemo(() => matrixRows.filter(isActiveMatrixRow).slice(0, 5), [matrixRows]);
+  const monitoredUrls = useMemo(() => new Set(newsFeeds.map((feed) => normalizeUrl(feed.source_url)).filter(Boolean)), [newsFeeds]);
+  const matrixFeedCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    return matrixRows
+      .filter(isMonitorableMatrixRow)
+      .map((row, index) => ({ row, index, url: firstUsableFeedUrl(row) }))
+      .filter((item): item is { row: SportsMatrixRow; index: number; url: string } => Boolean(item.url))
+      .filter((item) => {
+        const normalized = normalizeUrl(item.url);
+        if (!normalized || monitoredUrls.has(normalized) || seen.has(normalized)) return false;
+        seen.add(normalized);
+        return true;
+      })
+      .map((item) => ({ ...item, key: `${item.index}:${normalizeUrl(item.url)}` }));
+  }, [matrixRows, monitoredUrls]);
   const stats = sportsMatrixStats(matrixRows);
   const matrixReady = stats.active > 0;
   const feedRuleMatch = feedUrl.trim() ? matchSportsMatrixRow(feedUrl.trim(), matrixRows) : null;
@@ -108,6 +154,10 @@ export default function News() {
     setMatrixFileName(news?.fileName || "");
     setMatrixImportedAt(news?.importedAt || "");
   }, [settings]);
+
+  useEffect(() => {
+    setSelectedMatrixFeedKeys([]);
+  }, [matrixRows]);
 
   useEffect(() => {
     if (!modelId && textModels[0]?.id) setModelId(textModels[0].id);
@@ -179,6 +229,38 @@ export default function News() {
       toast.success("News RSS source saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save news source"),
+  });
+
+  const createMatrixFeedsMutation = useMutation({
+    mutationFn: async () => {
+      const selected = matrixFeedCandidates.filter((candidate) => selectedMatrixFeedKeys.includes(candidate.key));
+      await Promise.all(selected.map((candidate) => api.post("/feeds", {
+        name: candidate.row.sourceName,
+        source_url: candidate.url,
+        platform: "rss",
+        platform_config: {
+          url: candidate.url,
+          editorialMode: "news",
+          matchedSourceName: candidate.row.sourceName,
+          matchedLabel: newsRuleLabel(candidate.row),
+        },
+        persona_id: personaId,
+        model_id: modelId,
+        frequency,
+        is_active: true,
+        posts_per_run: Number(postsPerRun),
+        include_content: false,
+        include_summary: false,
+        include_comments: 0,
+      })));
+      return selected.length;
+    },
+    onSuccess: (count) => {
+      setSelectedMatrixFeedKeys([]);
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      toast.success(`${count} News RSS feed${count === 1 ? "" : "s"} created`);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to create feeds from matrix"),
   });
 
   const generateManualMutation = useMutation({
@@ -297,6 +379,7 @@ export default function News() {
         ? "Pick a live OpenRouter model."
         : "";
   const feedBlocker = defaultBlocker || (!feedName.trim() ? "Add a feed name." : !feedUrl.trim() ? "Paste an RSS URL." : "");
+  const matrixFeedBlocker = defaultBlocker || (!matrixFeedCandidates.length ? "No unused RSS/site links found in the matrix." : !selectedMatrixFeedKeys.length ? "Select rows to monitor." : "");
   const manualBlocker = defaultBlocker || (!manualValue.trim() ? (manualMode === "url" ? "Paste a news URL." : "Paste source text.") : "");
   const importedLabel = matrixImportedAt ? new Date(matrixImportedAt).toLocaleString() : "";
 
@@ -525,6 +608,62 @@ export default function News() {
               <Button onClick={() => createFeedMutation.mutate()} disabled={!matrixReady || !canCreateFeed || createFeedMutation.isPending}>
                 {createFeedMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rss className="mr-2 h-4 w-4" />}
                 {feedBlocker || "Save News Source"}
+              </Button>
+            </div>
+          </BywordCard>
+
+          <BywordCard>
+            <SectionHeader
+              icon={Database}
+              title="Create RSS Feeds From Matrix"
+              description="Only rows with usable RSS/site links are shown. Nothing is selected by default."
+              action={<Badge variant="outline">{selectedMatrixFeedKeys.length} selected</Badge>}
+            />
+            <div className="space-y-4 p-6">
+              <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+                <p className="text-sm font-medium">This does not run all matrix sources.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Select only the sources you want to monitor. The app creates saved News RSS feeds, but it does not start generation jobs.</p>
+              </div>
+              {matrixFeedCandidates.length ? (
+                <div className="max-h-[360px] overflow-y-auto rounded-lg border border-byword-border">
+                  {matrixFeedCandidates.map((candidate) => {
+                    const checked = selectedMatrixFeedKeys.includes(candidate.key);
+                    return (
+                      <label key={candidate.key} className="flex cursor-pointer items-start gap-3 border-b border-byword-border px-4 py-3 last:border-b-0">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(next) => {
+                            setSelectedMatrixFeedKeys((current) =>
+                              next
+                                ? [...current, candidate.key]
+                                : current.filter((key) => key !== candidate.key)
+                            );
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold">{candidate.row.sourceName}</p>
+                            <Badge variant="outline">{newsRuleLabel(candidate.row)}</Badge>
+                            {candidate.row.tags && <Badge variant="secondary">{candidate.row.tags.split(",")[0].trim()}</Badge>}
+                          </div>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">{candidate.url}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-byword-border p-6 text-sm text-muted-foreground">
+                  No unused matrix rows with usable RSS/site links. Add a site link to a rule, or create a feed manually above.
+                </div>
+              )}
+              {matrixFeedBlocker && <p className="text-sm text-muted-foreground">{matrixFeedBlocker}</p>}
+              <Button
+                onClick={() => createMatrixFeedsMutation.mutate()}
+                disabled={Boolean(matrixFeedBlocker) || createMatrixFeedsMutation.isPending}
+              >
+                {createMatrixFeedsMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rss className="mr-2 h-4 w-4" />}
+                {matrixFeedBlocker || `Create ${selectedMatrixFeedKeys.length} RSS feed${selectedMatrixFeedKeys.length === 1 ? "" : "s"}`}
               </Button>
             </div>
           </BywordCard>
