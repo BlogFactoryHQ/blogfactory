@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { ExternalLink, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
+import { ExternalLink, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,17 @@ interface CampaignItem {
   jobId: string | null;
   postId: string | null;
   errorMessage: string | null;
+}
+
+interface CampaignHistory {
+  id: string;
+  status: string;
+  currentStep: string | null;
+  errorMessage: string | null;
+  totalCost: number | null;
+  resultPostIds: string[] | null;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 interface PersonaOption {
@@ -403,7 +414,7 @@ function CampaignDetail({ id }: { id: string }) {
   const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const { data, isLoading } = useQuery({
     queryKey: ["campaign", id],
-    queryFn: () => api.get<{ campaign: Campaign; items: CampaignItem[] }>(`/campaigns/${id}`),
+    queryFn: () => api.get<{ campaign: Campaign; items: CampaignItem[]; history: CampaignHistory[] }>(`/campaigns/${id}`),
     refetchInterval: 5000,
   });
 
@@ -455,7 +466,7 @@ function CampaignDetail({ id }: { id: string }) {
     );
   }
 
-  const { campaign, items } = data;
+  const { campaign, items, history = [] } = data;
   const failedCount = items.filter((item) => item.status === "failed").length;
   const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
 
@@ -535,6 +546,37 @@ function CampaignDetail({ id }: { id: string }) {
           <p className="mt-2 text-2xl font-semibold">{campaign.totalCost ? `$${campaign.totalCost.toFixed(4)}` : "-"}</p>
         </BywordCard>
       </div>
+
+      <BywordCard className="mb-6">
+        <SectionHeader icon={History} title="History" />
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Status</TableHead>
+              <TableHead>Step</TableHead>
+              <TableHead>Posts</TableHead>
+              <TableHead>Cost</TableHead>
+              <TableHead>When</TableHead>
+              <TableHead>Error</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {history.length === 0 && (
+              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No job history yet.</TableCell></TableRow>
+            )}
+            {history.map((job) => (
+              <TableRow key={job.id}>
+                <TableCell><StatusBadge status={statusType(job.status)} label={job.status} /></TableCell>
+                <TableCell className="text-sm text-muted-foreground">{job.currentStep || "-"}</TableCell>
+                <TableCell>{job.resultPostIds?.length || 0}</TableCell>
+                <TableCell>{job.totalCost ? `$${job.totalCost.toFixed(4)}` : "-"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}</TableCell>
+                <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{job.errorMessage || "-"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </BywordCard>
 
       <BywordCard>
         <SectionHeader icon={Megaphone} title="Items" />

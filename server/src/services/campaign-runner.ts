@@ -1,10 +1,11 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 
 const CAMPAIGN_CONCURRENCY = 3;
+const STALE_ITEM_MINUTES = 45;
 
 type Campaign = typeof campaigns.$inferSelect;
 type CampaignItem = typeof campaignItems.$inferSelect;
@@ -60,12 +61,13 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
     return;
   }
 
-  await db.update(campaignItems).set({
+  const [claimed] = await db.update(campaignItems).set({
     status: "running",
     errorMessage: null,
     startedAt: new Date(),
     completedAt: null,
-  }).where(eq(campaignItems.id, item.id));
+  }).where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "queued"))).returning();
+  if (!claimed) return;
 
   const result = await generateContent({
     userId: campaign.userId,
@@ -97,9 +99,11 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
   }).where(eq(campaignItems.id, item.id));
 }
 
-export async function runCampaign(campaignId: string) {
+export async function runCampaign(campaignId: string, options: { maxItems?: number } = {}) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
   if (!campaign || campaign.status === "stopped") return;
+  const maxItems = options.maxItems ?? Number.POSITIVE_INFINITY;
+  let processed = 0;
 
   await db.update(campaigns).set({
     status: "running",
@@ -108,7 +112,7 @@ export async function runCampaign(campaignId: string) {
     errorMessage: null,
   }).where(eq(campaigns.id, campaignId));
 
-  while (true) {
+  while (processed < maxItems) {
     const [current] = await db.select({ status: campaigns.status }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
     if (current?.status === "stopped") return;
 
@@ -117,14 +121,36 @@ export async function runCampaign(campaignId: string) {
       .from(campaignItems)
       .where(and(eq(campaignItems.campaignId, campaignId), eq(campaignItems.status, "queued")))
       .orderBy(asc(campaignItems.position))
-      .limit(CAMPAIGN_CONCURRENCY);
+      .limit(Math.min(CAMPAIGN_CONCURRENCY, maxItems - processed));
 
     if (!items.length) break;
     await Promise.allSettled(items.map((item) => runCampaignItem(campaign, item)));
+    processed += items.length;
     await refreshCampaignCounters(campaignId);
   }
 
   await refreshCampaignCounters(campaignId);
+  return processed;
+}
+
+export async function drainCampaignQueue(maxCampaigns = 5, maxItemsPerCampaign = CAMPAIGN_CONCURRENCY) {
+  const staleBefore = new Date(Date.now() - STALE_ITEM_MINUTES * 60 * 1000);
+  await db.update(campaignItems).set({ status: "queued", errorMessage: "Resumed after stale run", completedAt: null })
+    .where(and(eq(campaignItems.status, "running"), lt(campaignItems.startedAt, staleBefore)));
+
+  const rows = await db
+    .select({ id: campaigns.id })
+    .from(campaigns)
+    .where(eq(campaigns.status, "running"))
+    .orderBy(asc(campaigns.startedAt), desc(campaigns.createdAt))
+    .limit(maxCampaigns);
+
+  let processed = 0;
+  for (const row of rows) {
+    // ponytail: bounded cron chunks; add a real external queue if single articles exceed Vercel duration.
+    processed += await runCampaign(row.id, { maxItems: maxItemsPerCampaign }) || 0;
+  }
+  return { campaigns: rows.length, processed };
 }
 
 export async function stopCampaign(campaignId: string, userId: string) {
@@ -163,6 +189,6 @@ export async function retryCampaignItems(campaignId: string, userId: string, ite
   }).where(where);
 
   await db.update(campaigns).set({ status: "running", completedAt: null, errorMessage: null }).where(eq(campaigns.id, campaignId));
-  runCampaign(campaignId).catch((err) => console.error("[campaign] Retry failed:", err));
+  runCampaign(campaignId, { maxItems: CAMPAIGN_CONCURRENCY }).catch((err) => console.error("[campaign] Retry failed:", err));
   return campaign;
 }

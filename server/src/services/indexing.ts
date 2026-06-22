@@ -1,5 +1,5 @@
 import { importPKCS8, SignJWT } from "jose";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { indexingIntegrations, indexingSubmissions, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
@@ -363,14 +363,7 @@ async function submitGoogle(integration: IntegrationRow, site: SiteRow, urls: st
     }
 
     token ||= await googleAccessToken(credentials);
-    const response = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, type: "URL_UPDATED" }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const body = await response.text();
-    const ok = response.ok;
+    const result = await publishGoogleUrl(token, url);
     created.push(await insertSubmission({
       userId: integration.userId,
       siteId: site.id,
@@ -378,15 +371,82 @@ async function submitGoogle(integration: IntegrationRow, site: SiteRow, urls: st
       provider: "google",
       url,
       source,
-      status: ok ? "accepted" : "failed",
-      errorMessage: ok ? undefined : `Google returned ${response.status}`,
-      responseData: { status: response.status, body: body.slice(0, 1000) },
+      status: result.ok ? "accepted" : "failed",
+      errorMessage: result.ok ? undefined : `Google returned ${result.status}`,
+      responseData: result,
       submittedAt: new Date(),
     }));
   }
 
   await db.update(indexingIntegrations).set({ lastSubmitAt: new Date() }).where(eq(indexingIntegrations.id, integration.id));
   return created;
+}
+
+export async function drainQueuedGoogleIndexing(limit = 50) {
+  const queued = await db
+    .select()
+    .from(indexingSubmissions)
+    .where(and(eq(indexingSubmissions.provider, "google"), eq(indexingSubmissions.status, "queued")))
+    .orderBy(asc(indexingSubmissions.createdAt))
+    .limit(limit);
+
+  let accepted = 0;
+  let skipped = 0;
+  let failed = 0;
+  const tokens = new Map<string, string>();
+
+  for (const row of queued) {
+    if (!row.integrationId || !row.siteId) {
+      await markQueuedGoogle(row.id, "failed", "Missing integration or site");
+      failed += 1;
+      continue;
+    }
+
+    const [integration] = await db.select().from(indexingIntegrations).where(eq(indexingIntegrations.id, row.integrationId)).limit(1);
+    if (!integration || integration.status !== "connected") {
+      await markQueuedGoogle(row.id, "failed", "Google integration is not connected");
+      failed += 1;
+      continue;
+    }
+    if (await googleQuotaUsed(integration.id) >= 200) break;
+    if (!await isGoogleIndexingEligibleUrl(row.url)) {
+      await markQueuedGoogle(row.id, "skipped", "Google Indexing API only supports JobPosting or BroadcastEvent pages");
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      let token = tokens.get(integration.id);
+      if (!token) {
+        token = await googleAccessToken(decryptIndexingCredentials(integration) as GoogleCredentials);
+        tokens.set(integration.id, token);
+      }
+      const result = await publishGoogleUrl(token, row.url);
+      await db.update(indexingSubmissions).set({
+        status: result.ok ? "accepted" : "failed",
+        errorMessage: result.ok ? null : `Google returned ${result.status}`,
+        responseData: result,
+        submittedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(indexingSubmissions.id, row.id));
+      if (result.ok) accepted += 1;
+      else failed += 1;
+    } catch (error) {
+      await markQueuedGoogle(row.id, "failed", error instanceof Error ? error.message : "Google submission failed");
+      failed += 1;
+    }
+  }
+
+  return { queued: queued.length, accepted, skipped, failed };
+}
+
+async function markQueuedGoogle(id: string, status: "accepted" | "skipped" | "failed", errorMessage: string) {
+  await db.update(indexingSubmissions).set({
+    status,
+    errorMessage,
+    submittedAt: status === "accepted" ? new Date() : null,
+    updatedAt: new Date(),
+  }).where(eq(indexingSubmissions.id, id));
 }
 
 async function isGoogleIndexingEligibleUrl(url: string) {
@@ -420,6 +480,16 @@ async function googleAccessToken(credentials: GoogleCredentials) {
   const data = await response.json() as { access_token?: string; error_description?: string; error?: string };
   if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || "Google token request failed");
   return data.access_token;
+}
+
+async function publishGoogleUrl(token: string, url: string) {
+  const response = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ url, type: "URL_UPDATED" }),
+    signal: AbortSignal.timeout(15000),
+  });
+  return { ok: response.ok, status: response.status, body: (await response.text()).slice(0, 1000) };
 }
 
 async function googlePrivateKey(credentials: GoogleCredentials) {

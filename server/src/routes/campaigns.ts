@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { asc, and, desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { campaignItems, campaigns, userSettings } from "../db/schema.js";
+import { campaignItems, campaigns, jobs, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampaignItem } from "../services/campaign-parser.js";
 import { retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
@@ -109,7 +109,23 @@ campaignsRoutes.get("/:id", async (c) => {
     .where(eq(campaignItems.campaignId, id))
     .orderBy(asc(campaignItems.position));
 
-  return c.json({ campaign, items });
+  const history = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      currentStep: jobs.currentStep,
+      errorMessage: jobs.errorMessage,
+      totalCost: jobs.totalCost,
+      resultPostIds: jobs.resultPostIds,
+      createdAt: jobs.createdAt,
+      completedAt: jobs.completedAt,
+    })
+    .from(jobs)
+    .where(eq(jobs.campaignId, id))
+    .orderBy(desc(jobs.createdAt))
+    .limit(25);
+
+  return c.json({ campaign, items, history });
 });
 
 campaignsRoutes.post("/:id/start", async (c) => {
@@ -122,7 +138,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
     .returning();
 
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  runCampaign(id).catch((err) => console.error("[campaign] Run failed:", err));
+  runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed:", err));
   return c.json({ campaign });
 });
 

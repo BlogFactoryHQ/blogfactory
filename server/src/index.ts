@@ -22,6 +22,7 @@ import { sitesRoutes } from "./routes/sites.js";
 import { integrationsRoutes } from "./routes/integrations.js";
 import { indexingRoutes } from "./routes/indexing.js";
 import { campaignsRoutes } from "./routes/campaigns.js";
+import { cronRoutes } from "./routes/cron.js";
 
 const app = new Hono();
 
@@ -48,6 +49,7 @@ app.route("/api/sites", sitesRoutes);
 app.route("/api/integrations", integrationsRoutes);
 app.route("/api/indexing", indexingRoutes);
 app.route("/api/campaigns", campaignsRoutes);
+app.route("/api/cron", cronRoutes);
 
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0" })
