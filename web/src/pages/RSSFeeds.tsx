@@ -91,7 +91,7 @@ export default function RSSFeeds() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "active" | "paused">("all");
+  const [filter, setFilter] = useState<"all" | "news" | "active" | "paused">("all");
   const [selectedFeed, setSelectedFeed] = useState<Feed | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null);
@@ -291,10 +291,18 @@ export default function RSSFeeds() {
     },
   });
 
+  const isNewsFeed = (feed: Feed) => {
+    const mode = feed.platform_config?.editorialMode;
+    return mode === "news" || mode === "sports_news";
+  };
+
+  const newsFeedCount = feeds.filter(isNewsFeed).length;
+
   const filteredFeeds = feeds.filter((feed) => {
     const matchesSearch = feed.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter =
       filter === "all" ||
+      (filter === "news" && isNewsFeed(feed)) ||
       (filter === "active" && feed.is_active) ||
       (filter === "paused" && !feed.is_active);
     return matchesSearch && matchesFilter;
@@ -400,12 +408,18 @@ export default function RSSFeeds() {
     <div className="p-8 max-w-7xl">
       <PageHeader
         title="Content Sources"
-        description="Monitor and configure content ingestion from RSS feeds, Reddit, Hacker News, GitHub, and more."
+        description="Monitor, pause, run, and delete all saved sources. News rules and News RSS creation live in Newsroom."
       >
-        <Button onClick={() => navigate("/rss-feeds/new")}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Source
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate("/news")}>
+            <Rss className="h-4 w-4 mr-2" />
+            Newsroom
+          </Button>
+          <Button onClick={() => navigate("/rss-feeds/new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Source
+          </Button>
+        </div>
       </PageHeader>
 
       {/* Scheduler Status */}
@@ -439,6 +453,12 @@ export default function RSSFeeds() {
               All Feeds
               <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
                 {feeds.length}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="news" className="gap-2">
+              News
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                {newsFeedCount}
               </span>
             </TabsTrigger>
             <TabsTrigger value="active" className="gap-2">
@@ -534,6 +554,8 @@ export default function RSSFeeds() {
               paginatedFeeds.map((feed) => {
                 const nextRun = getNextRun(feed);
                 const isDue = nextRun && isPast(nextRun);
+                const feedIsNews = isNewsFeed(feed);
+                const matchedLabel = feed.platform_config?.matchedLabel as string | undefined;
 
                 return (
                 <TableRow
@@ -556,6 +578,8 @@ export default function RSSFeeds() {
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-primary">{feed.name}</span>
+                          {feedIsNews && <Badge variant="outline" className="text-xs">News</Badge>}
+                          {matchedLabel && <Badge variant="secondary" className="text-xs">{matchedLabel}</Badge>}
                           {feed.extract_full_content && (
                             <Badge variant="secondary" className="text-xs gap-1 px-1.5 py-0">
                               <FileText className="h-3 w-3" />
@@ -564,7 +588,7 @@ export default function RSSFeeds() {
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {getPlatformLabel(feed.platform)}
+                          {feedIsNews ? "News RSS Feed" : getPlatformLabel(feed.platform)}
                         </span>
                       </div>
                     </div>
