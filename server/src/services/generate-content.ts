@@ -20,6 +20,9 @@ interface GenerateOpts {
   platformConfig?: any;
   generateImages?: boolean;
   imageConfig?: any;
+  relatedKeywords?: string[] | string;
+  outline?: string;
+  articleDirection?: string;
   jobId?: string; // for retry
   schedulerUserId?: string;
 }
@@ -218,6 +221,48 @@ function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "
     : "";
 }
 
+function isArticleSource(sourceType: string) {
+  return sourceType === "article_keyword" || sourceType === "article_title";
+}
+
+function normalizeList(value: unknown, maxItems = 5) {
+  const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return items.map((item) => String(item).trim()).filter(Boolean).slice(0, maxItems);
+}
+
+function buildArticleExtras(opts: GenerateOpts) {
+  const lines: string[] = [];
+  const relatedKeywords = normalizeList(opts.relatedKeywords);
+  const outline = typeof opts.outline === "string" ? opts.outline.trim() : "";
+  const direction = typeof opts.articleDirection === "string" ? opts.articleDirection.trim() : "";
+
+  if (relatedKeywords.length) lines.push(`Naturally cover these related keywords: ${relatedKeywords.join(", ")}.`);
+  if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
+  if (direction) lines.push(`Article direction: ${direction}`);
+
+  return lines.length ? `\n\nAdditional article instructions:\n${lines.join("\n\n")}` : "";
+}
+
+function buildDraftUserMessage(article: { title: string; content: string; url?: string }, sourceType: string, opts: GenerateOpts) {
+  const articleExtras = buildArticleExtras(opts);
+
+  if (sourceType === "article_keyword") {
+    return `Write a complete, publish-ready SEO article for this target keyword: "${article.content}".
+
+Generate an SEO-optimized H1 title that matches search intent, then write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
+  }
+
+  if (sourceType === "article_title") {
+    return `Write a complete, publish-ready SEO article using this exact H1 title: "${article.title}".
+
+Keep the title unchanged, then write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
+  }
+
+  return article.url
+    ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}`
+    : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}`;
+}
+
 export async function generateContent(opts: GenerateOpts) {
   const userId = opts.schedulerUserId || opts.userId;
   const openRouterKey = await getOpenRouterKey(userId);
@@ -295,6 +340,12 @@ export async function generateContent(opts: GenerateOpts) {
     if (opts.sourceType === "rss_feed") {
       // Fetch and parse RSS feed
       articles = await fetchRssArticles(opts.sourceValue, opts.variations || 5, opts.filterOldPostsDays);
+    } else if (opts.sourceType === "article_keyword") {
+      const keyword = opts.sourceValue.trim();
+      articles = [{ title: keyword, content: keyword }];
+    } else if (opts.sourceType === "article_title") {
+      const title = opts.sourceValue.trim();
+      articles = [{ title, content: title }];
     } else if (opts.sourceType === "url") {
       const extracted = await extractContent({ userId, sourceType: "url", sourceValue: opts.sourceValue, extractModel: modelId });
       articles = [{ title: extracted.title || "", content: extracted.content || opts.sourceValue, url: opts.sourceValue }];
@@ -335,8 +386,8 @@ export async function generateContent(opts: GenerateOpts) {
       if (currentJob?.status === "failed") break;
 
       // Check content hash dedup
-      const contentHash = hashContent(article.content + article.title);
-      if (article.url) {
+      const contentHash = hashContent(article.content + article.title + (isArticleSource(opts.sourceType) ? buildArticleExtras(opts) : ""));
+      if (article.url || isArticleSource(opts.sourceType)) {
         const existing = await db.select({ id: posts.id }).from(posts)
           .where(and(eq(posts.userId, userId), eq(posts.sourceContentHash, contentHash)))
           .limit(1);
@@ -352,9 +403,7 @@ export async function generateContent(opts: GenerateOpts) {
         const genStart = Date.now();
         const settingsInstructions = buildSettingsInstructions(settings, `${article.title}\n${article.url || ""}\n${article.content}`);
         const draftSystemPrompt = `${systemPrompt}${settingsInstructions}`;
-        const userMessage = article.url
-          ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}`
-          : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}`;
+        const userMessage = buildDraftUserMessage(article, opts.sourceType, opts);
 
         const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -416,7 +465,7 @@ export async function generateContent(opts: GenerateOpts) {
           content: genContent,
           status: "draft",
           sourceType: opts.sourceType,
-          sourceRefId: article.url || opts.feedId || null,
+          sourceRefId: article.url || (isArticleSource(opts.sourceType) ? opts.sourceValue : opts.feedId) || null,
           sourceContentHash: contentHash,
           jobId,
           personaId: opts.personaId || null,

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 
 export type GenerationStep = "idle" | "extracting" | "generating" | "images" | "complete" | "error";
-export type SourceType = "url" | "raw_text" | "youtube" | "pdf";
+export type SourceType = "article_keyword" | "article_title" | "url" | "raw_text" | "youtube" | "pdf";
 
 export interface DraftProgress {
   current: number;
@@ -27,6 +27,14 @@ const getStepsForSourceType = (sourceType: SourceType = "url") => {
   ];
 
   switch (sourceType) {
+    case "article_keyword":
+    case "article_title":
+      return [
+        { key: "extracting", label: "Planning article" },
+        { key: "generating", label: "Generating article with AI" },
+        { key: "images", label: "Creating images" },
+        { key: "complete", label: "Complete" },
+      ];
     case "url":
       return [
         { key: "extracting", label: "Fetching & extracting webpage content" },
@@ -57,6 +65,9 @@ const getStepsForSourceType = (sourceType: SourceType = "url") => {
 
 const getSourceIcon = (sourceType: SourceType = "url") => {
   switch (sourceType) {
+    case "article_keyword":
+    case "article_title":
+      return <FileText className="h-4 w-4" />;
     case "url":
       return <Link className="h-4 w-4" />;
     case "youtube":
@@ -72,6 +83,10 @@ const getSourceIcon = (sourceType: SourceType = "url") => {
 
 const getSourceLabel = (sourceType: SourceType = "url") => {
   switch (sourceType) {
+    case "article_keyword":
+      return "Article Keyword";
+    case "article_title":
+      return "Article Title";
     case "url":
       return "Web Article";
     case "youtube":

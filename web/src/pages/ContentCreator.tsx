@@ -89,6 +89,11 @@ export default function ContentCreator() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [sourceType, setSourceType] = useState("url");
+  const [articleKeyword, setArticleKeyword] = useState("");
+  const [articleTitle, setArticleTitle] = useState("");
+  const [articleRelatedKeywords, setArticleRelatedKeywords] = useState("");
+  const [articleOutline, setArticleOutline] = useState("");
+  const [articleDirection, setArticleDirection] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -240,6 +245,10 @@ export default function ContentCreator() {
 
   const getSourceValue = () => {
     switch (sourceType) {
+      case "article_keyword":
+        return articleKeyword;
+      case "article_title":
+        return articleTitle;
       case "url":
         return sourceUrl;
       case "raw_text":
@@ -302,6 +311,8 @@ export default function ContentCreator() {
 
   const getSourceLabel = () => {
     switch (sourceType) {
+      case "article_keyword": return articleKeyword.slice(0, 40) || "Keyword";
+      case "article_title": return articleTitle.slice(0, 40) || "Title";
       case "url": return sourceUrl.slice(0, 40) || "URL";
       case "youtube": return youtubeUrl.slice(0, 40) || "YouTube";
       case "pdf": return pdfFile?.name || "PDF";
@@ -313,6 +324,7 @@ export default function ContentCreator() {
   const executeGeneration = async () => {
     const sourceValue = getSourceValue();
     const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
+    const isArticleSource = sourceType.startsWith("article_");
 
     // Show progress immediately before the API call returns
     const trackId = startJob({
@@ -324,11 +336,16 @@ export default function ContentCreator() {
 
     try {
       const data = await api.post<GenerateResponse>("/content/generate", {
-        sourceType: sourceType === "url" ? "url" : sourceType === "raw_text" ? "raw_text" : sourceType,
+        sourceType,
         sourceValue,
         personaId,
         modelId,
         variations,
+        relatedKeywords: isArticleSource
+          ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
+          : undefined,
+        outline: isArticleSource ? articleOutline : undefined,
+        articleDirection: isArticleSource ? articleDirection : undefined,
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
           cover: imageConfig.cover.enabled ? {
@@ -424,8 +441,15 @@ export default function ContentCreator() {
             description="Choose a source, configure the draft, and send it to the generation queue."
           />
           <div className="p-6">
-            <Tabs value={sourceType} onValueChange={setSourceType}>
-              <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1 sm:grid-cols-4">
+            <Tabs
+              value={sourceType.startsWith("article_") ? "article" : sourceType}
+              onValueChange={(value) => setSourceType(value === "article" ? "article_keyword" : value)}
+            >
+              <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1 sm:grid-cols-5">
+                <TabsTrigger value="article" className="gap-2 rounded-md">
+                  <Sparkles className="h-4 w-4" />
+                  Article
+                </TabsTrigger>
                 <TabsTrigger value="url" className="gap-2 rounded-md">
                   <LinkIcon className="h-4 w-4" />
                   URL
@@ -443,6 +467,82 @@ export default function ContentCreator() {
                   YouTube
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="article" className="space-y-4">
+                <Tabs value={sourceType} onValueChange={setSourceType}>
+                  <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1">
+                    <TabsTrigger value="article_keyword" className="rounded-md">Keyword</TabsTrigger>
+                    <TabsTrigger value="article_title" className="rounded-md">Title</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="article_keyword" className="space-y-2">
+                    <Label>Target Keyword</Label>
+                    <div className="relative">
+                      <Sparkles className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="best standing desks for home office"
+                        value={articleKeyword}
+                        onChange={(e) => setArticleKeyword(e.target.value)}
+                        className="h-11 pl-9"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Generate an SEO-focused title and article from this keyword.
+                    </p>
+                  </TabsContent>
+
+                  <TabsContent value="article_title" className="space-y-2">
+                    <Label>Article Title</Label>
+                    <div className="relative">
+                      <FileText className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="The Ultimate Guide to Remote Team Management"
+                        value={articleTitle}
+                        onChange={(e) => setArticleTitle(e.target.value)}
+                        className="h-11 pl-9"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Keep this title and generate a publish-ready article around it.
+                    </p>
+                  </TabsContent>
+                </Tabs>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Related Keywords</Label>
+                    <Input
+                      placeholder="free project management software, agile project management"
+                      value={articleRelatedKeywords}
+                      onChange={(e) => setArticleRelatedKeywords(e.target.value)}
+                      className="h-11"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional, comma-separated. The first 5 are used.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Direction</Label>
+                    <Input
+                      placeholder="Focus on beginner-friendly examples"
+                      value={articleDirection}
+                      onChange={(e) => setArticleDirection(e.target.value)}
+                      className="h-11"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Outline</Label>
+                  <Textarea
+                    placeholder={"H2: What to look for\nH2: Top options\nH3: Budget picks"}
+                    value={articleOutline}
+                    onChange={(e) => setArticleOutline(e.target.value)}
+                    className="min-h-[120px] resize-none"
+                  />
+                </div>
+              </TabsContent>
 
               <TabsContent value="url" className="space-y-2">
                 <Label>Source URL</Label>
