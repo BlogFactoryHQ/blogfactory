@@ -20,6 +20,7 @@ import { webhooksRoutes } from "./routes/webhooks.js";
 import { adminRoutes } from "./routes/admin.js";
 import { sitesRoutes } from "./routes/sites.js";
 import { integrationsRoutes } from "./routes/integrations.js";
+import { indexingRoutes } from "./routes/indexing.js";
 
 const app = new Hono();
 
@@ -44,6 +45,7 @@ app.route("/api/webhooks", webhooksRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sites", sitesRoutes);
 app.route("/api/integrations", integrationsRoutes);
+app.route("/api/indexing", indexingRoutes);
 
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0" })

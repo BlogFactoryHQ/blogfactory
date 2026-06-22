@@ -238,6 +238,15 @@ export async function publishPost(userId: string, postId: string, integrationId:
       await db.update(posts).set({ status: "published" }).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
     }
 
+    if (mode === "publish" && result.externalUrl) {
+      try {
+        const { submitPublishedUrl } = await import("./indexing.js");
+        await submitPublishedUrl(userId, integration.siteId, result.externalUrl);
+      } catch (error) {
+        console.error("[indexing] Auto-submit failed:", error);
+      }
+    }
+
     return {
       success: true,
       publication: serializePublication(publication),

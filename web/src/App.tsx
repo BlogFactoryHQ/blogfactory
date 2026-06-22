@@ -20,6 +20,7 @@ import Jobs from "@/pages/Jobs";
 import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
 import Integrations from "@/pages/Integrations";
+import Indexing from "@/pages/Indexing";
 import UsageAnalytics from "@/pages/UsageAnalytics";
 import ImageGallery from "@/pages/ImageGallery";
 import AdminUsers from "@/pages/AdminUsers";
@@ -56,6 +57,7 @@ const App = () => (
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/sites" element={<Sites />} />
                       <Route path="/integrations" element={<Integrations />} />
+                      <Route path="/indexing" element={<Indexing />} />
                       <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                       <Route path="/gallery" element={<ImageGallery />} />
                       <Route path="/admin/users" element={<AdminUsers />} />

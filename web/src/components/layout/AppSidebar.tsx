@@ -59,6 +59,7 @@ const adminNavigation = [
 const lowerNavigation = [
   { name: "Learn", href: "/", icon: BookOpen },
   { name: "Integrations", href: "/integrations", icon: Plug },
+  { name: "Indexing", href: "/indexing", icon: Search },
   { name: "Article Settings", href: "/settings", icon: Settings },
   { name: "Sites", href: "/sites", icon: Globe2 },
   { name: "Notifications", href: "/jobs", icon: Bell },
