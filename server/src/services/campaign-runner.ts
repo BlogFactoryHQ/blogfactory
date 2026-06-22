@@ -57,7 +57,10 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
     .limit(1);
 
   if (current?.status === "stopped") {
-    await db.update(campaignItems).set({ status: "stopped", completedAt: new Date() }).where(eq(campaignItems.id, item.id));
+    await db
+      .update(campaignItems)
+      .set({ status: "stopped", completedAt: new Date() })
+      .where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "queued")));
     return;
   }
 
@@ -69,25 +72,35 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
   }).where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "queued"))).returning();
   if (!claimed) return;
 
-  const result = await generateContent({
-    userId: campaign.userId,
-    sourceType: "campaign",
-    sourceValue: item.input,
-    modelId: campaign.modelId,
-    personaId: campaign.personaId,
-    campaignId: campaign.id,
-    campaignItemId: item.id,
-    settingsSnapshot: campaign.settingsSnapshot,
-    generateImages: Boolean((campaign.settingsSnapshot as any)?.generateImages),
-    imageConfig: (campaign.settingsSnapshot as any)?.imageConfig,
-    campaignArticle: {
-      mode: campaign.mode as CampaignMode,
-      keyword: item.keyword,
-      title: item.title,
-      outline: itemOutline(item, campaign),
-      sharedContext: campaign.name,
-    },
-  });
+  let result: Awaited<ReturnType<typeof generateContent>>;
+  try {
+    result = await generateContent({
+      userId: campaign.userId,
+      sourceType: "campaign",
+      sourceValue: item.input,
+      modelId: campaign.modelId,
+      personaId: campaign.personaId,
+      campaignId: campaign.id,
+      campaignItemId: item.id,
+      settingsSnapshot: campaign.settingsSnapshot,
+      generateImages: Boolean((campaign.settingsSnapshot as any)?.generateImages),
+      imageConfig: (campaign.settingsSnapshot as any)?.imageConfig,
+      campaignArticle: {
+        mode: campaign.mode as CampaignMode,
+        keyword: item.keyword,
+        title: item.title,
+        outline: itemOutline(item, campaign),
+        sharedContext: campaign.name,
+      },
+    });
+  } catch (err) {
+    await db.update(campaignItems).set({
+      status: "failed",
+      errorMessage: err instanceof Error ? err.message : "Campaign item failed",
+      completedAt: new Date(),
+    }).where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "running")));
+    return;
+  }
 
   const postId = Array.isArray(result.postIds) ? result.postIds[0] : null;
   await db.update(campaignItems).set({
@@ -96,7 +109,7 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
     postId: postId || null,
     errorMessage: result.error || null,
     completedAt: new Date(),
-  }).where(eq(campaignItems.id, item.id));
+  }).where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "running")));
 }
 
 export async function runCampaign(campaignId: string, options: { maxItems?: number } = {}) {
@@ -136,7 +149,11 @@ export async function runCampaign(campaignId: string, options: { maxItems?: numb
 export async function drainCampaignQueue(maxCampaigns = 5, maxItemsPerCampaign = CAMPAIGN_CONCURRENCY) {
   const staleBefore = new Date(Date.now() - STALE_ITEM_MINUTES * 60 * 1000);
   await db.update(campaignItems).set({ status: "queued", errorMessage: "Resumed after stale run", completedAt: null })
-    .where(and(eq(campaignItems.status, "running"), lt(campaignItems.startedAt, staleBefore)));
+    .where(and(
+      eq(campaignItems.status, "running"),
+      lt(campaignItems.startedAt, staleBefore),
+      sql`${campaignItems.campaignId} in (select id from campaigns where status = 'running')`,
+    ));
 
   const rows = await db
     .select({ id: campaigns.id })

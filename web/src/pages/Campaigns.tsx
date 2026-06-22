@@ -67,6 +67,10 @@ interface CampaignItem {
   title: string | null;
   status: CampaignStatus;
   jobId: string | null;
+  jobStatus: string | null;
+  currentStep: string | null;
+  jobErrorMessage: string | null;
+  jobTotalCost: number | null;
   postId: string | null;
   errorMessage: string | null;
 }
@@ -134,6 +138,10 @@ function parseSharedOutline(value: string) {
 
 function linesCount(value: string) {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+}
+
+function formatStep(value: string | null | undefined) {
+  return value ? value.replace(/_/g, " ") : "";
 }
 
 export default function Campaigns() {
@@ -226,6 +234,10 @@ function NewCampaign() {
   });
 
   const activePersonas = useMemo(() => personas.filter((persona) => persona.status === "active"), [personas]);
+  const itemCount = linesCount(lines);
+  const sharedOutlineCount = parseSharedOutline(sharedOutline).length;
+  const hasTooManyItems = itemCount > 100;
+  const needsSharedOutline = mode === "title_outline" && outlineMode === "shared" && sharedOutlineCount === 0;
 
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
@@ -295,7 +307,7 @@ function NewCampaign() {
       <div className="mb-8 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">New Campaign</h1>
-          <p className="mt-2 text-muted-foreground">{linesCount(lines)} item{linesCount(lines) === 1 ? "" : "s"} ready</p>
+          <p className="mt-2 text-muted-foreground">{itemCount} item{itemCount === 1 ? "" : "s"} ready</p>
         </div>
         <Button variant="outline" asChild><Link to="/campaigns">Back</Link></Button>
       </div>
@@ -337,6 +349,7 @@ function NewCampaign() {
                 <div className="space-y-2">
                   <Label>Shared Outline</Label>
                   <Textarea value={sharedOutline} onChange={(event) => setSharedOutline(event.target.value)} placeholder={"Introduction\nH3:Key details\nConclusion"} className="min-h-24" />
+                  {needsSharedOutline && <p className="text-xs text-destructive">Add at least one shared heading.</p>}
                 </div>
               )}
             </div>
@@ -350,6 +363,7 @@ function NewCampaign() {
               placeholder={mode === "keyword" ? "best crm for startups" : mode === "title" ? "Best CRM for Startups" : "Best CRM for Startups; Introduction; H3:Pricing; Conclusion"}
               className="min-h-56 font-mono text-sm"
             />
+            {hasTooManyItems && <p className="text-xs text-destructive">Campaigns support up to 100 items.</p>}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -397,7 +411,7 @@ function NewCampaign() {
 
           <div className="flex justify-end gap-3 border-t border-byword-border pt-6">
             <Button variant="outline" asChild><Link to="/campaigns">Cancel</Link></Button>
-            <Button disabled={createMutation.isPending || !name.trim() || !linesCount(lines)} onClick={() => createMutation.mutate()}>
+            <Button disabled={createMutation.isPending || !name.trim() || !modelId.trim() || !itemCount || hasTooManyItems || needsSharedOutline} onClick={() => createMutation.mutate()}>
               {createMutation.isPending ? "Creating..." : "Create Campaign"}
             </Button>
           </div>
@@ -469,6 +483,7 @@ function CampaignDetail({ id }: { id: string }) {
   const { campaign, items, history = [] } = data;
   const failedCount = items.filter((item) => item.status === "failed").length;
   const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
+  const resumableCount = items.filter((item) => item.status === "stopped").length;
 
   return (
     <BywordPageShell className="max-w-7xl">
@@ -479,9 +494,9 @@ function CampaignDetail({ id }: { id: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild><Link to="/campaigns">Back</Link></Button>
-          {campaign.status !== "running" && campaign.status !== "completed" && (
+          {(campaign.status === "draft" || (campaign.status === "stopped" && resumableCount > 0)) && (
             <Button onClick={() => action.mutate(`/campaigns/${campaign.id}/start`)} disabled={action.isPending}>
-              <Play className="mr-2 h-4 w-4" />Start
+              <Play className="mr-2 h-4 w-4" />{campaign.status === "stopped" ? "Resume" : "Start"}
             </Button>
           )}
           {campaign.status === "running" && (
@@ -586,6 +601,7 @@ function CampaignDetail({ id }: { id: string }) {
               <TableHead className="w-16">#</TableHead>
               <TableHead>Input</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Step</TableHead>
               <TableHead>Post</TableHead>
               <TableHead>Error</TableHead>
               <TableHead className="w-24"></TableHead>
@@ -600,6 +616,9 @@ function CampaignDetail({ id }: { id: string }) {
                   <p className="truncate text-xs text-muted-foreground">{item.input}</p>
                 </TableCell>
                 <TableCell><StatusBadge status={statusType(item.status)} label={item.status} /></TableCell>
+                <TableCell className="max-w-48 truncate text-xs text-muted-foreground">
+                  {formatStep(item.currentStep) || item.jobStatus || "-"}
+                </TableCell>
                 <TableCell>
                   {item.postId ? (
                     <Button variant="outline" size="sm" asChild>
@@ -607,7 +626,7 @@ function CampaignDetail({ id }: { id: string }) {
                     </Button>
                   ) : "-"}
                 </TableCell>
-                <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{item.errorMessage || "-"}</TableCell>
+                <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{item.errorMessage || item.jobErrorMessage || "-"}</TableCell>
                 <TableCell>
                   {item.status === "failed" && (
                     <Button variant="outline" size="sm" onClick={() => action.mutate(`/campaigns/${campaign.id}/items/${item.id}/retry`)} disabled={action.isPending}>

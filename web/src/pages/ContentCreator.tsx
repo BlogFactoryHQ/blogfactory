@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import {
   Grid2X2,
   ArrowRight,
   SlidersHorizontal,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -91,9 +93,41 @@ interface ArticlePlanResponse {
   outline: string;
 }
 
+type CreationMode = "article" | "campaign";
+type CampaignMode = "keyword" | "title" | "title_outline";
+
+interface Campaign {
+  id: string;
+}
+
+interface CampaignItem {
+  id: string;
+}
+
+function parseSharedOutline(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (/^h3\s*:/i.test(line)) return { level: 3, text: line.replace(/^h3\s*:/i, "").trim() };
+      if (/^h2\s*:/i.test(line)) return { level: 2, text: line.replace(/^h2\s*:/i, "").trim() };
+      return { level: 2, text: line };
+    })
+    .filter((heading) => heading.text);
+}
+
+function linesCount(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+}
+
 export default function ContentCreator() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const initialCreationMode: CreationMode = new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article";
+  const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [sourceType, setSourceType] = useState("url");
   const [articleKeyword, setArticleKeyword] = useState("");
   const [articleTitle, setArticleTitle] = useState("");
@@ -117,8 +151,16 @@ export default function ContentCreator() {
   const [variations, setVariations] = useState<1 | 3 | 5>(1);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [showConcurrentDialog, setShowConcurrentDialog] = useState(false);
+  const [campaignName, setCampaignName] = useState("");
+  const [campaignMode, setCampaignMode] = useState<CampaignMode>("keyword");
+  const [campaignOutlineMode, setCampaignOutlineMode] = useState("none");
+  const [campaignLines, setCampaignLines] = useState("");
+  const [campaignSharedOutline, setCampaignSharedOutline] = useState("");
+  const [campaignCustomInstructions, setCampaignCustomInstructions] = useState("");
+  const [campaignStartNow, setCampaignStartNow] = useState(true);
 
   const refetchPostsRef = useRef<(() => void) | null>(null);
+  const userSelectedModelRef = useRef(false);
 
   const {
     activeJobs,
@@ -131,6 +173,15 @@ export default function ContentCreator() {
   } = useJobTracker(() => {
     refetchPostsRef.current?.();
   });
+
+  useEffect(() => {
+    setCreationMode(new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article");
+  }, [location.search]);
+
+  const selectCreationMode = (mode: CreationMode) => {
+    setCreationMode(mode);
+    navigate(mode === "campaign" ? "/content-creator?mode=campaign" : "/content-creator", { replace: true });
+  };
 
   // Fetch user settings for image defaults
   const { data: userSettings } = useQuery({
@@ -219,7 +270,7 @@ export default function ContentCreator() {
   });
 
   // Filter to only active personas for the dropdown
-  const activePersonas = personas.filter((p) => p.status === "active");
+  const activePersonas = useMemo(() => personas.filter((p) => p.status === "active"), [personas]);
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
   const fallbackTextModelId = textModels[0]?.id;
@@ -236,6 +287,24 @@ export default function ContentCreator() {
     const selectedPersona = activePersonas.find((persona) => persona.id === nextPersonaId);
     setModelId(resolveLiveModelId(selectedPersona?.base_model));
   };
+
+  const handleModelChange = (nextModelId: string) => {
+    userSelectedModelRef.current = true;
+    setModelId(nextModelId);
+  };
+
+  const handleCampaignPersonaChange = (nextPersonaId: string) => {
+    if (nextPersonaId === "none") {
+      setPersonaId("");
+      return;
+    }
+    handlePersonaChange(nextPersonaId);
+  };
+
+  useEffect(() => {
+    if (!fallbackTextModelId || !selectedModelUnavailable || userSelectedModelRef.current) return;
+    setModelId(fallbackTextModelId);
+  }, [fallbackTextModelId, selectedModelUnavailable]);
 
   useEffect(() => {
     if (!personaId || !selectedModelUnavailable || !fallbackTextModelId) return;
@@ -323,6 +392,10 @@ export default function ContentCreator() {
   };
 
   const isGenerating = runningCount > 0;
+  const campaignItemCount = linesCount(campaignLines);
+  const campaignSharedOutlineCount = parseSharedOutline(campaignSharedOutline).length;
+  const campaignHasTooManyItems = campaignItemCount > 100;
+  const campaignNeedsSharedOutline = campaignMode === "title_outline" && campaignOutlineMode === "shared" && campaignSharedOutlineCount === 0;
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -464,6 +537,40 @@ export default function ContentCreator() {
     }
   };
 
+  const createCampaignMutation = useMutation({
+    mutationFn: async () => {
+      const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
+      const result = await api.post<{ campaign: Campaign; items: CampaignItem[] }>("/campaigns", {
+        name: campaignName,
+        mode: campaignMode,
+        outlineMode: campaignMode === "title_outline" ? campaignOutlineMode : "none",
+        lines: campaignLines,
+        sharedOutline: parseSharedOutline(campaignSharedOutline),
+        personaId: personaId || null,
+        modelId,
+        customInstructions: campaignCustomInstructions,
+        generateImages: imagesEnabled,
+        imageConfig: imagesEnabled ? imageConfig : null,
+      });
+      if (campaignStartNow) await api.post(`/campaigns/${result.campaign.id}/start`);
+      return result;
+    },
+    onSuccess: ({ campaign }) => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success(campaignStartNow ? "Campaign started" : "Campaign created");
+      navigate(`/campaigns/${campaign.id}`);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
+  });
+
+  const handleCreateCampaign = () => {
+    if (campaignNeedsSharedOutline) {
+      toast.error("Add at least one shared heading.");
+      return;
+    }
+    createCampaignMutation.mutate();
+  };
+
   const handleConcurrentAction = async (action: ConcurrentAction) => {
     setShowConcurrentDialog(false);
 
@@ -487,10 +594,58 @@ export default function ContentCreator() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Create Content"
-        description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts from URLs, PDFs, raw text, or YouTube.`}
+        description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
       />
 
       <div className="mx-auto max-w-5xl space-y-9">
+        <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="h-px flex-1 bg-byword-border" />
+          Choose how to create
+          <div className="h-px flex-1 bg-byword-border" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <OptionCard
+            icon={FileTextIcon}
+            title="Article"
+            description="One source in, one optimized article draft out."
+            selected={creationMode === "article"}
+            onClick={() => selectCreationMode("article")}
+          />
+          <OptionCard
+            icon={Layers}
+            title="Campaign"
+            description="Batch multiple articles with shared strategy and context."
+            badge="Batch"
+            selected={creationMode === "campaign"}
+            onClick={() => selectCreationMode("campaign")}
+          />
+          <OptionCard
+            icon={Grid2X2}
+            title="Programmatic"
+            description="Generate from templates and structured data at scale."
+            badge="Coming soon"
+            disabled
+          />
+        </div>
+
+        <BywordCard className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <IconTile icon={Archive} />
+              <div>
+                <p className="text-sm font-semibold">Import prepared posts</p>
+                <p className="text-xs text-muted-foreground">Bring in markdown and images from a zip package.</p>
+              </div>
+            </div>
+            <Button variant="outline" asChild>
+              <Link to="/batch-import">Open Batch Import</Link>
+            </Button>
+          </div>
+        </BywordCard>
+
+        {creationMode === "article" && (
+          <>
         <BywordCard>
           <SectionHeader
             icon={Sparkles}
@@ -750,35 +905,6 @@ export default function ContentCreator() {
           </div>
         </BywordCard>
 
-        <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-          <div className="h-px flex-1 bg-byword-border" />
-          Choose how to create
-          <div className="h-px flex-1 bg-byword-border" />
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <OptionCard
-            icon={FileTextIcon}
-            title="Article"
-            description="One source in, one optimized article draft out."
-            selected
-          />
-          <OptionCard
-            icon={Layers}
-            title="Campaign"
-            description="Batch multiple articles with shared strategy and context."
-            badge="Batch"
-            disabled
-          />
-          <OptionCard
-            icon={Grid2X2}
-            title="Programmatic"
-            description="Generate from templates and structured data at scale."
-            badge="Scale"
-            disabled
-          />
-        </div>
-
         <BywordCard>
           <SectionHeader
             icon={SlidersHorizontal}
@@ -811,7 +937,7 @@ export default function ContentCreator() {
 
               <div className="space-y-2">
                 <Label>AI Model</Label>
-                <LiveTextModelSelect value={modelId} onValueChange={setModelId} triggerClassName="h-11" />
+                <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
                 )}
@@ -919,6 +1045,125 @@ export default function ContentCreator() {
             )}
           </div>
         </BywordCard>
+          </>
+        )}
+
+        {creationMode === "campaign" && (
+          <BywordCard>
+            <SectionHeader
+              icon={Layers}
+              title="Your next campaign"
+              description="Batch articles with shared voice, model, image settings, and context."
+            />
+            <div className="space-y-7 p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder="Q1 product guides" className="h-11" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Input Mode</Label>
+                  <Select value={campaignMode} onValueChange={(value) => setCampaignMode(value as CampaignMode)}>
+                    <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="keyword">Keyword</SelectItem>
+                      <SelectItem value="title">Title</SelectItem>
+                      <SelectItem value="title_outline">Title + Outline</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {campaignMode === "title_outline" && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Outline Mode</Label>
+                    <Select value={campaignOutlineMode} onValueChange={setCampaignOutlineMode}>
+                      <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Per line</SelectItem>
+                        <SelectItem value="shared">Shared outline</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {campaignOutlineMode === "shared" && (
+                    <div className="space-y-2">
+                      <Label>Shared Outline</Label>
+                      <Textarea value={campaignSharedOutline} onChange={(event) => setCampaignSharedOutline(event.target.value)} placeholder={"Introduction\nH3:Key details\nConclusion"} className="min-h-24" />
+                      {campaignNeedsSharedOutline && <p className="text-xs text-destructive">Add at least one shared heading.</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Items</Label>
+                <Textarea
+                  value={campaignLines}
+                  onChange={(event) => setCampaignLines(event.target.value)}
+                  placeholder={campaignMode === "keyword" ? "best crm for startups" : campaignMode === "title" ? "Best CRM for Startups" : "Best CRM for Startups; Introduction; H3:Pricing; Conclusion"}
+                  className="min-h-56 font-mono text-sm"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{campaignItemCount} item{campaignItemCount === 1 ? "" : "s"} ready</span>
+                  {campaignHasTooManyItems && <span className="text-destructive">Campaigns support up to 100 items.</span>}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Brand Voice</Label>
+                  <Select value={personaId || "none"} onValueChange={handleCampaignPersonaChange}>
+                    <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Default</SelectItem>
+                      {activePersonas.map((persona) => (
+                        <SelectItem key={persona.id} value={persona.id}>
+                          {persona.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>AI Model</Label>
+                  <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
+                  {selectedModelUnavailable && (
+                    <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Custom Instructions</Label>
+                <Textarea value={campaignCustomInstructions} onChange={(event) => setCampaignCustomInstructions(event.target.value)} className="min-h-24" />
+              </div>
+
+              <SplitImageGenerationSettings
+                config={imageConfig}
+                onConfigChange={setImageConfig}
+                defaults={imageDefaults}
+                compact
+              />
+
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />
+                Start after create
+              </label>
+
+              <div className="flex justify-end border-t border-byword-border pt-6">
+                <Button
+                  onClick={handleCreateCampaign}
+                  disabled={createCampaignMutation.isPending || !campaignName.trim() || !modelId.trim() || !campaignItemCount || campaignHasTooManyItems || campaignNeedsSharedOutline || selectedModelUnavailable}
+                  className="h-11"
+                >
+                  {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create & Start Campaign" : "Create Campaign"}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </BywordCard>
+        )}
       </div>
 
       <ConcurrentJobDialog
