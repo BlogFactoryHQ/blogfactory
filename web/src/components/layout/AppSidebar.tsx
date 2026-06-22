@@ -14,12 +14,10 @@ import {
   Search,
   Plug,
   ChevronDown,
-  BookOpen,
   Bell,
   Globe2,
   Plus,
   Check,
-  Archive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,7 +41,6 @@ import {
 
 const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
-  { name: "Batch Import", href: "/batch-import", icon: Archive },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
   { name: "Job Queue", href: "/jobs", icon: ListTodo },
@@ -52,17 +49,11 @@ const primaryNavigation = [
   { name: "Usage", href: "/usage", icon: BarChart3 },
 ];
 
-const adminNavigation = [
-  { name: "Admin Users", href: "/admin/users", icon: Shield },
-];
-
 const lowerNavigation = [
-  { name: "Learn", href: "/", icon: BookOpen },
   { name: "Integrations", href: "/integrations", icon: Plug },
   { name: "Indexing", href: "/indexing", icon: Search },
   { name: "Article Settings", href: "/settings", icon: Settings },
   { name: "Sites", href: "/sites", icon: Globe2 },
-  { name: "Notifications", href: "/jobs", icon: Bell },
 ];
 
 export function AppSidebar() {
@@ -74,7 +65,7 @@ export function AppSidebar() {
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
-  const visibleNavigation = user?.role === "admin" ? [...primaryNavigation, ...adminNavigation] : primaryNavigation;
+  const visibleNavigation = primaryNavigation;
   const workspaceName = activeSite?.domain || activeSite?.name || "Connect site";
   const workspaceInitial = (activeSite?.name || activeSite?.domain || "B").charAt(0).toUpperCase();
 
@@ -82,6 +73,7 @@ export function AppSidebar() {
     if (!isCollapsed) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-signout]')) return;
+    if (target.closest('[data-profile-menu]')) return;
     e.preventDefault();
     toggle();
   };
@@ -245,32 +237,45 @@ export function AppSidebar() {
         </div>
 
         <div className="border-t border-sidebar-border px-3 py-3 overflow-hidden">
-          <div className="flex items-center overflow-hidden rounded-md p-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-byword-blue text-white text-[11px] font-semibold shrink-0 cursor-default">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-profile-menu
+                className="flex w-full items-center overflow-hidden rounded-md p-1.5 text-left transition-calm hover:bg-sidebar-accent"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-byword-blue text-[11px] font-semibold text-white">
                   {displayName[0].toUpperCase()}
-                </div>
-              </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right" className="text-xs">
-                  <p className="font-medium">{displayName}</p>
-                  <p className="text-muted-foreground">{email}</p>
-                </TooltipContent>
+                </span>
+                <span className={cn("ml-2.5 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
+                  <span className="block truncate text-[13px] font-medium leading-tight text-foreground">{displayName}</span>
+                  <span className="block truncate text-[11px] leading-tight text-sidebar-muted">{email}</span>
+                </span>
+                <ChevronDown className={cn("ml-2 h-3.5 w-3.5 shrink-0 text-sidebar-muted", isCollapsed && "hidden")} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={8} className="w-56 rounded-lg border-byword-border">
+              <DropdownMenuLabel className="truncate">
+                {displayName}
+                <span className="block truncate text-xs font-normal text-muted-foreground">{email}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/jobs")}>
+                <Bell className="h-4 w-4" />
+                Notifications
+              </DropdownMenuItem>
+              {user?.role === "admin" && (
+                <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/admin/users")}>
+                  <Shield className="h-4 w-4" />
+                  Admin Users
+                </DropdownMenuItem>
               )}
-            </Tooltip>
-            <div className="ml-2.5 flex-1 min-w-0 shrink-0">
-              <p className="text-[13px] font-medium text-foreground truncate leading-tight">{displayName}</p>
-              <p className="text-[11px] text-sidebar-muted truncate leading-tight">{email}</p>
-            </div>
-            <button
-              data-signout
-              className="ml-2 h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-sidebar-muted hover:text-foreground hover:bg-sidebar-accent transition-colors duration-150"
-              onClick={signOut}
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-signout className="cursor-pointer gap-2" onClick={signOut}>
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
     </TooltipProvider>
