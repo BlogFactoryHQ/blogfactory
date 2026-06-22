@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,7 @@ import {
   AlertCircle,
   Pause,
   Play,
+  Trash2,
 } from "lucide-react";
 import { PLATFORMS } from "@/lib/mock-data";
 import { toast } from "sonner";
@@ -93,6 +95,8 @@ export default function RSSFeeds() {
   const [selectedFeed, setSelectedFeed] = useState<Feed | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [selectedFeedIds, setSelectedFeedIds] = useState<string[]>([]);
   const [runningFeedId, setRunningFeedId] = useState<string | null>(null);
   const feedsPerPage = 5;
 
@@ -182,6 +186,33 @@ export default function RSSFeeds() {
     },
   });
 
+  const batchUpdateFeedsMutation = useMutation({
+    mutationFn: async (isActive: boolean) => {
+      const selected = feeds.filter((feed) => selectedFeedIds.includes(feed.id));
+      await Promise.all(selected.map((feed) => api.put(`/feeds/${feed.id}`, {
+        name: feed.name,
+        source_url: feed.source_url,
+        persona_id: feed.persona_id,
+        model_id: feed.model_id,
+        frequency: feed.frequency,
+        is_active: isActive,
+        extract_full_content: feed.extract_full_content,
+        posts_per_run: feed.posts_per_run,
+        filter_old_posts_days: feed.filter_old_posts_days,
+        platform_config: feed.platform_config,
+      })));
+      return selected.length;
+    },
+    onSuccess: (count, isActive) => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      toast.success(`${count} feed${count === 1 ? "" : "s"} ${isActive ? "resumed" : "paused"}.`);
+      setSelectedFeedIds([]);
+    },
+    onError: (error) => {
+      toast.error("Failed to update feeds: " + error.message);
+    },
+  });
+
   // Delete feed mutation
   const deleteFeedMutation = useMutation({
     mutationFn: async (feedId: string) => {
@@ -195,6 +226,22 @@ export default function RSSFeeds() {
     },
     onError: (error) => {
       toast.error("Failed to delete feed: " + error.message);
+    },
+  });
+
+  const batchDeleteFeedsMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all(selectedFeedIds.map((feedId) => api.delete(`/feeds/${feedId}`)));
+      return selectedFeedIds.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      toast.success(`${count} feed${count === 1 ? "" : "s"} deleted.`);
+      setSelectedFeedIds([]);
+      setBatchDeleteOpen(false);
+    },
+    onError: (error) => {
+      toast.error("Failed to delete feeds: " + error.message);
     },
   });
 
@@ -258,6 +305,31 @@ export default function RSSFeeds() {
     (currentPage - 1) * feedsPerPage,
     currentPage * feedsPerPage
   );
+  const selectedFeeds = useMemo(
+    () => feeds.filter((feed) => selectedFeedIds.includes(feed.id)),
+    [feeds, selectedFeedIds]
+  );
+  const pageFeedIds = paginatedFeeds.map((feed) => feed.id);
+  const pageSelectedCount = pageFeedIds.filter((id) => selectedFeedIds.includes(id)).length;
+  const pageSelectionState = pageSelectedCount === 0 ? false : pageSelectedCount === pageFeedIds.length ? true : "indeterminate";
+  const batchBusy = batchUpdateFeedsMutation.isPending || batchDeleteFeedsMutation.isPending;
+
+  useEffect(() => {
+    setSelectedFeedIds((current) => current.filter((id) => feeds.some((feed) => feed.id === id)));
+  }, [feeds]);
+
+  const toggleFeedSelection = (feedId: string, checked: boolean) => {
+    setSelectedFeedIds((current) =>
+      checked ? Array.from(new Set([...current, feedId])) : current.filter((id) => id !== feedId)
+    );
+  };
+
+  const togglePageSelection = (checked: boolean) => {
+    setSelectedFeedIds((current) => {
+      if (!checked) return current.filter((id) => !pageFeedIds.includes(id));
+      return Array.from(new Set([...current, ...pageFeedIds]));
+    });
+  };
 
   const handleSelectFeed = (feed: Feed) => {
     setSelectedFeed(feed);
@@ -391,11 +463,44 @@ export default function RSSFeeds() {
         </div>
       </div>
 
+      {selectedFeeds.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-byword-border bg-card px-4 py-3">
+          <p className="text-sm font-medium">
+            {selectedFeeds.length} feed{selectedFeeds.length === 1 ? "" : "s"} selected
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(false)}>
+              <Pause className="mr-2 h-4 w-4" />
+              Pause
+            </Button>
+            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(true)}>
+              <Play className="mr-2 h-4 w-4" />
+              Resume
+            </Button>
+            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setSelectedFeedIds([])}>
+              Clear
+            </Button>
+            <Button size="sm" variant="destructive" disabled={batchBusy} onClick={() => setBatchDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="calm-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={pageSelectionState}
+                  disabled={!paginatedFeeds.length}
+                  onCheckedChange={(checked) => togglePageSelection(Boolean(checked))}
+                  aria-label="Select visible feeds"
+                />
+              </TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Assigned Persona</TableHead>
               <TableHead>Last Run</TableHead>
@@ -409,17 +514,19 @@ export default function RSSFeeds() {
             {feedsLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                   <TableCell><Skeleton className="h-9 w-48" /></TableCell>
                   <TableCell><Skeleton className="h-7 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                 </TableRow>
               ))
             ) : paginatedFeeds.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                   No sources configured yet. Add your first content source to get started.
                 </TableCell>
               </TableRow>
@@ -434,6 +541,13 @@ export default function RSSFeeds() {
                   className="table-row-calm cursor-pointer"
                   onClick={() => handleSelectFeed(feed)}
                 >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedFeedIds.includes(feed.id)}
+                      onCheckedChange={(checked) => toggleFeedSelection(feed.id, Boolean(checked))}
+                      aria-label={`Select ${feed.name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -601,6 +715,28 @@ export default function RSSFeeds() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteFeedMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Selected Feeds</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete {selectedFeeds.length} selected feed{selectedFeeds.length === 1 ? "" : "s"}? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchDeleteFeedsMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => batchDeleteFeedsMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={batchDeleteFeedsMutation.isPending}
+            >
+              {batchDeleteFeedsMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
