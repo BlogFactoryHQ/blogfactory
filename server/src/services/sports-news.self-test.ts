@@ -11,14 +11,14 @@ const rows: SportsMatrixRow[] = [
 
 const romano = classifySportsNews({ title: "Romano update", content: "Fabrizio Romano'ya göre görüşmeler sürüyor.", matrixRows: rows });
 assert.equal(romano.allowed, true);
-assert.equal(romano.label, "[MANŞET - ATIFLI]");
+assert.equal(romano.label, "[ATTRIBUTED]");
 assert.match(romano.attribution || "", /Fabrizio Romano/);
 
 const official = classifySportsNews({ url: "https://www.premierleague.com/news/1", matrixRows: rows });
-assert.equal(official.label, "[RESMÎ]");
+assert.equal(official.label, "[OFFICIAL]");
 
 const agency = classifySportsNews({ url: "https://www.reuters.com/sports/soccer/story", matrixRows: rows });
-assert.equal(agency.label, "[DOĞRULANMIŞ HABER]");
+assert.equal(agency.label, "[VERIFIED NEWS]");
 
 const dataOnly = classifySportsNews({ url: "https://www.transfermarkt.com/player", matrixRows: rows });
 assert.equal(dataOnly.allowed, false);
@@ -29,13 +29,17 @@ assert.equal(passive.allowed, false);
 assert.match(passive.reason || "", /passive/i);
 
 const unknown = classifySportsNews({ content: "Unknown blog says something.", matrixRows: rows });
-assert.equal(unknown.allowed, false);
-assert.match(unknown.reason || "", /not in the news matrix/i);
+assert.equal(unknown.allowed, true);
+assert.equal(unknown.label, "[NEWS]");
+
+const noMatrix = classifySportsNews({ content: "A local outlet reports a city budget update.", matrixRows: [] });
+assert.equal(noMatrix.allowed, true);
+assert.equal(noMatrix.label, "[NEWS]");
 
 const prompt = buildSportsNewsInstructions(romano);
 assert.match(prompt, /Fabrizio Romano/);
 assert.match(prompt, /#Transfer/);
 assert.match(prompt, /FotMob embed/);
-assert.match(prompt, /Şok!/);
+assert.match(prompt, /No clickbait/);
 
 console.log("sports-news self-test ok");

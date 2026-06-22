@@ -137,11 +137,22 @@ function labelFor(row: SportsMatrixRow) {
   const rule = normalized(row.publishRule);
   const reliability = row.reliability || 0;
 
-  if (sourceType.includes("resmi") || rule.includes("resmi")) return "[RESMÎ]";
-  if (/ajans|kurum/.test(sourceType) || rule.includes("dogrulanmis")) return "[DOĞRULANMIŞ HABER]";
-  if (/insider/i.test(sourceType) && reliability >= 5) return "[MANŞET - ATIFLI]";
-  if (reliability >= 4 || rule.includes("tier 2")) return "[AKIŞ HABERİ]";
-  return "[SÖYLENTİ HAVUZU]";
+  if (sourceType.includes("resmi") || sourceType.includes("official") || rule.includes("resmi") || rule.includes("official")) return "[OFFICIAL]";
+  if (/ajans|agency|kurum|media|publisher/.test(sourceType) || rule.includes("dogrulanmis") || rule.includes("verified")) return "[VERIFIED NEWS]";
+  if (/insider|analyst|reporter/.test(sourceType) || reliability >= 4) return "[ATTRIBUTED]";
+  return "[NEWS]";
+}
+
+function standardDecision(reason: string): SportsNewsDecision {
+  return {
+    allowed: true,
+    label: "[NEWS]",
+    attribution: "Source reports",
+    tags: [],
+    cmsKeywords: [],
+    requiresSecondSource: false,
+    reason,
+  };
 }
 
 export function classifySportsNews(input: {
@@ -153,7 +164,7 @@ export function classifySportsNews(input: {
   matrixRows: SportsMatrixRow[];
 }): SportsNewsDecision {
   const rows = normalizeSportsMatrixRows(input.matrixRows);
-  if (!rows.length) return { allowed: false, reason: "Import the news source matrix first." };
+  if (!rows.length) return standardDecision("No source rules imported; using standard news rules.");
 
   const candidates = [input.url, input.sourceValue]
     .concat(JSON.stringify(input.platformConfig || {}))
@@ -165,10 +176,11 @@ export function classifySportsNews(input: {
     .map((row) => ({ row, score: scoreRow(row, haystack, candidates) }))
     .sort((a, b) => b.score - a.score)[0];
 
-  if (!match || match.score <= 0) return { allowed: false, reason: "Source is not in the news matrix." };
+  if (!match || match.score <= 0) return standardDecision("No matching source rule; using standard news rules.");
 
   const row = match.row;
-  if (!normalized(row.status).includes("aktif")) {
+  const status = normalized(row.status);
+  if (status.includes("pasif") || status.includes("passive") || status.includes("disabled")) {
     return { allowed: false, sourceName: row.sourceName, reason: `${row.sourceName} is passive in the matrix.` };
   }
   if (/veri|scout/i.test(normalized(row.sourceType)) || normalized(row.publishRule).startsWith("veri")) {
@@ -195,13 +207,13 @@ export function buildSportsNewsInstructions(decision: SportsNewsDecision) {
   if (!decision.allowed) return "";
   return `\n\nNewsroom rules:
 - Editorial label: ${decision.label}.
-- Use source attribution: "${decision.attribution}". Single-source claims must stay attributed.
-- Never write "confirmed", "official", "kesin", or "resmî" unless the matched source is official and the label is [RESMÎ].
-- Use neutral, institutional news language. Do not use "Şok!", "Flaş flaş!", or cheap clickbait.
-- Keep the section/beat terminology accurate for the matched source; do not invent tags, beats, or certainty.
+- Use source attribution when making claims: "${decision.attribution}". Do not present a single-source claim as independently confirmed.
+- Never write "confirmed", "official", "kesin", or "resmî" unless the matched source is official and the label is [OFFICIAL].
+- Use neutral news language. No clickbait, hype, or exaggerated certainty.
+- Summarize and rewrite; do not copy the source article.
 ${decision.requiresSecondSource ? "- Mark big claims as needing a second source or official confirmation; keep the wording cautious." : ""}
 ${decision.embedNotice ? `- Include this exact line near the end: ${decision.embedNotice}` : ""}
-${decision.tags?.length ? `- End with matrix tags exactly as provided: ${decision.tags.join(", ")}.` : ""}
+${decision.tags?.length ? `- Use these source-rule tags where relevant: ${decision.tags.join(", ")}.` : ""}
 ${decision.cmsKeywords?.length ? `- Add a "## SEO Keywords" section with these comma-separated tags: ${decision.cmsKeywords.join(", ")}.` : ""}
 - Return only the finished markdown article.`;
 }

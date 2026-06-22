@@ -371,15 +371,13 @@ export default function News() {
   const canCreateFeed = Boolean(feedName.trim() && feedUrl.trim() && personaId && modelId && !selectedModelUnavailable);
   const manualValue = manualMode === "url" ? manualUrl : rawText;
   const canGenerateManual = Boolean(manualValue.trim() && personaId && modelId && !selectedModelUnavailable);
-  const defaultBlocker = !matrixReady
-    ? "Import a matrix with active sources first."
-    : !personaId
+  const defaultBlocker = !personaId
       ? "Select an active persona."
       : selectedModelUnavailable
         ? "Pick a live OpenRouter model."
         : "";
   const feedBlocker = defaultBlocker || (!feedName.trim() ? "Add a feed name." : !feedUrl.trim() ? "Paste an RSS URL." : "");
-  const matrixFeedBlocker = defaultBlocker || (!matrixFeedCandidates.length ? "No unused RSS/site links found in the matrix." : !selectedMatrixFeedKeys.length ? "Select rows to monitor." : "");
+  const matrixFeedBlocker = defaultBlocker || (!matrixReady ? "Import or add rules first." : !matrixFeedCandidates.length ? "No unused RSS/site links found in the matrix." : !selectedMatrixFeedKeys.length ? "Select rows to monitor." : "");
   const manualBlocker = defaultBlocker || (!manualValue.trim() ? (manualMode === "url" ? "Paste a news URL." : "Paste source text.") : "");
   const importedLabel = matrixImportedAt ? new Date(matrixImportedAt).toLocaleString() : "";
 
@@ -387,7 +385,7 @@ export default function News() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Newsroom"
-        description="Use the matrix as editable editorial rules. Add monitored RSS feeds one by one."
+        description="Add news sources, draft articles, and optionally use source rules for labels, tags, and attribution."
       >
         <Button variant="outline" asChild>
           <Link to="/posts"><FileText className="mr-2 h-4 w-4" />Review Drafts</Link>
@@ -399,7 +397,7 @@ export default function News() {
 
       <div className="mb-6 grid gap-3 md:grid-cols-3">
         {[
-          { label: "1. Rules", done: matrixReady, text: matrixReady ? `${stats.active} active rules imported` : "Import or add rules" },
+          { label: "1. Rules", done: matrixReady, text: matrixReady ? `${stats.active} active rules imported` : "Optional source rules" },
           { label: "2. Set defaults", done: Boolean(personaId && modelId && !selectedModelUnavailable), text: personaId ? "Persona and model selected" : "Choose a writer persona" },
           { label: "3. Add feeds", done: newsFeeds.length > 0, text: newsFeeds.length ? `${newsFeeds.length} monitored RSS feeds` : "Add RSS feeds one by one" },
         ].map((item) => (
@@ -513,9 +511,9 @@ export default function News() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold">{matrixFileName || "No matrix imported"}</p>
-                      <Badge variant={matrixReady ? "secondary" : "outline"}>{matrixReady ? "Ready" : "Required"}</Badge>
+                      <Badge variant={matrixReady ? "secondary" : "outline"}>{matrixReady ? "Ready" : "Optional"}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">Rules match RSS/manual sources before drafting. Running happens only from saved RSS feeds.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Rules add labels, tags, and attribution. Unmatched sources still run with standard news rules.</p>
                     {importedLabel && <p className="mt-2 text-xs text-muted-foreground">Last imported: {importedLabel}</p>}
                   </div>
                 </div>
@@ -548,7 +546,7 @@ export default function News() {
           </BywordCard>
 
           <BywordCard>
-            <SectionHeader icon={Rss} title="Add Monitored RSS Feed" description="Feeds are added one by one. The matrix only checks whether the source has a rule." />
+            <SectionHeader icon={Rss} title="Add Monitored RSS Feed" description="Feeds run normally. A matching rule only adds labels, tags, and attribution." />
             <div className="space-y-5 p-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -568,12 +566,12 @@ export default function News() {
                       {feedRuleMatch ? (
                         <>
                           <p className="text-sm font-semibold">Matched: {feedRuleMatch.sourceName} / {newsRuleLabel(feedRuleMatch)}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">This feed will use the matched rule for attribution, tags, and caution level.</p>
+                          <p className="mt-1 text-xs text-muted-foreground">This feed will use the matched rule for attribution, labels, and tags.</p>
                         </>
                       ) : (
                         <>
                           <p className="text-sm font-semibold">No matching rule found.</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Add a rule for this source before relying on News mode.</p>
+                          <p className="mt-1 text-xs text-muted-foreground">This feed will still run with standard news rewrite rules. Add a rule only if you want custom labels, tags, or source handling.</p>
                           <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => startRule(undefined, null)}>
                             <Plus className="mr-2 h-4 w-4" />
                             Add rule from this source
@@ -605,7 +603,7 @@ export default function News() {
                 </div>
               </div>
               {feedBlocker && <p className="text-sm text-muted-foreground">{feedBlocker}</p>}
-              <Button onClick={() => createFeedMutation.mutate()} disabled={!matrixReady || !canCreateFeed || createFeedMutation.isPending}>
+              <Button onClick={() => createFeedMutation.mutate()} disabled={!canCreateFeed || createFeedMutation.isPending}>
                 {createFeedMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rss className="mr-2 h-4 w-4" />}
                 {feedBlocker || "Save News Source"}
               </Button>
@@ -707,7 +705,7 @@ export default function News() {
                 <Textarea value={rawText} onChange={(event) => setRawText(event.target.value)} className="min-h-[180px]" placeholder="Paste source text..." />
               )}
               {manualBlocker && <p className="text-sm text-muted-foreground">{manualBlocker}</p>}
-              <Button className="w-full" onClick={() => generateManualMutation.mutate()} disabled={!matrixReady || !canGenerateManual || generateManualMutation.isPending}>
+              <Button className="w-full" onClick={() => generateManualMutation.mutate()} disabled={!canGenerateManual || generateManualMutation.isPending}>
                 {generateManualMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Newspaper className="mr-2 h-4 w-4" />}
                 {manualBlocker || "Create News Draft"}
               </Button>
@@ -733,9 +731,7 @@ export default function News() {
             <SectionHeader icon={Newspaper} title="News Sources" description={`${newsFeeds.length} configured`} />
             <div className="divide-y divide-byword-border">
               {newsFeeds.length ? newsFeeds.slice(0, 6).map((feed) => {
-                const runBlocker = !matrixReady
-                  ? "Import matrix first"
-                  : !feed.persona_id
+                const runBlocker = !feed.persona_id
                     ? "No persona"
                     : !feed.model_id
                       ? "No model"
@@ -770,7 +766,7 @@ export default function News() {
                     <IconTile icon={Rss} />
                     <div>
                       <p className="text-sm font-semibold">No News RSS sources yet</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Import the matrix, set defaults, then save a trusted RSS source on this page.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Set defaults, then save a news RSS source on this page. Rules are optional.</p>
                     </div>
                   </div>
                 </div>

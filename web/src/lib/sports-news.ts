@@ -165,11 +165,10 @@ export function newsRuleLabel(row: SportsMatrixRow) {
   const type = searchable(row.sourceType);
   const rule = searchable(row.publishRule);
   const reliability = row.reliability || 0;
-  if (type.includes("resmi") || rule.includes("resmi")) return "[RESMÎ]";
-  if (/ajans|kurum/.test(type) || rule.includes("dogrulanmis")) return "[DOĞRULANMIŞ HABER]";
-  if (type.includes("insider") && reliability >= 5) return "[MANŞET - ATIFLI]";
-  if (reliability >= 4 || rule.includes("tier 2")) return "[AKIŞ HABERİ]";
-  return "[SÖYLENTİ HAVUZU]";
+  if (type.includes("resmi") || type.includes("official") || rule.includes("resmi") || rule.includes("official")) return "[OFFICIAL]";
+  if (/ajans|agency|kurum|media|publisher/.test(type) || rule.includes("dogrulanmis") || rule.includes("verified")) return "[VERIFIED NEWS]";
+  if (/insider|analyst|reporter/.test(type) || reliability >= 4) return "[ATTRIBUTED]";
+  return "[NEWS]";
 }
 
 export function matchSportsMatrixRow(value: string, rows: SportsMatrixRow[]) {
