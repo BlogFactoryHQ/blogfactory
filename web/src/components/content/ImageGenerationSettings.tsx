@@ -3,7 +3,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -229,10 +228,10 @@ export function SplitImageGenerationSettings({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge variant="outline" className="text-xs gap-1 cursor-help">
+                    <span className="inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold">
                       <DollarSign className="h-3 w-3" />
                       ~${totalCost.toFixed(3)}
-                    </Badge>
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <div className="text-xs space-y-1">

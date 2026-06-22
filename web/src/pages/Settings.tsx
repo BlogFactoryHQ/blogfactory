@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, type KnowledgeDocument } from "@/lib/knowledge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -29,6 +30,7 @@ import {
   Plus,
   X,
   Upload,
+  FileUp,
   Link as LinkIcon,
   BookOpen,
   Globe2,
@@ -121,13 +123,6 @@ interface BrandCta {
   label: string;
   url: string;
   description: string;
-}
-
-interface KnowledgeDocument {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
 }
 
 interface InternalLinkRule {
@@ -257,6 +252,7 @@ export default function Settings() {
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
+  const [isImportingKnowledge, setIsImportingKnowledge] = useState(false);
   const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
   const [ctaLabel, setCtaLabel] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
@@ -559,10 +555,48 @@ export default function Settings() {
     }
     setKnowledgeDocuments((current) => [
       ...current,
-      { id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() },
+      createKnowledgeDocument(title, content),
     ]);
+    setKnowledgeBaseEnabled(true);
     setKnowledgeTitle("");
     setKnowledgeContent("");
+  };
+
+  const importKnowledgeFile = async (file: File) => {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    let content = "";
+
+    if (extension === "txt" || file.type === "text/plain") {
+      content = await file.text();
+    } else if (extension === "docx") {
+      content = await extractDocxText(file);
+    } else if (extension === "pdf" || file.type === "application/pdf") {
+      const formData = new FormData();
+      formData.append("file", file);
+      const imported = await api.upload<Pick<KnowledgeDocument, "title" | "content" | "status" | "chunks" | "error">>("/settings/knowledge/import", formData);
+      content = imported.content;
+    } else {
+      throw new Error("Upload a PDF, DOCX, or TXT file");
+    }
+
+    const document = createKnowledgeDocument(file.name.replace(/\.[^.]+$/, ""), content);
+    setKnowledgeDocuments((current) => [...current, document]);
+    setKnowledgeBaseEnabled(true);
+    toast.success("Knowledge file imported");
+  };
+
+  const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setIsImportingKnowledge(true);
+    try {
+      await importKnowledgeFile(file);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import knowledge file");
+    } finally {
+      setIsImportingKnowledge(false);
+    }
   };
 
   const addInternalLinkRule = () => {
@@ -618,6 +652,9 @@ export default function Settings() {
     { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
     { id: "advanced", title: "Advanced", description: "SEO, research, output", icon: SlidersHorizontal },
   ];
+  const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
+  const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
+  const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
 
   return (
     <BywordPageShell className="max-w-7xl">
@@ -1681,8 +1718,8 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                   icon={FileText}
-                  title="Knowledge Base"
-                  description="Reference saved content during article generation for more accurate, on-brand content."
+                  title="Knowledge Documents"
+                  description="Search ready documents during article generation for more accurate, on-brand content."
                   action={
                     <Switch
                       checked={knowledgeBaseEnabled}
@@ -1692,6 +1729,16 @@ export default function Settings() {
                   }
                 />
                 <div className="space-y-5 p-6">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-byword-border p-4">
+                      <p className="text-2xl font-semibold">{knowledgeDocuments.length}</p>
+                      <p className="text-sm text-muted-foreground">Documents</p>
+                    </div>
+                    <div className="rounded-lg border border-byword-border p-4">
+                      <p className="text-2xl font-semibold">{knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0)}</p>
+                      <p className="text-sm text-muted-foreground">Knowledge Chunks</p>
+                    </div>
+                  </div>
                   <div className="grid gap-3 md:grid-cols-[280px_1fr]">
                     <Input
                       value={knowledgeTitle}
@@ -1722,6 +1769,12 @@ export default function Settings() {
                           <IconTile icon={FileText} />
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{document.title}</p>
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              <Badge variant={knowledgeStatus(document) === "ready" ? "default" : knowledgeStatus(document) === "failed" ? "destructive" : "secondary"}>
+                                {knowledgeStatus(document)}
+                              </Badge>
+                              <Badge variant="outline">{knowledgeChunkCount(document)} chunks</Badge>
+                            </div>
                             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
                           </div>
                           <Button

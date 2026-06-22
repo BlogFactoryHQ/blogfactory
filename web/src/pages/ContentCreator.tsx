@@ -396,6 +396,25 @@ export default function ContentCreator() {
   const campaignSharedOutlineCount = parseSharedOutline(campaignSharedOutline).length;
   const campaignHasTooManyItems = campaignItemCount > 100;
   const campaignNeedsSharedOutline = campaignMode === "title_outline" && campaignOutlineMode === "shared" && campaignSharedOutlineCount === 0;
+  const campaignCanSubmit = Boolean(
+    campaignName.trim() &&
+    modelId.trim() &&
+    campaignItemCount &&
+    !campaignHasTooManyItems &&
+    !campaignNeedsSharedOutline &&
+    !selectedModelUnavailable
+  );
+  const campaignBlocker = !campaignName.trim()
+    ? "Add a campaign name."
+    : !campaignItemCount
+      ? "Add at least one item."
+      : campaignHasTooManyItems
+        ? "Campaigns support up to 100 items."
+        : campaignNeedsSharedOutline
+          ? "Add at least one shared heading."
+          : selectedModelUnavailable
+            ? "Pick a live OpenRouter model."
+            : "";
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -1054,6 +1073,11 @@ export default function ContentCreator() {
               icon={Layers}
               title="Your next campaign"
               description="Batch articles with shared voice, model, image settings, and context."
+              action={
+                <span className="rounded-md border border-byword-border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground">
+                  {campaignItemCount} item{campaignItemCount === 1 ? "" : "s"}
+                </span>
+              }
             />
             <div className="space-y-7 p-6">
               <div className="grid gap-4 md:grid-cols-2">
@@ -1146,19 +1170,26 @@ export default function ContentCreator() {
                 compact
               />
 
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm">
                 <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />
-                Start after create
+                <span>
+                  <span className="block font-medium">Start after create</span>
+                  <span className="block text-xs text-muted-foreground">Turn this off to review the campaign before it runs.</span>
+                </span>
               </label>
 
-              <div className="flex justify-end border-t border-byword-border pt-6">
+              <div className="flex flex-col gap-3 border-t border-byword-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className={cn("text-sm text-muted-foreground", campaignBlocker && "text-destructive")} aria-live="polite">
+                  {campaignBlocker || (campaignStartNow ? "Ready to create and start." : "Ready to create as a draft.")}
+                </p>
                 <Button
                   onClick={handleCreateCampaign}
-                  disabled={createCampaignMutation.isPending || !campaignName.trim() || !modelId.trim() || !campaignItemCount || campaignHasTooManyItems || campaignNeedsSharedOutline || selectedModelUnavailable}
-                  className="h-11"
+                  disabled={createCampaignMutation.isPending || !campaignCanSubmit}
+                  className="h-11 sm:min-w-[220px]"
                 >
+                  {createCampaignMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create & Start Campaign" : "Create Campaign"}
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  {!createCampaignMutation.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
               </div>
             </div>

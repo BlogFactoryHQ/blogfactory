@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -28,15 +25,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
-import { LiveTextModelSelect } from "@/components/content/LiveTextModelSelect";
-import {
-  DEFAULT_SPLIT_CONFIG,
-  SplitImageGenerationSettings,
-  type AspectRatio,
-  type Resolution,
-  type SplitImageConfig,
-  type SplitImageDefaults,
-} from "@/components/content/ImageGenerationSettings";
 import { useIntegrations } from "@/hooks/useIntegrations";
 
 type CampaignMode = "keyword" | "title" | "title_outline";
@@ -86,23 +74,6 @@ interface CampaignHistory {
   completedAt: string | null;
 }
 
-interface PersonaOption {
-  id: string;
-  name: string;
-  status: string;
-  base_model: string;
-}
-
-interface ContentUserSettings {
-  cover_enabled?: boolean | null;
-  cover_resolution?: string | null;
-  cover_aspect_ratio?: string | null;
-  inline_enabled?: boolean | null;
-  inline_count?: number | null;
-  inline_resolution?: string | null;
-  inline_aspect_ratio?: string | null;
-}
-
 const modeLabels: Record<CampaignMode, string> = {
   keyword: "Keyword",
   title: "Title",
@@ -123,31 +94,12 @@ function progress(campaign: Campaign) {
   return Math.round((campaign.completedItems / campaign.totalItems) * 100);
 }
 
-function parseSharedOutline(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      if (/^h3\s*:/i.test(line)) return { level: 3, text: line.replace(/^h3\s*:/i, "").trim() };
-      if (/^h2\s*:/i.test(line)) return { level: 2, text: line.replace(/^h2\s*:/i, "").trim() };
-      return { level: 2, text: line };
-    })
-    .filter((heading) => heading.text);
-}
-
-function linesCount(value: string) {
-  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
-}
-
 function formatStep(value: string | null | undefined) {
   return value ? value.replace(/_/g, " ") : "";
 }
 
 export default function Campaigns() {
   const params = useParams();
-  const location = useLocation();
-  if (location.pathname.endsWith("/new")) return <NewCampaign />;
   if (params.id) return <CampaignDetail id={params.id} />;
   return <CampaignList />;
 }
@@ -168,7 +120,7 @@ function CampaignList() {
           <p className="mt-2 text-muted-foreground">Batch article generation with shared voice and settings.</p>
         </div>
         <Button asChild>
-          <Link to="/campaigns/new"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
+          <Link to="/content-creator?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
         </Button>
       </div>
 
@@ -209,213 +161,6 @@ function CampaignList() {
             ))}
           </TableBody>
         </Table>
-      </BywordCard>
-    </BywordPageShell>
-  );
-}
-
-function NewCampaign() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [mode, setMode] = useState<CampaignMode>("keyword");
-  const [outlineMode, setOutlineMode] = useState("none");
-  const [lines, setLines] = useState("");
-  const [sharedOutline, setSharedOutline] = useState("");
-  const [personaId, setPersonaId] = useState("none");
-  const [modelId, setModelId] = useState("openai/gpt-4o");
-  const [customInstructions, setCustomInstructions] = useState("");
-  const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
-  const [startNow, setStartNow] = useState(true);
-
-  const { data: personas = [] } = useQuery({
-    queryKey: ["personas"],
-    queryFn: () => api.get<PersonaOption[]>("/personas"),
-  });
-
-  const activePersonas = useMemo(() => personas.filter((persona) => persona.status === "active"), [personas]);
-  const itemCount = linesCount(lines);
-  const sharedOutlineCount = parseSharedOutline(sharedOutline).length;
-  const hasTooManyItems = itemCount > 100;
-  const needsSharedOutline = mode === "title_outline" && outlineMode === "shared" && sharedOutlineCount === 0;
-
-  const { data: userSettings } = useQuery({
-    queryKey: ["user-settings"],
-    queryFn: () => api.get<ContentUserSettings>("/settings"),
-  });
-
-  useEffect(() => {
-    if (!userSettings) return;
-    setImageConfig({
-      cover: {
-        enabled: userSettings.cover_enabled ?? true,
-        resolution: (userSettings.cover_resolution as Resolution) || "1K",
-        aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
-      },
-      inline: {
-        enabled: userSettings.inline_enabled ?? true,
-        count: userSettings.inline_count || 2,
-        resolution: (userSettings.inline_resolution as Resolution) || "Web",
-        aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
-      },
-    });
-  }, [userSettings]);
-
-  const imageDefaults: SplitImageDefaults | undefined = userSettings
-    ? {
-        cover: {
-          enabled: userSettings.cover_enabled ?? true,
-          resolution: (userSettings.cover_resolution as Resolution) || "1K",
-          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
-        },
-        inline: {
-          enabled: userSettings.inline_enabled ?? true,
-          count: userSettings.inline_count || 2,
-          resolution: (userSettings.inline_resolution as Resolution) || "Web",
-          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
-        },
-      }
-    : undefined;
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const result = await api.post<{ campaign: Campaign; items: CampaignItem[] }>("/campaigns", {
-        name,
-        mode,
-        outlineMode: mode === "title_outline" ? outlineMode : "none",
-        lines,
-        sharedOutline: parseSharedOutline(sharedOutline),
-        personaId: personaId === "none" ? null : personaId,
-        modelId,
-        customInstructions,
-        generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
-        imageConfig,
-      });
-      if (startNow) await api.post(`/campaigns/${result.campaign.id}/start`);
-      return result;
-    },
-    onSuccess: ({ campaign }) => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      toast.success(startNow ? "Campaign started" : "Campaign created");
-      navigate(`/campaigns/${campaign.id}`);
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
-  });
-
-  return (
-    <BywordPageShell className="max-w-5xl">
-      <div className="mb-8 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Campaign</h1>
-          <p className="mt-2 text-muted-foreground">{itemCount} item{itemCount === 1 ? "" : "s"} ready</p>
-        </div>
-        <Button variant="outline" asChild><Link to="/campaigns">Back</Link></Button>
-      </div>
-
-      <BywordCard>
-        <SectionHeader icon={Megaphone} title="Campaign setup" />
-        <div className="space-y-6 p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Q1 product guides" />
-            </div>
-            <div className="space-y-2">
-              <Label>Mode</Label>
-              <Select value={mode} onValueChange={(value) => setMode(value as CampaignMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="keyword">Keyword</SelectItem>
-                  <SelectItem value="title">Title</SelectItem>
-                  <SelectItem value="title_outline">Title + Outline</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {mode === "title_outline" && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Outline Mode</Label>
-                <Select value={outlineMode} onValueChange={setOutlineMode}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Per line</SelectItem>
-                    <SelectItem value="shared">Shared outline</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {outlineMode === "shared" && (
-                <div className="space-y-2">
-                  <Label>Shared Outline</Label>
-                  <Textarea value={sharedOutline} onChange={(event) => setSharedOutline(event.target.value)} placeholder={"Introduction\nH3:Key details\nConclusion"} className="min-h-24" />
-                  {needsSharedOutline && <p className="text-xs text-destructive">Add at least one shared heading.</p>}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label>Items</Label>
-            <Textarea
-              value={lines}
-              onChange={(event) => setLines(event.target.value)}
-              placeholder={mode === "keyword" ? "best crm for startups" : mode === "title" ? "Best CRM for Startups" : "Best CRM for Startups; Introduction; H3:Pricing; Conclusion"}
-              className="min-h-56 font-mono text-sm"
-            />
-            {hasTooManyItems && <p className="text-xs text-destructive">Campaigns support up to 100 items.</p>}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Brand Voice</Label>
-              <Select
-                value={personaId}
-                onValueChange={(value) => {
-                  setPersonaId(value);
-                  const persona = activePersonas.find((item) => item.id === value);
-                  if (persona?.base_model) setModelId(persona.base_model);
-                }}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Default</SelectItem>
-                  {activePersonas.map((persona) => <SelectItem key={persona.id} value={persona.id}>{persona.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Custom Instructions</Label>
-            <Textarea value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} className="min-h-24" />
-          </div>
-
-          <SplitImageGenerationSettings
-            config={imageConfig}
-            onConfigChange={setImageConfig}
-            defaults={imageDefaults}
-            compact
-          />
-
-          <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={startNow} onCheckedChange={(checked) => setStartNow(Boolean(checked))} />
-              Start after create
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-3 border-t border-byword-border pt-6">
-            <Button variant="outline" asChild><Link to="/campaigns">Cancel</Link></Button>
-            <Button disabled={createMutation.isPending || !name.trim() || !modelId.trim() || !itemCount || hasTooManyItems || needsSharedOutline} onClick={() => createMutation.mutate()}>
-              {createMutation.isPending ? "Creating..." : "Create Campaign"}
-            </Button>
-          </div>
-        </div>
       </BywordCard>
     </BywordPageShell>
   );

@@ -1,7 +1,7 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { SiteProvider } from "@/hooks/useSites";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -52,7 +52,7 @@ const App = () => (
                       <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                       <Route path="/content-creator" element={<ContentCreator />} />
                       <Route path="/campaigns" element={<Campaigns />} />
-                      <Route path="/campaigns/new" element={<Campaigns />} />
+                      <Route path="/campaigns/new" element={<Navigate to="/content-creator?mode=campaign" replace />} />
                       <Route path="/campaigns/:id" element={<Campaigns />} />
                       <Route path="/batch-import" element={<BatchImport />} />
                       <Route path="/jobs" element={<Jobs />} />

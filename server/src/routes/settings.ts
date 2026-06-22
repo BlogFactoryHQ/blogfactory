@@ -5,6 +5,8 @@ import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenRouterKey, setApiKey, type Provider } from "../services/api-keys.js";
 import { buildInternalLinkIndex } from "../services/internal-linking.js";
+import { analyzeVoiceProfile } from "../services/voice-content.js";
+import { chunkKnowledgeContent } from "../services/knowledge.js";
 
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
@@ -130,6 +132,16 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     articleLanguage: settings.articleLanguage,
     article_voice: settings.articleVoice,
     articleVoice: settings.articleVoice,
+    voice_mode: settings.voiceMode,
+    voiceMode: settings.voiceMode,
+    custom_voice_profile: settings.customVoiceProfile,
+    customVoiceProfile: settings.customVoiceProfile,
+    voice_training_samples: settings.voiceTrainingSamples ?? [],
+    voiceTrainingSamples: settings.voiceTrainingSamples ?? [],
+    content_rules: settings.contentRules ?? {},
+    contentRules: settings.contentRules ?? {},
+    custom_article_instructions: settings.customArticleInstructions,
+    customArticleInstructions: settings.customArticleInstructions,
     include_table_of_contents: settings.includeTableOfContents,
     includeTableOfContents: settings.includeTableOfContents,
     enable_research: settings.enableResearch,
@@ -207,6 +219,10 @@ function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof user
     const parsed = asJsonArray(body[snake] ?? body[camelName]);
     if (parsed !== undefined) update[camel] = parsed as never;
   };
+  const setJson = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+    const value = body[snake] ?? body[camelName];
+    if (value !== undefined) update[camel] = value as never;
+  };
 
   setOptionalText("imageModel", "image_model");
   setText("imageStylePrompt", "image_style_prompt");
@@ -225,6 +241,11 @@ function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof user
   setNumber("articleWordCount", "article_word_count");
   setOptionalText("articleLanguage", "article_language");
   setOptionalText("articleVoice", "article_voice");
+  setOptionalText("voiceMode", "voice_mode");
+  setJson("customVoiceProfile", "custom_voice_profile");
+  setArray("voiceTrainingSamples", "voice_training_samples");
+  setJson("contentRules", "content_rules");
+  setOptionalText("customArticleInstructions", "custom_article_instructions");
   setBool("includeTableOfContents", "include_table_of_contents");
   setBool("enableResearch", "enable_research");
   setBool("enableInternalLinks", "enable_internal_links");
@@ -421,9 +442,48 @@ settingsRoutes.post("/knowledge/import", async (c) => {
     return c.json({
       title: file.name.replace(/\.[^.]+$/, ""),
       content,
+      status: "ready",
+      chunks: chunkKnowledgeContent(content),
     });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Failed to import knowledge file" }, 400);
+  }
+});
+
+settingsRoutes.post("/voice-profile/analyze", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+
+  try {
+    const { profile, samples } = await analyzeVoiceProfile({
+      userId,
+      samples: body.samples,
+      modelId: body.modelId,
+    });
+    const values = {
+      userId,
+      voiceMode: "custom",
+      customVoiceProfile: profile,
+      voiceTrainingSamples: samples,
+      updatedAt: new Date(),
+    } as const;
+    const [result] = await db
+      .insert(userSettings)
+      .values(values as never)
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: {
+          voiceMode: values.voiceMode,
+          customVoiceProfile: values.customVoiceProfile,
+          voiceTrainingSamples: values.voiceTrainingSamples,
+          updatedAt: values.updatedAt,
+        } as never,
+      })
+      .returning();
+
+    return c.json(serializeSettings(result));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Failed to generate voice profile" }, 400);
   }
 });
 

@@ -6,6 +6,8 @@ import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from 
 import { extractContent } from "./extract-content.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
+import { retrieveKnowledgeChunks } from "./knowledge.js";
+import { buildVoiceContentInstructions } from "./voice-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 
 interface GenerateOpts {
@@ -72,20 +74,6 @@ function summarizeJsonList(value: unknown, maxItems = 5) {
     })
     .filter(Boolean)
     .slice(0, maxItems);
-}
-
-function summarizeKnowledgeDocuments(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") return "";
-      const record = item as Record<string, unknown>;
-      const title = typeof record.title === "string" ? record.title.trim() : "Knowledge document";
-      const content = typeof record.content === "string" ? truncatePromptText(record.content, 900) : "";
-      return content ? `${title}: ${content}` : "";
-    })
-    .filter(Boolean)
-    .slice(0, 4);
 }
 
 function openRouterErrorMessage(value: string) {
@@ -207,8 +195,8 @@ function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "
 
   if (settings.articleWordCount) instructions.push(`Target article length: about ${settings.articleWordCount} words.`);
   if (settings.articleLanguage) instructions.push(`Write in ${settings.articleLanguage}.`);
-  if (settings.articleVoice) instructions.push(`Use this default voice/style: ${settings.articleVoice}.`);
-  if (settings.customInstructions) instructions.push(`Custom article instructions: ${settings.customInstructions}.`);
+  instructions.push(...buildVoiceContentInstructions(settings));
+  if (settings.customInstructions) instructions.push(`Campaign instructions: ${settings.customInstructions}.`);
   if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
   if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
   if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
@@ -226,8 +214,8 @@ function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "
   const ctas = summarizeJsonList(settings.brandCtas, 3);
   if (ctas.length) brand.push(`Calls to action to weave in when natural: ${ctas.join("; ")}`);
 
-  const knowledge = settings.knowledgeBaseEnabled ? summarizeKnowledgeDocuments(settings.knowledgeDocuments) : [];
-  if (knowledge.length) brand.push(`Knowledge base context: ${knowledge.join("; ")}`);
+  const knowledge = settings.knowledgeBaseEnabled ? retrieveKnowledgeChunks(settings.knowledgeDocuments, sourceText) : [];
+  if (knowledge.length) brand.push(`Knowledge document context:\n${knowledge.map((line) => `  - ${truncatePromptText(line, 1000)}`).join("\n")}`);
 
   if (brand.length) {
     instructions.push(`Brand context:\n${brand.map((line) => `- ${line}`).join("\n")}`);

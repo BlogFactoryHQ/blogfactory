@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import JSZip from "jszip";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 import { useSites } from "@/hooks/useSites";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -48,6 +48,8 @@ import {
   FileUp,
   ListChecks,
   Target,
+  Link2,
+  Wand2,
   Wrench,
   Plug,
   FlaskConical,
@@ -58,6 +60,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, type KnowledgeDocument } from "@/lib/knowledge";
 import { SimplePromptView } from "@/components/personas/SimplePromptView";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { PromptBuilder } from "@/components/personas/PromptBuilder";
@@ -121,17 +124,47 @@ interface BrandCta {
   description: string;
 }
 
-interface KnowledgeDocument {
+interface VoiceTrainingSample {
   id: string;
   title: string;
+  sourceType: "paste" | "url" | "file";
+  sourceUrl?: string;
   content: string;
   createdAt: string;
+}
+
+interface CustomVoiceProfile {
+  summary?: string;
+  styleTraits?: string[];
+  doRules?: string[];
+  dontRules?: string[];
+  vocabularyGuidance?: string;
+  finalPromptInstructions?: string;
+}
+
+interface PreferredTerm {
+  from: string;
+  to: string;
+}
+
+interface ContentRules {
+  bannedWords: string[];
+  bannedPhrases: string[];
+  preferredTerms: PreferredTerm[];
+  competitorAvoidance: boolean;
+  competitors: string[];
+  avoidAiPhrases: boolean;
 }
 
 interface UserSettings {
   article_word_count?: number | null;
   article_language?: string | null;
   article_voice?: string | null;
+  voice_mode?: "preset" | "custom" | null;
+  custom_voice_profile?: CustomVoiceProfile | null;
+  voice_training_samples?: VoiceTrainingSample[] | null;
+  content_rules?: Partial<ContentRules> | null;
+  custom_article_instructions?: string | null;
   include_table_of_contents?: boolean | null;
   enable_research?: boolean | null;
   brand_company_name?: string | null;
@@ -153,15 +186,29 @@ const articleLengthOptions = [
 ];
 
 const languageOptions = ["US English", "UK English", "Turkish", "German", "French", "Spanish"];
-const voiceOptions = ["Natural", "Professional", "Conversational", "Technical", "Friendly", "Authoritative"];
+const voiceOptions = [
+  { name: "Natural", description: "Balanced and human-sounding. Not too formal, not too casual." },
+  { name: "Professional", description: "Polished and business-appropriate for B2B and industry content." },
+  { name: "Conversational", description: "Relaxed, approachable, and direct to the reader." },
+  { name: "Technical", description: "Precise, detail-oriented, and comfortable with jargon." },
+  { name: "Friendly", description: "Warm, encouraging, and practical." },
+  { name: "Authoritative", description: "Expert, confident, and decisive." },
+];
+
+const defaultContentRules: ContentRules = {
+  bannedWords: [],
+  bannedPhrases: [],
+  preferredTerms: [],
+  competitorAvoidance: false,
+  competitors: [],
+  avoidAiPhrases: true,
+};
 
 const brandMentionOptions = [
   { value: "subtle", label: "Subtle", description: "Mention once if relevant" },
   { value: "moderate", label: "Moderate", description: "Use in examples naturally" },
   { value: "prominent", label: "Prominent", description: "Feature throughout" },
 ];
-
-const KNOWLEDGE_IMPORT_CHAR_LIMIT = 30000;
 
 function titleCaseDomain(value: string) {
   const first = value.replace(/^www\./, "").split(".")[0] || value;
@@ -182,11 +229,6 @@ function siteLanguageToArticleLanguage(language?: string | null) {
   if (value.startsWith("en-gb") || value === "uk") return "UK English";
   if (value.startsWith("en")) return "US English";
   return "";
-}
-
-function limitKnowledgeContent(content: string) {
-  if (content.length <= KNOWLEDGE_IMPORT_CHAR_LIMIT) return content;
-  return `${content.slice(0, KNOWLEDGE_IMPORT_CHAR_LIMIT)}\n\n[Imported file truncated at ${KNOWLEDGE_IMPORT_CHAR_LIMIT.toLocaleString()} characters.]`;
 }
 
 function HelpTip({ label, children }: { label: string; children: string }) {
@@ -210,18 +252,6 @@ function HelpTip({ label, children }: { label: string; children: string }) {
   );
 }
 
-async function extractDocxText(file: File) {
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const documentXml = await zip.file("word/document.xml")?.async("text");
-  if (!documentXml) throw new Error("Could not read DOCX content");
-  const xml = new DOMParser().parseFromString(documentXml, "application/xml");
-  return Array.from(xml.getElementsByTagName("w:t"))
-    .map((node) => node.textContent || "")
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export default function Personas() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -241,8 +271,22 @@ export default function Personas() {
   const [articleWordCount, setArticleWordCount] = useState(1500);
   const [articleLanguage, setArticleLanguage] = useState("US English");
   const [articleVoice, setArticleVoice] = useState("Natural");
+  const [voiceMode, setVoiceMode] = useState<"preset" | "custom">("preset");
+  const [customVoiceProfile, setCustomVoiceProfile] = useState<CustomVoiceProfile | null>(null);
+  const [voiceTrainingSamples, setVoiceTrainingSamples] = useState<VoiceTrainingSample[]>([]);
+  const [sampleTitle, setSampleTitle] = useState("");
+  const [sampleContent, setSampleContent] = useState("");
+  const [sampleUrl, setSampleUrl] = useState("");
+  const [isImportingVoiceSample, setIsImportingVoiceSample] = useState(false);
   const [includeTableOfContents, setIncludeTableOfContents] = useState(false);
   const [enableResearch, setEnableResearch] = useState(false);
+  const [contentRules, setContentRules] = useState<ContentRules>(defaultContentRules);
+  const [customArticleInstructions, setCustomArticleInstructions] = useState("");
+  const [newBannedWord, setNewBannedWord] = useState("");
+  const [newBannedPhrase, setNewBannedPhrase] = useState("");
+  const [newPreferredFrom, setNewPreferredFrom] = useState("");
+  const [newPreferredTo, setNewPreferredTo] = useState("");
+  const [newCompetitor, setNewCompetitor] = useState("");
   const [brandCompanyName, setBrandCompanyName] = useState("");
   const [brandDescription, setBrandDescription] = useState("");
   const [brandTargetAudience, setBrandTargetAudience] = useState("");
@@ -289,6 +333,11 @@ export default function Personas() {
     setArticleWordCount(userSettings.article_word_count ?? 1500);
     setArticleLanguage(userSettings.article_language || "US English");
     setArticleVoice(userSettings.article_voice || "Natural");
+    setVoiceMode(userSettings.voice_mode === "custom" ? "custom" : "preset");
+    setCustomVoiceProfile(userSettings.custom_voice_profile || null);
+    setVoiceTrainingSamples(userSettings.voice_training_samples || []);
+    setContentRules({ ...defaultContentRules, ...(userSettings.content_rules || {}) });
+    setCustomArticleInstructions(userSettings.custom_article_instructions || "");
     setIncludeTableOfContents(userSettings.include_table_of_contents ?? false);
     setEnableResearch(userSettings.enable_research ?? false);
     setBrandCompanyName(userSettings.brand_company_name || "");
@@ -414,6 +463,11 @@ export default function Personas() {
         article_word_count: articleWordCount,
         article_language: articleLanguage,
         article_voice: articleVoice,
+        voice_mode: voiceMode,
+        custom_voice_profile: customVoiceProfile,
+        voice_training_samples: voiceTrainingSamples,
+        content_rules: contentRules,
+        custom_article_instructions: customArticleInstructions,
         include_table_of_contents: includeTableOfContents,
         enable_research: enableResearch,
         brand_company_name: brandCompanyName,
@@ -431,6 +485,21 @@ export default function Personas() {
       toast.success("Brand voice settings saved.");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save brand voice settings"),
+  });
+
+  const analyzeVoiceMutation = useMutation({
+    mutationFn: () => api.post<UserSettings>("/settings/voice-profile/analyze", {
+      samples: voiceTrainingSamples,
+      modelId: editedPersona?.base_model,
+    }),
+    onSuccess: (settings) => {
+      setVoiceMode("custom");
+      setCustomVoiceProfile(settings.custom_voice_profile || null);
+      setVoiceTrainingSamples(settings.voice_training_samples || voiceTrainingSamples);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Custom voice profile generated.");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to generate voice profile"),
   });
 
   const filteredPersonas = personas.filter((p) =>
@@ -498,9 +567,77 @@ export default function Personas() {
       toast.error("Add a title and content for the knowledge document");
       return;
     }
-    setKnowledgeDocuments((current) => [...current, { id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() }]);
+    setKnowledgeDocuments((current) => [...current, createKnowledgeDocument(title, content)]);
+    setKnowledgeBaseEnabled(true);
     setKnowledgeTitle("");
     setKnowledgeContent("");
+  };
+
+  const updateContentRules = (updates: Partial<ContentRules>) => {
+    setContentRules((current) => ({ ...current, ...updates }));
+  };
+
+  const addRuleItem = (key: "bannedWords" | "bannedPhrases" | "competitors", value: string, clear: () => void) => {
+    const item = value.trim();
+    if (!item) return;
+    updateContentRules({ [key]: Array.from(new Set([...contentRules[key], item])) } as Partial<ContentRules>);
+    clear();
+  };
+
+  const addPreferredTerm = () => {
+    const from = newPreferredFrom.trim();
+    const to = newPreferredTo.trim();
+    if (!from || !to) return;
+    updateContentRules({ preferredTerms: [...contentRules.preferredTerms, { from, to }] });
+    setNewPreferredFrom("");
+    setNewPreferredTo("");
+  };
+
+  const addVoiceSample = (sample: Omit<VoiceTrainingSample, "id" | "createdAt">) => {
+    if (voiceTrainingSamples.length >= 10) {
+      toast.error("You can add up to 10 training samples");
+      return;
+    }
+    setVoiceTrainingSamples((current) => [...current, {
+      ...sample,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    }]);
+  };
+
+  const addPastedVoiceSample = () => {
+    const content = sampleContent.trim();
+    if (!content) {
+      toast.error("Paste a writing sample first");
+      return;
+    }
+    addVoiceSample({ title: sampleTitle.trim() || "Pasted sample", sourceType: "paste", content });
+    setSampleTitle("");
+    setSampleContent("");
+  };
+
+  const importVoiceSampleUrl = async () => {
+    const url = sampleUrl.trim();
+    if (!url) return;
+    setIsImportingVoiceSample(true);
+    try {
+      const extracted = await api.post<{ title?: string; content: string }>("/content/extract", {
+        sourceType: "url",
+        sourceValue: url,
+      });
+      addVoiceSample({
+        title: extracted.title || titleCaseDomain(new URL(url).hostname),
+        sourceType: "url",
+        sourceUrl: url,
+        content: extracted.content,
+      });
+      setSampleUrl("");
+      toast.success("URL sample imported");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import URL");
+    } finally {
+      setIsImportingVoiceSample(false);
+    }
   };
 
   const autofillFromActiveSite = () => {
@@ -546,26 +683,45 @@ export default function Personas() {
     } else if (extension === "pdf" || file.type === "application/pdf") {
       const formData = new FormData();
       formData.append("file", file);
-      const imported = await api.upload<{ title: string; content: string }>("/settings/knowledge/import", formData);
+      const imported = await api.upload<Pick<KnowledgeDocument, "title" | "content" | "status" | "chunks" | "error">>("/settings/knowledge/import", formData);
       content = imported.content;
     } else {
       throw new Error("Upload a PDF, DOCX, or TXT file");
     }
 
-    const trimmed = limitKnowledgeContent(content.trim());
-    if (!trimmed) throw new Error("No readable text found in that file");
-
-    const document = {
-      id: crypto.randomUUID(),
-      title: file.name.replace(/\.[^.]+$/, ""),
-      content: trimmed,
-      createdAt: new Date().toISOString(),
-    };
+    const document = createKnowledgeDocument(file.name.replace(/\.[^.]+$/, ""), content);
     const nextDocuments = [...knowledgeDocuments, document];
     setKnowledgeDocuments(nextDocuments);
     setKnowledgeBaseEnabled(true);
     saveBrandVoiceMutation.mutate(nextDocuments);
     toast.success("Knowledge file imported");
+  };
+
+  const importVoiceSampleFile = async (file: File) => {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    let content = "";
+
+    if (extension === "txt" || file.type === "text/plain") {
+      content = await file.text();
+    } else if (extension === "docx") {
+      content = await extractDocxText(file);
+    } else if (extension === "pdf" || file.type === "application/pdf") {
+      const formData = new FormData();
+      formData.append("file", file);
+      const imported = await api.upload<{ content: string }>("/settings/knowledge/import", formData);
+      content = imported.content;
+    } else {
+      throw new Error("Upload a PDF, DOCX, or TXT file");
+    }
+
+    const trimmed = content.trim();
+    if (!trimmed) throw new Error("No readable text found in that file");
+    addVoiceSample({
+      title: file.name.replace(/\.[^.]+$/, ""),
+      sourceType: "file",
+      content: limitKnowledgeContent(trimmed),
+    });
+    toast.success("Training sample imported");
   };
 
   const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -579,6 +735,20 @@ export default function Personas() {
       toast.error(err instanceof Error ? err.message : "Failed to import knowledge file");
     } finally {
       setIsImportingKnowledge(false);
+    }
+  };
+
+  const handleVoiceSampleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setIsImportingVoiceSample(true);
+    try {
+      await importVoiceSampleFile(file);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import training sample");
+    } finally {
+      setIsImportingVoiceSample(false);
     }
   };
 
@@ -602,6 +772,23 @@ export default function Personas() {
   ).length;
   const hasAdvancedConfig = toolCount > 0 || pluginCount > 0 ||
     (editedPersona?.validation_rules && Object.keys(editedPersona.validation_rules).length > 0);
+  const trainingWordCount = voiceTrainingSamples.reduce((total, sample) => total + sample.content.split(/\s+/).filter(Boolean).length, 0);
+  const trainingQuality =
+    trainingWordCount >= 10000 ? "Excellent" :
+    trainingWordCount >= 5000 ? "Great coverage" :
+    trainingWordCount >= 2000 ? "Good coverage" :
+    trainingWordCount >= 500 ? "Good start" :
+    "Minimal";
+  const trainingProgress = Math.min(100, Math.round((trainingWordCount / 10000) * 100));
+  const contentRuleCount =
+    contentRules.bannedWords.length +
+    contentRules.bannedPhrases.length +
+    contentRules.preferredTerms.length +
+    (contentRules.competitorAvoidance ? contentRules.competitors.length : 0) +
+    (contentRules.avoidAiPhrases ? 1 : 0);
+  const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
+  const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
+  const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
 
   const brandVoiceDefaults = (
     <div className="rounded-lg border border-border">
@@ -609,38 +796,154 @@ export default function Personas() {
         <div className="flex items-start gap-3">
           <Building2 className="mt-1 h-5 w-5 text-primary" />
           <div>
-            <h3 className="font-semibold">Brand Voice Defaults</h3>
-            <p className="text-sm text-muted-foreground">Global brand, voice, and article defaults used with every profile.</p>
+            <h3 className="font-semibold">Voice & Content</h3>
+            <p className="text-sm text-muted-foreground">Tone, vocabulary, length, and content rules used with every profile.</p>
           </div>
         </div>
         <Button onClick={() => saveBrandVoiceMutation.mutate()} disabled={saveBrandVoiceMutation.isPending}>
           <Save className="h-4 w-4 mr-2" />
-          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Voice & Content"}
         </Button>
       </div>
 
       <div className="space-y-6 p-5">
         <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-primary" />
-            <h4 className="font-medium">Voice</h4>
-            <HelpTip label="Voice help">Default writing tone. The selected persona prompt can still be more specific.</HelpTip>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <h4 className="font-medium">Voice</h4>
+              <HelpTip label="Voice help">Default writing tone. The selected persona prompt can still be more specific.</HelpTip>
+            </div>
+            <Badge variant="outline">{voiceMode === "custom" ? "Custom profile" : articleVoice}</Badge>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {voiceOptions.map((voice) => (
+          <div className="grid rounded-lg border border-border bg-muted/30 p-1 sm:inline-grid sm:grid-cols-2">
+            {(["preset", "custom"] as const).map((mode) => (
               <button
-                key={voice}
+                key={mode}
                 type="button"
-                onClick={() => setArticleVoice(voice)}
+                onClick={() => setVoiceMode(mode)}
                 className={cn(
-                  "rounded-lg border p-3 text-left text-sm font-medium transition-calm",
-                  articleVoice === voice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                  "rounded-md px-3 py-1.5 text-sm font-medium",
+                  voiceMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {voice}
+                {mode === "preset" ? "Preset tones" : "Custom training"}
               </button>
             ))}
           </div>
+
+          {voiceMode === "preset" ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {voiceOptions.map((voice) => (
+                <button
+                  key={voice.name}
+                  type="button"
+                  onClick={() => setArticleVoice(voice.name)}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-calm",
+                    articleVoice === voice.name ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                  )}
+                >
+                  <p className="text-sm font-medium">{voice.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{voice.description}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">Custom training</p>
+                    <Badge variant={trainingWordCount >= 2000 ? "default" : "secondary"}>{trainingQuality}</Badge>
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-2 min-w-40 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${trainingProgress}%` }} />
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">{trainingWordCount.toLocaleString()} words</span>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => analyzeVoiceMutation.mutate()}
+                  disabled={analyzeVoiceMutation.isPending || voiceTrainingSamples.length === 0}
+                >
+                  {analyzeVoiceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                  Generate profile
+                </Button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Pasted sample</Label>
+                  <Input value={sampleTitle} onChange={(event) => setSampleTitle(event.target.value)} placeholder="Sample title, optional" />
+                  <Textarea value={sampleContent} onChange={(event) => setSampleContent(event.target.value)} placeholder="Paste your best writing here" className="min-h-[120px]" />
+                  <Button type="button" variant="outline" onClick={addPastedVoiceSample}>Add pasted sample</Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>Import sample</Label>
+                  <div className="flex gap-2">
+                    <Input value={sampleUrl} onChange={(event) => setSampleUrl(event.target.value)} placeholder="https://example.com/article" />
+                    <Button type="button" variant="outline" onClick={importVoiceSampleUrl} disabled={isImportingVoiceSample} aria-label="Import URL sample">
+                      <Link2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Button type="button" variant="outline" className="w-full justify-start" disabled={isImportingVoiceSample} asChild>
+                    <label>
+                      {isImportingVoiceSample ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                      Import PDF, DOCX, or TXT
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="hidden"
+                        onChange={handleVoiceSampleFileChange}
+                      />
+                    </label>
+                  </Button>
+                  {customVoiceProfile?.summary && (
+                    <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium">Generated profile</p>
+                        <Badge variant="secondary">Active when custom</Badge>
+                      </div>
+                      <p className="mt-1 text-muted-foreground">{customVoiceProfile.summary}</p>
+                      {Boolean(customVoiceProfile.styleTraits?.length) && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {customVoiceProfile.styleTraits!.slice(0, 4).map((trait) => (
+                            <Badge key={trait} variant="outline">{trait}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {voiceTrainingSamples.length > 0 ? (
+                <div className="space-y-2">
+                  {voiceTrainingSamples.map((sample) => (
+                    <div key={sample.id} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background p-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{sample.title}</p>
+                          <Badge variant="outline">{sample.sourceType}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{sample.content.split(/\s+/).filter(Boolean).length.toLocaleString()} words</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${sample.title}`} onClick={() => setVoiceTrainingSamples((current) => current.filter((item) => item.id !== sample.id))}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">
+                  Add at least one sample to train a custom profile. Aim for 2,000+ words for useful style matching.
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -694,6 +997,147 @@ export default function Personas() {
               </span>
               <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
             </label>
+          </div>
+        </section>
+
+        <section className="space-y-4 border-t border-border pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4 text-primary" />
+              <h4 className="font-medium">Word and phrase controls</h4>
+              <HelpTip label="Vocabulary help">Terminology rules sent with every article generation.</HelpTip>
+            </div>
+            <Badge variant="outline">{contentRuleCount} active rule{contentRuleCount === 1 ? "" : "s"}</Badge>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4 rounded-lg border border-border p-4">
+              <div className="space-y-2">
+                <Label>Banned words</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newBannedWord}
+                    onChange={(event) => setNewBannedWord(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""));
+                      }
+                    }}
+                    placeholder="utilize"
+                  />
+                  <Button type="button" variant="outline" onClick={() => addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""))}>Add</Button>
+                </div>
+                <div className="flex min-h-8 flex-wrap gap-2">
+                  {contentRules.bannedWords.length ? contentRules.bannedWords.map((word) => (
+                    <span key={word} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                      {word}
+                      <button type="button" onClick={() => updateContentRules({ bannedWords: contentRules.bannedWords.filter((item) => item !== word) })} aria-label={`Remove ${word}`}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  )) : <p className="text-sm text-muted-foreground">No banned words yet.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Banned phrases</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newBannedPhrase}
+                    onChange={(event) => setNewBannedPhrase(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addRuleItem("bannedPhrases", newBannedPhrase, () => setNewBannedPhrase(""));
+                      }
+                    }}
+                    placeholder="at the end of the day"
+                  />
+                  <Button type="button" variant="outline" onClick={() => addRuleItem("bannedPhrases", newBannedPhrase, () => setNewBannedPhrase(""))}>Add</Button>
+                </div>
+                <div className="flex min-h-8 flex-wrap gap-2">
+                  {contentRules.bannedPhrases.length ? contentRules.bannedPhrases.map((phrase) => (
+                    <span key={phrase} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                      {phrase}
+                      <button type="button" onClick={() => updateContentRules({ bannedPhrases: contentRules.bannedPhrases.filter((item) => item !== phrase) })} aria-label={`Remove ${phrase}`}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  )) : <p className="text-sm text-muted-foreground">No banned phrases yet.</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-lg border border-border p-4">
+              <div className="space-y-2">
+                <Label>Preferred terms</Label>
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <Input value={newPreferredFrom} onChange={(event) => setNewPreferredFrom(event.target.value)} placeholder="Avoid term" />
+                  <Input value={newPreferredTo} onChange={(event) => setNewPreferredTo(event.target.value)} placeholder="Preferred term" />
+                  <Button type="button" variant="outline" onClick={addPreferredTerm}>Add</Button>
+                </div>
+                <div className="space-y-2">
+                  {contentRules.preferredTerms.length ? contentRules.preferredTerms.map((term) => (
+                    <div key={`${term.from}-${term.to}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-2 text-sm">
+                      <span>{term.from} → {term.to}</span>
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${term.from}`} onClick={() => updateContentRules({ preferredTerms: contentRules.preferredTerms.filter((item) => item !== term) })}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )) : <p className="text-sm text-muted-foreground">No preferred term mappings yet.</p>}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
+                  Avoid AI-sounding phrases
+                  <Switch checked={contentRules.avoidAiPhrases} onCheckedChange={(checked) => updateContentRules({ avoidAiPhrases: checked })} />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
+                  Competitor avoidance
+                  <Switch checked={contentRules.competitorAvoidance} onCheckedChange={(checked) => updateContentRules({ competitorAvoidance: checked })} />
+                </label>
+              </div>
+
+              {contentRules.competitorAvoidance && (
+                <div className="space-y-2">
+                  <Label>Competitors</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCompetitor}
+                      onChange={(event) => setNewCompetitor(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addRuleItem("competitors", newCompetitor, () => setNewCompetitor(""));
+                        }
+                      }}
+                      placeholder="Competitor name"
+                    />
+                    <Button type="button" variant="outline" onClick={() => addRuleItem("competitors", newCompetitor, () => setNewCompetitor(""))}>Add</Button>
+                  </div>
+                  <div className="flex min-h-8 flex-wrap gap-2">
+                    {contentRules.competitors.length ? contentRules.competitors.map((competitor) => (
+                      <span key={competitor} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                        {competitor}
+                        <button type="button" onClick={() => updateContentRules({ competitors: contentRules.competitors.filter((item) => item !== competitor) })} aria-label={`Remove ${competitor}`}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    )) : <p className="text-sm text-muted-foreground">Add names to avoid in generated drafts.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Custom instructions</Label>
+            <Textarea
+              value={customArticleInstructions}
+              onChange={(event) => setCustomArticleInstructions(event.target.value)}
+              placeholder="Always include a practical example in how-to sections."
+              className="min-h-[90px]"
+            />
           </div>
         </section>
 
@@ -766,45 +1210,86 @@ export default function Personas() {
         <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 font-medium">
-                <FileText className="h-4 w-4 text-primary" />
-                Knowledge Base
-                <HelpTip label="Knowledge base help">When on, saved knowledge snippets are sent to the model. When off, files stay saved but are not used.</HelpTip>
-              </span>
+              <div>
+                <span className="flex items-center gap-2 font-medium">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Knowledge Documents
+                  <HelpTip label="Knowledge documents help">When on, ready documents are searched for relevant chunks during generation. Voice still comes from the selected profile.</HelpTip>
+                </span>
+                <p className="mt-1 text-sm text-muted-foreground">Facts and product context, separate from writing style.</p>
+              </div>
               <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
             </div>
-            <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
-            <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Notes, facts, FAQs, or context" className="min-h-[90px]" />
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={addKnowledgeDocument}>Add Knowledge</Button>
-              <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
-                <label>
-                  {isImportingKnowledge ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileUp className="mr-2 h-4 w-4" />
-                  )}
-                  Import File
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    className="hidden"
-                    onChange={handleKnowledgeFileChange}
-                  />
-                </label>
-              </Button>
-            </div>
-            {knowledgeDocuments.map((document) => (
-              <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                <div className="min-w-0">
-                  <p className="font-medium">{document.title}</p>
-                  <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
-                </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}>
-                  <X className="h-4 w-4" />
-                </Button>
+            <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border text-sm">
+              <div className="p-3">
+                <p className="font-semibold">{knowledgeDocuments.length}</p>
+                <p className="text-muted-foreground">Documents</p>
               </div>
-            ))}
+              <div className="border-l border-border p-3">
+                <p className="font-semibold">{readyKnowledgeCount}</p>
+                <p className="text-muted-foreground">Ready</p>
+              </div>
+              <div className="border-l border-border p-3">
+                <p className="font-semibold">{knowledgeChunkTotal}</p>
+                <p className="text-muted-foreground">Chunks</p>
+              </div>
+            </div>
+            <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/20 p-4">
+              <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
+              <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Paste notes, product facts, FAQs, or brand context" className="min-h-[100px]" />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">PDF, DOCX, and TXT imports are chunked automatically.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>Add Knowledge</Button>
+                  <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
+                    <label>
+                      {isImportingKnowledge ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileUp className="mr-2 h-4 w-4" />
+                      )}
+                      Import File
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="hidden"
+                        onChange={handleKnowledgeFileChange}
+                      />
+                    </label>
+                  </Button>
+                </div>
+              </div>
+            </div>
+            {knowledgeDocuments.length === 0 ? (
+              <div className="rounded-lg border border-border p-5 text-center">
+                <FileText className="mx-auto h-6 w-6 text-muted-foreground" />
+                <p className="mt-3 font-medium">No knowledge documents yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Add product specs, FAQs, pricing notes, or brand facts.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {knowledgeDocuments.map((document) => {
+                  const status = knowledgeStatus(document);
+                  return (
+                    <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{document.title}</p>
+                          <Badge variant={status === "ready" ? "default" : status === "failed" ? "destructive" : "secondary"} className="capitalize">
+                            {status}
+                          </Badge>
+                          <Badge variant="outline">{knowledgeChunkCount(document)} chunks</Badge>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.title}`}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -841,7 +1326,7 @@ export default function Personas() {
         {/* Left Panel - List */}
         <div className="w-80 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Brand Voice Profiles</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Writer Profiles</p>
             <Button size="icon" variant="ghost" onClick={() => setIsCreateOpen(true)}>
               <Plus className="h-4 w-4" />
             </Button>

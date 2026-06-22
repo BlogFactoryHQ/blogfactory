@@ -84,8 +84,8 @@ export function OptionCard({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "relative flex min-h-[150px] flex-col items-start rounded-lg border bg-card p-6 text-left transition-calm",
-        selected ? "border-byword-blue bg-byword-blue-soft/80 text-byword-blue shadow-[0_0_0_1px_rgba(20,129,192,0.2)]" : "border-byword-border hover:border-byword-blue/40 hover:bg-byword-blue-soft/30",
+        "group relative flex min-h-[150px] flex-col items-start overflow-hidden rounded-lg border bg-card p-6 text-left transition-calm",
+        selected ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[0_0_0_1px_rgba(20,129,192,0.2),0_14px_32px_rgba(20,129,192,0.10)]" : "border-byword-border hover:border-byword-blue/40 hover:bg-card hover:shadow-[0_10px_28px_rgba(22,82,125,0.06)]",
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
@@ -94,7 +94,7 @@ export function OptionCard({
           {badge}
         </span>
       )}
-      <IconTile icon={Icon} className={selected ? "bg-byword-blue text-white" : ""} />
+      <IconTile icon={Icon} className={selected ? "bg-byword-blue text-white" : "group-hover:bg-byword-blue-soft"} />
       <div className="mt-7">
         <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
