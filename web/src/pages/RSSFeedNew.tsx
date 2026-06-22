@@ -136,7 +136,7 @@ export default function RSSFeedNew() {
 
   // Build platform config object
   const buildPlatformConfig = () => {
-    const editorial = sportsNewsMode && platform === "rss" ? { editorialMode: "sports_news" } : {};
+    const editorial = sportsNewsMode && platform === "rss" ? { editorialMode: "news" } : {};
     switch (platform) {
       case "reddit":
         return { subreddit, redditDomain, ...editorial };
@@ -441,19 +441,28 @@ export default function RSSFeedNew() {
 
               {/* Platform-specific fields */}
               {platform === "rss" && (
-                <div className="space-y-2">
-                  <Label htmlFor="sourceUrl">RSS Source URL</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="sourceUrl"
-                      placeholder="https://example.com/feed.xml"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      className="pl-9"
-                    />
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="sourceUrl">RSS Source URL</Label>
+                    <div className="relative">
+                      <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="sourceUrl"
+                        placeholder="https://example.com/feed.xml"
+                        value={sourceUrl}
+                        onChange={(e) => setSourceUrl(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
                   </div>
-                </div>
+                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                    <div>
+                      <p className="font-medium text-sm">News Mode</p>
+                      <p className="text-xs text-muted-foreground">Use imported source rules before drafting</p>
+                    </div>
+                    <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
+                  </div>
+                </>
               )}
 
               {platform === "youtube" && (
@@ -773,19 +782,6 @@ export default function RSSFeedNew() {
                       </div>
                     </div>
                     <Switch checked={extractFullContent} onCheckedChange={setExtractFullContent} />
-                  </div>
-                )}
-
-                {platform === "rss" && (
-                  <div className="flex items-center justify-between py-3 px-4 rounded-lg border-2 border-primary/20 bg-primary/5">
-                    <div className="flex items-center gap-3">
-                      <Rss className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium text-sm">Sports News Mode</p>
-                        <p className="text-xs text-muted-foreground">Require a matching active row in the sports matrix</p>
-                      </div>
-                    </div>
-                    <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
                   </div>
                 )}
 

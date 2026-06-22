@@ -154,6 +154,11 @@ interface InternalLinkIndex {
 }
 
 interface ContentRules {
+  news?: {
+    matrixRows?: SportsMatrixRow[];
+    fileName?: string;
+    importedAt?: string;
+  };
   sportsNews?: {
     matrixRows?: SportsMatrixRow[];
     fileName?: string;
@@ -381,8 +386,8 @@ export default function Settings() {
       setBrandValueProps(userSettings.brand_value_props || []);
       setBrandCtas(userSettings.brand_ctas || []);
       setContentRules(userSettings.content_rules || {});
-      setSportsMatrixRows(userSettings.content_rules?.sportsNews?.matrixRows || []);
-      setSportsMatrixFileName(userSettings.content_rules?.sportsNews?.fileName || "");
+      setSportsMatrixRows(userSettings.content_rules?.news?.matrixRows || userSettings.content_rules?.sportsNews?.matrixRows || []);
+      setSportsMatrixFileName(userSettings.content_rules?.news?.fileName || userSettings.content_rules?.sportsNews?.fileName || "");
       setKnowledgeBaseEnabled(userSettings.knowledge_base_enabled ?? false);
       setKnowledgeDocuments(userSettings.knowledge_documents || []);
     }
@@ -495,8 +500,8 @@ export default function Settings() {
     mutationFn: async ({ rows, fileName }: { rows: SportsMatrixRow[]; fileName: string }) => {
       const nextRules = {
         ...contentRules,
-        sportsNews: {
-          ...(contentRules.sportsNews || {}),
+        news: {
+          ...(contentRules.news || {}),
           matrixRows: rows,
           fileName,
           importedAt: new Date().toISOString(),
@@ -508,9 +513,9 @@ export default function Settings() {
     onSuccess: (settings) => {
       queryClient.setQueryData(["user-settings"], settings);
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Sports news matrix imported");
+      toast.success("News source matrix imported");
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to import sports news matrix"),
+    onError: (err: Error) => toast.error(err.message || "Failed to import news source matrix"),
   });
 
   // Save image model mutation
@@ -682,7 +687,7 @@ export default function Settings() {
       setSportsMatrixFileName(file.name);
       saveSportsMatrixMutation.mutate({ rows, fileName: file.name });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to import sports news matrix");
+      toast.error(err instanceof Error ? err.message : "Failed to import news source matrix");
     } finally {
       setIsImportingSportsMatrix(false);
     }
@@ -770,7 +775,7 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
-    { id: "sports", title: "Sports News", description: "Matrix rules", icon: Database },
+    { id: "sports", title: "News Rules", description: "Source matrix", icon: Database },
     { id: "internal", title: "Internal Linking", description: "Sitemap index", icon: LinkIcon },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
@@ -930,8 +935,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={Database}
-                title="Sports News Rules"
-                description="Matrix-backed source rules for sports newsroom drafts."
+                title="News Rules"
+                description="Matrix-backed source rules for general newsroom drafts."
                 action={
                   <Button type="button" variant="outline" disabled={isImportingSportsMatrix || saveSportsMatrixMutation.isPending} asChild>
                     <label>
@@ -972,7 +977,7 @@ export default function Settings() {
                     <div className="min-w-0">
                       <p className="font-semibold">{sportsMatrixFileName || "No matrix imported"}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Sports News Mode only drafts articles when an incoming source matches an active, non-data row.
+                        News Mode only drafts articles when an incoming source matches an active, non-data row.
                       </p>
                     </div>
                   </div>

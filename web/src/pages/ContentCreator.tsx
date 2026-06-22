@@ -450,7 +450,7 @@ export default function ContentCreator() {
         personaId,
         modelId,
         variations,
-        platformConfig: sportsNewsMode && (sourceType === "url" || sourceType === "raw_text") ? { editorialMode: "sports_news" } : undefined,
+        platformConfig: sportsNewsMode && (sourceType === "url" || sourceType === "raw_text") ? { editorialMode: "news" } : undefined,
         relatedKeywords: isArticleSource
           ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
           : undefined,
@@ -929,8 +929,8 @@ export default function ContentCreator() {
                 <div className="flex items-center gap-3">
                   <IconTile icon={Archive} />
                   <div>
-                    <p className="text-sm font-medium">Sports News Mode</p>
-                    <p className="text-xs text-muted-foreground">Require a matching active row in the sports matrix</p>
+                    <p className="text-sm font-medium">News Mode</p>
+                    <p className="text-xs text-muted-foreground">Use imported source rules before drafting</p>
                   </div>
                 </div>
                 <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />

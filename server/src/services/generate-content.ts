@@ -255,7 +255,9 @@ function normalizeList(value: unknown, maxItems = 5) {
 }
 
 function isSportsNewsMode(value: unknown) {
-  return !!value && typeof value === "object" && (value as Record<string, unknown>).editorialMode === "sports_news";
+  if (!value || typeof value !== "object") return false;
+  const mode = (value as Record<string, unknown>).editorialMode;
+  return mode === "news" || mode === "sports_news";
 }
 
 function buildArticleExtras(opts: GenerateOpts) {
@@ -557,7 +559,7 @@ export async function generateContent(opts: GenerateOpts) {
 
     if (!articles.length) {
       const message = sportsSkipped.length
-        ? sportsSkipped.map((item) => item.reason).filter(Boolean)[0] || "No sports news items matched the matrix."
+        ? sportsSkipped.map((item) => item.reason).filter(Boolean)[0] || "No news items matched the matrix."
         : "No drafts were created from this source.";
       await db.update(jobs).set({
         status: "failed",

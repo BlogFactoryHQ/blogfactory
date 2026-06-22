@@ -129,7 +129,7 @@ export function normalizeSportsMatrixRows(value: unknown): SportsMatrixRow[] {
 
 export function sportsMatrixRowsFromSettings(settings: Record<string, any> | null | undefined) {
   const rules = settings?.contentRules ?? settings?.content_rules ?? {};
-  return normalizeSportsMatrixRows(rules?.sportsNews?.matrixRows);
+  return normalizeSportsMatrixRows(rules?.news?.matrixRows ?? rules?.sportsNews?.matrixRows);
 }
 
 function labelFor(row: SportsMatrixRow) {
@@ -153,7 +153,7 @@ export function classifySportsNews(input: {
   matrixRows: SportsMatrixRow[];
 }): SportsNewsDecision {
   const rows = normalizeSportsMatrixRows(input.matrixRows);
-  if (!rows.length) return { allowed: false, reason: "Import the sports news matrix first." };
+  if (!rows.length) return { allowed: false, reason: "Import the news source matrix first." };
 
   const candidates = [input.url, input.sourceValue]
     .concat(JSON.stringify(input.platformConfig || {}))
@@ -165,7 +165,7 @@ export function classifySportsNews(input: {
     .map((row) => ({ row, score: scoreRow(row, haystack, candidates) }))
     .sort((a, b) => b.score - a.score)[0];
 
-  if (!match || match.score <= 0) return { allowed: false, reason: "Source is not in the sports matrix." };
+  if (!match || match.score <= 0) return { allowed: false, reason: "Source is not in the news matrix." };
 
   const row = match.row;
   if (!normalized(row.status).includes("aktif")) {
@@ -193,12 +193,12 @@ export function classifySportsNews(input: {
 
 export function buildSportsNewsInstructions(decision: SportsNewsDecision) {
   if (!decision.allowed) return "";
-  return `\n\nSports newsroom rules:
+  return `\n\nNewsroom rules:
 - Editorial label: ${decision.label}.
 - Use source attribution: "${decision.attribution}". Single-source claims must stay attributed.
 - Never write "confirmed", "official", "kesin", or "resmî" unless the matched source is official and the label is [RESMÎ].
-- Use neutral, institutional sports media language. Do not use "Şok!", "Flaş flaş!", or cheap clickbait.
-- Keep sport terminology accurate: football, F1, NBA, NFL, UFC/boxing, and tennis terms must not be mixed.
+- Use neutral, institutional news language. Do not use "Şok!", "Flaş flaş!", or cheap clickbait.
+- Keep the section/beat terminology accurate for the matched source; do not invent tags, beats, or certainty.
 ${decision.requiresSecondSource ? "- Mark big claims as needing a second source or official confirmation; keep the wording cautious." : ""}
 ${decision.embedNotice ? `- Include this exact line near the end: ${decision.embedNotice}` : ""}
 ${decision.tags?.length ? `- End with matrix tags exactly as provided: ${decision.tags.join(", ")}.` : ""}

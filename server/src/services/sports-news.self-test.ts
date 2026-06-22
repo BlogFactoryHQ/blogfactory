@@ -30,7 +30,7 @@ assert.match(passive.reason || "", /passive/i);
 
 const unknown = classifySportsNews({ content: "Unknown blog says something.", matrixRows: rows });
 assert.equal(unknown.allowed, false);
-assert.match(unknown.reason || "", /not in the sports matrix/i);
+assert.match(unknown.reason || "", /not in the news matrix/i);
 
 const prompt = buildSportsNewsInstructions(romano);
 assert.match(prompt, /Fabrizio Romano/);
