@@ -1719,7 +1719,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={FileText}
                   title="Knowledge Documents"
-                  description="Search ready documents during article generation for more accurate, on-brand content."
+                  description="Facts and product context, separate from voice and tone."
                   action={
                     <Switch
                       checked={knowledgeBaseEnabled}
@@ -1729,33 +1729,56 @@ export default function Settings() {
                   }
                 />
                 <div className="space-y-5 p-6">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-byword-border p-4">
+                  <div className="grid overflow-hidden rounded-lg border border-byword-border text-sm md:grid-cols-3">
+                    <div className="p-4">
                       <p className="text-2xl font-semibold">{knowledgeDocuments.length}</p>
                       <p className="text-sm text-muted-foreground">Documents</p>
                     </div>
-                    <div className="rounded-lg border border-byword-border p-4">
-                      <p className="text-2xl font-semibold">{knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0)}</p>
-                      <p className="text-sm text-muted-foreground">Knowledge Chunks</p>
+                    <div className="border-t border-byword-border p-4 md:border-l md:border-t-0">
+                      <p className="text-2xl font-semibold">{readyKnowledgeCount}</p>
+                      <p className="text-sm text-muted-foreground">Ready</p>
+                    </div>
+                    <div className="border-t border-byword-border p-4 md:border-l md:border-t-0">
+                      <p className="text-2xl font-semibold">{knowledgeChunkTotal}</p>
+                      <p className="text-sm text-muted-foreground">Chunks</p>
                     </div>
                   </div>
-                  <div className="grid gap-3 md:grid-cols-[280px_1fr]">
-                    <Input
-                      value={knowledgeTitle}
-                      onChange={(event) => setKnowledgeTitle(event.target.value)}
-                      placeholder="Document title"
-                    />
-                    <Textarea
-                      value={knowledgeContent}
-                      onChange={(event) => setKnowledgeContent(event.target.value)}
-                      placeholder="Paste notes, product facts, FAQs, or brand context..."
-                      className="min-h-[110px] resize-none"
-                    />
+                  <div className="space-y-3 rounded-lg border border-dashed border-byword-border bg-muted/20 p-4">
+                    <div className="grid gap-3 md:grid-cols-[280px_1fr]">
+                      <Input
+                        value={knowledgeTitle}
+                        onChange={(event) => setKnowledgeTitle(event.target.value)}
+                        placeholder="Document title"
+                      />
+                      <Textarea
+                        value={knowledgeContent}
+                        onChange={(event) => setKnowledgeContent(event.target.value)}
+                        placeholder="Paste notes, product facts, FAQs, or brand context"
+                        className="min-h-[110px] resize-none"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">PDF, DOCX, and TXT imports are chunked automatically.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Add Knowledge
+                        </Button>
+                        <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
+                          <label>
+                            {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                            Import File
+                            <input
+                              type="file"
+                              accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                              className="hidden"
+                              onChange={handleKnowledgeFileChange}
+                            />
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <Button type="button" variant="outline" onClick={addKnowledgeDocument}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Add Knowledge
-                  </Button>
                   {knowledgeDocuments.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
                       <IconTile icon={FileText} className="mx-auto" />
@@ -1764,29 +1787,33 @@ export default function Settings() {
                     </div>
                   ) : (
                     <div className="grid gap-3">
-                      {knowledgeDocuments.map((document) => (
-                        <div key={document.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
-                          <IconTile icon={FileText} />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold">{document.title}</p>
-                            <div className="mt-1 flex flex-wrap gap-2">
-                              <Badge variant={knowledgeStatus(document) === "ready" ? "default" : knowledgeStatus(document) === "failed" ? "destructive" : "secondary"}>
-                                {knowledgeStatus(document)}
-                              </Badge>
-                              <Badge variant="outline">{knowledgeChunkCount(document)} chunks</Badge>
+                      {knowledgeDocuments.map((document) => {
+                        const status = knowledgeStatus(document);
+                        return (
+                          <div key={document.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
+                            <IconTile icon={FileText} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">{document.title}</p>
+                                <Badge variant={status === "ready" ? "default" : status === "failed" ? "destructive" : "secondary"} className="capitalize">
+                                  {status}
+                                </Badge>
+                                <Badge variant="outline">{knowledgeChunkCount(document)} chunks</Badge>
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
                             </div>
-                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove ${document.title}`}
+                              onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
