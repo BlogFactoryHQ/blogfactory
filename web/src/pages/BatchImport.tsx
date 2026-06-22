@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import { Link } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CheckCircle2, ExternalLink, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { useIntegrations } from "@/hooks/useIntegrations";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 type ZipEntry = JSZip.JSZipObject;
 
@@ -36,6 +37,17 @@ interface MarkdownMeta {
   metaTitle: string;
   metaDescription: string;
   tags: string[];
+}
+
+interface ImportedPost {
+  id: string;
+  title: string;
+  status: string;
+  source_type: string;
+  source_ref_id: string | null;
+  cover_image_url: string | null;
+  inline_images: string[] | null;
+  created_at: string;
 }
 
 const imageExt = /\.(png|jpe?g|webp|gif)$/i;
@@ -83,6 +95,8 @@ function parseMarkdownMeta(content: string): MarkdownMeta {
   };
 }
 
+const dateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 export default function BatchImport() {
   const [items, setItems] = useState<ImportItem[]>([]);
   const [isReading, setIsReading] = useState(false);
@@ -93,8 +107,13 @@ export default function BatchImport() {
   const [mode, setMode] = useState<"draft" | "publish">("draft");
   const { integrations, isLoading } = useIntegrations();
   const queryClient = useQueryClient();
+  const { data: posts = [], isLoading: isLoadingHistory } = useQuery({
+    queryKey: ["posts"],
+    queryFn: () => api.get<ImportedPost[]>("/posts"),
+  });
 
   const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+  const batchImports = useMemo(() => posts.filter((post) => post.source_type === "batch_import"), [posts]);
 
   const updateItem = (id: string, patch: Partial<ImportItem>) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -361,6 +380,65 @@ export default function BatchImport() {
                             </Link>
                           </Button>
                         ) : "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </BywordCard>
+
+      <BywordCard className="mt-6">
+        <SectionHeader
+          icon={Archive}
+          title="Previous imports"
+          description="Batch-imported drafts and their current states."
+        />
+        <div className="overflow-hidden p-6 pt-0">
+          <div className="overflow-hidden rounded-lg border border-byword-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Imported</th>
+                  <th className="px-4 py-3 font-medium">Folder</th>
+                  <th className="px-4 py-3 font-medium">Title</th>
+                  <th className="px-4 py-3 font-medium">Images</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Draft</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoadingHistory ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      Loading previous imports...
+                    </td>
+                  </tr>
+                ) : batchImports.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      No previous batch imports yet.
+                    </td>
+                  </tr>
+                ) : (
+                  batchImports.map((post) => (
+                    <tr key={post.id} className="border-t border-byword-border">
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{dateFormatter.format(new Date(post.created_at))}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{post.source_ref_id || "root"}</td>
+                      <td className="max-w-[420px] truncate px-4 py-3 font-medium">{post.title}</td>
+                      <td className="px-4 py-3">{(post.cover_image_url ? 1 : 0) + (post.inline_images?.length || 0)}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={post.status === "published" ? "success" : "draft"} label={post.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/posts/${post.id}/edit`}>
+                            Open
+                            <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                          </Link>
+                        </Button>
                       </td>
                     </tr>
                   ))
