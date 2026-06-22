@@ -1,10 +1,17 @@
 import { Hono } from "hono";
+import { randomUUID } from "node:crypto";
 import { db } from "../db/index.js";
 import { sites, userSettings } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenRouterKey, setApiKey, type Provider } from "../services/api-keys.js";
-import { buildInternalLinkIndex } from "../services/internal-linking.js";
+import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenAiKey, getOpenRouterKey, setApiKey, type Provider } from "../services/api-keys.js";
+import {
+  buildInternalLinkIndex,
+  canRefreshInternalLinks,
+  nextInternalLinkRefreshAt,
+  sanitizeInternalLinkIndex,
+  type InternalLinkIndexingState,
+} from "../services/internal-linking.js";
 import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
 
@@ -162,8 +169,10 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     internalLinkExcludePatterns: settings.internalLinkExcludePatterns ?? [],
     internal_link_rules: settings.internalLinkRules ?? [],
     internalLinkRules: settings.internalLinkRules ?? [],
-    internal_link_index: settings.internalLinkIndex,
-    internalLinkIndex: settings.internalLinkIndex,
+    internal_link_index: sanitizeInternalLinkIndex(settings.internalLinkIndex),
+    internalLinkIndex: sanitizeInternalLinkIndex(settings.internalLinkIndex),
+    internal_link_indexing_state: settings.internalLinkIndexingState,
+    internalLinkIndexingState: settings.internalLinkIndexingState,
     internal_link_last_synced_at: settings.internalLinkLastSyncedAt,
     internalLinkLastSyncedAt: settings.internalLinkLastSyncedAt,
     brand_company_name: settings.brandCompanyName,
@@ -308,25 +317,70 @@ settingsRoutes.delete("/api-keys", async (c) => {
   return c.json(await deleteApiKey(userId, provider as Provider));
 });
 
-settingsRoutes.post("/internal-linking/index", async (c) => {
-  const userId = getUserId(c);
-  const body = await c.req.json();
-  const sitemapUrl = asText(body.sitemap_url ?? body.sitemapUrl);
+function comparableSitemap(value: string | null | undefined) {
+  return (value || "").trim().replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
+}
 
-  if (!sitemapUrl) {
-    return c.json({ error: "Sitemap URL is required" }, 400);
-  }
+async function runInternalLinkIndexing({
+  userId,
+  jobId,
+  sitemapUrl,
+  mode,
+  density,
+  includePatterns,
+  excludePatterns,
+  openAiKey,
+  hadExistingIndex,
+}: {
+  userId: string;
+  jobId: string;
+  sitemapUrl: string;
+  mode: string;
+  density: string;
+  includePatterns: string[];
+  excludePatterns: string[];
+  openAiKey: string;
+  hadExistingIndex: boolean;
+}) {
+  const startedAt = new Date().toISOString();
+  let state: InternalLinkIndexingState = {
+    jobId,
+    step: "queued",
+    totalPages: 0,
+    crawledPages: 0,
+    embeddedPages: 0,
+    errorMessage: null,
+    startedAt,
+    completedAt: null,
+  };
+  const setState = async (patch: Partial<InternalLinkIndexingState>) => {
+    state = { ...state, ...patch, jobId, startedAt };
+    await db
+      .update(userSettings)
+      .set({ internalLinkIndexingState: state as never, updatedAt: new Date() })
+      .where(eq(userSettings.userId, userId));
+  };
 
   try {
-    const mode = asOptionalText(body.mode) || "all";
-    const density = asOptionalText(body.density) || "balanced";
-    const includePatterns = asJsonArray(body.include_patterns ?? body.includePatterns) as string[] | undefined;
-    const excludePatterns = asJsonArray(body.exclude_patterns ?? body.excludePatterns) as string[] | undefined;
+    await setState({ step: "fetch_sitemap" });
     const index = await buildInternalLinkIndex(sitemapUrl, {
       mode,
       includePatterns,
       excludePatterns,
+      openAiKey,
+      onProgress: setState,
     });
+    const completedAt = new Date();
+    const completedState: InternalLinkIndexingState = {
+      ...state,
+      step: "completed",
+      totalPages: index.pageCount,
+      crawledPages: index.pageCount,
+      embeddedPages: index.vectorCount,
+      errorMessage: null,
+      completedAt: completedAt.toISOString(),
+    };
+
     const [result] = await db
       .insert(userSettings)
       .values({
@@ -339,8 +393,9 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
         internalLinkIncludePatterns: includePatterns,
         internalLinkExcludePatterns: excludePatterns,
         internalLinkIndex: index as never,
-        internalLinkLastSyncedAt: new Date(),
-        updatedAt: new Date(),
+        internalLinkIndexingState: completedState as never,
+        internalLinkLastSyncedAt: completedAt,
+        updatedAt: completedAt,
       })
       .onConflictDoUpdate({
         target: userSettings.userId,
@@ -353,8 +408,9 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
           internalLinkIncludePatterns: includePatterns,
           internalLinkExcludePatterns: excludePatterns,
           internalLinkIndex: index as never,
-          internalLinkLastSyncedAt: new Date(),
-          updatedAt: new Date(),
+          internalLinkIndexingState: completedState as never,
+          internalLinkLastSyncedAt: completedAt,
+          updatedAt: completedAt,
         },
       })
       .returning();
@@ -374,8 +430,114 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
         } as never)
         .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
     }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to index sitemap";
+    await db
+      .update(userSettings)
+      .set({
+        enableInternalLinks: hadExistingIndex,
+        internalLinkStatus: "failed",
+        internalLinkIndexingState: {
+          ...state,
+          step: "failed",
+          errorMessage: message,
+          completedAt: new Date().toISOString(),
+        } as never,
+        updatedAt: new Date(),
+      })
+      .where(eq(userSettings.userId, userId));
+    console.error("[internal-linking] Indexing failed:", message);
+  }
+}
 
-    return c.json(serializeSettings(result));
+settingsRoutes.post("/internal-linking/index", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const sitemapUrl = asText(body.sitemap_url ?? body.sitemapUrl)?.trim();
+
+  if (!sitemapUrl) {
+    return c.json({ error: "Sitemap URL is required" }, 400);
+  }
+
+  try {
+    const [existing] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+    const currentState = existing?.internalLinkIndexingState as InternalLinkIndexingState | null | undefined;
+    const sameSitemap = comparableSitemap(existing?.internalLinkSitemapUrl) === comparableSitemap(sitemapUrl);
+    const recentIndexing = currentState?.startedAt && Date.now() - new Date(currentState.startedAt).getTime() < 30 * 60 * 1000;
+
+    if (existing?.internalLinkStatus === "indexing" && recentIndexing) {
+      return c.json({ error: "Internal linking indexing is already running" }, 409);
+    }
+    if (existing?.internalLinkStatus === "connected" && sameSitemap && !canRefreshInternalLinks(existing.internalLinkLastSyncedAt)) {
+      const next = nextInternalLinkRefreshAt(existing.internalLinkLastSyncedAt);
+      return c.json({ error: `Refresh is available after ${next?.toISOString() || "the cooldown ends"}` }, 429);
+    }
+
+    const openAiKey = await getOpenAiKey(userId);
+    if (!openAiKey) {
+      return c.json({ error: "Add your OpenAI API key in Settings before indexing internal links" }, 400);
+    }
+
+    const mode = asOptionalText(body.mode) || "all";
+    const density = asOptionalText(body.density) || "balanced";
+    const includePatterns = (asJsonArray(body.include_patterns ?? body.includePatterns) as string[] | undefined) || [];
+    const excludePatterns = (asJsonArray(body.exclude_patterns ?? body.excludePatterns) as string[] | undefined) || [];
+    const jobId = randomUUID();
+    const startedAt = new Date();
+    const indexingState: InternalLinkIndexingState = {
+      jobId,
+      step: "queued",
+      totalPages: 0,
+      crawledPages: 0,
+      embeddedPages: 0,
+      errorMessage: null,
+      startedAt: startedAt.toISOString(),
+      completedAt: null,
+    };
+
+    const [result] = await db
+      .insert(userSettings)
+      .values({
+        userId,
+        enableInternalLinks: true,
+        internalLinkSitemapUrl: sitemapUrl,
+        internalLinkStatus: "indexing",
+        internalLinkMode: mode,
+        internalLinkDensity: density,
+        internalLinkIncludePatterns: includePatterns,
+        internalLinkExcludePatterns: excludePatterns,
+        internalLinkIndexingState: indexingState as never,
+        updatedAt: startedAt,
+      })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: {
+          enableInternalLinks: true,
+          internalLinkSitemapUrl: sitemapUrl,
+          internalLinkStatus: "indexing",
+          internalLinkMode: mode,
+          internalLinkDensity: density,
+          internalLinkIncludePatterns: includePatterns,
+          internalLinkExcludePatterns: excludePatterns,
+          internalLinkIndexingState: indexingState as never,
+          updatedAt: startedAt,
+        },
+      })
+      .returning();
+
+    runInternalLinkIndexing({
+      userId,
+      jobId,
+      sitemapUrl,
+      mode,
+      density,
+      includePatterns,
+      excludePatterns,
+      openAiKey,
+      hadExistingIndex: Boolean(existing?.internalLinkIndex),
+    }).catch((err) => console.error("[internal-linking] Background indexing error:", err));
+
+    return c.json(serializeSettings(result), 202);
   } catch (err: any) {
     return c.json({ error: err.message || "Failed to index sitemap" }, 400);
   }
@@ -391,6 +553,7 @@ settingsRoutes.delete("/internal-linking", async (c) => {
       internalLinkSitemapUrl: null,
       internalLinkStatus: "disconnected",
       internalLinkIndex: null,
+      internalLinkIndexingState: null,
       internalLinkLastSyncedAt: null,
       updatedAt: new Date(),
     })
@@ -401,6 +564,7 @@ settingsRoutes.delete("/internal-linking", async (c) => {
         internalLinkSitemapUrl: null,
         internalLinkStatus: "disconnected",
         internalLinkIndex: null,
+        internalLinkIndexingState: null,
         internalLinkLastSyncedAt: null,
         updatedAt: new Date(),
       },

@@ -3,6 +3,7 @@ interface IndexedPage {
   title: string;
   description?: string;
   path: string;
+  embedding?: number[];
 }
 
 export interface InternalLinkIndex {
@@ -21,11 +22,28 @@ interface InternalLinkIndexOptions {
   mode?: string;
   includePatterns?: string[];
   excludePatterns?: string[];
+  openAiKey?: string | null;
+  onProgress?: (state: Partial<InternalLinkIndexingState>) => Promise<void> | void;
+}
+
+export interface InternalLinkIndexingState {
+  jobId?: string;
+  step: "queued" | "fetch_sitemap" | "crawl_pages" | "create_embeddings" | "build_index" | "completed" | "failed";
+  totalPages: number;
+  crawledPages: number;
+  embeddedPages: number;
+  errorMessage?: string | null;
+  startedAt?: string;
+  completedAt?: string | null;
 }
 
 const MAX_SITEMAPS = 12;
 const MAX_PAGES = 150;
 const PAGE_FETCH_CONCURRENCY = 8;
+const EMBEDDING_BATCH_SIZE = 24;
+const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_DIMENSIONS = 512;
+export const INTERNAL_LINK_REFRESH_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface FetchedText {
   text: string;
@@ -45,6 +63,20 @@ interface SitemapDiscovery {
   siteHost: string;
   rootHost: string;
   messages: string[];
+}
+
+interface CrawledPage extends IndexedPage {
+  text: string;
+}
+
+export function canRefreshInternalLinks(lastSyncedAt: string | Date | null | undefined, now = new Date()) {
+  if (!lastSyncedAt) return true;
+  return now.getTime() - new Date(lastSyncedAt).getTime() >= INTERNAL_LINK_REFRESH_COOLDOWN_MS;
+}
+
+export function nextInternalLinkRefreshAt(lastSyncedAt: string | Date | null | undefined) {
+  if (!lastSyncedAt) return null;
+  return new Date(new Date(lastSyncedAt).getTime() + INTERNAL_LINK_REFRESH_COOLDOWN_MS);
 }
 
 function isPrivateHost(hostname: string): boolean {
@@ -298,6 +330,19 @@ function stripHtml(value: string) {
     .trim();
 }
 
+export function extractMainText(html: string) {
+  const main =
+    html.match(/<article[\s\S]*?<\/article>/i)?.[0] ||
+    html.match(/<main[\s\S]*?<\/main>/i)?.[0] ||
+    html.match(/<body[\s\S]*?<\/body>/i)?.[0] ||
+    html;
+
+  return stripHtml(decodeXml(main))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 6000);
+}
+
 function extractMeta(html: string, name: string) {
   const regex = new RegExp(`<meta[^>]+(?:name|property)=["']${name}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i");
   return html.match(regex)?.[1]?.trim();
@@ -310,7 +355,7 @@ function extractTitle(html: string) {
   return title ? stripHtml(decodeXml(title)) : "";
 }
 
-async function indexPage(url: string): Promise<IndexedPage | null> {
+async function indexPage(url: string): Promise<CrawledPage | null> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -325,23 +370,31 @@ async function indexPage(url: string): Promise<IndexedPage | null> {
     const description = stripHtml(decodeXml(
       extractMeta(html, "description") || extractMeta(html, "og:description") || ""
     )).slice(0, 240);
+    const mainText = extractMainText(html);
 
     return {
       url: parsed.toString(),
       title,
       description: description || undefined,
       path: parsed.pathname,
+      text: mainText || `${title} ${description || ""} ${parsed.pathname}`.trim(),
     };
   } catch {
     return {
       url: parsed.toString(),
       title: titleFromUrl(parsed),
       path: parsed.pathname,
+      text: titleFromUrl(parsed),
     };
   }
 }
 
-async function mapConcurrent<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
+async function mapConcurrent<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+  afterEach?: (result: R) => Promise<void> | void
+) {
   const results: R[] = [];
   let cursor = 0;
 
@@ -349,12 +402,107 @@ async function mapConcurrent<T, R>(items: T[], concurrency: number, mapper: (ite
     while (cursor < items.length) {
       const index = cursor;
       cursor += 1;
-      results[index] = await mapper(items[index]);
+      const result = await mapper(items[index]);
+      results[index] = result;
+      await afterEach?.(result);
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
   return results;
+}
+
+export function normalizeVector(vector: number[]) {
+  const length = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (!length) return vector;
+  return vector.map((value) => value / length);
+}
+
+export function cosineSimilarity(a: number[] | undefined, b: number[] | undefined) {
+  if (!a?.length || !b?.length || a.length !== b.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i += 1) sum += a[i] * b[i];
+  return sum;
+}
+
+function pageEmbeddingInput(page: CrawledPage) {
+  return `${page.title}\n${page.description || ""}\n${page.path}\n${page.text}`.slice(0, 7000);
+}
+
+async function embedTexts(texts: string[], openAiKey: string) {
+  if (texts.length === 0) return [];
+
+  const response = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input: texts,
+      dimensions: EMBEDDING_DIMENSIONS,
+      encoding_format: "float",
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `OpenAI embeddings failed with ${response.status}`);
+  }
+
+  const data = await response.json() as { data?: Array<{ embedding?: number[]; index?: number }> };
+  const embeddings = data.data || [];
+  return texts.map((_, index) => {
+    const embedding = embeddings.find((item) => item.index === index)?.embedding || embeddings[index]?.embedding;
+    if (!embedding) throw new Error("OpenAI embeddings response was missing a vector");
+    return normalizeVector(embedding);
+  });
+}
+
+export async function embedInternalLinkText(text: string, openAiKey: string) {
+  const [embedding] = await embedTexts([text.slice(0, 7000)], openAiKey);
+  return embedding;
+}
+
+export function rankPagesByEmbedding<T extends { embedding?: number[] }>(pages: T[], embedding: number[], limit = 12) {
+  return pages
+    .map((page) => ({ page, score: cosineSimilarity(embedding, page.embedding) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((item) => item.page);
+}
+
+export function sanitizeInternalLinkIndex(index: unknown): unknown {
+  if (!index || typeof index !== "object") return index;
+  const record = index as Record<string, unknown>;
+  const pages = Array.isArray(record.pages)
+    ? record.pages.map((page) => {
+        if (!page || typeof page !== "object") return page;
+        const { embedding: _embedding, text: _text, ...rest } = page as Record<string, unknown>;
+        return rest;
+      })
+    : [];
+  return { ...record, pages };
+}
+
+async function embedPages(pages: CrawledPage[], openAiKey: string, onProgress?: InternalLinkIndexOptions["onProgress"]) {
+  const indexed: IndexedPage[] = [];
+  let embeddedPages = 0;
+
+  for (let index = 0; index < pages.length; index += EMBEDDING_BATCH_SIZE) {
+    const batch = pages.slice(index, index + EMBEDDING_BATCH_SIZE);
+    const embeddings = await embedTexts(batch.map(pageEmbeddingInput), openAiKey);
+    batch.forEach((page, offset) => {
+      const { text: _text, ...publicPage } = page;
+      indexed.push({ ...publicPage, embedding: embeddings[offset] });
+    });
+    embeddedPages += batch.length;
+    await onProgress?.({ step: "create_embeddings", embeddedPages });
+  }
+
+  return indexed;
 }
 
 function matchesPattern(url: string, pattern: string) {
@@ -376,6 +524,7 @@ function applyUrlFilters(urls: string[], options?: InternalLinkIndexOptions) {
 }
 
 export async function buildInternalLinkIndex(input: string, options?: InternalLinkIndexOptions): Promise<InternalLinkIndex> {
+  await options?.onProgress?.({ step: "fetch_sitemap", totalPages: 0, crawledPages: 0, embeddedPages: 0 });
   const discovery = await discoverSitemap(input);
   const urls = applyUrlFilters(Array.from(new Set(await collectSitemapUrls(discovery.sitemapUrl, discovery.rootHost)))
     .filter((url) => {
@@ -392,14 +541,25 @@ export async function buildInternalLinkIndex(input: string, options?: InternalLi
     throw new Error("No page URLs found in this sitemap");
   }
 
-  const pages = (await mapConcurrent(urls, PAGE_FETCH_CONCURRENCY, indexPage))
-    .filter((page): page is IndexedPage => Boolean(page));
+  let crawledPages = 0;
+  await options?.onProgress?.({ step: "crawl_pages", totalPages: urls.length, crawledPages: 0, embeddedPages: 0 });
+  const crawled = (await mapConcurrent(urls, PAGE_FETCH_CONCURRENCY, indexPage, async () => {
+    crawledPages += 1;
+    await options?.onProgress?.({ step: "crawl_pages", totalPages: urls.length, crawledPages });
+  })).filter((page): page is CrawledPage => Boolean(page));
+
+  await options?.onProgress?.({ step: "create_embeddings", totalPages: urls.length, crawledPages, embeddedPages: 0 });
+  const pages = options?.openAiKey
+    ? await embedPages(crawled, options.openAiKey, options.onProgress)
+    : crawled.map(({ text: _text, ...page }) => page);
+
+  await options?.onProgress?.({ step: "build_index", totalPages: urls.length, crawledPages, embeddedPages: pages.filter((page) => page.embedding?.length).length });
 
   return {
     sitemapUrl: discovery.sitemapUrl,
     siteHost: discovery.siteHost,
     pageCount: pages.length,
-    vectorCount: pages.length,
+    vectorCount: pages.filter((page) => page.embedding?.length).length,
     pages,
     createdAt: new Date().toISOString(),
     sitemapSource: discovery.source,

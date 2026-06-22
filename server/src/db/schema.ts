@@ -357,6 +357,7 @@ export const userSettings = pgTable("user_settings", {
   internalLinkExcludePatterns: text("internal_link_exclude_patterns").array(),
   internalLinkRules: jsonb("internal_link_rules"),
   internalLinkIndex: jsonb("internal_link_index"),
+  internalLinkIndexingState: jsonb("internal_link_indexing_state"),
   internalLinkLastSyncedAt: timestamp("internal_link_last_synced_at", { withTimezone: true }),
   brandCompanyName: text("brand_company_name"),
   brandDescription: text("brand_description"),

@@ -8,6 +8,7 @@ import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
+import { embedInternalLinkText, rankPagesByEmbedding } from "./internal-linking.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 
 interface GenerateOpts {
@@ -125,11 +126,30 @@ function tokenize(value: string) {
   return new Set(value.toLowerCase().match(/[a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi) || []);
 }
 
-function summarizeInternalLinks(settings: GenerationSettings, sourceText = "") {
+type InternalLinkPromptPage = { url?: string; title?: string; description?: string; path?: string; embedding?: number[] };
+
+function lexicalInternalLinkPages(pages: InternalLinkPromptPage[], sourceText: string) {
+  const sourceTokens = tokenize(sourceText);
+  return pages
+    .map((page) => {
+      const haystack = `${page.title || ""} ${page.description || ""} ${page.path || ""}`;
+      const pageTokens = tokenize(haystack);
+      let score = 0;
+      for (const token of pageTokens) {
+        if (sourceTokens.has(token)) score += token.length > 4 ? 2 : 1;
+      }
+      return { page, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)
+    .map(({ page }) => page);
+}
+
+async function summarizeInternalLinks(settings: GenerationSettings, sourceText = "", openAiKey?: string | null) {
   if (settings.enableInternalLinks !== true) return [];
 
   const index = settings.internalLinkIndex as
-    | { pages?: Array<{ url?: string; title?: string; description?: string; path?: string }> }
+    | { pages?: InternalLinkPromptPage[] }
     | null
     | undefined;
   const rules = Array.isArray(settings.internalLinkRules) ? settings.internalLinkRules as Array<Record<string, unknown>> : [];
@@ -161,20 +181,17 @@ function summarizeInternalLinks(settings: GenerationSettings, sourceText = "") {
 
   const pages = Array.isArray(index?.pages) ? index.pages : [];
   if (pages.length) {
-    const sourceTokens = tokenize(sourceText);
-    const scored = pages
+    let ranked = lexicalInternalLinkPages(pages, sourceText);
+    if (openAiKey && pages.some((page) => page.embedding?.length)) {
+      try {
+        ranked = rankPagesByEmbedding(pages, await embedInternalLinkText(sourceText, openAiKey), 12);
+        if (ranked.length === 0) ranked = lexicalInternalLinkPages(pages, sourceText);
+      } catch (err) {
+        console.warn("[internal-linking] Semantic ranking failed, using lexical fallback:", err);
+      }
+    }
+    const scored = ranked
       .map((page) => {
-        const haystack = `${page.title || ""} ${page.description || ""} ${page.path || ""}`;
-        const pageTokens = tokenize(haystack);
-        let score = 0;
-        for (const token of pageTokens) {
-          if (sourceTokens.has(token)) score += token.length > 4 ? 2 : 1;
-        }
-        return { page, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 12)
-      .map(({ page }) => {
         const title = page.title || page.path || page.url;
         const description = page.description ? ` — ${page.description}` : "";
         return `  - ${title}: ${page.url}${description}`;
@@ -188,7 +205,7 @@ function summarizeInternalLinks(settings: GenerationSettings, sourceText = "") {
   return lines;
 }
 
-function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "") {
+async function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "", openAiKey?: string | null) {
   if (!settings) return "";
 
   const instructions: string[] = [];
@@ -200,7 +217,7 @@ function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "
   if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
   if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
   if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
-  instructions.push(...summarizeInternalLinks(settings, sourceText));
+  instructions.push(...await summarizeInternalLinks(settings, sourceText, openAiKey));
 
   const brand: string[] = [];
   if (settings.brandCompanyName) brand.push(`Company name: ${settings.brandCompanyName}`);
@@ -450,6 +467,7 @@ export async function generateContent(opts: GenerateOpts) {
       }
     }
     const promptSettings = (opts.settingsSnapshot || settings) as GenerationSettings | undefined;
+    const semanticInternalLinkKey = promptSettings?.enableInternalLinks ? await getOpenAiKey(userId) : null;
 
     // Load persona if set
     let systemPrompt = "You are a helpful AI content writer. Generate well-structured blog posts in markdown format. Do not include process notes, word-count notes, or internal-link placement summaries in the article.";
@@ -545,7 +563,7 @@ export async function generateContent(opts: GenerateOpts) {
       try {
         // Generate blog post via AI
         const genStart = Date.now();
-        const settingsInstructions = buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`);
+        const settingsInstructions = await buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`, semanticInternalLinkKey);
         const draftSystemPrompt = `${systemPrompt}${settingsInstructions}`;
         const userMessage = buildDraftUserMessage(article, opts.sourceType, opts);
 

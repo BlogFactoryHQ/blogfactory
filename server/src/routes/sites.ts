@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { sites, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
-import { buildInternalLinkIndex, type InternalLinkIndex } from "../services/internal-linking.js";
+import { buildInternalLinkIndex, sanitizeInternalLinkIndex, type InternalLinkIndex } from "../services/internal-linking.js";
 
 export const sitesRoutes = new Hono();
 
@@ -102,8 +102,8 @@ function serializeSite(site: typeof sites.$inferSelect) {
     topics: site.topics || [],
     language: site.language,
     cta: site.cta,
-    internal_link_index: site.internalLinkIndex,
-    internalLinkIndex: site.internalLinkIndex,
+    internal_link_index: sanitizeInternalLinkIndex(site.internalLinkIndex),
+    internalLinkIndex: sanitizeInternalLinkIndex(site.internalLinkIndex),
     internal_link_last_synced_at: site.internalLinkLastSyncedAt,
     internalLinkLastSyncedAt: site.internalLinkLastSyncedAt,
     created_at: site.createdAt,
