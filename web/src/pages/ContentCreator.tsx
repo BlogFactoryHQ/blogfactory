@@ -24,10 +24,11 @@ import {
   FileText as FileTextIcon,
   Loader2,
   X,
-  Layers,
-  Grid2X2,
   ArrowRight,
   SlidersHorizontal,
+  CheckCircle2,
+  Circle,
+  Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,6 @@ import {
   BywordCard,
   BywordPageShell,
   IconTile,
-  OptionCard,
   SectionHeader,
 } from "@/components/layout/BywordSurface";
 import { useTextModels } from "@/hooks/useTextModels";
@@ -298,6 +298,13 @@ export default function ContentCreator() {
     }
   };
 
+  const clearSource = () => {
+    if (sourceType === "url") setSourceUrl("");
+    if (sourceType === "youtube") setYoutubeUrl("");
+    if (sourceType === "raw_text") setRawText("");
+    if (sourceType === "pdf") clearPdf();
+  };
+
   const isGenerating = runningCount > 0;
 
   const getSourceLabel = () => {
@@ -409,19 +416,70 @@ export default function ContentCreator() {
       await executeGeneration();
     }
   };
+
+  const sourceValue = getSourceValue().trim();
+  const sourceReady = sourceValue.length > 0;
+  const selectedPersonaName = activePersonas.find((persona) => persona.id === personaId)?.name;
+  const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
+  const imageSummary = imagesEnabled
+    ? [
+        imageConfig.cover.enabled && "cover",
+        imageConfig.inline.enabled && `${imageConfig.inline.count} inline`,
+      ].filter(Boolean).join(" + ")
+    : "No images";
+  const canGenerate = activePersonas.length > 0 && !!personaId && sourceReady && !selectedModelUnavailable;
+  const draftLabel = `${variations} Draft${variations > 1 ? "s" : ""}`;
+  const sourceMeta = sourceType === "raw_text"
+    ? `${rawText.trim().length.toLocaleString()} characters`
+    : sourceType === "pdf" && pdfFile
+      ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB PDF`
+      : sourceReady
+        ? "Ready"
+        : "Waiting for input";
+  const disabledReason = !sourceReady
+    ? "Add a source to unlock generation."
+    : !personaId
+      ? "Choose a voice persona."
+      : selectedModelUnavailable
+        ? "Pick a live OpenRouter model."
+        : "";
+  const readyItems = [
+    ["Source", sourceReady, sourceReady ? sourceMeta : "Required"],
+    ["Persona", !!personaId, selectedPersonaName || "Required"],
+    ["Model", !selectedModelUnavailable, selectedModelUnavailable ? "Unavailable" : "Ready"],
+    ["Images", true, imageSummary],
+  ] as const;
+
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Create Content"
-        description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts from URLs, PDFs, raw text, or YouTube.`}
+        title="Content Studio"
+        description={`Create newsroom-ready drafts from URLs, PDFs, raw text, or YouTube${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}.`}
       />
 
-      <div className="mx-auto max-w-5xl space-y-9">
-        <BywordCard>
+      <div className="mb-6 grid gap-3 md:grid-cols-3">
+        {[
+          ["1. Source", sourceReady ? getSourceLabel() : "Add source content", sourceReady],
+          ["2. Defaults", personaId ? "Persona and model selected" : "Choose persona and model", !!personaId && !selectedModelUnavailable],
+          ["3. Drafts", `${draftLabel} queued to Posts`, canGenerate],
+        ].map(([title, description, ready]) => (
+          <div key={title as string} className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 shadow-[0_10px_30px_rgba(22,82,125,0.04)]">
+            {ready ? <CheckCircle2 className="h-5 w-5 shrink-0 text-status-success" /> : <Circle className="h-5 w-5 shrink-0 text-muted-foreground" />}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+              <p className="truncate text-xs text-muted-foreground">{description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_420px]">
+        <div className="space-y-6">
+          <BywordCard>
           <SectionHeader
             icon={Sparkles}
-            title="Your next article"
-            description="Choose a source, configure the draft, and send it to the generation queue."
+            title="Source"
+            description="Pick one input. The draft uses your saved defaults below."
           />
           <div className="p-6">
             <Tabs value={sourceType} onValueChange={setSourceType}>
@@ -452,11 +510,16 @@ export default function ContentCreator() {
                     placeholder="https://example.com/article-source"
                     value={sourceUrl}
                     onChange={(e) => setSourceUrl(e.target.value)}
-                    className="h-11 pl-9"
+                    className="h-11 pl-9 pr-10"
                   />
+                  {sourceUrl && (
+                    <Button type="button" variant="ghost" size="icon" onClick={clearSource} aria-label="Clear source URL" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Provide a direct link to the source article or blog post.
+                  Direct article links produce the cleanest drafts. {sourceReady && sourceMeta}
                 </p>
               </TabsContent>
 
@@ -482,6 +545,7 @@ export default function ContentCreator() {
                       variant="ghost"
                       size="icon"
                       onClick={clearPdf}
+                      aria-label="Remove PDF"
                       className="shrink-0"
                     >
                       <X className="h-4 w-4" />
@@ -489,6 +553,7 @@ export default function ContentCreator() {
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
                     className="w-full rounded-lg border border-dashed border-byword-border bg-muted/20 p-9 text-center transition-calm hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
@@ -501,7 +566,7 @@ export default function ContentCreator() {
                     ) : (
                       <>
                         <Upload className="mx-auto mb-3 h-8 w-8 text-byword-blue" />
-                        <p className="mb-1 text-sm font-medium">Drop a PDF or click to browse</p>
+                        <p className="mb-1 text-sm font-medium">Click to browse PDF</p>
                         <p className="text-xs text-muted-foreground">Max 10MB</p>
                       </>
                     )}
@@ -513,13 +578,22 @@ export default function ContentCreator() {
               </TabsContent>
 
               <TabsContent value="raw_text" className="space-y-2">
-                <Label>Source Content</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Source Content</Label>
+                  {rawText && (
+                    <Button type="button" variant="ghost" size="sm" onClick={clearSource} className="h-8 px-2">
+                      <X className="h-4 w-4" />
+                      Clear
+                    </Button>
+                  )}
+                </div>
                 <Textarea
-                  placeholder="Paste or type your content here..."
+                  placeholder="Paste article notes, transcript excerpts, or source text..."
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
                   className="min-h-[220px] resize-none"
                 />
+                <p className="text-xs text-muted-foreground">{sourceMeta}</p>
               </TabsContent>
 
               <TabsContent value="youtube" className="space-y-2">
@@ -530,54 +604,84 @@ export default function ContentCreator() {
                     placeholder="https://www.youtube.com/watch?v=..."
                     value={youtubeUrl}
                     onChange={(e) => setYoutubeUrl(e.target.value)}
-                    className="h-11 pl-9"
+                    className="h-11 pl-9 pr-10"
                   />
+                  {youtubeUrl && (
+                    <Button type="button" variant="ghost" size="icon" onClick={clearSource} aria-label="Clear YouTube URL" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Paste a YouTube video URL to generate content from its transcript.
+                  Paste a YouTube video URL to generate content from its transcript. {sourceReady && sourceMeta}
                 </p>
               </TabsContent>
             </Tabs>
           </div>
-        </BywordCard>
+          <div className="grid border-t border-byword-border sm:grid-cols-4">
+            {[
+              [LinkIcon, "Source", sourceReady ? getSourceLabel() : "Not set"],
+              [SlidersHorizontal, "Voice", selectedPersonaName || "Not set"],
+              [ImageIcon, "Images", imageSummary],
+              [FileTextIcon, "Output", draftLabel],
+            ].map(([Icon, label, value]) => (
+              <div key={label as string} className="flex min-w-0 items-start gap-3 border-byword-border p-4 sm:border-r sm:last:border-r-0">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-byword-blue" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground">{label as string}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">{value as string}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          </BywordCard>
 
-        <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-          <div className="h-px flex-1 bg-byword-border" />
-          Choose how to create
-          <div className="h-px flex-1 bg-byword-border" />
+          <BywordCard>
+            <SectionHeader
+              icon={FileTextIcon}
+              title="Recent generations"
+              description="The latest drafts created in this workspace."
+            />
+            <div className="p-6">
+              {recentPosts.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-byword-border p-8 text-center text-sm text-muted-foreground">
+                  No posts generated yet. Create your first one.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {recentPosts.map((post) => (
+                    <div
+                      key={post.id}
+                      className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40"
+                    >
+                      <IconTile icon={FileTextIcon} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium leading-tight">
+                          {post.title}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Generated from {post.source_type?.replace("_", " ") || "unknown"}
+                        </p>
+                      </div>
+                      <span className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </BywordCard>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <OptionCard
-            icon={FileTextIcon}
-            title="Article"
-            description="One source in, one optimized article draft out."
-            selected
-          />
-          <OptionCard
-            icon={Layers}
-            title="Campaign"
-            description="Batch multiple articles with shared strategy and context."
-            badge="Batch"
-            disabled
-          />
-          <OptionCard
-            icon={Grid2X2}
-            title="Programmatic"
-            description="Generate from templates and structured data at scale."
-            badge="Scale"
-            disabled
-          />
-        </div>
-
-        <BywordCard>
+        <BywordCard className="h-fit xl:sticky xl:top-6">
           <SectionHeader
             icon={SlidersHorizontal}
-            title="Generation settings"
-            description="Select the voice, model, image defaults, and draft count."
+            title="Draft defaults"
+            description="Voice, model, images, and output count."
           />
           <div className="space-y-7 p-6">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4">
               <div className="space-y-2">
                 <Label>Voice Persona</Label>
                 <Select value={personaId} onValueChange={handlePersonaChange}>
@@ -649,15 +753,39 @@ export default function ContentCreator() {
 
             <ActiveJobsPanel jobs={activeJobs} onDismiss={dismissJob} />
 
+            <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">Ready check</p>
+                <span className={cn("rounded-full px-2 py-1 text-xs font-medium", canGenerate ? "bg-status-success/10 text-status-success" : "bg-muted text-muted-foreground")}>
+                  {canGenerate ? "Ready" : "Incomplete"}
+                </span>
+              </div>
+              <div className="grid gap-2">
+                {readyItems.map(([label, ready, value]) => (
+                  <div key={label} className="flex items-center gap-2 text-sm">
+                    {ready ? <CheckCircle2 className="h-4 w-4 shrink-0 text-status-success" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    <span className="font-medium text-foreground">{label}</span>
+                    <span className="min-w-0 flex-1 truncate text-right text-muted-foreground">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <Button
               onClick={handleGenerate}
-              disabled={activePersonas.length === 0 || selectedModelUnavailable}
+              disabled={!canGenerate}
               className="h-12 w-full text-base"
             >
               <Sparkles className="mr-2 h-5 w-5" />
-              {runningCount > 0 ? `New Generation (${runningCount} running)` : "Generate Drafts"}
+              {runningCount > 0 ? `Generate ${draftLabel} (${runningCount} running)` : `Generate ${draftLabel}`}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+
+            {disabledReason && (
+              <p className="text-center text-sm text-muted-foreground">
+                {disabledReason}
+              </p>
+            )}
 
             {activePersonas.length === 0 && (
               <p className="text-center text-sm text-muted-foreground">
@@ -670,43 +798,6 @@ export default function ContentCreator() {
                 <Clock className="h-4 w-4" />
                 Estimated generation time: about {variations * 15} seconds.
               </p>
-            )}
-          </div>
-        </BywordCard>
-
-        <BywordCard>
-          <SectionHeader
-            icon={FileTextIcon}
-            title="Recent generations"
-            description="The latest drafts created in this workspace."
-          />
-          <div className="p-6">
-            {recentPosts.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-byword-border p-8 text-center text-sm text-muted-foreground">
-                No posts generated yet. Create your first one.
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {recentPosts.map((post) => (
-                  <div
-                    key={post.id}
-                    className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40"
-                  >
-                    <IconTile icon={FileTextIcon} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium leading-tight">
-                        {post.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Generated from {post.source_type?.replace("_", " ") || "unknown"}
-                      </p>
-                    </div>
-                    <span className="whitespace-nowrap text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-                    </span>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
         </BywordCard>
