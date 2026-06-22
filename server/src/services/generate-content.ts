@@ -6,6 +6,7 @@ import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from 
 import { extractContent } from "./extract-content.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
+import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 
 interface GenerateOpts {
   userId: string;
@@ -25,9 +26,20 @@ interface GenerateOpts {
   articleDirection?: string;
   jobId?: string; // for retry
   schedulerUserId?: string;
+  campaignId?: string | null;
+  campaignItemId?: string | null;
+  settingsSnapshot?: any;
+  campaignArticle?: {
+    mode: CampaignMode;
+    keyword?: string | null;
+    title?: string | null;
+    outline?: OutlineHeading[] | null;
+    sharedContext?: string | null;
+  };
 }
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
+type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
@@ -121,7 +133,7 @@ function tokenize(value: string) {
   return new Set(value.toLowerCase().match(/[a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi) || []);
 }
 
-function summarizeInternalLinks(settings: UserSettingsRecord, sourceText = "") {
+function summarizeInternalLinks(settings: GenerationSettings, sourceText = "") {
   if (settings.enableInternalLinks !== true) return [];
 
   const index = settings.internalLinkIndex as
@@ -184,7 +196,7 @@ function summarizeInternalLinks(settings: UserSettingsRecord, sourceText = "") {
   return lines;
 }
 
-function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "") {
+function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "") {
   if (!settings) return "";
 
   const instructions: string[] = [];
@@ -192,6 +204,7 @@ function buildSettingsInstructions(settings?: UserSettingsRecord, sourceText = "
   if (settings.articleWordCount) instructions.push(`Target article length: about ${settings.articleWordCount} words.`);
   if (settings.articleLanguage) instructions.push(`Write in ${settings.articleLanguage}.`);
   if (settings.articleVoice) instructions.push(`Use this default voice/style: ${settings.articleVoice}.`);
+  if (settings.customInstructions) instructions.push(`Custom article instructions: ${settings.customInstructions}.`);
   if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
   if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
   if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
@@ -243,8 +256,35 @@ function buildArticleExtras(opts: GenerateOpts) {
   return lines.length ? `\n\nAdditional article instructions:\n${lines.join("\n\n")}` : "";
 }
 
+function buildCampaignUserMessage(article: NonNullable<GenerateOpts["campaignArticle"]>) {
+  const lines = ["Write one complete, publish-ready markdown blog article for this campaign item."];
+
+  if (article.mode === "keyword" && article.keyword) {
+    lines.push(`Primary SEO keyword: ${article.keyword}`);
+    lines.push("Generate an SEO-optimized H1 title that matches the keyword intent.");
+  }
+
+  if ((article.mode === "title" || article.mode === "title_outline") && article.title) {
+    lines.push(`Use this exact H1 title: ${article.title}`);
+  }
+
+  const outline = Array.isArray(article.outline) ? article.outline.filter((heading) => heading.text.trim()) : [];
+  if (outline.length) {
+    lines.push("Use this exact heading structure:");
+    lines.push(...outline.map((heading) => `${"#".repeat(heading.level)} ${heading.text}`));
+  }
+
+  if (article.sharedContext) lines.push(`Campaign context: ${article.sharedContext}`);
+  lines.push("Return only the finished article markdown.");
+  return lines.join("\n");
+}
+
 function buildDraftUserMessage(article: { title: string; content: string; url?: string }, sourceType: string, opts: GenerateOpts) {
   const articleExtras = buildArticleExtras(opts);
+
+  if (sourceType === "campaign" && opts.campaignArticle) {
+    return `${buildCampaignUserMessage(opts.campaignArticle)}${articleExtras}`;
+  }
 
   if (sourceType === "article_keyword") {
     return `Write a complete, publish-ready SEO article for this target keyword: "${article.content}".
@@ -281,6 +321,8 @@ export async function generateContent(opts: GenerateOpts) {
       sourceValue: opts.sourceValue,
       modelId: opts.modelId || "openai/gpt-4o",
       personaId: opts.personaId || null,
+      campaignId: opts.campaignId || null,
+      campaignItemId: opts.campaignItemId || null,
       status: "running",
       currentStep: "starting",
     }).returning();
@@ -311,6 +353,7 @@ export async function generateContent(opts: GenerateOpts) {
         return { jobId, status: "failed", error: "Budget exceeded" };
       }
     }
+    const promptSettings = (opts.settingsSnapshot || settings) as GenerationSettings | undefined;
 
     // Load persona if set
     let systemPrompt = "You are a helpful AI content writer. Generate well-structured blog posts in markdown format. Do not include process notes, word-count notes, or internal-link placement summaries in the article.";
@@ -355,6 +398,11 @@ export async function generateContent(opts: GenerateOpts) {
       articles = [{ title: "", content: opts.sourceValue, url: opts.sourceValue }];
     } else if (opts.sourceType === "pdf") {
       articles = [{ title: "", content: opts.sourceValue }];
+    } else if (opts.sourceType === "campaign" && opts.campaignArticle) {
+      articles = [{
+        title: opts.campaignArticle.title || opts.campaignArticle.keyword || "",
+        content: buildCampaignUserMessage(opts.campaignArticle),
+      }];
     }
 
     if (!articles.length) {
@@ -401,7 +449,7 @@ export async function generateContent(opts: GenerateOpts) {
       try {
         // Generate blog post via AI
         const genStart = Date.now();
-        const settingsInstructions = buildSettingsInstructions(settings, `${article.title}\n${article.url || ""}\n${article.content}`);
+        const settingsInstructions = buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`);
         const draftSystemPrompt = `${systemPrompt}${settingsInstructions}`;
         const userMessage = buildDraftUserMessage(article, opts.sourceType, opts);
 
@@ -465,9 +513,11 @@ export async function generateContent(opts: GenerateOpts) {
           content: genContent,
           status: "draft",
           sourceType: opts.sourceType,
-          sourceRefId: article.url || (isArticleSource(opts.sourceType) ? opts.sourceValue : opts.feedId) || null,
+          sourceRefId: opts.campaignId || article.url || (isArticleSource(opts.sourceType) ? opts.sourceValue : opts.feedId) || null,
           sourceContentHash: contentHash,
           jobId,
+          campaignId: opts.campaignId || null,
+          campaignItemId: opts.campaignItemId || null,
           personaId: opts.personaId || null,
           modelId,
         }).returning();
@@ -485,8 +535,8 @@ export async function generateContent(opts: GenerateOpts) {
             postId: post.id,
             jobId: jobId!,
             imageConfig: opts.imageConfig,
-            imageModel: settings?.imageModel || undefined,
-            stylePrompt: settings?.imageStylePrompt || undefined,
+            imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
+            stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
             openRouterKey,
             googleAiKey: await getGoogleAiKey(userId),
             openAiKey: await getOpenAiKey(userId),

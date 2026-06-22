@@ -8,6 +8,7 @@ import {
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ── users (replaces Supabase auth.users + profiles) ──
@@ -83,6 +84,29 @@ export const personas = pgTable("personas", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── campaigns ──
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  mode: text("mode").notNull(),
+  outlineMode: text("outline_mode").default("none").notNull(),
+  status: text("status").default("draft").notNull(),
+  modelId: text("model_id").notNull(),
+  personaId: uuid("persona_id").references(() => personas.id, { onDelete: "set null" }),
+  settingsSnapshot: jsonb("settings_snapshot").notNull(),
+  sharedOutline: jsonb("shared_outline"),
+  totalItems: integer("total_items").default(0).notNull(),
+  completedItems: integer("completed_items").default(0).notNull(),
+  failedItems: integer("failed_items").default(0).notNull(),
+  totalCost: real("total_cost"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── posts ──
 export const posts = pgTable("posts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -94,7 +118,9 @@ export const posts = pgTable("posts", {
   sourceType: text("source_type").notNull(),
   sourceRefId: text("source_ref_id"),
   sourceContentHash: text("source_content_hash"),
-  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references((): AnyPgColumn => jobs.id, { onDelete: "set null" }),
+  campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  campaignItemId: uuid("campaign_item_id").references((): AnyPgColumn => campaignItems.id, { onDelete: "set null" }),
   personaId: uuid("persona_id").references(() => personas.id, { onDelete: "set null" }),
   modelId: text("model_id").notNull(),
   coverImageUrl: text("cover_image_url"),
@@ -119,10 +145,31 @@ export const jobs = pgTable("jobs", {
   resultPostIds: text("result_post_ids").array(),
   summaryResult: text("summary_result"),
   summaryCompletedAt: timestamp("summary_completed_at", { withTimezone: true }),
+  campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  campaignItemId: uuid("campaign_item_id").references((): AnyPgColumn => campaignItems.id, { onDelete: "set null" }),
   tokenCost: real("token_cost"),
   totalCost: real("total_cost"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+export const campaignItems = pgTable("campaign_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  campaignId: uuid("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  input: text("input").notNull(),
+  keyword: text("keyword"),
+  title: text("title"),
+  outline: jsonb("outline"),
+  status: text("status").default("queued").notNull(),
+  jobId: uuid("job_id").references((): AnyPgColumn => jobs.id, { onDelete: "set null" }),
+  postId: uuid("post_id").references((): AnyPgColumn => posts.id, { onDelete: "set null" }),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ── generation_logs ──

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { posts, personas, imageAssets } from "../db/schema.js";
+import { posts, personas, imageAssets, campaigns } from "../db/schema.js";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
@@ -22,6 +22,8 @@ postsRoutes.get("/", async (c) => {
       source_ref_id: posts.sourceRefId,
       source_content_hash: posts.sourceContentHash,
       job_id: posts.jobId,
+      campaign_id: posts.campaignId,
+      campaign_item_id: posts.campaignItemId,
       persona_id: posts.personaId,
       model_id: posts.modelId,
       cover_image_url: posts.coverImageUrl,
@@ -29,15 +31,18 @@ postsRoutes.get("/", async (c) => {
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
       persona_name: personas.name,
+      campaign_name: campaigns.name,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
+    .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
     .where(eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 
-  return c.json(rows.map(({ persona_name, ...post }) => ({
+  return c.json(rows.map(({ persona_name, campaign_name, ...post }) => ({
     ...post,
     personas: persona_name ? { name: persona_name } : null,
+    campaigns: campaign_name ? { name: campaign_name } : null,
   })));
 });
 
@@ -189,6 +194,8 @@ postsRoutes.get("/:id", async (c) => {
       source_ref_id: posts.sourceRefId,
       source_content_hash: posts.sourceContentHash,
       job_id: posts.jobId,
+      campaign_id: posts.campaignId,
+      campaign_item_id: posts.campaignItemId,
       persona_id: posts.personaId,
       model_id: posts.modelId,
       cover_image_url: posts.coverImageUrl,
@@ -196,17 +203,20 @@ postsRoutes.get("/:id", async (c) => {
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
       persona_name: personas.name,
+      campaign_name: campaigns.name,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
+    .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
     .where(and(eq(posts.id, id), eq(posts.userId, userId)))
     .limit(1);
 
   if (!post) return c.json({ error: "Post not found" }, 404);
-  const { persona_name, ...result } = post;
+  const { persona_name, campaign_name, ...result } = post;
   return c.json({
     ...result,
     personas: persona_name ? { name: persona_name } : null,
+    campaigns: campaign_name ? { name: campaign_name } : null,
   });
 });
 

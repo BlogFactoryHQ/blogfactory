@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { jobs, personas } from "../db/schema.js";
-import { eq, and, desc, lt } from "drizzle-orm";
+import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
@@ -20,7 +20,7 @@ jobsRoutes.get("/", async (c) => {
       errorMessage: TIMEOUT_MESSAGE,
       completedAt: new Date(),
     })
-    .where(and(eq(jobs.userId, userId), eq(jobs.status, "running"), lt(jobs.createdAt, staleBefore)));
+    .where(and(eq(jobs.userId, userId), eq(jobs.status, "running"), isNull(jobs.campaignId), lt(jobs.createdAt, staleBefore)));
 
   const rows = await db
     .select({
@@ -37,6 +37,8 @@ jobsRoutes.get("/", async (c) => {
       result_post_ids: jobs.resultPostIds,
       summary_result: jobs.summaryResult,
       summary_completed_at: jobs.summaryCompletedAt,
+      campaign_id: jobs.campaignId,
+      campaign_item_id: jobs.campaignItemId,
       token_cost: jobs.tokenCost,
       total_cost: jobs.totalCost,
       created_at: jobs.createdAt,
@@ -67,7 +69,7 @@ jobsRoutes.get("/:id", async (c) => {
       errorMessage: TIMEOUT_MESSAGE,
       completedAt: new Date(),
     })
-    .where(and(eq(jobs.id, id), eq(jobs.userId, userId), eq(jobs.status, "running"), lt(jobs.createdAt, staleBefore)));
+    .where(and(eq(jobs.id, id), eq(jobs.userId, userId), eq(jobs.status, "running"), isNull(jobs.campaignId), lt(jobs.createdAt, staleBefore)));
 
   const [job] = await db
     .select({
@@ -85,6 +87,8 @@ jobsRoutes.get("/:id", async (c) => {
       result_post_ids: jobs.resultPostIds,
       summary_result: jobs.summaryResult,
       summary_completed_at: jobs.summaryCompletedAt,
+      campaign_id: jobs.campaignId,
+      campaign_item_id: jobs.campaignItemId,
       token_cost: jobs.tokenCost,
       total_cost: jobs.totalCost,
       created_at: jobs.createdAt,
