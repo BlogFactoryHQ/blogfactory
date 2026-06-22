@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, Database, FileText, FileUp, Loader2, ListTodo, Newspaper, Rss, Send, Settings2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, FileText, FileUp, Loader2, ListTodo, Newspaper, PlayCircle, Rss, Send, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
@@ -38,6 +38,11 @@ interface Feed {
   name: string;
   source_url: string;
   is_active: boolean;
+  persona_id?: string | null;
+  model_id?: string | null;
+  posts_per_run?: number | null;
+  extract_full_content?: boolean | null;
+  filter_old_posts_days?: number | null;
   platform_config?: Record<string, unknown> | null;
 }
 
@@ -45,6 +50,8 @@ const isNewsFeed = (feed: Feed) => {
   const mode = feed.platform_config?.editorialMode;
   return mode === "news" || mode === "sports_news";
 };
+
+const isActiveMatrixRow = (row: SportsMatrixRow) => (row.status || "").toLocaleLowerCase("tr").includes("aktif");
 
 export default function News() {
   const { user } = useAuth();
@@ -63,6 +70,8 @@ export default function News() {
   const [manualMode, setManualMode] = useState<"url" | "raw_text">("url");
   const [manualUrl, setManualUrl] = useState("");
   const [rawText, setRawText] = useState("");
+  const [manualResult, setManualResult] = useState<{ jobId?: string | null; postIds?: string[] } | null>(null);
+  const [runningFeedId, setRunningFeedId] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ["user-settings"],
@@ -84,6 +93,7 @@ export default function News() {
 
   const activePersonas = useMemo(() => personas, [personas]);
   const newsFeeds = useMemo(() => feeds.filter(isNewsFeed), [feeds]);
+  const activePreviewRows = useMemo(() => matrixRows.filter(isActiveMatrixRow).slice(0, 5), [matrixRows]);
   const stats = sportsMatrixStats(matrixRows);
   const matrixReady = stats.active > 0;
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
@@ -148,6 +158,7 @@ export default function News() {
   });
 
   const generateManualMutation = useMutation({
+    onMutate: () => setManualResult(null),
     mutationFn: () => api.post<{ jobId?: string; postIds?: string[] }>("/content/generate", {
       sourceType: manualMode,
       sourceValue: manualMode === "url" ? manualUrl.trim() : rawText.trim(),
@@ -156,12 +167,41 @@ export default function News() {
       variations: 1,
       platformConfig: { editorialMode: "news" },
     }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setManualResult(result);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["recent-posts"] });
       toast.success("News draft queued");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to generate news draft"),
+  });
+
+  const runFeedMutation = useMutation({
+    mutationFn: async (feed: Feed) => {
+      setRunningFeedId(feed.id);
+      return api.post("/content/generate", {
+        sourceType: "rss_feed",
+        sourceValue: feed.source_url,
+        personaId: feed.persona_id,
+        modelId: feed.model_id,
+        variations: feed.posts_per_run ?? 5,
+        feedId: feed.id,
+        extractFullContent: feed.extract_full_content ?? false,
+        filterOldPostsDays: feed.filter_old_posts_days || undefined,
+        platformConfig: feed.platform_config || { url: feed.source_url, editorialMode: "news" },
+        generateImages: false,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast.success("News source run queued");
+      setRunningFeedId(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to run news source");
+      setRunningFeedId(null);
+    },
   });
 
   const handleMatrixChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,6 +239,8 @@ export default function News() {
       : selectedModelUnavailable
         ? "Pick a live OpenRouter model."
         : "";
+  const feedBlocker = defaultBlocker || (!feedName.trim() ? "Add a feed name." : !feedUrl.trim() ? "Paste an RSS URL." : "");
+  const manualBlocker = defaultBlocker || (!manualValue.trim() ? (manualMode === "url" ? "Paste a news URL." : "Paste source text.") : "");
   const importedLabel = matrixImportedAt ? new Date(matrixImportedAt).toLocaleString() : "";
 
   return (
@@ -276,6 +318,25 @@ export default function News() {
                   </div>
                 </div>
               </div>
+              {activePreviewRows.length > 0 && (
+                <div className="rounded-lg border border-byword-border">
+                  <div className="border-b border-byword-border px-4 py-3">
+                    <p className="text-sm font-semibold">Active source preview</p>
+                    <p className="text-xs text-muted-foreground">First 5 active rows parsed from the matrix.</p>
+                  </div>
+                  <div className="divide-y divide-byword-border">
+                    {activePreviewRows.map((row) => (
+                      <div key={`${row.sourceName}-${row.siteLink || row.xLink || row.otherLink || row.sourceType}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{row.sourceName}</p>
+                          <p className="truncate text-xs text-muted-foreground">{row.sourceType || row.publishRule || "Source rule"}</p>
+                        </div>
+                        {row.tags && <Badge variant="outline" className="shrink-0">{row.tags.split(",")[0].trim()}</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </BywordCard>
 
@@ -312,10 +373,10 @@ export default function News() {
                   </Select>
                 </div>
               </div>
-              {defaultBlocker && <p className="text-sm text-muted-foreground">{defaultBlocker}</p>}
+              {feedBlocker && <p className="text-sm text-muted-foreground">{feedBlocker}</p>}
               <Button onClick={() => createFeedMutation.mutate()} disabled={!matrixReady || !canCreateFeed || createFeedMutation.isPending}>
                 {createFeedMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rss className="mr-2 h-4 w-4" />}
-                Save News Source
+                {feedBlocker || "Save News Source"}
               </Button>
             </div>
           </BywordCard>
@@ -358,18 +419,41 @@ export default function News() {
               ) : (
                 <Textarea value={rawText} onChange={(event) => setRawText(event.target.value)} className="min-h-[180px]" placeholder="Paste source text..." />
               )}
-              {defaultBlocker && <p className="text-sm text-muted-foreground">{defaultBlocker}</p>}
+              {manualBlocker && <p className="text-sm text-muted-foreground">{manualBlocker}</p>}
               <Button className="w-full" onClick={() => generateManualMutation.mutate()} disabled={!matrixReady || !canGenerateManual || generateManualMutation.isPending}>
                 {generateManualMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Newspaper className="mr-2 h-4 w-4" />}
-                Create News Draft
+                {manualBlocker || "Create News Draft"}
               </Button>
+              {manualResult && (
+                <div className="rounded-lg border border-byword-border bg-byword-blue-soft/40 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-success" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">Draft request sent</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Track generation in Jobs, then approve the draft in Posts.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" asChild><Link to="/jobs">View Jobs</Link></Button>
+                        <Button size="sm" variant="outline" asChild><Link to="/posts">Review Drafts</Link></Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </BywordCard>
 
           <BywordCard>
             <SectionHeader icon={Newspaper} title="News Sources" description={`${newsFeeds.length} configured`} />
             <div className="divide-y divide-byword-border">
-              {newsFeeds.length ? newsFeeds.slice(0, 6).map((feed) => (
+              {newsFeeds.length ? newsFeeds.slice(0, 6).map((feed) => {
+                const runBlocker = !matrixReady
+                  ? "Import matrix first"
+                  : !feed.persona_id
+                    ? "No persona"
+                    : !feed.model_id
+                      ? "No model"
+                      : "";
+                return (
                 <div key={feed.id} className="flex items-center justify-between gap-3 px-6 py-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -378,10 +462,31 @@ export default function News() {
                     </div>
                     <p className="truncate text-xs text-muted-foreground">{feed.source_url}</p>
                   </div>
-                  <Badge variant={feed.is_active ? "secondary" : "outline"}>{feed.is_active ? "Active" : "Paused"}</Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant={feed.is_active ? "secondary" : "outline"}>{feed.is_active ? "Active" : "Paused"}</Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={Boolean(runBlocker) || runningFeedId === feed.id}
+                      title={runBlocker || "Run this News source now"}
+                      onClick={() => runFeedMutation.mutate(feed)}
+                    >
+                      {runningFeedId === feed.id ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="mr-2 h-3.5 w-3.5" />}
+                      {runBlocker || "Run"}
+                    </Button>
+                  </div>
                 </div>
-              )) : (
-                <p className="px-6 py-5 text-sm text-muted-foreground">No News RSS sources yet.</p>
+              );
+              }) : (
+                <div className="px-6 py-8">
+                  <div className="flex items-start gap-3">
+                    <IconTile icon={Rss} />
+                    <div>
+                      <p className="text-sm font-semibold">No News RSS sources yet</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Import the matrix, set defaults, then save a trusted RSS source on this page.</p>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
             <div className="border-t border-byword-border p-4">
