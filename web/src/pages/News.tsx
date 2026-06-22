@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, Database, FileText, FileUp, Loader2, ListTodo, Newspaper, PlayCircle, Rss, Send, Settings2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, FileText, FileUp, Loader2, ListTodo, Newspaper, Pencil, PlayCircle, Plus, Rss, Save, Send, Settings2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { FREQUENCIES } from "@/lib/mock-data";
-import { parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
+import { matchSportsMatrixRow, newsRuleLabel, parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
 import { useAuth } from "@/hooks/useAuth";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
@@ -72,6 +72,8 @@ export default function News() {
   const [rawText, setRawText] = useState("");
   const [manualResult, setManualResult] = useState<{ jobId?: string | null; postIds?: string[] } | null>(null);
   const [runningFeedId, setRunningFeedId] = useState<string | null>(null);
+  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<SportsMatrixRow | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ["user-settings"],
@@ -96,6 +98,7 @@ export default function News() {
   const activePreviewRows = useMemo(() => matrixRows.filter(isActiveMatrixRow).slice(0, 5), [matrixRows]);
   const stats = sportsMatrixStats(matrixRows);
   const matrixReady = stats.active > 0;
+  const feedRuleMatch = feedUrl.trim() ? matchSportsMatrixRow(feedUrl.trim(), matrixRows) : null;
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
 
   useEffect(() => {
@@ -133,12 +136,33 @@ export default function News() {
     onError: (err: Error) => toast.error(err.message || "Failed to import news source matrix"),
   });
 
+  const saveRulesMutation = useMutation({
+    mutationFn: async (rows: SportsMatrixRow[]) => {
+      const nextRules = {
+        ...(settings?.content_rules || {}),
+        news: { ...(settings?.content_rules?.news || {}), matrixRows: rows, fileName: matrixFileName, importedAt: matrixImportedAt || new Date().toISOString() },
+      };
+      return api.put<UserSettings>("/settings", { content_rules: nextRules });
+    },
+    onSuccess: (nextSettings) => {
+      queryClient.setQueryData(["user-settings"], nextSettings);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("News rules saved");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to save news rules"),
+  });
+
   const createFeedMutation = useMutation({
     mutationFn: () => api.post("/feeds", {
       name: feedName.trim(),
       source_url: feedUrl.trim(),
       platform: "rss",
-      platform_config: { url: feedUrl.trim(), editorialMode: "news" },
+      platform_config: {
+        url: feedUrl.trim(),
+        editorialMode: "news",
+        matchedSourceName: feedRuleMatch?.sourceName,
+        matchedLabel: feedRuleMatch ? newsRuleLabel(feedRuleMatch) : undefined,
+      },
       persona_id: personaId,
       model_id: modelId,
       frequency,
@@ -229,6 +253,39 @@ export default function News() {
     if (persona?.base_model) setModelId(persona.base_model);
   };
 
+  const startRule = (row?: SportsMatrixRow, index: number | null = null) => {
+    setEditingRuleIndex(index);
+    setRuleDraft(row ? { ...row } : {
+      sourceName: feedName.trim() || feedUrl.trim() || "",
+      sourceType: "Kurum Medyası",
+      reliability: 4,
+      status: "AKTİF",
+      tags: "",
+      siteLink: feedUrl.trim(),
+      publishRule: "Atıflı ve temkinli haber yaz.",
+    });
+  };
+
+  const cancelRule = () => {
+    setEditingRuleIndex(null);
+    setRuleDraft(null);
+  };
+
+  const saveRule = () => {
+    const sourceName = ruleDraft?.sourceName.trim();
+    if (!ruleDraft || !sourceName) {
+      toast.error("Add a source name for the rule");
+      return;
+    }
+    const nextRule = { ...ruleDraft, sourceName };
+    const nextRows = editingRuleIndex === null
+      ? [nextRule, ...matrixRows]
+      : matrixRows.map((row, index) => index === editingRuleIndex ? nextRule : row);
+    setMatrixRows(nextRows);
+    saveRulesMutation.mutate(nextRows);
+    cancelRule();
+  };
+
   const canCreateFeed = Boolean(feedName.trim() && feedUrl.trim() && personaId && modelId && !selectedModelUnavailable);
   const manualValue = manualMode === "url" ? manualUrl : rawText;
   const canGenerateManual = Boolean(manualValue.trim() && personaId && modelId && !selectedModelUnavailable);
@@ -247,7 +304,7 @@ export default function News() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Newsroom"
-        description="Import source rules, choose newsroom defaults, then create RSS or manual news drafts."
+        description="Use the matrix as editable editorial rules. Add monitored RSS feeds one by one."
       >
         <Button variant="outline" asChild>
           <Link to="/posts"><FileText className="mr-2 h-4 w-4" />Review Drafts</Link>
@@ -259,9 +316,9 @@ export default function News() {
 
       <div className="mb-6 grid gap-3 md:grid-cols-3">
         {[
-          { label: "1. Import matrix", done: matrixReady, text: matrixReady ? `${stats.active} active sources ready` : "Required before drafting" },
+          { label: "1. Rules", done: matrixReady, text: matrixReady ? `${stats.active} active rules imported` : "Import or add rules" },
           { label: "2. Set defaults", done: Boolean(personaId && modelId && !selectedModelUnavailable), text: personaId ? "Persona and model selected" : "Choose a writer persona" },
-          { label: "3. Review drafts", done: false, text: "Approved posts still live in Posts" },
+          { label: "3. Add feeds", done: newsFeeds.length > 0, text: newsFeeds.length ? `${newsFeeds.length} monitored RSS feeds` : "Add RSS feeds one by one" },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3">
             {item.done ? <CheckCircle2 className="h-4 w-4 text-status-success" /> : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
@@ -278,33 +335,95 @@ export default function News() {
           <BywordCard>
             <SectionHeader
               icon={Database}
-              title="News Source Matrix"
-              description="News drafts are created only when the source matches an active, non-data matrix row."
+              title="Editorial Rules Matrix"
+              description="Rules decide source trust, labels, tags, and attribution. They are not monitored feeds."
               action={
-                <Button type="button" variant="outline" disabled={isImportingMatrix || saveMatrixMutation.isPending} asChild>
-                  <label>
-                    {isImportingMatrix || saveMatrixMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <FileUp className="mr-2 h-4 w-4" />
-                    )}
-                    Import Matrix
-                    <input
-                      type="file"
-                      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                      className="hidden"
-                      onChange={handleMatrixChange}
-                    />
-                  </label>
-                </Button>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => startRule()} disabled={saveRulesMutation.isPending}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Rule
+                  </Button>
+                  <Button type="button" variant="outline" disabled={isImportingMatrix || saveMatrixMutation.isPending} asChild>
+                    <label>
+                      {isImportingMatrix || saveMatrixMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileUp className="mr-2 h-4 w-4" />
+                      )}
+                      Import Matrix
+                      <input
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="hidden"
+                        onChange={handleMatrixChange}
+                      />
+                    </label>
+                  </Button>
+                </div>
               }
             />
             <div className="space-y-5 p-6">
               <div className="grid overflow-hidden rounded-lg border border-byword-border text-sm md:grid-cols-3">
-                <div className="p-4"><p className="text-2xl font-semibold">{stats.total}</p><p className="text-sm text-muted-foreground">Sources</p></div>
-                <div className="border-t border-byword-border p-4 md:border-l md:border-t-0"><p className="text-2xl font-semibold">{stats.active}</p><p className="text-sm text-muted-foreground">Active</p></div>
-                <div className="border-t border-byword-border p-4 md:border-l md:border-t-0"><p className="text-2xl font-semibold">{stats.passive}</p><p className="text-sm text-muted-foreground">Passive</p></div>
+                <div className="p-4"><p className="text-2xl font-semibold">{stats.total}</p><p className="text-sm text-muted-foreground">Rules</p></div>
+                <div className="border-t border-byword-border p-4 md:border-l md:border-t-0"><p className="text-2xl font-semibold">{stats.active}</p><p className="text-sm text-muted-foreground">Active rules</p></div>
+                <div className="border-t border-byword-border p-4 md:border-l md:border-t-0"><p className="text-2xl font-semibold">{newsFeeds.length}</p><p className="text-sm text-muted-foreground">Monitored feeds</p></div>
               </div>
+              {ruleDraft && (
+                <div className="rounded-lg border border-byword-border p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">{editingRuleIndex === null ? "Add source rule" : "Edit source rule"}</p>
+                      <p className="text-xs text-muted-foreground">This changes the rulebook, not the RSS feed list.</p>
+                    </div>
+                    <Button type="button" size="icon" variant="ghost" onClick={cancelRule} aria-label="Cancel rule edit"><X className="h-4 w-4" /></Button>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Source Name</Label>
+                      <Input value={ruleDraft.sourceName} onChange={(event) => setRuleDraft({ ...ruleDraft, sourceName: event.target.value })} placeholder="Reuters Soccer" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Source Type</Label>
+                      <Input value={ruleDraft.sourceType || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, sourceType: event.target.value })} placeholder="Ajans/Kurum, Insider, Resmi..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Site / RSS URL</Label>
+                      <Input value={ruleDraft.siteLink || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, siteLink: event.target.value })} placeholder="https://example.com/feed.xml" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Reliability</Label>
+                        <Input type="number" min={1} max={5} value={ruleDraft.reliability || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, reliability: Number(event.target.value) || undefined })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select value={ruleDraft.status || "AKTİF"} onValueChange={(status) => setRuleDraft({ ...ruleDraft, status })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="AKTİF">AKTİF</SelectItem>
+                            <SelectItem value="PASİF">PASİF</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tags</Label>
+                      <Input value={ruleDraft.tags || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, tags: event.target.value })} placeholder="#Gündem, #Transfer" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Publish Rule</Label>
+                      <Input value={ruleDraft.publishRule || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, publishRule: event.target.value })} placeholder="Atıflı ve temkinli haber yaz." />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={cancelRule}>Cancel</Button>
+                    <Button type="button" onClick={saveRule} disabled={saveRulesMutation.isPending}>
+                      {saveRulesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                      Save Rule
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg border border-byword-border p-5">
                 <div className="flex items-start gap-3">
                   <IconTile icon={Database} />
@@ -313,7 +432,7 @@ export default function News() {
                       <p className="font-semibold">{matrixFileName || "No matrix imported"}</p>
                       <Badge variant={matrixReady ? "secondary" : "outline"}>{matrixReady ? "Ready" : "Required"}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">Unknown, passive, and data-only sources are skipped before AI drafting.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Rules match RSS/manual sources before drafting. Running happens only from saved RSS feeds.</p>
                     {importedLabel && <p className="mt-2 text-xs text-muted-foreground">Last imported: {importedLabel}</p>}
                   </div>
                 </div>
@@ -321,17 +440,22 @@ export default function News() {
               {activePreviewRows.length > 0 && (
                 <div className="rounded-lg border border-byword-border">
                   <div className="border-b border-byword-border px-4 py-3">
-                    <p className="text-sm font-semibold">Active source preview</p>
-                    <p className="text-xs text-muted-foreground">First 5 active rows parsed from the matrix.</p>
+                    <p className="text-sm font-semibold">Editable rule preview</p>
+                    <p className="text-xs text-muted-foreground">Edit existing rules or add one from the RSS form below.</p>
                   </div>
                   <div className="divide-y divide-byword-border">
                     {activePreviewRows.map((row) => (
                       <div key={`${row.sourceName}-${row.siteLink || row.xLink || row.otherLink || row.sourceType}`} className="flex items-center justify-between gap-3 px-4 py-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{row.sourceName}</p>
-                          <p className="truncate text-xs text-muted-foreground">{row.sourceType || row.publishRule || "Source rule"}</p>
+                          <p className="truncate text-xs text-muted-foreground">{newsRuleLabel(row)} · {row.sourceType || row.publishRule || "Source rule"}</p>
                         </div>
-                        {row.tags && <Badge variant="outline" className="shrink-0">{row.tags.split(",")[0].trim()}</Badge>}
+                        <div className="flex shrink-0 items-center gap-2">
+                          {row.tags && <Badge variant="outline">{row.tags.split(",")[0].trim()}</Badge>}
+                          <Button size="icon" variant="ghost" onClick={() => startRule(row, matrixRows.indexOf(row))} aria-label={`Edit ${row.sourceName}`}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -341,7 +465,7 @@ export default function News() {
           </BywordCard>
 
           <BywordCard>
-            <SectionHeader icon={Rss} title="News RSS Source" description="Saved here, the feed always runs through News rules." />
+            <SectionHeader icon={Rss} title="Add Monitored RSS Feed" description="Feeds are added one by one. The matrix only checks whether the source has a rule." />
             <div className="space-y-5 p-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -353,6 +477,30 @@ export default function News() {
                   <Input id="news-feed-url" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://example.com/feed.xml" />
                 </div>
               </div>
+              {feedUrl.trim() && (
+                <div className={`rounded-lg border p-4 ${feedRuleMatch ? "border-status-success/30 bg-[hsl(var(--status-success)/0.08)]" : "border-amber-300/50 bg-amber-50/60"}`}>
+                  <div className="flex items-start gap-3">
+                    {feedRuleMatch ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-status-success" /> : <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600" />}
+                    <div className="min-w-0 flex-1">
+                      {feedRuleMatch ? (
+                        <>
+                          <p className="text-sm font-semibold">Matched: {feedRuleMatch.sourceName} / {newsRuleLabel(feedRuleMatch)}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">This feed will use the matched rule for attribution, tags, and caution level.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-semibold">No matching rule found.</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Add a rule for this source before relying on News mode.</p>
+                          <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => startRule(undefined, null)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add rule from this source
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Frequency</Label>
