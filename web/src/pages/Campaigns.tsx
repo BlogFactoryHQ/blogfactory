@@ -206,7 +206,7 @@ function NewCampaign() {
   const [personaId, setPersonaId] = useState("none");
   const [modelId, setModelId] = useState("openai/gpt-4o");
   const [customInstructions, setCustomInstructions] = useState("");
-  const [generateImages, setGenerateImages] = useState(false);
+  const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [startNow, setStartNow] = useState(true);
 
   const { data: personas = [] } = useQuery({
@@ -215,6 +215,44 @@ function NewCampaign() {
   });
 
   const activePersonas = useMemo(() => personas.filter((persona) => persona.status === "active"), [personas]);
+
+  const { data: userSettings } = useQuery({
+    queryKey: ["user-settings"],
+    queryFn: () => api.get<ContentUserSettings>("/settings"),
+  });
+
+  useEffect(() => {
+    if (!userSettings) return;
+    setImageConfig({
+      cover: {
+        enabled: userSettings.cover_enabled ?? true,
+        resolution: (userSettings.cover_resolution as Resolution) || "1K",
+        aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
+      },
+      inline: {
+        enabled: userSettings.inline_enabled ?? true,
+        count: userSettings.inline_count || 2,
+        resolution: (userSettings.inline_resolution as Resolution) || "Web",
+        aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
+      },
+    });
+  }, [userSettings]);
+
+  const imageDefaults: SplitImageDefaults | undefined = userSettings
+    ? {
+        cover: {
+          enabled: userSettings.cover_enabled ?? true,
+          resolution: (userSettings.cover_resolution as Resolution) || "1K",
+          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
+        },
+        inline: {
+          enabled: userSettings.inline_enabled ?? true,
+          count: userSettings.inline_count || 2,
+          resolution: (userSettings.inline_resolution as Resolution) || "Web",
+          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
+        },
+      }
+    : undefined;
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -227,7 +265,8 @@ function NewCampaign() {
         personaId: personaId === "none" ? null : personaId,
         modelId,
         customInstructions,
-        generateImages,
+        generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
+        imageConfig,
       });
       if (startNow) await api.post(`/campaigns/${result.campaign.id}/start`);
       return result;
@@ -331,11 +370,14 @@ function NewCampaign() {
             <Textarea value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} className="min-h-24" />
           </div>
 
+          <SplitImageGenerationSettings
+            config={imageConfig}
+            onConfigChange={setImageConfig}
+            defaults={imageDefaults}
+            compact
+          />
+
           <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={generateImages} onCheckedChange={(checked) => setGenerateImages(Boolean(checked))} />
-              Generate images
-            </label>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={startNow} onCheckedChange={(checked) => setStartNow(Boolean(checked))} />
               Start after create
@@ -356,6 +398,9 @@ function NewCampaign() {
 
 function CampaignDetail({ id }: { id: string }) {
   const queryClient = useQueryClient();
+  const [integrationId, setIntegrationId] = useState("");
+  const { integrations } = useIntegrations();
+  const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const { data, isLoading } = useQuery({
     queryKey: ["campaign", id],
     queryFn: () => api.get<{ campaign: Campaign; items: CampaignItem[] }>(`/campaigns/${id}`),
@@ -371,6 +416,37 @@ function CampaignDetail({ id }: { id: string }) {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Action failed"),
   });
 
+  const bulkPublish = useMutation({
+    mutationFn: (postIds: string[]) => api.post("/posts/bulk-publish", { ids: postIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success("Campaign posts marked published");
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Publish failed"),
+  });
+
+  const bulkPush = useMutation({
+    mutationFn: async (postIds: string[]) => {
+      const targetIntegrationId = integrationId || connectedIntegrations[0]?.id;
+      if (!targetIntegrationId) throw new Error("Connect an integration first");
+      let failed = 0;
+      for (const postId of postIds) {
+        const result = await api.post<{ success: boolean; error?: string }>(`/posts/${postId}/publish`, {
+          integrationId: targetIntegrationId,
+          mode: "draft",
+          postType: "post",
+        });
+        if (!result.success) failed += 1;
+      }
+      return { total: postIds.length, failed };
+    },
+    onSuccess: ({ total, failed }) => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success(failed ? `${total - failed}/${total} posts pushed` : `${total} campaign posts pushed`);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Push failed"),
+  });
+
   if (isLoading || !data) {
     return (
       <BywordPageShell>
@@ -381,6 +457,7 @@ function CampaignDetail({ id }: { id: string }) {
 
   const { campaign, items } = data;
   const failedCount = items.filter((item) => item.status === "failed").length;
+  const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
 
   return (
     <BywordPageShell className="max-w-7xl">
@@ -406,8 +483,36 @@ function CampaignDetail({ id }: { id: string }) {
               <RotateCcw className="mr-2 h-4 w-4" />Retry Failed
             </Button>
           )}
+          {completedPostIds.length > 0 && (
+            <Button variant="outline" onClick={() => bulkPublish.mutate(completedPostIds)} disabled={bulkPublish.isPending}>
+              Mark Published
+            </Button>
+          )}
         </div>
       </div>
+
+      {completedPostIds.length > 0 && connectedIntegrations.length > 0 && (
+        <BywordCard className="mb-6 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-64 space-y-2">
+              <Label>CMS destination</Label>
+              <Select value={integrationId || connectedIntegrations[0]?.id || ""} onValueChange={setIntegrationId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {connectedIntegrations.map((integration) => (
+                    <SelectItem key={integration.id} value={integration.id}>
+                      {integration.displayName || integration.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => bulkPush.mutate(completedPostIds)} disabled={bulkPush.isPending}>
+              Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </BywordCard>
+      )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
         <BywordCard className="p-4">

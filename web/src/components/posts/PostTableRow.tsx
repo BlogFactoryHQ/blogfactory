@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone } from "lucide-react";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -16,6 +16,7 @@ const sourceIcons: Record<string, typeof FileText> = {
   raw_text: FileText,
   youtube: Youtube,
   manual: FileText,
+  campaign: Megaphone,
 };
 
 interface Post {
@@ -25,6 +26,8 @@ interface Post {
   status: string;
   source_type: string;
   source_ref_id: string | null;
+  campaign_id: string | null;
+  campaign_item_id: string | null;
   persona_id: string | null;
   model_id: string;
   job_id: string | null;
@@ -33,6 +36,7 @@ interface Post {
   inline_images: string[] | null;
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
+  campaigns?: { name: string } | null;
 }
 
 interface PostTableRowProps {
@@ -81,6 +85,11 @@ export function PostTableRow({
           {post.feeds?.name && (
             <span className="text-xs text-muted-foreground/70 truncate max-w-[150px]" title={post.feeds.name}>
               {post.feeds.name}
+            </span>
+          )}
+          {post.campaigns?.name && (
+            <span className="text-xs text-muted-foreground/70 truncate max-w-[150px]" title={post.campaigns.name}>
+              {post.campaigns.name}
             </span>
           )}
         </div>

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -94,6 +95,9 @@ export default function ContentCreator() {
   const [articleRelatedKeywords, setArticleRelatedKeywords] = useState("");
   const [articleOutline, setArticleOutline] = useState("");
   const [articleDirection, setArticleDirection] = useState("");
+  const [articleWordCount, setArticleWordCount] = useState("");
+  const [articleIncludeToc, setArticleIncludeToc] = useState(false);
+  const [articleResearchFocus, setArticleResearchFocus] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -346,6 +350,9 @@ export default function ContentCreator() {
           : undefined,
         outline: isArticleSource ? articleOutline : undefined,
         articleDirection: isArticleSource ? articleDirection : undefined,
+        articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
+        includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
+        enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
           cover: imageConfig.cover.enabled ? {
@@ -531,6 +538,31 @@ export default function ContentCreator() {
                       className="h-11"
                     />
                   </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Word Count</Label>
+                    <Input
+                      type="number"
+                      min={300}
+                      step={100}
+                      placeholder="Smart"
+                      value={articleWordCount}
+                      onChange={(e) => setArticleWordCount(e.target.value)}
+                      className="h-11"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                    <Checkbox checked={articleIncludeToc} onCheckedChange={(checked) => setArticleIncludeToc(Boolean(checked))} />
+                    Table of contents
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                    <Checkbox checked={articleResearchFocus} onCheckedChange={(checked) => setArticleResearchFocus(Boolean(checked))} />
+                    Research emphasis
+                  </label>
                 </div>
 
                 <div className="space-y-2">

@@ -50,6 +50,8 @@ interface Post {
   status: string;
   source_type: string;
   source_ref_id: string | null;
+  campaign_id: string | null;
+  campaign_item_id: string | null;
   persona_id: string | null;
   model_id: string;
   job_id: string | null;
@@ -58,6 +60,7 @@ interface Post {
   inline_images: string[] | null;
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
+  campaigns?: { name: string } | null;
 }
 
 const formatModelName = (modelId: string) => {
@@ -84,6 +87,7 @@ export default function Posts() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [personaFilter, setPersonaFilter] = useState("all");
+  const [campaignFilter, setCampaignFilter] = useState("all");
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>("created_at");
@@ -188,10 +192,11 @@ export default function Posts() {
   });
 
   // Derive unique filter options from data
-  const { sourceTypes, models, personas } = useMemo(() => {
+  const { sourceTypes, models, personas, campaigns } = useMemo(() => {
     const sourceSet = new Set<string>();
     const modelSet = new Set<string>();
     const personaMap = new Map<string, string>();
+    const campaignMap = new Map<string, string>();
 
     enrichedPosts.forEach((post) => {
       if (post.source_type) sourceSet.add(post.source_type);
@@ -199,12 +204,16 @@ export default function Posts() {
       if (post.persona_id && post.personas?.name) {
         personaMap.set(post.persona_id, post.personas.name);
       }
+      if (post.campaign_id && post.campaigns?.name) {
+        campaignMap.set(post.campaign_id, post.campaigns.name);
+      }
     });
 
     return {
       sourceTypes: Array.from(sourceSet).sort(),
       models: Array.from(modelSet).sort(),
       personas: Array.from(personaMap.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      campaigns: Array.from(campaignMap.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }, [enrichedPosts]);
 
@@ -219,8 +228,12 @@ export default function Posts() {
         personaFilter === "all" ||
         (personaFilter === "none" && !post.persona_id) ||
         post.persona_id === personaFilter;
+      const matchesCampaign =
+        campaignFilter === "all" ||
+        (campaignFilter === "none" && !post.campaign_id) ||
+        post.campaign_id === campaignFilter;
 
-      return matchesSearch && matchesStatus && matchesSource && matchesModel && matchesPersona;
+      return matchesSearch && matchesStatus && matchesSource && matchesModel && matchesPersona && matchesCampaign;
     });
 
     // Sort
@@ -236,7 +249,7 @@ export default function Posts() {
     });
 
     return result;
-  }, [enrichedPosts, searchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, sortField, sortDirection]);
+  }, [enrichedPosts, searchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection]);
 
   const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
   const paginatedPosts = filteredPosts.slice(
@@ -314,12 +327,14 @@ export default function Posts() {
     sourceFilter !== "all",
     modelFilter !== "all",
     personaFilter !== "all",
+    campaignFilter !== "all",
   ].filter(Boolean).length;
 
   const handleClearFilters = () => {
     setSourceFilter("all");
     setModelFilter("all");
     setPersonaFilter("all");
+    setCampaignFilter("all");
   };
 
   const handleSortChange = (field: SortField, direction: SortDirection) => {
@@ -353,12 +368,15 @@ export default function Posts() {
         onModelFilterChange={setModelFilter}
         personaFilter={personaFilter}
         onPersonaFilterChange={setPersonaFilter}
+        campaignFilter={campaignFilter}
+        onCampaignFilterChange={setCampaignFilter}
         sortField={sortField}
         sortDirection={sortDirection}
         onSortChange={handleSortChange}
         sourceTypes={sourceTypes}
         models={models}
         personas={personas}
+        campaigns={campaigns}
         activeFiltersCount={activeFiltersCount}
         onClearFilters={handleClearFilters}
       />
@@ -587,6 +605,12 @@ export default function Posts() {
                     <p className="text-xs text-muted-foreground mb-1">Persona</p>
                     <p className="text-sm font-medium">
                       {selectedPost.personas?.name || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Campaign</p>
+                    <p className="text-sm font-medium">
+                      {selectedPost.campaigns?.name || "—"}
                     </p>
                   </div>
                   <div>

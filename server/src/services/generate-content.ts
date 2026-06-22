@@ -24,6 +24,9 @@ interface GenerateOpts {
   relatedKeywords?: string[] | string;
   outline?: string;
   articleDirection?: string;
+  articleWordCount?: number | string;
+  includeTableOfContents?: boolean;
+  enableResearch?: boolean;
   jobId?: string; // for retry
   schedulerUserId?: string;
   campaignId?: string | null;
@@ -248,8 +251,12 @@ function buildArticleExtras(opts: GenerateOpts) {
   const relatedKeywords = normalizeList(opts.relatedKeywords);
   const outline = typeof opts.outline === "string" ? opts.outline.trim() : "";
   const direction = typeof opts.articleDirection === "string" ? opts.articleDirection.trim() : "";
+  const wordCount = Number(opts.articleWordCount);
 
   if (relatedKeywords.length) lines.push(`Naturally cover these related keywords: ${relatedKeywords.join(", ")}.`);
+  if (Number.isFinite(wordCount) && wordCount > 0) lines.push(`Target article length: about ${Math.round(wordCount)} words.`);
+  if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
+  if (opts.enableResearch === true) lines.push("Add useful research context, examples, and clearly explained claims.");
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
   if (direction) lines.push(`Article direction: ${direction}`);
 

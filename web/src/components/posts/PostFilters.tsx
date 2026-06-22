@@ -31,12 +31,15 @@ interface PostFiltersProps {
   onModelFilterChange: (value: string) => void;
   personaFilter: string;
   onPersonaFilterChange: (value: string) => void;
+  campaignFilter: string;
+  onCampaignFilterChange: (value: string) => void;
   sortField: SortField;
   sortDirection: SortDirection;
   onSortChange: (field: SortField, direction: SortDirection) => void;
   sourceTypes: string[];
   models: string[];
   personas: { id: string; name: string }[];
+  campaigns: { id: string; name: string }[];
   activeFiltersCount: number;
   onClearFilters: () => void;
 }
@@ -52,12 +55,15 @@ export function PostFilters({
   onModelFilterChange,
   personaFilter,
   onPersonaFilterChange,
+  campaignFilter,
+  onCampaignFilterChange,
   sortField,
   sortDirection,
   onSortChange,
   sourceTypes,
   models,
   personas,
+  campaigns,
   activeFiltersCount,
   onClearFilters,
 }: PostFiltersProps) {
@@ -167,6 +173,24 @@ export function PostFilters({
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Campaign</label>
+              <Select value={campaignFilter} onValueChange={onCampaignFilterChange}>
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="All campaigns" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All campaigns</SelectItem>
+                  <SelectItem value="none">No campaign</SelectItem>
+                  {campaigns.map((campaign) => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </PopoverContent>
       </Popover>
@@ -233,6 +257,12 @@ export function PostFilters({
             <Badge variant="secondary" className="gap-1">
               {personaFilter === "none" ? "No persona" : personas.find(p => p.id === personaFilter)?.name}
               <X className="h-3 w-3 cursor-pointer" onClick={() => onPersonaFilterChange("all")} />
+            </Badge>
+          )}
+          {campaignFilter !== "all" && (
+            <Badge variant="secondary" className="gap-1">
+              {campaignFilter === "none" ? "No campaign" : campaigns.find(c => c.id === campaignFilter)?.name}
+              <X className="h-3 w-3 cursor-pointer" onClick={() => onCampaignFilterChange("all")} />
             </Badge>
           )}
         </div>
