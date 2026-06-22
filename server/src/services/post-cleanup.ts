@@ -1,5 +1,3 @@
-import { api } from "@/lib/api";
-
 const AI_META_NOTE_PATTERNS = [
   /^\(?\s*toplam\s+kelime\s+sayısı.*\)?$/iu,
   /^\(?\s*(?:yukarıdaki\s+)?bağlantılar\b.*\b(?:iç\s+link|yerleştirilmiş|doğal\s+bağlam)\b.*\)?$/iu,
@@ -24,11 +22,4 @@ export function cleanGeneratedPostContent(content: string) {
 
 export function cleanPostTitle(title: string) {
   return title.replace(/\\\|/g, "|").replace(/\s+/g, " ").trim();
-}
-
-/**
- * Deletes posts with associated image/storage cleanup (handled server-side).
- */
-export async function deletePostsWithCleanup(postIds: string[]): Promise<void> {
-  await api.post("/posts/bulk-delete", { ids: postIds });
 }

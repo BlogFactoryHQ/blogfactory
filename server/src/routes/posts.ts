@@ -5,6 +5,7 @@ import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
+import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 
 export const postsRoutes = new Hono();
 
@@ -52,11 +53,11 @@ postsRoutes.post("/import-md", async (c) => {
   const markdownFile = formData.get("markdown") as File | null;
   if (!markdownFile) return c.json({ error: "Markdown file is required" }, 400);
 
-  const content = await markdownFile.text();
+  const content = cleanGeneratedPostContent(await markdownFile.text());
   const meta = parseMarkdownMeta(content);
   const body = articleBody(content);
   const folder = String(formData.get("folder") || markdownFile.name.replace(/\.md$/i, ""));
-  const title = extractMarkdownTitle(body) || meta.metaTitle || folder.replace(/[-_]+/g, " ");
+  const title = cleanPostTitle(extractMarkdownTitle(body) || meta.metaTitle || folder.replace(/[-_]+/g, " "));
   const summary = (meta.metaDescription || plainText(body)).slice(0, 220);
 
   const [post] = await db
@@ -249,10 +250,22 @@ postsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
   const body = await c.req.json();
+  const update: Partial<typeof posts.$inferInsert> = {};
+  if (typeof body.title === "string") update.title = cleanPostTitle(body.title);
+  if (typeof body.content === "string") update.content = cleanGeneratedPostContent(body.content);
+  if (typeof body.status === "string") {
+    if (!["draft", "published"].includes(body.status)) return c.json({ error: "Invalid status" }, 400);
+    update.status = body.status;
+  }
+  const coverImageUrl = body.cover_image_url ?? body.coverImageUrl;
+  const inlineImages = body.inline_images ?? body.inlineImages;
+  if (typeof coverImageUrl === "string" || coverImageUrl === null) update.coverImageUrl = coverImageUrl;
+  if (Array.isArray(inlineImages)) update.inlineImages = inlineImages.filter((value): value is string => typeof value === "string");
+  if (!Object.keys(update).length) return c.json({ error: "No valid fields to update" }, 400);
 
   const [updated] = await db
     .update(posts)
-    .set(body)
+    .set(update)
     .where(and(eq(posts.id, id), eq(posts.userId, userId)))
     .returning();
 

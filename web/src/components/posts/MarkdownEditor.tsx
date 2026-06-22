@@ -32,8 +32,10 @@ import {
   Copy,
   Maximize2,
   Minimize2,
+  Eraser,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cleanGeneratedPostContent } from "@/lib/post-cleanup";
 
 interface MarkdownEditorProps {
   value: string;
@@ -332,6 +334,13 @@ export function MarkdownEditor({
     toast.success("Content copied to clipboard");
   };
 
+  const cleanContent = () => {
+    const cleaned = cleanGeneratedPostContent(value);
+    if (cleaned === value) return toast.info("No AI notes found");
+    onChange(cleaned);
+    toast.success("AI notes removed");
+  };
+
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
   };
@@ -466,6 +475,15 @@ export function MarkdownEditor({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">Copy Content</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={cleanContent}>
+              <Eraser className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Remove AI Notes</TooltipContent>
         </Tooltip>
 
         <Tooltip>

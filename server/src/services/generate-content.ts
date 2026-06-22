@@ -5,6 +5,7 @@ import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
+import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 
 interface GenerateOpts {
   userId: string;
@@ -267,7 +268,7 @@ export async function generateContent(opts: GenerateOpts) {
     }
 
     // Load persona if set
-    let systemPrompt = "You are a helpful AI content writer. Generate well-structured blog posts in markdown format.";
+    let systemPrompt = "You are a helpful AI content writer. Generate well-structured blog posts in markdown format. Do not include process notes, word-count notes, or internal-link placement summaries in the article.";
     let personaModel = opts.modelId || "openai/gpt-4o";
 
     if (opts.personaId) {
@@ -381,14 +382,14 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
         const aiData = await aiResp.json() as any;
-        const genContent = aiData.choices?.[0]?.message?.content || "";
+        const genContent = cleanGeneratedPostContent(aiData.choices?.[0]?.message?.content || "");
         const usage = aiData.usage;
         const openRouterUsage = await getOpenRouterCost(openRouterKey, aiData);
         const genLatency = Date.now() - genStart;
 
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
-        const postTitle = titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post";
+        const postTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");
 
         // Log generation
         const cost = openRouterUsage.cost;

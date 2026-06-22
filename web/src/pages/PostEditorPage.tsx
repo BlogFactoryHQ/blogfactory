@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UserSettings } from "@/lib/types";
+import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
 import {
   Select,
   SelectContent,
@@ -106,8 +107,8 @@ export default function PostEditorPage() {
   // Initialize form when post loads
   useEffect(() => {
     if (post && !initialized) {
-      setTitle(post.title);
-      setContent(post.content);
+      setTitle(cleanPostTitle(post.title));
+      setContent(cleanGeneratedPostContent(post.content));
       setStatus(post.status);
       setCoverImageUrl(post.cover_image_url || null);
       setInlineImages(post.inline_images || []);
@@ -118,13 +119,17 @@ export default function PostEditorPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error("No post ID");
+      const nextTitle = cleanPostTitle(title);
+      const nextContent = cleanGeneratedPostContent(content);
       await api.put(`/posts/${id}`, {
-        title,
-        content,
+        title: nextTitle,
+        content: nextContent,
         status,
         cover_image_url: coverImageUrl,
         inline_images: inlineImages,
       });
+      setTitle(nextTitle);
+      setContent(nextContent);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -139,13 +144,17 @@ export default function PostEditorPage() {
   const publishMutation = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error("No post ID");
+      const nextTitle = cleanPostTitle(title);
+      const nextContent = cleanGeneratedPostContent(content);
       await api.put(`/posts/${id}`, {
-        title,
-        content,
+        title: nextTitle,
+        content: nextContent,
         status: "published",
         cover_image_url: coverImageUrl,
         inline_images: inlineImages,
       });
+      setTitle(nextTitle);
+      setContent(nextContent);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
