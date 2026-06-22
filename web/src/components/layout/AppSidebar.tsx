@@ -20,7 +20,6 @@ import {
   Plus,
   Check,
   Archive,
-  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -44,7 +43,6 @@ import {
 
 const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
-  { name: "Campaigns", href: "/campaigns", icon: Megaphone },
   { name: "Batch Import", href: "/batch-import", icon: Archive },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
