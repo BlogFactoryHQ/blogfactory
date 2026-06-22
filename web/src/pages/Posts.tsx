@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordPageShell } from "@/components/layout/BywordSurface";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -335,7 +336,7 @@ export default function Posts() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Posts"
         description="All generated content in one place."
@@ -432,7 +433,13 @@ export default function Posts() {
             ) : paginatedPosts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  No posts yet. Generate one from Content Creator or add an RSS feed.
+                  <div className="flex flex-col items-center gap-3">
+                    <span>No posts yet. Generate one from Create or add a source.</span>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button size="sm" onClick={() => navigate("/content-creator")}>Create draft</Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/rss-feeds/new")}>Add source</Button>
+                    </div>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -623,7 +630,7 @@ export default function Posts() {
           )}
         </SheetContent>
       </Sheet>
-    </div>
+    </BywordPageShell>
   );
 }
 

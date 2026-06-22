@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Loader2,
@@ -334,7 +336,7 @@ export default function Settings() {
       setIncludeTableOfContents(userSettings.include_table_of_contents ?? false);
       setEnableResearch(userSettings.enable_research ?? false);
       setEnableInternalLinks(userSettings.enable_internal_links ?? false);
-      setInternalLinkSitemapUrl(userSettings.internal_link_sitemap_url || "");
+      setInternalLinkSitemapUrl(stripHttpProtocol(userSettings.internal_link_sitemap_url || ""));
       setInternalLinkStatus(userSettings.internal_link_status || (userSettings.internal_link_index ? "connected" : "disconnected"));
       setInternalLinkMode(userSettings.internal_link_mode || "all");
       setInternalLinkDensity(userSettings.internal_link_density || "balanced");
@@ -381,7 +383,7 @@ export default function Settings() {
   const indexInternalLinksMutation = useMutation({
     mutationFn: async () => {
       return api.post<UserSettings>("/settings/internal-linking/index", {
-        sitemap_url: internalLinkSitemapUrl,
+        sitemap_url: normalizeHttpUrl(internalLinkSitemapUrl),
         mode: internalLinkMode,
         density: internalLinkDensity,
         include_patterns: splitPatterns(internalLinkIncludePatterns),
@@ -1374,16 +1376,20 @@ export default function Settings() {
                   <div className="space-y-2">
                     <Label htmlFor="sitemap-url" className="text-base font-semibold">Sitemap URL</Label>
                     <div className="grid gap-3 md:grid-cols-[1fr_190px]">
-                      <div className="relative">
-                        <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="sitemap-url"
-                          value={internalLinkSitemapUrl}
-                          onChange={(event) => setInternalLinkSitemapUrl(event.target.value)}
-                          placeholder="yoursite.com/sitemap.xml"
-                          className="h-12 pl-11"
-                        />
-                      </div>
+                      <InputAffordance
+                        id="sitemap-url"
+                        type="text"
+                        inputMode="url"
+                        prefix="https://"
+                        icon={Globe2}
+                        value={internalLinkSitemapUrl}
+                        onChange={(event) => setInternalLinkSitemapUrl(stripHttpProtocol(event.target.value))}
+                        placeholder="yoursite.com/sitemap.xml"
+                        className="h-12"
+                        help="Paste a sitemap URL or your domain. BlogFactory will also try standard sitemap locations."
+                        onClear={() => setInternalLinkSitemapUrl("")}
+                        clearLabel="Clear sitemap URL"
+                      />
                       <Button
                         type="button"
                         className="h-12"

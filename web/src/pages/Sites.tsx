@@ -4,8 +4,9 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { Badge } from "@/components/ui/badge";
+import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useSites } from "@/hooks/useSites";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -19,7 +20,7 @@ export default function Sites() {
     event.preventDefault();
     if (!siteUrl.trim()) return;
     try {
-      const site = await createSite({ url: siteUrl.trim() });
+      const site = await createSite({ url: normalizeHttpUrl(siteUrl) });
       setSiteUrl("");
       if (site.pageCount > 0) {
         const redirectMessage = site.internalLinkIndex?.sitemapMessages?.find((message) =>
@@ -70,11 +71,18 @@ export default function Sites() {
                   </p>
                 </div>
                 <form onSubmit={submit} className="grid w-full gap-3 sm:w-auto sm:grid-cols-[260px_auto]">
-                  <Input
+                  <InputAffordance
+                    type="text"
+                    inputMode="url"
+                    prefix="https://"
+                    icon={Globe2}
                     value={siteUrl}
-                    onChange={(event) => setSiteUrl(event.target.value)}
+                    onChange={(event) => setSiteUrl(stripHttpProtocol(event.target.value))}
                     placeholder="newsite.com"
                     className="h-11"
+                    help="Paste a full URL or type the domain. BlogFactory stores the domain and indexes the sitemap."
+                    onClear={() => setSiteUrl("")}
+                    clearLabel="Clear domain"
                   />
                   <Button type="submit" disabled={isCreating || !siteUrl.trim()} className="h-11">
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}

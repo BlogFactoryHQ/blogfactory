@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordPageShell } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -323,7 +324,7 @@ export default function RSSFeeds() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Content Sources"
         description="Monitor and configure content ingestion from RSS feeds, Reddit, Hacker News, GitHub, and more."
@@ -417,8 +418,14 @@ export default function RSSFeeds() {
               ))
             ) : paginatedFeeds.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                  No sources configured yet. Add your first content source to get started.
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-3">
+                    <span>No sources configured yet.</span>
+                    <Button size="sm" onClick={() => navigate("/rss-feeds/new")}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add source
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -604,6 +611,6 @@ export default function RSSFeeds() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </BywordPageShell>
   );
 }

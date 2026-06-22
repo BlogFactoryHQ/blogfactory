@@ -11,15 +11,13 @@ import {
   Settings,
   ChevronsLeft,
   Shield,
-  Search,
   Plug,
   ChevronDown,
-  BookOpen,
-  Bell,
   Globe2,
   Plus,
   Check,
   Archive,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,13 +40,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const primaryNavigation = [
-  { name: "Create Content", href: "/content-creator", icon: PenTool },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Create", href: "/content-creator", icon: PenTool },
   { name: "Batch Import", href: "/batch-import", icon: Archive },
-  { name: "My Content", href: "/posts", icon: FileText },
-  { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
-  { name: "Job Queue", href: "/jobs", icon: ListTodo },
+  { name: "Posts", href: "/posts", icon: FileText },
+  { name: "Sources", href: "/rss-feeds", icon: Rss },
+  { name: "Jobs", href: "/jobs", icon: ListTodo },
   { name: "Brand Voice", href: "/brand-voice", icon: Users },
-  { name: "Image Gallery", href: "/gallery", icon: ImageIcon },
+  { name: "Gallery", href: "/gallery", icon: ImageIcon },
   { name: "Usage", href: "/usage", icon: BarChart3 },
 ];
 
@@ -57,11 +56,9 @@ const adminNavigation = [
 ];
 
 const lowerNavigation = [
-  { name: "Learn", href: "/", icon: BookOpen },
   { name: "Integrations", href: "/integrations", icon: Plug },
-  { name: "Article Settings", href: "/settings", icon: Settings },
+  { name: "Settings", href: "/settings", icon: Settings },
   { name: "Sites", href: "/sites", icon: Globe2 },
-  { name: "Notifications", href: "/jobs", icon: Bell },
 ];
 
 export function AppSidebar() {
@@ -180,11 +177,6 @@ export function AppSidebar() {
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className={cn("flex h-9 items-center gap-2 rounded-md bg-muted/60 px-3 text-sm text-muted-foreground", isCollapsed && "hidden")}>
-            <Search className="h-4 w-4" />
-            <span className="flex-1">Search</span>
-            <span className="text-[11px] text-muted-foreground/60">⌘K</span>
-          </div>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-hidden px-3 py-4">

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordPageShell } from "@/components/layout/BywordSurface";
 import {
   FileText,
   Rss,
@@ -90,7 +91,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-8 max-w-6xl">
+    <BywordPageShell className="max-w-6xl">
       <PageHeader
         title="Dashboard"
         description="Overview of your content pipeline."
@@ -139,8 +140,12 @@ export default function Dashboard() {
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
             ) : recentJobs.length === 0 ? (
-              <div className="text-center py-12 text-sm text-muted-foreground">
-                No jobs yet. Generate content to see activity here.
+              <div className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
+                <span>No jobs yet. Generate content to see activity here.</span>
+                <Link to="/content-creator" className="inline-flex items-center gap-1 text-primary hover:underline">
+                  Create a draft
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
               </div>
             ) : (
               recentJobs.map((job: any) => {
@@ -287,6 +292,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    </div>
+    </BywordPageShell>
   );
 }

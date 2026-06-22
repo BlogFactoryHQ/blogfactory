@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordPageShell } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -19,6 +20,7 @@ import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, Chec
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 const sourceIcons: Record<string, typeof FileText> = {
   rss_feed: Rss,
@@ -244,7 +246,7 @@ export default function Jobs() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Job Queue"
         description={`Monitoring generation pipeline. ${statusCounts.running} active job${statusCounts.running !== 1 ? "s" : ""} running.`}
@@ -311,7 +313,12 @@ export default function Jobs() {
             ) : filteredJobs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                  No jobs found. Generate content to see jobs here.
+                  <div className="flex flex-col items-center gap-3">
+                    <span>No jobs found. Generate content to see jobs here.</span>
+                    <Button size="sm" asChild>
+                      <Link to="/content-creator">Create draft</Link>
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -655,6 +662,6 @@ export default function Jobs() {
           )}
         </SheetContent>
       </Sheet>
-    </div>
+    </BywordPageShell>
   );
 }

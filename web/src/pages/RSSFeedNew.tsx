@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,7 +35,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FeedPreview } from "@/components/feeds/FeedPreview";
-import { validateSourceUrl, validatePlatformInput } from "@/lib/url-validation";
+import { normalizeHttpUrl, stripHttpProtocol, validateSourceUrl, validatePlatformInput } from "@/lib/url-validation";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -147,10 +148,10 @@ export default function RSSFeedNew() {
       case "lobsters":
         return { tag: lobstersTag };
       case "youtube":
-        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl };
+        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl ? normalizeHttpUrl(youtubeChannelUrl) : "" };
       case "rss":
       default:
-        return { url: sourceUrl };
+        return { url: normalizeHttpUrl(sourceUrl) };
     }
   };
 
@@ -161,7 +162,7 @@ export default function RSSFeedNew() {
         // YouTube's built-in RSS feed for channels
         return `https://www.youtube.com/feeds/videos.xml?channel_id=${youtubeChannelId}`;
       case "rss":
-        return sourceUrl;
+        return normalizeHttpUrl(sourceUrl);
       default:
         return `${platform}://${JSON.stringify(buildPlatformConfig())}`;
     }
@@ -271,27 +272,30 @@ export default function RSSFeedNew() {
     if (!feedName) return false;
 
     switch (platform) {
-      case "rss":
+      case "rss": {
         if (!sourceUrl) return false;
         const urlValidation = validateSourceUrl(sourceUrl);
         return urlValidation.valid;
+      }
       case "youtube":
         if (!youtubeChannelId) return false;
         // Channel ID should be 24 characters starting with UC
         return /^UC[\w-]{22}$/.test(youtubeChannelId);
-      case "reddit":
+      case "reddit": {
         if (!subreddit) return false;
         const redditValidation = validatePlatformInput("reddit", subreddit);
         return redditValidation.valid;
+      }
       case "hackernews":
       case "lobsters":
         return true;
       case "github":
         return true;
-      case "lemmy":
+      case "lemmy": {
         if (!lemmyInstance) return false;
         const lemmyValidation = validatePlatformInput("lemmy", lemmyInstance);
         return lemmyValidation.valid;
+      }
       default:
         return false;
     }
@@ -301,27 +305,30 @@ export default function RSSFeedNew() {
     if (!feedName) return "Please enter a feed name.";
 
     switch (platform) {
-      case "rss":
+      case "rss": {
         if (!sourceUrl) return "Please enter an RSS URL.";
         const urlValidation = validateSourceUrl(sourceUrl);
         if (!urlValidation.valid) return urlValidation.error || "Invalid URL";
         break;
+      }
       case "youtube":
         if (!youtubeChannelId) return "Please enter a YouTube channel ID.";
         if (!/^UC[\w-]{22}$/.test(youtubeChannelId)) {
           return "Invalid channel ID format. It should start with 'UC' and be 24 characters.";
         }
         break;
-      case "reddit":
+      case "reddit": {
         if (!subreddit) return "Please enter a subreddit name.";
         const redditValidation = validatePlatformInput("reddit", subreddit);
         if (!redditValidation.valid) return redditValidation.error || "Invalid subreddit";
         break;
-      case "lemmy":
+      }
+      case "lemmy": {
         if (!lemmyInstance) return "Please enter a Lemmy instance.";
         const lemmyValidation = validatePlatformInput("lemmy", lemmyInstance);
         if (!lemmyValidation.valid) return lemmyValidation.error || "Invalid Lemmy instance";
         break;
+      }
     }
     return null;
   };
@@ -441,16 +448,19 @@ export default function RSSFeedNew() {
               {platform === "rss" && (
                 <div className="space-y-2">
                   <Label htmlFor="sourceUrl">RSS Source URL</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="sourceUrl"
-                      placeholder="https://example.com/feed.xml"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
+                  <InputAffordance
+                    id="sourceUrl"
+                    type="text"
+                    inputMode="url"
+                    prefix="https://"
+                    icon={LinkIcon}
+                    placeholder="example.com/feed.xml"
+                    value={sourceUrl}
+                    onChange={(e) => setSourceUrl(stripHttpProtocol(e.target.value))}
+                    help="Paste the feed URL. BlogFactory adds HTTPS when you omit it."
+                    onClear={() => setSourceUrl("")}
+                    clearLabel="Clear RSS source URL"
+                  />
                 </div>
               )}
 
@@ -470,24 +480,25 @@ export default function RSSFeedNew() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="youtubeChannelUrl">Channel URL (optional)</Label>
-                    <Input
+                    <InputAffordance
                       id="youtubeChannelUrl"
-                      placeholder="https://youtube.com/@channelname"
+                      type="text"
+                      inputMode="url"
+                      prefix="https://"
+                      placeholder="youtube.com/@channelname"
                       value={youtubeChannelUrl}
-                      onChange={(e) => setYoutubeChannelUrl(e.target.value)}
+                      onChange={(e) => setYoutubeChannelUrl(stripHttpProtocol(e.target.value))}
+                      help="Reference only. The actual feed still uses the Channel ID."
+                      onClear={() => setYoutubeChannelUrl("")}
+                      clearLabel="Clear YouTube channel URL"
                     />
                     <p className="text-xs text-muted-foreground">
                       For reference only. The actual feed uses the Channel ID above.
                     </p>
                   </div>
-                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>How to find Channel ID:</strong> Go to the channel page → View Page Source → Search for "channelId" or use tools like{" "}
-                      <a href="https://commentpicker.com/youtube-channel-id.php" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                        YouTube Channel ID Finder
-                      </a>
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Need the ID? Use a channel ID finder or search the channel page source for "channelId".
+                  </p>
                 </div>
               )}
 
