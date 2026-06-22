@@ -32,6 +32,13 @@ indexingRoutes.post("/integrations", async (c) => {
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
 
   try {
+    const [existing] = await db
+      .select({ id: indexingIntegrations.id })
+      .from(indexingIntegrations)
+      .where(and(eq(indexingIntegrations.userId, userId), eq(indexingIntegrations.siteId, siteId), eq(indexingIntegrations.provider, provider)))
+      .limit(1);
+    if (existing) return c.json({ error: `${defaultDisplayName(provider)} is already connected for this site` }, 409);
+
     const { encrypted, hint } = encryptIndexingCredentials(provider, body.credentials);
     const [created] = await db
       .insert(indexingIntegrations)

@@ -116,6 +116,10 @@ export async function getIndexingDashboard(userId: string, siteId: string) {
     .select({ count: sql<number>`count(*)::int` })
     .from(indexingSubmissions)
     .where(and(eq(indexingSubmissions.userId, userId), eq(indexingSubmissions.siteId, siteId), eq(indexingSubmissions.status, "queued")));
+  const [skipped] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(indexingSubmissions)
+    .where(and(eq(indexingSubmissions.userId, userId), eq(indexingSubmissions.siteId, siteId), eq(indexingSubmissions.status, "skipped")));
 
   const submissions = await db
     .select()
@@ -131,6 +135,7 @@ export async function getIndexingDashboard(userId: string, siteId: string) {
       accepted: accepted?.count || 0,
       failed: failed?.count || 0,
       queued: queued?.count || 0,
+      skipped: skipped?.count || 0,
     },
   };
 }
@@ -187,7 +192,7 @@ export async function submitUrlsForSite(userId: string, siteId: string, rawUrls:
 }
 
 export function normalizeSubmittedUrls(rawUrls: string[], siteDomain: string, max = 1000) {
-  const acceptedHosts = new Set([comparableHost(siteDomain), `www.${comparableHost(siteDomain)}`]);
+  const rootHost = comparableHost(siteDomain);
   const urls: string[] = [];
   const seen = new Set<string>();
 
@@ -198,13 +203,13 @@ export function normalizeSubmittedUrls(rawUrls: string[], siteDomain: string, ma
 
     let parsed: URL;
     try {
-      parsed = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+      parsed = new URL(value);
     } catch {
       throw new Error(`Invalid URL: ${value}`);
     }
 
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(`Only HTTP and HTTPS URLs are supported: ${value}`);
-    if (!acceptedHosts.has(comparableHost(parsed.hostname)) && !acceptedHosts.has(parsed.hostname.toLowerCase())) {
+    if (comparableHost(parsed.hostname) !== rootHost) {
       throw new Error(`URL does not belong to ${siteDomain}: ${value}`);
     }
     parsed.hash = "";
@@ -219,10 +224,10 @@ export function normalizeSubmittedUrls(rawUrls: string[], siteDomain: string, ma
 }
 
 export function isGoogleIndexingEligibleHtml(html: string) {
-  const hasJobPosting = /["']@type["']\s*:\s*["']JobPosting["']|itemtype=["'][^"']*schema\.org\/JobPosting/i.test(html);
-  const hasVideoObject = /["']@type["']\s*:\s*["']VideoObject["']|itemtype=["'][^"']*schema\.org\/VideoObject/i.test(html);
-  const hasBroadcastEvent = /["']@type["']\s*:\s*["']BroadcastEvent["']|itemtype=["'][^"']*schema\.org\/BroadcastEvent/i.test(html);
-  return hasJobPosting || (hasVideoObject && hasBroadcastEvent);
+  const candidates = jsonLdCandidates(html);
+  if (candidates.some((value) => hasSchemaType(value, "JobPosting") || hasBroadcastEventInsideVideo(value))) return true;
+  if (/itemtype=["'][^"']*schema\.org\/JobPosting/i.test(html)) return true;
+  return /itemtype=["'][^"']*schema\.org\/VideoObject/i.test(html) && /itemtype=["'][^"']*schema\.org\/BroadcastEvent/i.test(html);
 }
 
 function validateCredentials(provider: IndexingProvider, input: unknown) {
@@ -333,6 +338,20 @@ async function submitGoogle(integration: IntegrationRow, site: SiteRow, urls: st
   let token: string | null = null;
 
   for (const url of urls) {
+    if (!await isGoogleIndexingEligibleUrl(url)) {
+      created.push(await insertSubmission({
+        userId: integration.userId,
+        siteId: site.id,
+        integrationId: integration.id,
+        provider: "google",
+        url,
+        source,
+        status: "skipped",
+        errorMessage: "Google Indexing API only supports JobPosting or BroadcastEvent pages",
+      }));
+      continue;
+    }
+
     const quotaUsed = await googleQuotaUsed(integration.id);
     if (quotaUsed >= 200) {
       created.push(await insertSubmission({
@@ -348,22 +367,9 @@ async function submitGoogle(integration: IntegrationRow, site: SiteRow, urls: st
       continue;
     }
 
-    if (!await isGoogleIndexingEligibleUrl(url)) {
-      created.push(await insertSubmission({
-        userId: integration.userId,
-        siteId: site.id,
-        integrationId: integration.id,
-        provider: "google",
-        url,
-        source,
-        status: "skipped",
-        errorMessage: "Google Indexing API only supports JobPosting or BroadcastEvent pages",
-      }));
-      continue;
-    }
-
     token ||= await googleAccessToken(credentials);
     const result = await publishGoogleUrl(token, url);
+    const status = googleResultStatus(result);
     created.push(await insertSubmission({
       userId: integration.userId,
       siteId: site.id,
@@ -371,10 +377,10 @@ async function submitGoogle(integration: IntegrationRow, site: SiteRow, urls: st
       provider: "google",
       url,
       source,
-      status: result.ok ? "accepted" : "failed",
-      errorMessage: result.ok ? undefined : `Google returned ${result.status}`,
+      status,
+      errorMessage: result.ok ? undefined : status === "queued" ? "Google daily quota reached" : `Google returned ${result.status}`,
       responseData: result,
-      submittedAt: new Date(),
+      submittedAt: status === "accepted" ? new Date() : undefined,
     }));
   }
 
@@ -422,15 +428,16 @@ export async function drainQueuedGoogleIndexing(limit = 50) {
         tokens.set(integration.id, token);
       }
       const result = await publishGoogleUrl(token, row.url);
+      const status = googleResultStatus(result);
       await db.update(indexingSubmissions).set({
-        status: result.ok ? "accepted" : "failed",
-        errorMessage: result.ok ? null : `Google returned ${result.status}`,
+        status,
+        errorMessage: result.ok ? null : status === "queued" ? "Google daily quota reached" : `Google returned ${result.status}`,
         responseData: result,
-        submittedAt: new Date(),
+        submittedAt: status === "accepted" ? new Date() : null,
         updatedAt: new Date(),
       }).where(eq(indexingSubmissions.id, row.id));
       if (result.ok) accepted += 1;
-      else failed += 1;
+      else if (status === "failed") failed += 1;
     } catch (error) {
       await markQueuedGoogle(row.id, "failed", error instanceof Error ? error.message : "Google submission failed");
       failed += 1;
@@ -523,7 +530,12 @@ function normalizeHttpUrl(value: string) {
 }
 
 function comparableHost(hostname: string) {
-  return hostname.toLowerCase().replace(/^www\./, "");
+  const value = hostname.trim().toLowerCase();
+  try {
+    return new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).hostname.replace(/^www\./, "");
+  } catch {
+    return value.replace(/^www\./, "");
+  }
 }
 
 function groupByHost(urls: string[]) {
@@ -541,4 +553,48 @@ function parseJson(value: string) {
   } catch {
     throw new Error("Google service account must be valid JSON");
   }
+}
+
+function jsonLdCandidates(html: string) {
+  const candidates: unknown[] = [];
+  try {
+    candidates.push(JSON.parse(html));
+  } catch {
+    // Most inputs are full HTML, not raw JSON.
+  }
+  for (const match of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      candidates.push(JSON.parse(match[1]));
+    } catch {
+      // Ignore malformed JSON-LD; the provider will skip instead of risking a bad Google request.
+    }
+  }
+  return candidates;
+}
+
+function hasSchemaType(value: unknown, type: string): boolean {
+  if (Array.isArray(value)) return value.some((item) => hasSchemaType(item, type));
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  const ownType = record["@type"];
+  const types = Array.isArray(ownType) ? ownType : [ownType];
+  if (types.some((entry) => String(entry).toLowerCase() === type.toLowerCase())) return true;
+  return Object.values(record).some((entry) => hasSchemaType(entry, type));
+}
+
+function hasBroadcastEventInsideVideo(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasBroadcastEventInsideVideo);
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  const ownType = record["@type"];
+  const types = Array.isArray(ownType) ? ownType : [ownType];
+  const isVideo = types.some((entry) => String(entry).toLowerCase() === "videoobject");
+  if (isVideo && Object.entries(record).some(([key, entry]) => key !== "@type" && hasSchemaType(entry, "BroadcastEvent"))) return true;
+  return Object.values(record).some(hasBroadcastEventInsideVideo);
+}
+
+function googleResultStatus(result: { ok: boolean; status: number; body: string }) {
+  if (result.ok) return "accepted";
+  if (result.status === 429 || (result.status === 403 && /quota|rate/i.test(result.body))) return "queued";
+  return "failed";
 }

@@ -44,7 +44,7 @@ export interface IndexingSubmission {
 interface DashboardResponse {
   integrations: IndexingIntegration[];
   submissions: IndexingSubmission[];
-  stats: { accepted: number; failed: number; queued: number };
+  stats: { accepted: number; failed: number; queued: number; skipped: number };
 }
 
 interface SaveInput {
@@ -104,7 +104,7 @@ export function useIndexing(siteId?: string | null) {
     dashboard: dashboard.data,
     integrations: dashboard.data?.integrations || [],
     submissions: dashboard.data?.submissions || [],
-    stats: dashboard.data?.stats || { accepted: 0, failed: 0, queued: 0 },
+    stats: dashboard.data?.stats || { accepted: 0, failed: 0, queued: 0, skipped: 0 },
     isLoading: dashboard.isLoading,
     saveIntegration,
     testIntegration,

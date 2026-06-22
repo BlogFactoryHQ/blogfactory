@@ -73,13 +73,13 @@ export default function Indexing() {
   const parsedUrls = useMemo(() => bulkUrls.split(/\r?\n/).map((url) => url.trim()).filter(Boolean), [bulkUrls]);
 
   const handleSubmit = async () => {
-    const validation = validateUrls(parsedUrls, activeSite?.domain || "");
-    if (validation) {
-      toast.error(validation);
+    const validation = normalizeUrlsForSubmit(parsedUrls, activeSite?.domain || "");
+    if (validation.error) {
+      toast.error(validation.error);
       return;
     }
     try {
-      const result = await submitUrls.mutateAsync(parsedUrls);
+      const result = await submitUrls.mutateAsync(validation.urls);
       setBulkUrls("");
       toast.success(`${result.submitted} indexing submissions created`);
     } catch (error) {
@@ -113,11 +113,12 @@ export default function Indexing() {
       />
 
       <div className="space-y-8">
-        <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-4">
+        <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-5">
           {[
             ["Site", activeSite?.domain || "No site selected"],
             ["Accepted", String(stats.accepted)],
             ["Queued", String(stats.queued)],
+            ["Skipped", String(stats.skipped)],
             ["Failed", String(stats.failed)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
@@ -147,6 +148,11 @@ export default function Indexing() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         Last submit: {integration?.lastSubmitAt ? new Date(integration.lastSubmitAt).toLocaleString() : "None yet"}
                       </p>
+                      {integration?.lastTestResult && (
+                        <p className="mt-1 truncate text-xs text-muted-foreground" title={integration.lastTestResult}>
+                          Last test: {integration.lastTestResult}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -406,21 +412,39 @@ function normalizeCredentials(provider: IndexingProvider, credentials: Record<st
   return credentials;
 }
 
-function validateUrls(urls: string[], domain: string) {
-  if (!domain) return "Select a site first";
-  if (urls.length > 1000) return "Submit at most 1,000 URLs at once";
-  const root = domain.toLowerCase().replace(/^www\./, "");
+function normalizeUrlsForSubmit(urls: string[], domain: string) {
+  if (!domain) return { urls: [], error: "Select a site first" };
+  if (urls.length > 1000) return { urls: [], error: "Submit at most 1,000 URLs at once" };
+  const root = comparableHost(domain);
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
   for (const url of urls) {
     try {
-      const parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
-      if (!["http:", "https:"].includes(parsed.protocol)) return `Only HTTP and HTTPS URLs are supported: ${url}`;
-      const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-      if (host !== root) return `URL does not belong to ${domain}: ${url}`;
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) return { urls: [], error: `Only HTTP and HTTPS URLs are supported: ${url}` };
+      if (comparableHost(parsed.hostname) !== root) return { urls: [], error: `URL does not belong to ${domain}: ${url}` };
+      parsed.hash = "";
+      const value = parsed.toString();
+      if (!seen.has(value)) {
+        seen.add(value);
+        normalized.push(value);
+      }
     } catch {
-      return `Invalid URL: ${url}`;
+      return { urls: [], error: `Invalid URL: ${url}` };
     }
   }
-  return null;
+
+  return { urls: normalized };
+}
+
+function comparableHost(value: string) {
+  const host = value.trim().toLowerCase();
+  try {
+    return new URL(/^https?:\/\//i.test(host) ? host : `https://${host}`).hostname.replace(/^www\./, "");
+  } catch {
+    return host.replace(/^www\./, "");
+  }
 }
 
 function providerLabel(provider: string) {
