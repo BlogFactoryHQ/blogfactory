@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, FileText, FileUp, Loader2, ListTodo, Newspaper, Rss, Send } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, FileText, FileUp, Loader2, ListTodo, Newspaper, Rss, Send, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,7 @@ export default function News() {
   const { data: textModels = [] } = useTextModels();
   const [matrixRows, setMatrixRows] = useState<SportsMatrixRow[]>([]);
   const [matrixFileName, setMatrixFileName] = useState("");
+  const [matrixImportedAt, setMatrixImportedAt] = useState("");
   const [isImportingMatrix, setIsImportingMatrix] = useState(false);
   const [feedName, setFeedName] = useState("");
   const [feedUrl, setFeedUrl] = useState("");
@@ -83,6 +85,7 @@ export default function News() {
   const activePersonas = useMemo(() => personas, [personas]);
   const newsFeeds = useMemo(() => feeds.filter(isNewsFeed), [feeds]);
   const stats = sportsMatrixStats(matrixRows);
+  const matrixReady = stats.active > 0;
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
 
   useEffect(() => {
@@ -90,6 +93,7 @@ export default function News() {
     const news = settings.content_rules?.news || settings.content_rules?.sportsNews;
     setMatrixRows(news?.matrixRows || []);
     setMatrixFileName(news?.fileName || "");
+    setMatrixImportedAt(news?.importedAt || "");
   }, [settings]);
 
   useEffect(() => {
@@ -170,6 +174,7 @@ export default function News() {
       if (!rows.length) throw new Error("No source rows found in Haber Matrisi");
       setMatrixRows(rows);
       setMatrixFileName(file.name);
+      setMatrixImportedAt(new Date().toISOString());
       saveMatrixMutation.mutate({ rows, fileName: file.name });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to import news source matrix");
@@ -187,12 +192,20 @@ export default function News() {
   const canCreateFeed = Boolean(feedName.trim() && feedUrl.trim() && personaId && modelId && !selectedModelUnavailable);
   const manualValue = manualMode === "url" ? manualUrl : rawText;
   const canGenerateManual = Boolean(manualValue.trim() && personaId && modelId && !selectedModelUnavailable);
+  const defaultBlocker = !matrixReady
+    ? "Import a matrix with active sources first."
+    : !personaId
+      ? "Select an active persona."
+      : selectedModelUnavailable
+        ? "Pick a live OpenRouter model."
+        : "";
+  const importedLabel = matrixImportedAt ? new Date(matrixImportedAt).toLocaleString() : "";
 
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Newsroom"
-        description="Matrix rules, news RSS sources, and manual news drafts in one place."
+        description="Import source rules, choose newsroom defaults, then create RSS or manual news drafts."
       >
         <Button variant="outline" asChild>
           <Link to="/posts"><FileText className="mr-2 h-4 w-4" />Review Drafts</Link>
@@ -202,12 +215,28 @@ export default function News() {
         </Button>
       </PageHeader>
 
+      <div className="mb-6 grid gap-3 md:grid-cols-3">
+        {[
+          { label: "1. Import matrix", done: matrixReady, text: matrixReady ? `${stats.active} active sources ready` : "Required before drafting" },
+          { label: "2. Set defaults", done: Boolean(personaId && modelId && !selectedModelUnavailable), text: personaId ? "Persona and model selected" : "Choose a writer persona" },
+          { label: "3. Review drafts", done: false, text: "Approved posts still live in Posts" },
+        ].map((item) => (
+          <div key={item.label} className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3">
+            {item.done ? <CheckCircle2 className="h-4 w-4 text-status-success" /> : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">{item.label}</p>
+              <p className="truncate text-xs text-muted-foreground">{item.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           <BywordCard>
             <SectionHeader
               icon={Database}
-              title="Source Rules"
+              title="News Source Matrix"
               description="News drafts are created only when the source matches an active, non-data matrix row."
               action={
                 <Button type="button" variant="outline" disabled={isImportingMatrix || saveMatrixMutation.isPending} asChild>
@@ -237,9 +266,13 @@ export default function News() {
               <div className="rounded-lg border border-byword-border p-5">
                 <div className="flex items-start gap-3">
                   <IconTile icon={Database} />
-                  <div className="min-w-0">
-                    <p className="font-semibold">{matrixFileName || "No matrix imported"}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold">{matrixFileName || "No matrix imported"}</p>
+                      <Badge variant={matrixReady ? "secondary" : "outline"}>{matrixReady ? "Ready" : "Required"}</Badge>
+                    </div>
                     <p className="mt-1 text-sm text-muted-foreground">Unknown, passive, and data-only sources are skipped before AI drafting.</p>
+                    {importedLabel && <p className="mt-2 text-xs text-muted-foreground">Last imported: {importedLabel}</p>}
                   </div>
                 </div>
               </div>
@@ -259,16 +292,7 @@ export default function News() {
                   <Input id="news-feed-url" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://example.com/feed.xml" />
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Persona</Label>
-                  <Select value={personaId} onValueChange={selectPersona}>
-                    <SelectTrigger><SelectValue placeholder="Select persona" /></SelectTrigger>
-                    <SelectContent>
-                      {activePersonas.map((persona) => <SelectItem key={persona.id} value={persona.id}>{persona.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Frequency</Label>
                   <Select value={frequency} onValueChange={setFrequency}>
@@ -288,12 +312,8 @@ export default function News() {
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Model</Label>
-                <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
-                {selectedModelUnavailable && <p className="text-xs text-destructive">Pick a live OpenRouter model.</p>}
-              </div>
-              <Button onClick={() => createFeedMutation.mutate()} disabled={!canCreateFeed || createFeedMutation.isPending}>
+              {defaultBlocker && <p className="text-sm text-muted-foreground">{defaultBlocker}</p>}
+              <Button onClick={() => createFeedMutation.mutate()} disabled={!matrixReady || !canCreateFeed || createFeedMutation.isPending}>
                 {createFeedMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rss className="mr-2 h-4 w-4" />}
                 Save News Source
               </Button>
@@ -302,6 +322,27 @@ export default function News() {
         </div>
 
         <div className="space-y-6">
+          <BywordCard>
+            <SectionHeader icon={Settings2} title="News Defaults" description="Used by both RSS sources and manual drafts." />
+            <div className="space-y-4 p-6">
+              <div className="space-y-2">
+                <Label>Persona</Label>
+                <Select value={personaId} onValueChange={selectPersona}>
+                  <SelectTrigger><SelectValue placeholder="Select persona" /></SelectTrigger>
+                  <SelectContent>
+                    {activePersonas.map((persona) => <SelectItem key={persona.id} value={persona.id}>{persona.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {!activePersonas.length && <p className="text-xs text-muted-foreground">Create an active persona before generating news.</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Model</Label>
+                <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
+                {selectedModelUnavailable && <p className="text-xs text-destructive">Pick a live OpenRouter model.</p>}
+              </div>
+            </div>
+          </BywordCard>
+
           <BywordCard>
             <SectionHeader icon={Send} title="Manual Draft" description="Use for one-off news URLs or pasted source text." />
             <div className="space-y-4 p-6">
@@ -317,7 +358,8 @@ export default function News() {
               ) : (
                 <Textarea value={rawText} onChange={(event) => setRawText(event.target.value)} className="min-h-[180px]" placeholder="Paste source text..." />
               )}
-              <Button className="w-full" onClick={() => generateManualMutation.mutate()} disabled={!canGenerateManual || generateManualMutation.isPending}>
+              {defaultBlocker && <p className="text-sm text-muted-foreground">{defaultBlocker}</p>}
+              <Button className="w-full" onClick={() => generateManualMutation.mutate()} disabled={!matrixReady || !canGenerateManual || generateManualMutation.isPending}>
                 {generateManualMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Newspaper className="mr-2 h-4 w-4" />}
                 Create News Draft
               </Button>
@@ -330,10 +372,13 @@ export default function News() {
               {newsFeeds.length ? newsFeeds.slice(0, 6).map((feed) => (
                 <div key={feed.id} className="flex items-center justify-between gap-3 px-6 py-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{feed.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">{feed.name}</p>
+                      <Badge variant="outline">News</Badge>
+                    </div>
                     <p className="truncate text-xs text-muted-foreground">{feed.source_url}</p>
                   </div>
-                  <span className="text-xs text-muted-foreground">{feed.is_active ? "Active" : "Paused"}</span>
+                  <Badge variant={feed.is_active ? "secondary" : "outline"}>{feed.is_active ? "Active" : "Paused"}</Badge>
                 </div>
               )) : (
                 <p className="px-6 py-5 text-sm text-muted-foreground">No News RSS sources yet.</p>
