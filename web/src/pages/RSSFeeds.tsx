@@ -164,6 +164,7 @@ export default function RSSFeeds() {
         extract_full_content: feed.extract_full_content,
         posts_per_run: feed.posts_per_run,
         filter_old_posts_days: feed.filter_old_posts_days,
+        platform_config: feed.platform_config,
       });
     },
     onSuccess: (_, variables) => {
@@ -214,6 +215,7 @@ export default function RSSFeeds() {
         feedId: feed.id,
         extractFullContent: feed.extract_full_content ?? false,
         filterOldPostsDays: feed.filter_old_posts_days || undefined,
+        platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
           cover: ic.cover.enabled ? {

@@ -10,6 +10,7 @@ import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
 import { embedInternalLinkText, rankPagesByEmbedding } from "./internal-linking.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
+import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
 
 interface GenerateOpts {
   userId: string;
@@ -47,6 +48,7 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
+type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision };
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
@@ -250,6 +252,10 @@ function isArticleSource(sourceType: string) {
 function normalizeList(value: unknown, maxItems = 5) {
   const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
   return items.map((item) => String(item).trim()).filter(Boolean).slice(0, maxItems);
+}
+
+function isSportsNewsMode(value: unknown) {
+  return !!value && typeof value === "object" && (value as Record<string, unknown>).editorialMode === "sports_news";
 }
 
 function buildArticleExtras(opts: GenerateOpts) {
@@ -492,7 +498,7 @@ export async function generateContent(opts: GenerateOpts) {
     await db.update(jobs).set({ currentStep: "fetching_content" }).where(eq(jobs.id, jobId));
 
     // Fetch source content
-    let articles: Array<{ title: string; content: string; url?: string; hash?: string }> = [];
+    let articles: SourceArticle[] = [];
 
     if (opts.sourceType === "rss_feed") {
       // Fetch and parse RSS feed
@@ -524,9 +530,53 @@ export async function generateContent(opts: GenerateOpts) {
       return { jobId, status: "completed", posts: [] };
     }
 
+    const sportsSkipped: Array<{ title: string; url?: string; reason?: string; sourceName?: string }> = [];
+    if (isSportsNewsMode(opts.platformConfig)) {
+      const matrixRows = sportsMatrixRowsFromSettings(promptSettings);
+      articles = articles.flatMap((article) => {
+        const decision = classifySportsNews({
+          title: article.title,
+          content: article.content,
+          url: article.url,
+          sourceValue: opts.sourceValue,
+          platformConfig: opts.platformConfig,
+          matrixRows,
+        });
+        if (!decision.allowed) {
+          sportsSkipped.push({
+            title: article.title || "Untitled",
+            url: article.url,
+            reason: decision.reason,
+            sourceName: decision.sourceName,
+          });
+          return [];
+        }
+        return [{ ...article, sportsDecision: decision }];
+      });
+    }
+
+    if (!articles.length) {
+      const message = sportsSkipped.length
+        ? sportsSkipped.map((item) => item.reason).filter(Boolean)[0] || "No sports news items matched the matrix."
+        : "No drafts were created from this source.";
+      await db.update(jobs).set({
+        status: "failed",
+        currentStep: "done",
+        errorMessage: message,
+        generationPlan: { totalDrafts: 0, articles: [], skippedSportsNews: sportsSkipped },
+        resultPostIds: [],
+        completedAt: new Date(),
+      }).where(eq(jobs.id, jobId));
+      return { jobId, status: "failed", error: message, postIds: [] };
+    }
+
     // Set generation plan
     await db.update(jobs).set({
-      generationPlan: { totalDrafts: articles.length, articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url })) },
+      generationPlan: {
+        totalDrafts: articles.length,
+        articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
+        skippedSportsNews: sportsSkipped,
+      },
       currentStep: `generating_draft_1_of_${articles.length}`,
     }).where(eq(jobs.id, jobId));
 
@@ -564,7 +614,8 @@ export async function generateContent(opts: GenerateOpts) {
         // Generate blog post via AI
         const genStart = Date.now();
         const settingsInstructions = await buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`, semanticInternalLinkKey);
-        const draftSystemPrompt = `${systemPrompt}${settingsInstructions}`;
+        const sportsNewsInstructions = article.sportsDecision ? buildSportsNewsInstructions(article.sportsDecision) : "";
+        const draftSystemPrompt = `${systemPrompt}${settingsInstructions}${sportsNewsInstructions}`;
         const userMessage = buildDraftUserMessage(article, opts.sourceType, opts);
 
         const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {

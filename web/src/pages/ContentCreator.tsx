@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -142,6 +143,7 @@ export default function ContentCreator() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [sportsNewsMode, setSportsNewsMode] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfPath, setPdfPath] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -448,6 +450,7 @@ export default function ContentCreator() {
         personaId,
         modelId,
         variations,
+        platformConfig: sportsNewsMode && (sourceType === "url" || sourceType === "raw_text") ? { editorialMode: "sports_news" } : undefined,
         relatedKeywords: isArticleSource
           ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
           : undefined,
@@ -921,6 +924,18 @@ export default function ContentCreator() {
                 </p>
               </TabsContent>
             </Tabs>
+            {(sourceType === "url" || sourceType === "raw_text") && (
+              <div className="mt-5 flex items-center justify-between rounded-lg border border-byword-border bg-muted/20 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <IconTile icon={Archive} />
+                  <div>
+                    <p className="text-sm font-medium">Sports News Mode</p>
+                    <p className="text-xs text-muted-foreground">Require a matching active row in the sports matrix</p>
+                  </div>
+                </div>
+                <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
+              </div>
+            )}
           </div>
         </BywordCard>
 

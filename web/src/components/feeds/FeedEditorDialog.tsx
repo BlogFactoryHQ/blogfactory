@@ -114,6 +114,14 @@ export function FeedEditorDialog({
 
   if (!editedFeed) return null;
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
+  const sportsNewsMode = editedFeed.platform_config?.editorialMode === "sports_news";
+
+  const setSportsNewsMode = (checked: boolean) => {
+    const nextConfig = { ...(editedFeed.platform_config || {}) };
+    if (checked) nextConfig.editorialMode = "sports_news";
+    else delete nextConfig.editorialMode;
+    setEditedFeed({ ...editedFeed, platform_config: nextConfig });
+  };
 
   const handleSave = () => {
     if (selectedModelUnavailable) return;
@@ -369,25 +377,42 @@ export function FeedEditorDialog({
                 </div>
 
                 {editedFeed.platform === "rss" && (
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <FileText className="h-4 w-4 text-primary" />
+                  <>
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <FileText className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Full-Text Extraction</p>
+                          <p className="text-sm text-muted-foreground">
+                            Fetch complete article content from URLs
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">Full-Text Extraction</p>
-                        <p className="text-sm text-muted-foreground">
-                          Fetch complete article content from URLs
-                        </p>
-                      </div>
+                      <Switch
+                        checked={editedFeed.extract_full_content ?? false}
+                        onCheckedChange={(checked) =>
+                          setEditedFeed({ ...editedFeed, extract_full_content: checked })
+                        }
+                      />
                     </div>
-                    <Switch
-                      checked={editedFeed.extract_full_content ?? false}
-                      onCheckedChange={(checked) =>
-                        setEditedFeed({ ...editedFeed, extract_full_content: checked })
-                      }
-                    />
-                  </div>
+
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Zap className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Sports News Mode</p>
+                          <p className="text-sm text-muted-foreground">
+                            Require a matching active row in the sports matrix
+                          </p>
+                        </div>
+                      </div>
+                      <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
+                    </div>
+                  </>
                 )}
 
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">

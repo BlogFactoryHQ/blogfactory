@@ -79,6 +79,7 @@ export default function RSSFeedNew() {
   const [blurNsfw, setBlurNsfw] = useState(true);
   const [filterOldPostsDays, setFilterOldPostsDays] = useState<number | undefined>();
   const [extractFullContent, setExtractFullContent] = useState(false);
+  const [sportsNewsMode, setSportsNewsMode] = useState(false);
   const [postsPerRun, setPostsPerRun] = useState(5);
 
   // Keywords & scheduling
@@ -135,22 +136,23 @@ export default function RSSFeedNew() {
 
   // Build platform config object
   const buildPlatformConfig = () => {
+    const editorial = sportsNewsMode && platform === "rss" ? { editorialMode: "sports_news" } : {};
     switch (platform) {
       case "reddit":
-        return { subreddit, redditDomain };
+        return { subreddit, redditDomain, ...editorial };
       case "hackernews":
-        return { type: hnType };
+        return { type: hnType, ...editorial };
       case "github":
-        return { language: githubLanguage, topic: githubTopic, since: githubPeriod };
+        return { language: githubLanguage, topic: githubTopic, since: githubPeriod, ...editorial };
       case "lemmy":
-        return { instance: lemmyInstance, community: lemmyCommunity };
+        return { instance: lemmyInstance, community: lemmyCommunity, ...editorial };
       case "lobsters":
-        return { tag: lobstersTag };
+        return { tag: lobstersTag, ...editorial };
       case "youtube":
-        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl };
+        return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl, ...editorial };
       case "rss":
       default:
-        return { url: sourceUrl };
+        return { url: sourceUrl, ...editorial };
     }
   };
 
@@ -771,6 +773,19 @@ export default function RSSFeedNew() {
                       </div>
                     </div>
                     <Switch checked={extractFullContent} onCheckedChange={setExtractFullContent} />
+                  </div>
+                )}
+
+                {platform === "rss" && (
+                  <div className="flex items-center justify-between py-3 px-4 rounded-lg border-2 border-primary/20 bg-primary/5">
+                    <div className="flex items-center gap-3">
+                      <Rss className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-sm">Sports News Mode</p>
+                        <p className="text-xs text-muted-foreground">Require a matching active row in the sports matrix</p>
+                      </div>
+                    </div>
+                    <Switch checked={sportsNewsMode} onCheckedChange={setSportsNewsMode} />
                   </div>
                 )}
 

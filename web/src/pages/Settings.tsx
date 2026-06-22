@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, type KnowledgeDocument } from "@/lib/knowledge";
+import { parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -107,6 +108,7 @@ interface UserSettings {
   brand_mentions?: string | null;
   brand_value_props?: string[] | null;
   brand_ctas?: BrandCta[] | null;
+  content_rules?: ContentRules | null;
   knowledge_base_enabled?: boolean | null;
   knowledge_documents?: KnowledgeDocument[] | null;
   internal_link_sitemap_url?: string | null;
@@ -149,6 +151,15 @@ interface InternalLinkIndex {
   pages: InternalLinkPage[];
   createdAt: string;
   sitemapMessages?: string[];
+}
+
+interface ContentRules {
+  sportsNews?: {
+    matrixRows?: SportsMatrixRow[];
+    fileName?: string;
+    importedAt?: string;
+  };
+  [key: string]: unknown;
 }
 
 interface InternalLinkIndexingState {
@@ -269,6 +280,10 @@ export default function Settings() {
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [isImportingKnowledge, setIsImportingKnowledge] = useState(false);
+  const [contentRules, setContentRules] = useState<ContentRules>({});
+  const [sportsMatrixRows, setSportsMatrixRows] = useState<SportsMatrixRow[]>([]);
+  const [sportsMatrixFileName, setSportsMatrixFileName] = useState("");
+  const [isImportingSportsMatrix, setIsImportingSportsMatrix] = useState(false);
   const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
   const [ctaLabel, setCtaLabel] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
@@ -365,6 +380,9 @@ export default function Settings() {
       setBrandMentions(userSettings.brand_mentions || "moderate");
       setBrandValueProps(userSettings.brand_value_props || []);
       setBrandCtas(userSettings.brand_ctas || []);
+      setContentRules(userSettings.content_rules || {});
+      setSportsMatrixRows(userSettings.content_rules?.sportsNews?.matrixRows || []);
+      setSportsMatrixFileName(userSettings.content_rules?.sportsNews?.fileName || "");
       setKnowledgeBaseEnabled(userSettings.knowledge_base_enabled ?? false);
       setKnowledgeDocuments(userSettings.knowledge_documents || []);
     }
@@ -471,6 +489,28 @@ export default function Settings() {
       toast.success("Brand settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save brand settings"),
+  });
+
+  const saveSportsMatrixMutation = useMutation({
+    mutationFn: async ({ rows, fileName }: { rows: SportsMatrixRow[]; fileName: string }) => {
+      const nextRules = {
+        ...contentRules,
+        sportsNews: {
+          ...(contentRules.sportsNews || {}),
+          matrixRows: rows,
+          fileName,
+          importedAt: new Date().toISOString(),
+        },
+      };
+      const settings = await api.put<UserSettings>("/settings", { content_rules: nextRules });
+      return settings;
+    },
+    onSuccess: (settings) => {
+      queryClient.setQueryData(["user-settings"], settings);
+      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      toast.success("Sports news matrix imported");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to import sports news matrix"),
   });
 
   // Save image model mutation
@@ -630,6 +670,24 @@ export default function Settings() {
     }
   };
 
+  const handleSportsMatrixChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setIsImportingSportsMatrix(true);
+    try {
+      const rows = await parseSportsMatrixFile(file);
+      if (!rows.length) throw new Error("No source rows found in Haber Matrisi");
+      setSportsMatrixRows(rows);
+      setSportsMatrixFileName(file.name);
+      saveSportsMatrixMutation.mutate({ rows, fileName: file.name });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import sports news matrix");
+    } finally {
+      setIsImportingSportsMatrix(false);
+    }
+  };
+
   const addInternalLinkRule = () => {
     const triggers = internalRuleTriggers.trim();
     const url = internalRuleUrl.trim();
@@ -712,6 +770,7 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
+    { id: "sports", title: "Sports News", description: "Matrix rules", icon: Database },
     { id: "internal", title: "Internal Linking", description: "Sitemap index", icon: LinkIcon },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
@@ -721,6 +780,7 @@ export default function Settings() {
   const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
   const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
   const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
+  const sportsStats = sportsMatrixStats(sportsMatrixRows);
 
   return (
     <BywordPageShell className="max-w-7xl">
@@ -862,6 +922,61 @@ export default function Settings() {
                     ))}
                   </div>
                 </section>
+              </div>
+            </BywordCard>
+          )}
+
+          {activeSection === "sports" && (
+            <BywordCard>
+              <SectionHeader
+                icon={Database}
+                title="Sports News Rules"
+                description="Matrix-backed source rules for sports newsroom drafts."
+                action={
+                  <Button type="button" variant="outline" disabled={isImportingSportsMatrix || saveSportsMatrixMutation.isPending} asChild>
+                    <label>
+                      {isImportingSportsMatrix || saveSportsMatrixMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileUp className="mr-2 h-4 w-4" />
+                      )}
+                      Import Matrix
+                      <input
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="hidden"
+                        onChange={handleSportsMatrixChange}
+                      />
+                    </label>
+                  </Button>
+                }
+              />
+              <div className="space-y-5 p-6">
+                <div className="grid overflow-hidden rounded-lg border border-byword-border text-sm md:grid-cols-3">
+                  <div className="p-4">
+                    <p className="text-2xl font-semibold">{sportsStats.total}</p>
+                    <p className="text-sm text-muted-foreground">Sources</p>
+                  </div>
+                  <div className="border-t border-byword-border p-4 md:border-l md:border-t-0">
+                    <p className="text-2xl font-semibold">{sportsStats.active}</p>
+                    <p className="text-sm text-muted-foreground">Active</p>
+                  </div>
+                  <div className="border-t border-byword-border p-4 md:border-l md:border-t-0">
+                    <p className="text-2xl font-semibold">{sportsStats.passive}</p>
+                    <p className="text-sm text-muted-foreground">Passive</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-byword-border p-5">
+                  <div className="flex items-start gap-3">
+                    <IconTile icon={Database} />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{sportsMatrixFileName || "No matrix imported"}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Sports News Mode only drafts articles when an incoming source matches an active, non-data row.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </BywordCard>
           )}
