@@ -80,6 +80,13 @@ interface ApiKeyMetadata {
   updatedAt: string | null;
 }
 
+type ApiKeyProvider = "openrouter" | "google" | "openai" | "replicate";
+
+interface ApiKeyTestResult {
+  ok: boolean;
+  error?: string;
+}
+
 interface UserSettings {
   image_style_prompt?: string | null;
   image_model?: string | null;
@@ -153,6 +160,7 @@ interface InternalLinkIndex {
 }
 
 type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
+type DirtyState = "clean" | "dirty";
 
 const priceBadgeClass = (pricing: ModelPriceFilter) => {
   if (pricing === "free") return "bg-primary/10 text-primary";
@@ -174,6 +182,18 @@ const formatContextLength = (contextLength: number | null) => {
   if (contextLength >= 1_000) return `${Math.round(contextLength / 1_000)}K context`;
   return `${contextLength.toLocaleString()} context`;
 };
+
+const formatSavedAt = (value?: string | null) => {
+  if (!value) return "Never saved";
+  return `Saved ${new Date(value).toLocaleDateString()}`;
+};
+
+const unsavedBadge = (state: DirtyState) =>
+  state === "dirty" ? (
+    <span className="mr-2 rounded-full border border-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+      Unsaved
+    </span>
+  ) : null;
 
 const articleLengthOptions = [
   { label: "Short", words: 500, icon: FileText },
@@ -226,6 +246,7 @@ export default function Settings() {
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [replicateKey, setReplicateKey] = useState("");
+  const [testingProvider, setTestingProvider] = useState<ApiKeyProvider | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
@@ -305,6 +326,49 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
+
+  const basicsDirty: DirtyState = userSettings && (
+    articleWordCount !== (userSettings.article_word_count ?? 1500) ||
+    articleLanguage !== (userSettings.article_language || "US English")
+  ) ? "dirty" : "clean";
+
+  const advancedDirty: DirtyState = userSettings && (
+    includeTableOfContents !== (userSettings.include_table_of_contents ?? false) ||
+    enableResearch !== (userSettings.enable_research ?? false) ||
+    articleVoice !== (userSettings.article_voice || "Natural")
+  ) ? "dirty" : "clean";
+
+  const internalDirty: DirtyState = userSettings && (
+    enableInternalLinks !== (userSettings.enable_internal_links ?? false) ||
+    internalLinkMode !== (userSettings.internal_link_mode || "all") ||
+    internalLinkDensity !== (userSettings.internal_link_density || "balanced") ||
+    internalLinkIncludePatterns !== ((userSettings.internal_link_include_patterns || []).join(", ")) ||
+    internalLinkExcludePatterns !== ((userSettings.internal_link_exclude_patterns || []).join(", ")) ||
+    JSON.stringify(internalLinkRules) !== JSON.stringify(userSettings.internal_link_rules || [])
+  ) ? "dirty" : "clean";
+
+  const imageModelDirty: DirtyState = userSettings && selectedImageModel !== (userSettings.image_model || "openai/gpt-image-2") ? "dirty" : "clean";
+  const imagePromptDirty: DirtyState = userSettings && imageStylePrompt !== (userSettings.image_style_prompt || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.") ? "dirty" : "clean";
+  const imageDefaultsDirty: DirtyState = userSettings && (
+    imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
+    imageConfig.cover.resolution !== ((userSettings.cover_resolution as Resolution) || "1K") ||
+    imageConfig.cover.aspectRatio !== ((userSettings.cover_aspect_ratio as AspectRatio) || "16:9") ||
+    imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
+    imageConfig.inline.count !== (userSettings.inline_count || 2) ||
+    imageConfig.inline.resolution !== ((userSettings.inline_resolution as Resolution) || "Web") ||
+    imageConfig.inline.aspectRatio !== ((userSettings.inline_aspect_ratio as AspectRatio) || "3:2")
+  ) ? "dirty" : "clean";
+
+  const brandDirty: DirtyState = userSettings && (
+    brandCompanyName !== (userSettings.brand_company_name || "") ||
+    brandDescription !== (userSettings.brand_description || "") ||
+    brandTargetAudience !== (userSettings.brand_target_audience || "") ||
+    brandMentions !== (userSettings.brand_mentions || "moderate") ||
+    knowledgeBaseEnabled !== (userSettings.knowledge_base_enabled ?? false) ||
+    JSON.stringify(brandValueProps) !== JSON.stringify(userSettings.brand_value_props || []) ||
+    JSON.stringify(brandCtas) !== JSON.stringify(userSettings.brand_ctas || []) ||
+    JSON.stringify(knowledgeDocuments) !== JSON.stringify(userSettings.knowledge_documents || [])
+  ) ? "dirty" : "clean";
 
   // Update local state when settings load
   useEffect(() => {
@@ -523,6 +587,14 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const testApiKeyMutation = useMutation({
+    mutationFn: (provider: ApiKeyProvider) => api.post<ApiKeyTestResult>("/settings/api-keys/test", { provider }),
+    onMutate: (provider) => setTestingProvider(provider),
+    onSuccess: () => toast.success("Provider key works"),
+    onError: (err: Error) => toast.error(err.message || "Provider key failed"),
+    onSettled: () => setTestingProvider(null),
+  });
+
   const refreshModelsMutation = useMutation({
     mutationFn: async () => {
       const [images, texts] = await Promise.all([
@@ -614,9 +686,11 @@ export default function Settings() {
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "internal", title: "Internal Linking", description: "Sitemap index", icon: LinkIcon },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
-    { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
+    { id: "models", title: "Model Pricing", description: "Live prices, filters", icon: Zap },
     { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
-    { id: "advanced", title: "Advanced", description: "SEO, research, output", icon: SlidersHorizontal },
+    { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
+    { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
+    { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
   ];
 
   return (
@@ -652,6 +726,7 @@ export default function Settings() {
                     onClick={() => saveArticleSettingsMutation.mutate()}
                     disabled={saveArticleSettingsMutation.isPending}
                   >
+                    {unsavedBadge(basicsDirty)}
                     {saveArticleSettingsMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -786,6 +861,7 @@ export default function Settings() {
                     onChange={(e) => setOpenrouterKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -803,6 +879,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("openrouter")}
+                      disabled={!apiKeys?.hasOpenrouterKey || testingProvider === "openrouter"}
+                    >
+                      {testingProvider === "openrouter" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -822,6 +907,7 @@ export default function Settings() {
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -839,6 +925,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("google")}
+                      disabled={!apiKeys?.hasGoogleAiKey || testingProvider === "google"}
+                    >
+                      {testingProvider === "google" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -858,6 +953,7 @@ export default function Settings() {
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -875,6 +971,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("openai")}
+                      disabled={!apiKeys?.hasOpenaiKey || testingProvider === "openai"}
+                    >
+                      {testingProvider === "openai" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -894,6 +999,7 @@ export default function Settings() {
                     onChange={(e) => setReplicateKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -912,6 +1018,15 @@ export default function Settings() {
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("replicate")}
+                      disabled={!apiKeys?.hasReplicateKey || testingProvider === "replicate"}
+                    >
+                      {testingProvider === "replicate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -922,8 +1037,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={Zap}
-                title="Available Models & Pricing"
-                description="Live OpenRouter metadata. The app caches this list and refreshes it only when you ask."
+                title="Model Pricing"
+                description="Live price browser only. Choose the article model on Create Content."
                 action={
                   <Button
                     variant="outline"
@@ -1068,6 +1183,7 @@ export default function Settings() {
                       onClick={() => saveArticleSettingsMutation.mutate()}
                       disabled={saveArticleSettingsMutation.isPending}
                     >
+                      {unsavedBadge(advancedDirty)}
                       {saveArticleSettingsMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
@@ -1116,6 +1232,7 @@ export default function Settings() {
                       onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
                       disabled={saveStyleMutation.isPending || settingsLoading}
                     >
+                      {unsavedBadge(imagePromptDirty)}
                       {saveStyleMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
@@ -1136,17 +1253,27 @@ export default function Settings() {
                 title="Internal Linking"
                 description="Connect your sitemap for intelligent internal links."
                 action={
-                  <Button
-                    onClick={() => saveInternalLinkSettingsMutation.mutate()}
-                    disabled={saveInternalLinkSettingsMutation.isPending}
-                  >
-                    {saveInternalLinkSettingsMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="internal-links-enabled" className="text-sm text-muted-foreground">Enabled</Label>
+                    <Switch
+                      id="internal-links-enabled"
+                      checked={enableInternalLinks}
+                      onCheckedChange={setEnableInternalLinks}
+                      disabled={!internalLinkIndex}
+                    />
+                    <Button
+                      onClick={() => saveInternalLinkSettingsMutation.mutate()}
+                      disabled={saveInternalLinkSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(internalDirty)}
+                      {saveInternalLinkSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
                 }
               />
               {indexInternalLinksMutation.isPending ? (
@@ -1201,7 +1328,7 @@ export default function Settings() {
                       <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
                         <Database className="h-5 w-5 text-muted-foreground" />
                         <span className="text-2xl font-semibold">{internalLinkIndex.vectorCount}</span>
-                        <span className="text-sm text-muted-foreground">Vectors</span>
+                        <span className="text-sm text-muted-foreground">Link candidates</span>
                       </div>
                       <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
                         <Clock className="h-5 w-5 text-muted-foreground" />
@@ -1468,6 +1595,7 @@ export default function Settings() {
                     disabled={saveImageModelMutation.isPending || selectedImageModelUnavailable}
                     size="sm"
                   >
+                    {unsavedBadge(imageModelDirty)}
                     {saveImageModelMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -1492,6 +1620,9 @@ export default function Settings() {
                     showSaveOption
                     imageModelId={selectedImageModel}
                   />
+                  {imageDefaultsDirty === "dirty" && (
+                    <Badge variant="outline" className="mt-4 border-amber-300 text-amber-700">Unsaved defaults</Badge>
+                  )}
                   {saveDefaultsMutation.isPending && (
                     <div className="mt-4 flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1525,6 +1656,7 @@ export default function Settings() {
                     onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
                     disabled={saveStyleMutation.isPending || settingsLoading}
                   >
+                    {unsavedBadge(imagePromptDirty)}
                     {saveStyleMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -1541,32 +1673,24 @@ export default function Settings() {
             <div className="space-y-6">
               <BywordCard>
                 <SectionHeader
-                  icon={Building2}
-                  title="Brand Profile"
-                  description="Your brand identity for article integration."
-                  action={
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => toast.info("Re-analysis will be connected to website crawling in a later pass")}
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Re-analyze
-                      </Button>
-                      <Button
-                        onClick={() => saveBrandSettingsMutation.mutate()}
-                        disabled={saveBrandSettingsMutation.isPending}
-                      >
-                        {saveBrandSettingsMutation.isPending ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-2 h-4 w-4" />
-                        )}
-                        Save
-                      </Button>
-                    </div>
-                  }
-                />
+                icon={Building2}
+                title="Brand Profile"
+                description="Your brand identity for article integration."
+                action={
+                  <Button
+                    onClick={() => saveBrandSettingsMutation.mutate()}
+                    disabled={saveBrandSettingsMutation.isPending}
+                  >
+                    {unsavedBadge(brandDirty)}
+                    {saveBrandSettingsMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                }
+              />
                 <div className="divide-y divide-byword-border">
                   <div className="grid gap-4 p-6 md:grid-cols-[1fr_420px]">
                     <div>
@@ -1680,17 +1804,31 @@ export default function Settings() {
 
               <BywordCard>
                 <SectionHeader
-                  icon={FileText}
-                  title="Knowledge Base"
-                  description="Reference saved content during article generation for more accurate, on-brand content."
-                  action={
+                icon={FileText}
+                title="Knowledge Base"
+                description="Reference saved content during article generation for more accurate, on-brand content."
+                action={
+                  <div className="flex items-center gap-3">
                     <Switch
                       checked={knowledgeBaseEnabled}
                       onCheckedChange={setKnowledgeBaseEnabled}
                       aria-label="Use knowledge documents"
                     />
-                  }
-                />
+                    <Button
+                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      disabled={saveBrandSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(brandDirty)}
+                      {saveBrandSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                }
+              />
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-[280px_1fr]">
                     <Input
@@ -1741,16 +1879,30 @@ export default function Settings() {
 
               <BywordCard>
                 <SectionHeader
-                  icon={Target}
-                  title="Call to Action"
-                  description="Promotional content included in your articles."
-                  action={
-                    <Button type="button" onClick={addCta}>
+                icon={Target}
+                title="Call to Action"
+                description="Promotional content included in your articles."
+                action={
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={addCta}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Add CTA
+                      Add
                     </Button>
-                  }
-                />
+                    <Button
+                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      disabled={saveBrandSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(brandDirty)}
+                      {saveBrandSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                }
+              />
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
@@ -1794,23 +1946,66 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={SlidersHorizontal}
-                title="Advanced"
-                description="Future controls for generation limits, compliance, and workspace safety."
+                title="Advanced Defaults"
+                description="Article instructions saved into the generation prompt."
+                action={
+                  <Button
+                    onClick={() => saveArticleSettingsMutation.mutate()}
+                    disabled={saveArticleSettingsMutation.isPending}
+                  >
+                    {unsavedBadge(advancedDirty)}
+                    {saveArticleSettingsMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                }
               />
-              <div className="grid gap-4 p-6 md:grid-cols-2">
-                <div className="rounded-lg border border-byword-border p-5">
-                  <IconTile icon={ShieldCheck} />
-                  <h3 className="mt-4 text-sm font-semibold">Private beta access</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Account approval and admin review stay enforced before users can access product routes.
-                  </p>
+              <div className="divide-y divide-byword-border">
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={Globe2} />
+                    <div>
+                      <h3 className="text-base font-semibold">Research Context</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Ask the writer to add useful context and explain claims clearly.</p>
+                    </div>
+                  </div>
+                  <Switch checked={enableResearch} onCheckedChange={setEnableResearch} aria-label="Enable research context" />
                 </div>
-                <div className="rounded-lg border border-byword-border p-5">
-                  <IconTile icon={Zap} />
-                  <h3 className="mt-4 text-sm font-semibold">Provider usage</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Generation uses each approved user's own encrypted OpenRouter and Google Gemini keys.
-                  </p>
+
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={ListChecks} />
+                    <div>
+                      <h3 className="text-base font-semibold">Table of Contents</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Include a concise table of contents near the beginning.</p>
+                    </div>
+                  </div>
+                  <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} aria-label="Include table of contents" />
+                </div>
+
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_320px]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={MessageSquare} />
+                    <div>
+                      <h3 className="text-base font-semibold">Default Voice</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Fallback voice used when no persona overrides it.</p>
+                    </div>
+                  </div>
+                  <Select value={articleVoice} onValueChange={setArticleVoice}>
+                    <SelectTrigger className="h-12">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {voiceOptions.map((voice) => (
+                        <SelectItem key={voice.label} value={voice.label}>
+                          {voice.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </BywordCard>
