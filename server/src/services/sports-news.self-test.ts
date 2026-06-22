@@ -24,6 +24,12 @@ const dataOnly = classifySportsNews({ url: "https://www.transfermarkt.com/player
 assert.equal(dataOnly.allowed, false);
 assert.match(dataOnly.reason || "", /data\/scout/i);
 
+const dataOnlyRule = classifySportsNews({
+  content: "Stats Feed update",
+  matrixRows: [{ sourceName: "Stats Feed", sourceType: "Standard News", publishRule: "Data only: do not generate", status: "AKTİF" }],
+});
+assert.equal(dataOnlyRule.allowed, false);
+
 const passive = classifySportsNews({ content: "Retired Reporter says something.", matrixRows: rows });
 assert.equal(passive.allowed, false);
 assert.match(passive.reason || "", /passive/i);

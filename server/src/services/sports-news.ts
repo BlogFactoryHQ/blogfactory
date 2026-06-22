@@ -183,13 +183,13 @@ export function classifySportsNews(input: {
   if (status.includes("pasif") || status.includes("passive") || status.includes("disabled")) {
     return { allowed: false, sourceName: row.sourceName, reason: `${row.sourceName} is passive in the matrix.` };
   }
-  if (/veri|scout/i.test(normalized(row.sourceType)) || normalized(row.publishRule).startsWith("veri")) {
+  const publishRule = normalized(row.publishRule);
+  if (/veri|data|scout/i.test(normalized(row.sourceType)) || /^(veri|data)/.test(publishRule)) {
     return { allowed: false, sourceName: row.sourceName, reason: `${row.sourceName} is data/scout only.` };
   }
 
   const label = labelFor(row);
-  const rule = normalized(row.publishRule);
-  const requiresSecondSource = (row.reliability || 0) < 5 || rule.includes("2. kaynak") || rule.includes("ikinci kaynak") || rule.includes("teyit");
+  const requiresSecondSource = (row.reliability || 0) < 5 || publishRule.includes("2. kaynak") || publishRule.includes("ikinci kaynak") || publishRule.includes("teyit") || publishRule.includes("second source") || publishRule.includes("verify");
   return {
     allowed: true,
     label,

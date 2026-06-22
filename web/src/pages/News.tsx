@@ -57,7 +57,7 @@ const isActiveMatrixRow = (row: SportsMatrixRow) => (row.status || "").toLocaleL
 const isMonitorableMatrixRow = (row: SportsMatrixRow) => {
   const sourceType = (row.sourceType || "").toLocaleLowerCase("tr");
   const rule = (row.publishRule || "").toLocaleLowerCase("tr");
-  return isActiveMatrixRow(row) && !/veri|scout/.test(sourceType) && !rule.startsWith("veri");
+  return isActiveMatrixRow(row) && !/veri|data|scout/.test(sourceType) && !/^(veri|data)/.test(rule);
 };
 
 const normalizeUrl = (value?: string | null) => {
@@ -82,6 +82,24 @@ const firstUsableFeedUrl = (row: SportsMatrixRow) => {
   }
   return "";
 };
+
+const SOURCE_TYPE_OPTIONS = [
+  { value: "Publisher/Media", label: "Publisher / media", hint: "Verified news label" },
+  { value: "Official", label: "Official source", hint: "Official label" },
+  { value: "Reporter/Insider", label: "Reporter / insider", hint: "Attribution label" },
+  { value: "Standard News", label: "Standard news", hint: "Normal rewrite" },
+  { value: "Data/Scout Only", label: "Data / scout only", hint: "Skip article generation" },
+];
+
+const PUBLISH_RULE_OPTIONS = [
+  { value: "Standard rewrite", label: "Standard rewrite", hint: "Rewrite with neutral news tone" },
+  { value: "Attribute claims", label: "Attribute claims", hint: "Keep claims tied to the source" },
+  { value: "Require second source", label: "Require second source", hint: "Use cautious wording" },
+  { value: "Official statement only", label: "Official statement only", hint: "Use official/confirmed language only for official sources" },
+  { value: "Data only: do not generate", label: "Data only: do not generate", hint: "Skip as article source" },
+];
+
+const RELIABILITY_OPTIONS = ["5", "4", "3", "2", "1"];
 
 export default function News() {
   const { user } = useAuth();
@@ -339,12 +357,12 @@ export default function News() {
     setEditingRuleIndex(index);
     setRuleDraft(row ? { ...row } : {
       sourceName: feedName.trim() || feedUrl.trim() || "",
-      sourceType: "Kurum Medyası",
+      sourceType: "Publisher/Media",
       reliability: 4,
       status: "AKTİF",
       tags: "",
       siteLink: feedUrl.trim(),
-      publishRule: "Atıflı ve temkinli haber yaz.",
+      publishRule: "Attribute claims",
     });
   };
 
@@ -465,7 +483,17 @@ export default function News() {
                     </div>
                     <div className="space-y-2">
                       <Label>Source Type</Label>
-                      <Input value={ruleDraft.sourceType || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, sourceType: event.target.value })} placeholder="Ajans/Kurum, Insider, Resmi..." />
+                      <Select value={ruleDraft.sourceType || "Standard News"} onValueChange={(sourceType) => setRuleDraft({ ...ruleDraft, sourceType })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {SOURCE_TYPE_OPTIONS.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>{item.label} - {item.hint}</SelectItem>
+                          ))}
+                          {ruleDraft.sourceType && !SOURCE_TYPE_OPTIONS.some((item) => item.value === ruleDraft.sourceType) && (
+                            <SelectItem value={ruleDraft.sourceType}>Current: {ruleDraft.sourceType}</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Site / RSS URL</Label>
@@ -474,7 +502,14 @@ export default function News() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label>Reliability</Label>
-                        <Input type="number" min={1} max={5} value={ruleDraft.reliability || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, reliability: Number(event.target.value) || undefined })} />
+                        <Select value={String(ruleDraft.reliability || 4)} onValueChange={(reliability) => setRuleDraft({ ...ruleDraft, reliability: Number(reliability) })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {RELIABILITY_OPTIONS.map((value) => (
+                              <SelectItem key={value} value={value}>{value} / 5</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Status</Label>
@@ -493,7 +528,17 @@ export default function News() {
                     </div>
                     <div className="space-y-2">
                       <Label>Publish Rule</Label>
-                      <Input value={ruleDraft.publishRule || ""} onChange={(event) => setRuleDraft({ ...ruleDraft, publishRule: event.target.value })} placeholder="Atıflı ve temkinli haber yaz." />
+                      <Select value={ruleDraft.publishRule || "Standard rewrite"} onValueChange={(publishRule) => setRuleDraft({ ...ruleDraft, publishRule })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PUBLISH_RULE_OPTIONS.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>{item.label} - {item.hint}</SelectItem>
+                          ))}
+                          {ruleDraft.publishRule && !PUBLISH_RULE_OPTIONS.some((item) => item.value === ruleDraft.publishRule) && (
+                            <SelectItem value={ruleDraft.publishRule}>Current: {ruleDraft.publishRule}</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="mt-4 flex justify-end gap-2">
