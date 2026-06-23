@@ -44,6 +44,19 @@ interface GenerateOpts {
     title?: string | null;
     outline?: OutlineHeading[] | null;
     sharedContext?: string | null;
+    programmatic?: {
+      templateName: string;
+      variables: Record<string, string>;
+      sections: Array<{
+        type: string;
+        heading: string;
+        instructions: string;
+        minWords?: number;
+        maxWords?: number;
+        snippable?: boolean;
+      }>;
+      wordRange?: [number, number];
+    };
   };
 }
 
@@ -304,6 +317,26 @@ function buildArticleExtras(opts: GenerateOpts) {
 
 function buildCampaignUserMessage(article: NonNullable<GenerateOpts["campaignArticle"]>) {
   const lines = ["Write one complete, publish-ready markdown blog article for this campaign item."];
+
+  if (article.mode === "programmatic" && article.programmatic) {
+    if (article.title) lines.push(`Use this exact H1 title: ${article.title}`);
+    lines.push(`Programmatic template: ${article.programmatic.templateName}`);
+    if (article.programmatic.wordRange) {
+      lines.push(`Target article length: ${article.programmatic.wordRange[0]}-${article.programmatic.wordRange[1]} words.`);
+    }
+    const variables = Object.entries(article.programmatic.variables)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("; ");
+    if (variables) lines.push(`Row data: ${variables}`);
+    lines.push("Follow this section plan. Use each non-title heading as an H2 and satisfy the instruction for that section:");
+    for (const section of article.programmatic.sections.filter((section) => section.type !== "title")) {
+      const words = section.minWords || section.maxWords ? ` (${section.minWords || "?"}-${section.maxWords || "?"} words)` : "";
+      lines.push(`- ${section.heading}${words}: ${section.instructions}`);
+    }
+    if (article.sharedContext) lines.push(`Campaign context: ${article.sharedContext}`);
+    lines.push("Return only the finished article markdown.");
+    return lines.join("\n");
+  }
 
   if (article.mode === "keyword" && article.keyword) {
     lines.push(`Primary SEO keyword: ${article.keyword}`);

@@ -107,6 +107,27 @@ export const campaigns = pgTable("campaigns", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const programmaticTemplates = pgTable("programmatic_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"),
+  template: jsonb("template").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const programmaticDatasets = pgTable("programmatic_datasets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  columns: text("columns").array().notNull(),
+  rows: jsonb("rows").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── posts ──
 export const posts = pgTable("posts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -162,6 +183,7 @@ export const campaignItems = pgTable("campaign_items", {
   keyword: text("keyword"),
   title: text("title"),
   outline: jsonb("outline"),
+  variables: jsonb("variables"),
   status: text("status").default("queued").notNull(),
   jobId: uuid("job_id").references((): AnyPgColumn => jobs.id, { onDelete: "set null" }),
   postId: uuid("post_id").references((): AnyPgColumn => posts.id, { onDelete: "set null" }),

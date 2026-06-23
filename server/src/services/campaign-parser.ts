@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 
-export type CampaignMode = "keyword" | "title" | "title_outline";
+export type CampaignMode = "keyword" | "title" | "title_outline" | "programmatic";
 export type OutlineHeading = { level: 2 | 3; text: string };
 
 export interface ParsedCampaignItem {
@@ -8,9 +8,10 @@ export interface ParsedCampaignItem {
   keyword?: string;
   title?: string;
   outline?: OutlineHeading[];
+  variables?: Record<string, string>;
 }
 
-const modes = new Set(["keyword", "title", "title_outline"]);
+const modes = new Set(["keyword", "title", "title_outline", "programmatic"]);
 
 export function isCampaignMode(value: unknown): value is CampaignMode {
   return typeof value === "string" && modes.has(value);

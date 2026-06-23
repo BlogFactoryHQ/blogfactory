@@ -18,6 +18,7 @@ const News = lazy(() => import("@/pages/News"));
 const RSSFeeds = lazy(() => import("@/pages/RSSFeeds"));
 const RSSFeedNew = lazy(() => import("@/pages/RSSFeedNew"));
 const ContentCreator = lazy(() => import("@/pages/ContentCreator"));
+const Programmatic = lazy(() => import("@/pages/Programmatic"));
 const Campaigns = lazy(() => import("@/pages/Campaigns"));
 const BatchImport = lazy(() => import("@/pages/BatchImport"));
 const Jobs = lazy(() => import("@/pages/Jobs"));
@@ -58,6 +59,7 @@ const App = () => (
                         <Route path="/rss-feeds" element={<RSSFeeds />} />
                         <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                         <Route path="/content-creator" element={<ContentCreator />} />
+                        <Route path="/programmatic" element={<Programmatic />} />
                         <Route path="/campaigns" element={<Campaigns />} />
                         <Route path="/campaigns/new" element={<Navigate to="/content-creator?mode=campaign" replace />} />
                         <Route path="/campaigns/:id" element={<Campaigns />} />

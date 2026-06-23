@@ -5,6 +5,7 @@ import { campaignItems, campaigns, jobs, personas, userSettings } from "../db/sc
 import { getUserId } from "../middleware/auth.js";
 import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampaignItem } from "../services/campaign-parser.js";
 import { retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
+import { materializeProgrammaticItems } from "../services/programmatic.js";
 
 export const campaignsRoutes = new Hono();
 
@@ -66,19 +67,33 @@ campaignsRoutes.post("/", async (c) => {
   if (!modelId) return c.json({ error: "Model is required" }, 400);
 
   let items: ParsedCampaignItem[];
+  let programmatic: ReturnType<typeof materializeProgrammaticItems> | null = null;
   try {
-    items = parseCampaignLines(String(body.lines || ""), mode);
+    if (mode === "programmatic") {
+      programmatic = materializeProgrammaticItems(body.programmatic);
+      items = programmatic.items;
+    } else {
+      items = parseCampaignLines(String(body.lines || ""), mode);
+    }
   } catch (err: any) {
     return c.json({ error: err.message || "Invalid campaign input" }, 400);
   }
   if (!items.length) return c.json({ error: "Add at least one campaign item" }, 400);
 
-  const outlineMode = ["shared", "per_item"].includes(body.outlineMode) ? body.outlineMode : "none";
+  const outlineMode = mode === "programmatic" ? "programmatic" : ["shared", "per_item"].includes(body.outlineMode) ? body.outlineMode : "none";
   const sharedOutline = outlineMode === "shared" ? normalizeOutline(body.sharedOutline) : [];
   if (mode === "title_outline" && outlineMode === "shared" && !sharedOutline.length) {
     return c.json({ error: "Shared outline is required" }, 400);
   }
   const settingsSnapshot = await buildSettingsSnapshot(userId, body);
+  if (programmatic) {
+    settingsSnapshot.programmatic = {
+      template: programmatic.template,
+      dataMode: programmatic.dataMode,
+      variables: programmatic.variables,
+      rowCount: programmatic.rows.length,
+    };
+  }
   const personaId = typeof body.personaId === "string" && body.personaId.trim() ? body.personaId.trim() : null;
 
   if (personaId) {
@@ -111,6 +126,7 @@ campaignsRoutes.post("/", async (c) => {
     keyword: item.keyword || null,
     title: item.title || null,
     outline: item.outline || null,
+    variables: item.variables || null,
     status: "queued",
   }))).returning();
 

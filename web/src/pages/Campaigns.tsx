@@ -27,7 +27,7 @@ import {
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { useIntegrations } from "@/hooks/useIntegrations";
 
-type CampaignMode = "keyword" | "title" | "title_outline";
+type CampaignMode = "keyword" | "title" | "title_outline" | "programmatic";
 type CampaignStatus = "draft" | "queued" | "running" | "completed" | "failed" | "stopped";
 type BadgeStatus = "success" | "warning" | "error" | "pending" | "running" | "draft";
 
@@ -61,6 +61,7 @@ interface CampaignItem {
   jobTotalCost: number | null;
   postId: string | null;
   errorMessage: string | null;
+  variables?: Record<string, string> | null;
 }
 
 interface CampaignHistory {
@@ -78,6 +79,7 @@ const modeLabels: Record<CampaignMode, string> = {
   keyword: "Keyword",
   title: "Title",
   title_outline: "Title + Outline",
+  programmatic: "Programmatic",
 };
 
 function statusType(status: string): BadgeStatus {
@@ -358,7 +360,9 @@ function CampaignDetail({ id }: { id: string }) {
                 <TableCell>{item.position}</TableCell>
                 <TableCell className="max-w-xl">
                   <p className="truncate font-medium">{item.title || item.keyword || item.input}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.input}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {item.variables ? Object.entries(item.variables).map(([key, value]) => `${key}: ${value}`).join(" · ") : item.input}
+                  </p>
                 </TableCell>
                 <TableCell><StatusBadge status={statusType(item.status)} label={item.status} /></TableCell>
                 <TableCell className="max-w-48 truncate text-xs text-muted-foreground">

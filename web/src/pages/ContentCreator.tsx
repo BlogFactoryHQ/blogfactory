@@ -772,8 +772,7 @@ export default function ContentCreator() {
             icon={Grid2X2}
             title="Programmatic"
             description="Generate from templates and structured data at scale."
-            badge="Coming soon"
-            disabled
+            onClick={() => navigate("/programmatic")}
           />
         </div>
 

@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
+import { renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
 
 const CAMPAIGN_CONCURRENCY = 3;
 const STALE_ITEM_MINUTES = 45;
@@ -14,6 +15,27 @@ function itemOutline(item: CampaignItem, campaign: Campaign) {
   const own = Array.isArray(item.outline) ? item.outline as OutlineHeading[] : [];
   if (own.length) return own;
   return Array.isArray(campaign.sharedOutline) ? campaign.sharedOutline as OutlineHeading[] : [];
+}
+
+function programmaticArticle(campaign: Campaign, item: CampaignItem) {
+  if (campaign.mode !== "programmatic") return null;
+  const snapshot = campaign.settingsSnapshot as { programmatic?: { template?: ProgrammaticTemplate } };
+  const template = snapshot?.programmatic?.template as ProgrammaticTemplate | undefined;
+  if (!template) throw new Error("Programmatic template snapshot is missing");
+  const variables = (item.variables || {}) as ProgrammaticRow;
+  const rendered = renderProgrammaticArticle(template, variables);
+  return {
+    mode: "programmatic" as CampaignMode,
+    title: rendered.title,
+    outline: rendered.outline,
+    sharedContext: campaign.name,
+    programmatic: {
+      templateName: template.name,
+      variables,
+      sections: rendered.sections,
+      wordRange: template.wordRange,
+    },
+  };
 }
 
 async function refreshCampaignCounters(campaignId: string) {
@@ -74,6 +96,7 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
 
   let result: Awaited<ReturnType<typeof generateContent>>;
   try {
+    const article = programmaticArticle(campaign, item);
     result = await generateContent({
       userId: campaign.userId,
       sourceType: "campaign",
@@ -85,7 +108,7 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
       settingsSnapshot: campaign.settingsSnapshot,
       generateImages: Boolean((campaign.settingsSnapshot as any)?.generateImages),
       imageConfig: (campaign.settingsSnapshot as any)?.imageConfig,
-      campaignArticle: {
+      campaignArticle: article || {
         mode: campaign.mode as CampaignMode,
         keyword: item.keyword,
         title: item.title,

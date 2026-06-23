@@ -19,6 +19,7 @@ import {
   Plus,
   Check,
   Newspaper,
+  Grid2X2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,6 +44,7 @@ import {
 const primaryNavigation = [
   { name: "News", href: "/news", icon: Newspaper },
   { name: "Create Content", href: "/content-creator", icon: PenTool },
+  { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
   { name: "Job Queue", href: "/jobs", icon: ListTodo },
