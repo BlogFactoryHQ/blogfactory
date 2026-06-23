@@ -5,60 +5,6 @@ import { getOpenRouterModels } from "../services/openrouter-models.js";
 
 export const modelsRoutes = new Hono();
 
-const manualImageModels = [
-  {
-    id: "manual/midjourney-relax",
-    name: "Midjourney Relax (manual)",
-    provider: "manual",
-    pricing: "free",
-    costInfo: "Uses your subscription manually",
-    description: "Creates copy-ready prompts for Midjourney; upload the finished image back into the gallery.",
-    apiProvider: "manual",
-    isFree: true,
-    limits: "Human-operated queue. No Midjourney API or Discord automation.",
-    constraints: null,
-    rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 },
-    contextLength: null,
-    modalities: { input: ["text"], output: ["image"] },
-    created: null,
-    supportedParameters: [],
-  },
-  {
-    id: "manual/higgsfield-web",
-    name: "Higgsfield Web (manual)",
-    provider: "manual",
-    pricing: "free",
-    costInfo: "Uses your subscription manually",
-    description: "Creates copy-ready prompts for Higgsfield web; upload the finished image back into the gallery.",
-    apiProvider: "manual",
-    isFree: true,
-    limits: "Human-operated queue. Does not bypass Higgsfield credits or API limits.",
-    constraints: null,
-    rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 },
-    contextLength: null,
-    modalities: { input: ["text"], output: ["image"] },
-    created: null,
-    supportedParameters: [],
-  },
-  {
-    id: "manual/chatgpt-images",
-    name: "ChatGPT Images (manual)",
-    provider: "manual",
-    pricing: "free",
-    costInfo: "Uses your subscription manually",
-    description: "Creates copy-ready prompts for ChatGPT image generation; upload the finished image back into the gallery.",
-    apiProvider: "manual",
-    isFree: true,
-    limits: "Human-operated queue. Does not turn ChatGPT or Codex subscription usage into API usage.",
-    constraints: null,
-    rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 },
-    contextLength: null,
-    modalities: { input: ["text"], output: ["image"] },
-    created: null,
-    supportedParameters: [],
-  },
-] as const;
-
 const officialImageModels = [
   {
     id: "auto/consistent-cover",
@@ -199,7 +145,7 @@ modelsRoutes.get("/text", async (c) => {
 modelsRoutes.get("/image", async (c) => {
   const refresh = c.req.query("refresh") === "true";
   const apiKey = await getOpenRouterKey(getUserId(c));
-  const baseModels = [...manualImageModels, ...officialImageModels];
+  const baseModels = [...officialImageModels];
   if (!apiKey) return c.json(baseModels);
 
   try {

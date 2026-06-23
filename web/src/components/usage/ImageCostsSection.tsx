@@ -15,6 +15,7 @@ interface GenerationLog {
   id: string;
   provider: string | null;
   model_id: string | null;
+  usage_type?: string | null;
   cost: number | null;
   created_at: string;
   [key: string]: unknown;
@@ -35,12 +36,14 @@ interface ImageProviderSummary {
 
 const PROVIDER_LABELS: Record<string, string> = {
   "openrouter-image": "OpenRouter",
-  "google-ai-studio-image": "Google AI Studio",
+  "google-ai-studio": "Google AI Studio",
+  "openai-image": "OpenAI",
+  "replicate-image": "Replicate",
 };
 
 export function ImageCostsSection({ logs, days }: ImageCostsSectionProps) {
   const imageLogs = useMemo(
-    () => logs.filter((l) => l.provider?.endsWith("-image")),
+    () => logs.filter((l) => l.usage_type === "image" || l.provider?.includes("image") || l.provider === "google-ai-studio"),
     [logs]
   );
 

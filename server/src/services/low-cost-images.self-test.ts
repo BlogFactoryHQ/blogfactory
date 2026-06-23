@@ -1,4 +1,4 @@
-import { chooseImageResolution, shouldQueueAiBeforeStock } from "./low-cost-images.js";
+import { chooseImageResolution, imageModelForTarget, shouldQueueAiBeforeStock } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -35,15 +35,27 @@ assertEqual(
 );
 
 assertEqual(
-  shouldQueueAiBeforeStock("ai_first", "cover", true, false),
+  shouldQueueAiBeforeStock("cover", true),
   true,
-  "AI first queues cover AI before stock"
+  "cover queues selected AI before stock"
 );
 
 assertEqual(
-  shouldQueueAiBeforeStock("ai_first", "inline", true, false),
-  false,
-  "AI first only forces covers"
+  shouldQueueAiBeforeStock("inline", true),
+  true,
+  "inline queues free AI before stock"
+);
+
+assertEqual(
+  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "cover"),
+  "google-ai-studio/gemini-3.1-flash-image",
+  "cover uses selected model"
+);
+
+assertEqual(
+  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline"),
+  "openrouter/free",
+  "inline uses free OpenRouter first"
 );
 
 console.log("low-cost-images self-check passed");

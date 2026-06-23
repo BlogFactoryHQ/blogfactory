@@ -683,20 +683,6 @@ export async function generateContent(opts: GenerateOpts) {
         totalCost += cost;
         totalTokens += usage?.total_tokens || 0;
 
-        await db.insert(generationLogs).values({
-          userId,
-          modelId,
-          provider: modelId.split("/")[0],
-          status: "success",
-          promptTokens: usage?.prompt_tokens,
-          completionTokens: usage?.completion_tokens,
-          totalTokens: usage?.total_tokens,
-          cost,
-          latencyMs: genLatency,
-          sessionId: jobId,
-          responseData: { id: aiData.id, generation: openRouterUsage.stats },
-        });
-
         const [post] = await db.insert(posts).values({
           userId,
           title: postTitle,
@@ -711,6 +697,22 @@ export async function generateContent(opts: GenerateOpts) {
           personaId: opts.personaId || null,
           modelId,
         }).returning();
+
+        await db.insert(generationLogs).values({
+          userId,
+          postId: post.id,
+          usageType: "text",
+          modelId,
+          provider: modelId.split("/")[0],
+          status: "success",
+          promptTokens: usage?.prompt_tokens,
+          completionTokens: usage?.completion_tokens,
+          totalTokens: usage?.total_tokens,
+          cost,
+          latencyMs: genLatency,
+          sessionId: jobId,
+          responseData: { id: aiData.id, generation: openRouterUsage.stats },
+        });
 
         createdPostIds.push(post.id);
 
@@ -728,11 +730,9 @@ export async function generateContent(opts: GenerateOpts) {
             imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
             stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
             settings: {
-              imageSourceMode: promptSettings?.imageSourceMode,
               sourceImageAllowed: promptSettings?.sourceImageAllowed,
               aiFallbackEnabled: promptSettings?.aiFallbackEnabled,
               maxAiImagesPerDay: promptSettings?.maxAiImagesPerDay,
-              maxAiImagesPerPost: promptSettings?.maxAiImagesPerPost,
               minMinutesBetweenAiImages: promptSettings?.minMinutesBetweenAiImages,
               imageCompressionEnabled: opts.imageConfig?.compressionEnabled ?? promptSettings?.imageCompressionEnabled ?? true,
             },
@@ -909,102 +909,6 @@ function buildImageAltText(opts: {
   return `${opts.type === "cover" ? "Featured image" : "Article image"} for ${opts.title}${detail}`.slice(0, 180);
 }
 
-async function generateImages(opts: {
-  content: string;
-  title: string;
-  userId: string;
-  postId: string;
-  jobId: string;
-  imageConfig: any;
-  imageModel?: string;
-  stylePrompt?: string;
-  compressionEnabled?: boolean;
-  openRouterKey: string;
-  googleAiKey: string | null;
-  openAiKey: string | null;
-  replicateKey: string | null;
-  deadlineMs: number;
-}): Promise<{ coverPath: string | null; inlinePaths: string[]; cost: number }> {
-  let coverPath: string | null = null;
-  const inlinePaths: string[] = [];
-  let totalCost = 0;
-  const imageModel = opts.imageModel || "auto/consistent-cover";
-  if (imageModel.startsWith("manual/")) {
-    await createManualImageRequests({
-      imageModel,
-      imageConfig: opts.imageConfig,
-      stylePrompt: opts.stylePrompt,
-      title: opts.title,
-      userId: opts.userId,
-      postId: opts.postId,
-      jobId: opts.jobId,
-      content: opts.content,
-    });
-    return { coverPath, inlinePaths, cost: 0 };
-  }
-
-  if (imageModel.startsWith("google-ai-studio/") && !opts.googleAiKey) {
-    throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
-  }
-  if (imageModel.startsWith("openai/") && !opts.openAiKey) {
-    throw new Error("Add your OpenAI API key in Settings before using OpenAI image models");
-  }
-  if (imageModel.startsWith("replicate/") && !opts.replicateKey) {
-    throw new Error("Add your Replicate API token in Settings before using Replicate image models");
-  }
-  const officialImageModel = imageModel.startsWith("google-ai-studio/") || imageModel.startsWith("openai/") || imageModel.startsWith("replicate/");
-  if (!officialImageModel) {
-    await assertOpenRouterModelAvailable(opts.openRouterKey, imageModel, "image");
-  }
-
-  // Generate cover image
-  if (opts.imageConfig?.cover) {
-    const coverCount = opts.imageConfig.cover.count || 1;
-    const resolution = opts.imageConfig.cover.resolution || "1K";
-    const aspectRatio = opts.imageConfig.cover.aspectRatio || "16:9";
-
-    for (let i = 0; i < coverCount; i++) {
-      if (Date.now() + IMAGE_REQUEST_TIMEOUT_MS > opts.deadlineMs) break;
-      try {
-        const prompt = buildImagePrompt({ content: opts.content, title: opts.title, type: "cover", index: i, stylePrompt: opts.stylePrompt });
-        const altText = buildImageAltText({ content: opts.content, title: opts.title, type: "cover", index: i });
-        const result = await generateSingleImage(prompt, altText, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "cover", i, opts.compressionEnabled ?? true, opts.openRouterKey, opts.googleAiKey, opts.openAiKey, opts.replicateKey);
-        if (result) {
-          totalCost += result.cost;
-          if (i === 0 && result.storagePath) coverPath = result.storagePath;
-        }
-      } catch (err) {
-        console.error("[generate] Cover image error:", err);
-      }
-    }
-  }
-
-  // Generate inline images
-  if (opts.imageConfig?.inline) {
-    const inlineCount = opts.imageConfig.inline.count || 2;
-    const resolution = opts.imageConfig.inline.resolution || "1K";
-    const aspectRatio = opts.imageConfig.inline.aspectRatio || "3:2";
-
-    for (let i = 0; i < inlineCount; i++) {
-      if (Date.now() + IMAGE_REQUEST_TIMEOUT_MS > opts.deadlineMs) break;
-      try {
-        const prompt = buildImagePrompt({ content: opts.content, title: opts.title, type: "inline", index: i, stylePrompt: opts.stylePrompt });
-        const altText = buildImageAltText({ content: opts.content, title: opts.title, type: "inline", index: i });
-        const result = await generateSingleImage(prompt, altText, imageModel, resolution, aspectRatio, opts.userId, opts.jobId, "inline", i, opts.compressionEnabled ?? true, opts.openRouterKey, opts.googleAiKey, opts.openAiKey, opts.replicateKey);
-        if (result) {
-          totalCost += result.cost;
-          if (!result.storagePath) continue;
-          inlinePaths.push(result.storagePath);
-        }
-      } catch (err) {
-        console.error("[generate] Inline image error:", err);
-      }
-    }
-  }
-
-  return { coverPath, inlinePaths, cost: totalCost };
-}
-
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {
   if (!request.modelId || !request.jobId) throw new Error("Queued image request is missing model/job data");
   const [settings] = await db
@@ -1035,6 +939,7 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
     request.jobId,
     request.type,
     request.position || 0,
+    request.postId || null,
     settings?.imageCompressionEnabled ?? true,
     openRouterKey || "",
     googleAiKey,
@@ -1059,64 +964,6 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
   return result;
 }
 
-async function createManualImageRequests(opts: {
-  imageModel: string;
-  imageConfig: any;
-  stylePrompt?: string;
-  title: string;
-  content: string;
-  userId: string;
-  postId: string;
-  jobId: string;
-}) {
-  const rows: Array<typeof imageGenerationRequests.$inferInsert> = [];
-  const provider = opts.imageModel.replace("manual/", "");
-
-  if (opts.imageConfig?.cover) {
-    const coverCount = opts.imageConfig.cover.count || 1;
-    const resolution = opts.imageConfig.cover.resolution || "1K";
-    const aspectRatio = opts.imageConfig.cover.aspectRatio || "16:9";
-    for (let i = 0; i < coverCount; i++) {
-      const prompt = buildImagePrompt({ content: opts.content, title: opts.title, type: "cover", index: i, stylePrompt: opts.stylePrompt });
-      rows.push({
-        userId: opts.userId,
-        postId: opts.postId,
-        jobId: opts.jobId,
-        provider,
-        type: "cover",
-        position: i,
-        aspectRatio,
-        resolution,
-        prompt,
-        altText: buildImageAltText({ content: opts.content, title: opts.title, type: "cover", index: i }),
-      });
-    }
-  }
-
-  if (opts.imageConfig?.inline) {
-    const inlineCount = opts.imageConfig.inline.count || 2;
-    const resolution = opts.imageConfig.inline.resolution || "1K";
-    const aspectRatio = opts.imageConfig.inline.aspectRatio || "3:2";
-    for (let i = 0; i < inlineCount; i++) {
-      const prompt = buildImagePrompt({ content: opts.content, title: opts.title, type: "inline", index: i, stylePrompt: opts.stylePrompt });
-      rows.push({
-        userId: opts.userId,
-        postId: opts.postId,
-        jobId: opts.jobId,
-        provider,
-        type: "inline",
-        position: i,
-        aspectRatio,
-        resolution,
-        prompt,
-        altText: buildImageAltText({ content: opts.content, title: opts.title, type: "inline", index: i }),
-      });
-    }
-  }
-
-  if (rows.length) await db.insert(imageGenerationRequests).values(rows);
-}
-
 async function generateSingleImage(
   prompt: string,
   altText: string,
@@ -1127,6 +974,7 @@ async function generateSingleImage(
   jobId: string,
   type: string,
   position: number,
+  postId: string | null,
   compressionEnabled: boolean,
   openRouterKey: string,
   googleAiKey: string | null,
@@ -1138,15 +986,15 @@ async function generateSingleImage(
     if (!googleAiKey) {
       throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
     }
-    return generateWithGoogleAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, compressionEnabled, googleAiKey);
+    return generateWithGoogleAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, googleAiKey);
   }
   if (modelId.startsWith("openai/")) {
     if (!openAiKey) throw new Error("Add your OpenAI API key in Settings before using OpenAI image models");
-    return generateWithOpenAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, compressionEnabled, openAiKey);
+    return generateWithOpenAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, openAiKey);
   }
   if (modelId.startsWith("replicate/")) {
     if (!replicateKey) throw new Error("Add your Replicate API token in Settings before using Replicate image models");
-    return generateWithReplicate(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, compressionEnabled, replicateKey);
+    return generateWithReplicate(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, replicateKey);
   }
 
   const startedAt = Date.now();
@@ -1200,6 +1048,8 @@ async function generateSingleImage(
 
   await db.insert(generationLogs).values({
     userId,
+    postId,
+    usageType: "image",
     modelId,
     provider: "openrouter-image",
     status: imageBuffer ? "success" : "failed",
@@ -1233,6 +1083,7 @@ async function generateSingleImage(
     position,
     cost: openRouterUsage.cost,
     jobId,
+    postId: postId || undefined,
   });
 
   return { storagePath, cost: openRouterUsage.cost };
@@ -1258,6 +1109,8 @@ async function saveProviderImageBuffer(
     aspectRatio: string;
     resolution: string;
     compressionEnabled: boolean;
+    postId?: string | null;
+    cost?: number;
   }
 ) {
   try {
@@ -1274,7 +1127,9 @@ async function saveProviderImageBuffer(
     aspectRatio: opts.aspectRatio,
     resolution: opts.resolution,
     position: opts.position,
+    cost: opts.cost || 0,
     jobId: opts.jobId,
+    postId: opts.postId || undefined,
   });
 
   return { storagePath, cost: 0 };
@@ -1290,6 +1145,7 @@ async function generateWithOpenAI(
   jobId: string,
   type: string,
   position: number,
+  postId: string | null,
   compressionEnabled: boolean,
   openAiKey: string
 ): Promise<{ storagePath: string; cost: number } | null> {
@@ -1326,6 +1182,8 @@ async function generateWithOpenAI(
 
   await db.insert(generationLogs).values({
     userId,
+    postId,
+    usageType: "image",
     modelId,
     provider: "openai-image",
     status: imageBuffer ? "success" : "failed",
@@ -1335,7 +1193,7 @@ async function generateWithOpenAI(
   });
 
   if (!imageBuffer) return null;
-  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, prompt, altText, modelId, provider: "openai-image", aspectRatio, resolution, compressionEnabled });
+  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, postId, prompt, altText, modelId, provider: "openai-image", aspectRatio, resolution, compressionEnabled });
 }
 
 function replicateAspectRatio(aspectRatio: string) {
@@ -1352,6 +1210,7 @@ async function generateWithReplicate(
   jobId: string,
   type: string,
   position: number,
+  postId: string | null,
   compressionEnabled: boolean,
   replicateKey: string
 ): Promise<{ storagePath: string; cost: number } | null> {
@@ -1404,6 +1263,8 @@ async function generateWithReplicate(
 
   await db.insert(generationLogs).values({
     userId,
+    postId,
+    usageType: "image",
     modelId,
     provider: "replicate-image",
     status: imageBuffer ? "success" : "failed",
@@ -1413,7 +1274,7 @@ async function generateWithReplicate(
   });
 
   if (!imageBuffer) return null;
-  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, prompt, altText, modelId, provider: "replicate-image", aspectRatio, resolution, compressionEnabled });
+  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, postId, prompt, altText, modelId, provider: "replicate-image", aspectRatio, resolution, compressionEnabled });
 }
 
 async function generateWithGoogleAI(
@@ -1426,6 +1287,7 @@ async function generateWithGoogleAI(
   jobId: string,
   type: string,
   position: number,
+  postId: string | null,
   compressionEnabled: boolean,
   googleAiKey: string
 ): Promise<{ storagePath: string; cost: number } | null> {
@@ -1455,6 +1317,18 @@ async function generateWithGoogleAI(
     imageBuffer = (await sharp(imageBuffer).webp({ quality: compressionEnabled ? 85 : 100 }).toBuffer()) as any;
   } catch {}
 
+  await db.insert(generationLogs).values({
+    userId,
+    postId,
+    usageType: "image",
+    modelId,
+    provider: "google-ai-studio",
+    status: "success",
+    cost: 0.04,
+    sessionId: jobId,
+    responseData: { usage: data.usage },
+  });
+
   const { storagePath } = await saveImageBuffer(imageBuffer, userId, {
     type,
     prompt,
@@ -1466,6 +1340,7 @@ async function generateWithGoogleAI(
     position,
     cost: 0.04,
     jobId,
+    postId: postId || undefined,
   });
 
   return { storagePath, cost: 0.04 };

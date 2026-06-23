@@ -18,7 +18,6 @@ import { chunkKnowledgeContent } from "../services/knowledge.js";
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate", "pexels", "pixabay"]);
 const IMAGE_PLACEMENTS = new Set(["auto", "featured_only", "after_intro", "between_sections"]);
-const IMAGE_SOURCE_MODES = new Set(["stock_first", "manual_first", "ai_first"]);
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -121,16 +120,12 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     imagePlacement: settings.imagePlacement || "auto",
     image_compression_enabled: settings.imageCompressionEnabled ?? true,
     imageCompressionEnabled: settings.imageCompressionEnabled ?? true,
-    image_source_mode: settings.imageSourceMode || "stock_first",
-    imageSourceMode: settings.imageSourceMode || "stock_first",
     source_image_allowed: settings.sourceImageAllowed ?? false,
     sourceImageAllowed: settings.sourceImageAllowed ?? false,
     ai_fallback_enabled: settings.aiFallbackEnabled ?? true,
     aiFallbackEnabled: settings.aiFallbackEnabled ?? true,
     max_ai_images_per_day: settings.maxAiImagesPerDay ?? 30,
     maxAiImagesPerDay: settings.maxAiImagesPerDay ?? 30,
-    max_ai_images_per_post: settings.maxAiImagesPerPost ?? 1,
-    maxAiImagesPerPost: settings.maxAiImagesPerPost ?? 1,
     min_minutes_between_ai_images: settings.minMinutesBetweenAiImages ?? 5,
     minMinutesBetweenAiImages: settings.minMinutesBetweenAiImages ?? 5,
     image_advanced_options: settings.imageAdvancedOptions,
@@ -259,15 +254,9 @@ function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof user
     update.imagePlacement = imagePlacement;
   }
   setBool("imageCompressionEnabled", "image_compression_enabled");
-  const imageSourceMode = body.image_source_mode ?? body.imageSourceMode;
-  if (imageSourceMode !== undefined) {
-    if (typeof imageSourceMode !== "string" || !IMAGE_SOURCE_MODES.has(imageSourceMode)) throw new Error("Invalid image source mode");
-    update.imageSourceMode = imageSourceMode;
-  }
   setBool("sourceImageAllowed", "source_image_allowed");
   setBool("aiFallbackEnabled", "ai_fallback_enabled");
   setNumber("maxAiImagesPerDay", "max_ai_images_per_day");
-  setNumber("maxAiImagesPerPost", "max_ai_images_per_post");
   setNumber("minMinutesBetweenAiImages", "min_minutes_between_ai_images");
   if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
     update.imageAdvancedOptions = (body.image_advanced_options ?? body.imageAdvancedOptions) as never;

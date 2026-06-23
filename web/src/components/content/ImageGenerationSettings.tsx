@@ -121,6 +121,7 @@ interface SplitImageGenerationSettingsProps {
   compact?: boolean;
   className?: string;
   imageModelId?: string;
+  aiFallbackEnabled?: boolean;
 }
 
 export function SplitImageGenerationSettings({
@@ -133,6 +134,7 @@ export function SplitImageGenerationSettings({
   compact = false,
   className,
   imageModelId,
+  aiFallbackEnabled = true,
 }: SplitImageGenerationSettingsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { data: imageModels = [] } = useImageModels();
@@ -182,13 +184,37 @@ export function SplitImageGenerationSettings({
     }
   }, [config, constraints, onConfigChange]);
 
-  // Calculate costs
-  const getUnitCost = (resolution: Resolution) => selectedImageModel?.rawPricing.image || RESOLUTION_CONFIG[resolution].cost;
-  const coverCost = config.cover.enabled ? getUnitCost(config.cover.resolution) : 0;
-  const inlineCost = config.inline.enabled 
-    ? config.inline.count * getUnitCost(config.inline.resolution)
-    : 0;
-  const totalCost = coverCost + inlineCost;
+  // Show honest planning labels. The backend queues covers through the selected model,
+  // while inline images try free AI first and fall back to stock.
+  const imagesEnabled = config.cover.enabled || config.inline.enabled;
+  const modelImagePrice = selectedImageModel?.rawPricing.image || 0;
+  const isAutoModel = Boolean(imageModelId?.startsWith("auto/"));
+  const isFreeModel = imageModelId === "openrouter/free" || selectedImageModel?.isFree;
+  const coverCostLabel = !config.cover.enabled
+    ? "$0"
+    : !aiFallbackEnabled
+    ? "Stock"
+    : isAutoModel
+    ? "Varies"
+    : isFreeModel
+    ? "$0/free"
+    : modelImagePrice > 0
+    ? `~$${modelImagePrice.toFixed(3)}`
+    : "Provider";
+  const inlineCostLabel = !config.inline.enabled || config.inline.count === 0
+    ? "$0"
+    : !aiFallbackEnabled
+    ? "Stock"
+    : "Free AI/stock";
+  const totalCostLabel = !imagesEnabled
+    ? "$0"
+    : !aiFallbackEnabled
+    ? "Stock"
+    : config.cover.enabled && !isFreeModel && !isAutoModel && modelImagePrice > 0
+    ? `~$${modelImagePrice.toFixed(3)} + inline`
+    : "Varies";
+  const unitCostLabelForResolution = (_resolution: Resolution, type: "cover" | "inline") =>
+    type === "inline" ? inlineCostLabel : coverCostLabel;
 
   // Generate summary text
   const getSummary = () => {
@@ -203,7 +229,6 @@ export function SplitImageGenerationSettings({
     return parts.join(" + ");
   };
 
-  const imagesEnabled = config.cover.enabled || config.inline.enabled;
   const imagePlacement = config.imagePlacement || "auto";
   const compressionEnabled = config.compressionEnabled ?? true;
   const updateOutputSettings = (updates: Pick<SplitImageConfig, "imagePlacement" | "compressionEnabled">) => {
@@ -270,13 +295,13 @@ export function SplitImageGenerationSettings({
                   <TooltipTrigger asChild>
                     <span className="inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold">
                       <DollarSign className="h-3 w-3" />
-                      ~${totalCost.toFixed(3)}
+                      {totalCostLabel}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <div className="text-xs space-y-1">
-                      <p>Cover: ${coverCost.toFixed(3)}</p>
-                      <p>Inline: ${inlineCost.toFixed(3)}</p>
+                      <p>Cover: {coverCostLabel}</p>
+                      <p>Inline: {inlineCostLabel}</p>
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -303,9 +328,6 @@ export function SplitImageGenerationSettings({
               updateCover={updateCover}
               updateInline={updateInline}
               getPixelDimensions={getPixelDimensions}
-              coverCost={coverCost}
-              inlineCost={inlineCost}
-              totalCost={totalCost}
               imagesEnabled={imagesEnabled}
               imagePlacement={imagePlacement}
               compressionEnabled={compressionEnabled}
@@ -319,7 +341,10 @@ export function SplitImageGenerationSettings({
               onResetToDefaults={onResetToDefaults}
               defaults={defaults}
               constraints={constraints}
-              unitCostForResolution={getUnitCost}
+              unitCostLabelForResolution={unitCostLabelForResolution}
+              coverCostLabel={coverCostLabel}
+              inlineCostLabel={inlineCostLabel}
+              totalCostLabel={totalCostLabel}
             />
           </CollapsibleContent>
         </Collapsible>
@@ -342,9 +367,6 @@ export function SplitImageGenerationSettings({
         updateCover={updateCover}
         updateInline={updateInline}
         getPixelDimensions={getPixelDimensions}
-        coverCost={coverCost}
-        inlineCost={inlineCost}
-        totalCost={totalCost}
         imagesEnabled={imagesEnabled}
         imagePlacement={imagePlacement}
         compressionEnabled={compressionEnabled}
@@ -359,7 +381,10 @@ export function SplitImageGenerationSettings({
         defaults={defaults}
         showCostSummary
         constraints={constraints}
-        unitCostForResolution={getUnitCost}
+        unitCostLabelForResolution={unitCostLabelForResolution}
+        coverCostLabel={coverCostLabel}
+        inlineCostLabel={inlineCostLabel}
+        totalCostLabel={totalCostLabel}
       />
     </div>
   );
@@ -370,9 +395,6 @@ interface ImageSettingsTabsProps {
   updateCover: (updates: Partial<CoverImageConfig>) => void;
   updateInline: (updates: Partial<InlineImageConfig>) => void;
   getPixelDimensions: (ar: AspectRatio, res: Resolution) => { width: number; height: number };
-  coverCost: number;
-  inlineCost: number;
-  totalCost: number;
   imagesEnabled: boolean;
   imagePlacement: ImagePlacement;
   compressionEnabled: boolean;
@@ -384,7 +406,10 @@ interface ImageSettingsTabsProps {
   defaults?: SplitImageDefaults;
   showCostSummary?: boolean;
   constraints?: ImageModelConstraints;
-  unitCostForResolution: (resolution: Resolution) => number;
+  unitCostLabelForResolution: (resolution: Resolution, type: "cover" | "inline") => string;
+  coverCostLabel: string;
+  inlineCostLabel: string;
+  totalCostLabel: string;
 }
 
 const ALL_RESOLUTIONS: Resolution[] = ["Web", "1K", "2K", "4K"];
@@ -406,9 +431,6 @@ function ImageSettingsTabs({
   updateCover,
   updateInline,
   getPixelDimensions,
-  coverCost,
-  inlineCost,
-  totalCost,
   imagesEnabled,
   imagePlacement,
   compressionEnabled,
@@ -420,7 +442,10 @@ function ImageSettingsTabs({
   defaults,
   showCostSummary,
   constraints,
-  unitCostForResolution,
+  unitCostLabelForResolution,
+  coverCostLabel,
+  inlineCostLabel,
+  totalCostLabel,
 }: ImageSettingsTabsProps) {
   const coverDimensions = getPixelDimensions(config.cover.aspectRatio, config.cover.resolution);
   const inlineDimensions = getPixelDimensions(config.inline.aspectRatio, config.inline.resolution);
@@ -533,7 +558,7 @@ function ImageSettingsTabs({
                     >
                       <p className="font-medium">{res}</p>
                       <p className="text-xs text-muted-foreground">
-                        ${unitCostForResolution(res).toFixed(3)}
+                        {unitCostLabelForResolution(res, "cover")}
                       </p>
                     </button>
                   ))}
@@ -567,7 +592,7 @@ function ImageSettingsTabs({
               {/* Cover Cost */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
                 <span className="text-muted-foreground">Cover cost</span>
-                <span className="font-medium">${coverCost.toFixed(3)}</span>
+                <span className="font-medium">{coverCostLabel}</span>
               </div>
             </>
           )}
@@ -628,7 +653,7 @@ function ImageSettingsTabs({
                         >
                           <p className="font-medium">{res}</p>
                           <p className="text-xs text-muted-foreground">
-                            ${unitCostForResolution(res).toFixed(3)}
+                            {unitCostLabelForResolution(res, "inline")}
                           </p>
                         </button>
                       ))}
@@ -664,9 +689,9 @@ function ImageSettingsTabs({
               {/* Inline Cost */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
                 <span className="text-muted-foreground">
-                  Inline cost ({config.inline.count} × ${unitCostForResolution(config.inline.resolution).toFixed(2)})
+                  Inline cost ({config.inline.count} × {unitCostLabelForResolution(config.inline.resolution, "inline")})
                 </span>
-                <span className="font-medium">${inlineCost.toFixed(3)}</span>
+                <span className="font-medium">{inlineCostLabel}</span>
               </div>
             </>
           )}
@@ -684,12 +709,12 @@ function ImageSettingsTabs({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="font-semibold cursor-help">${totalCost.toFixed(3)}</span>
+                <span className="font-semibold cursor-help">{totalCostLabel}</span>
               </TooltipTrigger>
               <TooltipContent>
                 <div className="text-xs space-y-1">
-                  <p>Cover: ${coverCost.toFixed(3)}</p>
-                  <p>Inline ({config.inline.count}): ${inlineCost.toFixed(3)}</p>
+                  <p>Cover: {coverCostLabel}</p>
+                  <p>Inline ({config.inline.count}): {inlineCostLabel}</p>
                 </div>
               </TooltipContent>
             </Tooltip>

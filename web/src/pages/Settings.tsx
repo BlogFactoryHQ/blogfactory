@@ -93,11 +93,9 @@ interface UserSettings {
   image_model?: string | null;
   image_placement?: string | null;
   image_compression_enabled?: boolean | null;
-  image_source_mode?: string | null;
   source_image_allowed?: boolean | null;
   ai_fallback_enabled?: boolean | null;
   max_ai_images_per_day?: number | null;
-  max_ai_images_per_post?: number | null;
   min_minutes_between_ai_images?: number | null;
   cover_enabled?: boolean | null;
   cover_image_count?: number | null;
@@ -250,12 +248,11 @@ export default function Settings() {
   const [replicateKey, setReplicateKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
-  const [imageSourceMode, setImageSourceMode] = useState("stock_first");
   const [sourceImageAllowed, setSourceImageAllowed] = useState(false);
   const [aiFallbackEnabled, setAiFallbackEnabled] = useState(true);
   const [maxAiImagesPerDay, setMaxAiImagesPerDay] = useState(30);
-  const [maxAiImagesPerPost, setMaxAiImagesPerPost] = useState(1);
   const [minMinutesBetweenAiImages, setMinMinutesBetweenAiImages] = useState(5);
+  const [showAdvancedImageStrategy, setShowAdvancedImageStrategy] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
@@ -365,11 +362,9 @@ export default function Settings() {
       if (userSettings.image_model) {
         setSelectedImageModel(userSettings.image_model);
       }
-      setImageSourceMode(userSettings.image_source_mode || "stock_first");
       setSourceImageAllowed(userSettings.source_image_allowed ?? false);
       setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
       setMaxAiImagesPerDay(userSettings.max_ai_images_per_day ?? 30);
-      setMaxAiImagesPerPost(userSettings.max_ai_images_per_post ?? 1);
       setMinMinutesBetweenAiImages(userSettings.min_minutes_between_ai_images ?? 5);
       setArticleWordCount(userSettings.article_word_count ?? 1500);
       setArticleLanguage(userSettings.article_language || "US English");
@@ -501,18 +496,6 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message || "Failed to save brand settings"),
   });
 
-  // Save image model mutation
-  const saveImageModelMutation = useMutation({
-    mutationFn: async (modelId: string) => {
-      await api.put("/settings", { image_model: modelId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Image model saved!");
-    },
-    onError: () => toast.error("Failed to save image model"),
-  });
-
   // Save style prompt mutation
   const saveStyleMutation = useMutation({
     mutationFn: async (newPrompt: string) => {
@@ -556,17 +539,16 @@ export default function Settings() {
   const saveImageCostSettingsMutation = useMutation({
     mutationFn: async () => {
       await api.put("/settings", {
-        image_source_mode: imageSourceMode,
+        image_model: selectedImageModel,
         source_image_allowed: sourceImageAllowed,
         ai_fallback_enabled: aiFallbackEnabled,
         max_ai_images_per_day: maxAiImagesPerDay,
-        max_ai_images_per_post: maxAiImagesPerPost,
         min_minutes_between_ai_images: minMinutesBetweenAiImages,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Image cost settings saved");
+      toast.success("Image strategy saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save image cost settings"),
   });
@@ -768,6 +750,33 @@ export default function Settings() {
     { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
     { id: "advanced", title: "Advanced", description: "SEO, research, output", icon: SlidersHorizontal },
   ];
+
+  const imageStrategy =
+    !aiFallbackEnabled
+      ? "stock"
+      : selectedImageModel === "auto/cost-effective"
+      ? "cheap"
+      : "consistent";
+
+  const applyImageStrategy = (strategy: "consistent" | "cheap" | "stock") => {
+    setSourceImageAllowed(false);
+    if (strategy === "consistent") {
+      setSelectedImageModel("auto/consistent-cover");
+      setAiFallbackEnabled(true);
+      setMaxAiImagesPerDay(30);
+      setMinMinutesBetweenAiImages(5);
+    } else if (strategy === "cheap") {
+      setSelectedImageModel("auto/cost-effective");
+      setAiFallbackEnabled(true);
+      setMaxAiImagesPerDay(30);
+      setMinMinutesBetweenAiImages(5);
+    } else {
+      setSelectedImageModel("auto/consistent-cover");
+      setAiFallbackEnabled(false);
+      setMaxAiImagesPerDay(0);
+      setMinMinutesBetweenAiImages(5);
+    }
+  };
   const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
   const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
   const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
@@ -1708,87 +1717,14 @@ export default function Settings() {
             <div className="space-y-6">
               <BywordCard>
                 <SectionHeader
-                  icon={ImageIcon}
-                  title="Image Generation Model"
-                  description="Select which AI model to use for generated blog images."
-                />
-                <div className="space-y-4 p-6">
-                  <div className="space-y-3">
-                    <Label>Model</Label>
-                    <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectedImageModelUnavailable && (
-                          <SelectItem value={selectedImageModel}>
-                            <span className="text-destructive">Unavailable: {selectedImageModel}</span>
-                          </SelectItem>
-                        )}
-                        {imageModels.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            <div className="flex items-center gap-2">
-                              <span>{model.name}</span>
-                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
-                                {priceBadgeText(model.pricing)}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedImageModelUnavailable && (
-                      <p className="text-xs text-destructive">Unavailable: {selectedImageModel}. Pick an available image model.</p>
-                    )}
-                  </div>
-
-                  {(() => {
-                    const model = imageModels.find(m => m.id === selectedImageModel);
-                    if (!model) return null;
-                    return (
-                      <div className="space-y-1.5 rounded-lg border border-byword-border bg-muted/30 p-3">
-                        <div className="mb-1 flex items-center justify-between">
-                          <span className="text-sm font-medium">{model.provider}</span>
-                          <span className="font-mono text-xs text-muted-foreground">{model.costInfo}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{model.description}</p>
-                        {model.isFree && model.limits && (
-                          <p className="text-xs font-medium text-primary">{model.limits}</p>
-                        )}
-                        {model.constraints && (
-                          <p className="text-xs text-muted-foreground">
-                            Resolutions: {model.constraints.resolutions.join(", ")} · Max {model.constraints.maxDimensionPx}px
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  <Button
-                    onClick={() => saveImageModelMutation.mutate(selectedImageModel)}
-                    disabled={saveImageModelMutation.isPending || selectedImageModelUnavailable}
-                    size="sm"
-                  >
-                    {saveImageModelMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save Model
-                  </Button>
-                </div>
-              </BywordCard>
-
-              <BywordCard>
-                <SectionHeader
                   icon={Gauge}
-                  title="Low-Cost Image Pipeline"
-                  description="Use stock and manual/local options first; queue paid AI slowly only when needed."
+                  title="Image Strategy"
+                  description="Pick how BlogFactory should source cover images."
                   action={
                     <Button
                       size="sm"
                       onClick={() => saveImageCostSettingsMutation.mutate()}
-                      disabled={saveImageCostSettingsMutation.isPending}
+                      disabled={saveImageCostSettingsMutation.isPending || selectedImageModelUnavailable}
                     >
                       {saveImageCostSettingsMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1799,73 +1735,105 @@ export default function Settings() {
                     </Button>
                   }
                 />
-                <div className="grid gap-5 p-6 lg:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Source Mode</Label>
-                    <Select value={imageSourceMode} onValueChange={setImageSourceMode}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="stock_first">Stock first</SelectItem>
-                        <SelectItem value="manual_first">Local/manual first</SelectItem>
-                        <SelectItem value="ai_first">AI covers first</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">With $10+ OpenRouter credits, use AI covers first at 1/post, 30/day, 5 minutes apart.</p>
+                <div className="space-y-5 p-6">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {[
+                      { id: "consistent", title: "Consistent Covers", text: "Covers use your model. Inline tries free AI, then stock.", badge: "Recommended" },
+                      { id: "cheap", title: "Cheapest AI", text: "Covers use cheap AI. Inline tries free AI, then stock.", badge: "$" },
+                      { id: "stock", title: "Stock Only", text: "No AI image spend. Inline and covers use stock.", badge: "$0" },
+                    ].map((strategy) => (
+                      <button
+                        key={strategy.id}
+                        type="button"
+                        onClick={() => applyImageStrategy(strategy.id as "consistent" | "cheap" | "stock")}
+                        className={cn(
+                          "rounded-lg border p-4 text-left transition-calm",
+                          imageStrategy === strategy.id
+                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                            : "border-byword-border hover:border-byword-blue/40"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold">{strategy.title}</p>
+                          <Badge variant="secondary">{strategy.badge}</Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{strategy.text}</p>
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
-                    <div>
-                      <Label>AI Fallback</Label>
-                      <p className="text-xs text-muted-foreground">When stock fails, create a deferred one-at-a-time AI request.</p>
-                    </div>
-                    <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
+                  <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                    {imageStrategy === "consistent" && "Current: cover uses the selected model. Inline images try OpenRouter free, then stock."}
+                    {imageStrategy === "cheap" && "Current: cover uses cheapest AI. Inline images try OpenRouter free, then stock."}
+                    {imageStrategy === "stock" && "Current: stock images only. AI image queue is disabled."}
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
-                    <div>
-                      <Label>Conservative Source Images</Label>
-                      <p className="text-xs text-muted-foreground">Only reuse source images with clear reusable license metadata.</p>
-                    </div>
-                    <Switch checked={sourceImageAllowed} onCheckedChange={setSourceImageAllowed} />
-                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAdvancedImageStrategy((value) => !value)}
+                  >
+                    <SlidersHorizontal className="mr-2 h-4 w-4" />
+                    Advanced
+                  </Button>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="ai-per-post">AI/Post</Label>
-                      <Input
-                        id="ai-per-post"
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={maxAiImagesPerPost}
-                        onChange={(e) => setMaxAiImagesPerPost(Number(e.target.value))}
-                      />
+                  {showAdvancedImageStrategy && (
+                    <div className="grid gap-5 rounded-lg border border-byword-border p-4 lg:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Model</Label>
+                        <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedImageModelUnavailable && (
+                              <SelectItem value={selectedImageModel}>
+                                <span className="text-destructive">Unavailable: {selectedImageModel}</span>
+                              </SelectItem>
+                            )}
+                            {imageModels.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                <div className="flex items-center gap-2">
+                                  <span>{model.name}</span>
+                                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
+                                    {priceBadgeText(model.pricing)}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
+                        <div>
+                          <Label>AI Fallback</Label>
+                          <p className="text-xs text-muted-foreground">Queue one AI image at a time.</p>
+                        </div>
+                        <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
+                        <div>
+                          <Label>Source Images</Label>
+                          <p className="text-xs text-muted-foreground">Only with license/allowlist.</p>
+                        </div>
+                        <Switch checked={sourceImageAllowed} onCheckedChange={setSourceImageAllowed} />
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-per-day">AI/Day</Label>
+                          <Input id="ai-per-day" type="number" min={0} max={100} value={maxAiImagesPerDay} onChange={(e) => setMaxAiImagesPerDay(Number(e.target.value))} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-spacing">Minutes</Label>
+                          <Input id="ai-spacing" type="number" min={0} max={240} value={minMinutesBetweenAiImages} onChange={(e) => setMinMinutesBetweenAiImages(Number(e.target.value))} />
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ai-per-day">AI/Day</Label>
-                      <Input
-                        id="ai-per-day"
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={maxAiImagesPerDay}
-                        onChange={(e) => setMaxAiImagesPerDay(Number(e.target.value))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ai-spacing">Minutes</Label>
-                      <Input
-                        id="ai-spacing"
-                        type="number"
-                        min={0}
-                        max={240}
-                        value={minMinutesBetweenAiImages}
-                        onChange={(e) => setMinMinutesBetweenAiImages(Number(e.target.value))}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
               </BywordCard>
 
@@ -1882,6 +1850,7 @@ export default function Settings() {
                     onSaveDefaults={(defaults) => saveDefaultsMutation.mutate(defaults)}
                     showSaveOption
                     imageModelId={selectedImageModel}
+                    aiFallbackEnabled={aiFallbackEnabled}
                   />
                   {saveDefaultsMutation.isPending && (
                     <div className="mt-4 flex items-center gap-2 text-muted-foreground">

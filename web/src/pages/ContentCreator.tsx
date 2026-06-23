@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -31,6 +38,8 @@ import {
   ArrowRight,
   SlidersHorizontal,
   Archive,
+  DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -58,16 +67,18 @@ import {
 } from "@/components/layout/BywordSurface";
 import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
+import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 
 interface ContentUserSettings {
   image_model?: string | null;
   image_style_prompt?: string | null;
   image_placement?: string | null;
   image_compression_enabled?: boolean | null;
-  image_source_mode?: string | null;
   ai_fallback_enabled?: boolean | null;
   max_ai_images_per_day?: number | null;
-  max_ai_images_per_post?: number | null;
+  article_word_count?: number | null;
+  monthly_budget?: number | null;
   cover_enabled?: boolean | null;
   cover_resolution?: string | null;
   cover_aspect_ratio?: string | null;
@@ -131,6 +142,31 @@ function linesCount(value: string) {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
 }
 
+const formatCost = (value: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(value);
+
+function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
+  return (
+    <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <DollarSign className="h-4 w-4 text-byword-blue" />
+          <p className="font-semibold">Projected cost</p>
+        </div>
+        <p className="text-lg font-bold">{formatCost(estimate.totalExpected)}</p>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+        <span>Text {formatCost(estimate.textCost)}</span>
+        <span>Cover {formatCost(estimate.coverImageCost)}</span>
+        <span>Inline {formatCost(estimate.inlineImageCost)}</span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
+      </p>
+    </div>
+  );
+}
+
 export default function ContentCreator() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -168,6 +204,7 @@ export default function ContentCreator() {
   const [campaignSharedOutline, setCampaignSharedOutline] = useState("");
   const [campaignCustomInstructions, setCampaignCustomInstructions] = useState("");
   const [campaignStartNow, setCampaignStartNow] = useState(true);
+  const [pendingCostAction, setPendingCostAction] = useState<"article" | "campaign" | null>(null);
 
   const refetchPostsRef = useRef<(() => void) | null>(null);
   const userSelectedModelRef = useRef(false);
@@ -298,17 +335,22 @@ export default function ContentCreator() {
   const selectedImageModelId = userSettings?.image_model || "auto/consistent-cover";
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const imageStylePrompt = userSettings?.image_style_prompt?.trim() || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.";
+  const { summary: usageSummary, logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
+  const currentMonthSpend = useMemo(() => {
+    const month = new Date().toISOString().slice(0, 7);
+    return usageLogs
+      .filter((log) => usageDayKey(log.created_at)?.startsWith(month))
+      .reduce((sum, log) => sum + (Number(log.cost) || 0), 0);
+  }, [usageLogs]);
+  const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
+  const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? 0) || null;
+  const averageTokensPerPost = usageSummary.postCount ? usageSummary.totalTokens / usageSummary.postCount : null;
   const imagePlacement = imageConfig.imagePlacement || "auto";
   const placementLabels: Record<string, string> = {
     auto: "Auto placement",
     featured_only: "Featured only",
     after_intro: "After introduction",
     between_sections: "Between sections",
-  };
-  const sourceModeLabels: Record<string, string> = {
-    stock_first: "Stock first",
-    manual_first: "Local/manual first",
-    ai_first: "AI covers first",
   };
   const formatOutputs = (outputs?: string[]) => outputs?.length ? `Outputs: ${outputs.join(" + ")}` : "";
   const formatWebSearch = (cost?: number) => cost ? `Web search: $${cost.toFixed(3)}/use` : "";
@@ -453,6 +495,31 @@ export default function ContentCreator() {
           : selectedModelUnavailable
             ? "Pick a live OpenRouter model."
             : "";
+  const effectiveWordCount = Number(articleWordCount) || userSettings?.article_word_count || 1500;
+  const articleCostEstimate = useMemo(() => estimateGenerationCost({
+    postCount: variations,
+    articleWordCount: effectiveWordCount,
+    textModel: selectedTextModel,
+    imageModel: selectedImageModel,
+    imageConfig,
+    averageTokensPerPost,
+    aiFallbackEnabled: userSettings?.ai_fallback_enabled,
+  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, imageConfig, averageTokensPerPost, userSettings?.ai_fallback_enabled]);
+  const campaignCostEstimate = useMemo(() => estimateGenerationCost({
+    postCount: Math.max(1, campaignItemCount),
+    articleWordCount: userSettings?.article_word_count || 1500,
+    textModel: selectedTextModel,
+    imageModel: selectedImageModel,
+    imageConfig,
+    averageTokensPerPost,
+    aiFallbackEnabled: userSettings?.ai_fallback_enabled,
+  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, imageConfig, averageTokensPerPost, userSettings?.ai_fallback_enabled]);
+  const costWarningInput = (estimate: CostEstimate) => ({
+    estimate,
+    monthlyBudget: userSettings?.monthly_budget,
+    currentMonthSpend,
+    openRouterRemaining,
+  });
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -549,6 +616,11 @@ export default function ContentCreator() {
       return;
     }
 
+    if (shouldWarnForCost(costWarningInput(articleCostEstimate))) {
+      setPendingCostAction("article");
+      return;
+    }
+
     // If jobs are running, show the concurrent dialog
     if (runningCount > 0) {
       setShowConcurrentDialog(true);
@@ -627,7 +699,24 @@ export default function ContentCreator() {
       toast.error("Add at least one shared heading.");
       return;
     }
+    if (shouldWarnForCost(costWarningInput(campaignCostEstimate))) {
+      setPendingCostAction("campaign");
+      return;
+    }
     createCampaignMutation.mutate();
+  };
+
+  const confirmCost = async () => {
+    const action = pendingCostAction;
+    setPendingCostAction(null);
+    if (action === "campaign") {
+      createCampaignMutation.mutate();
+      return;
+    }
+    if (action === "article") {
+      if (runningCount > 0) setShowConcurrentDialog(true);
+      else await executeGeneration();
+    }
   };
 
   const handleConcurrentAction = async (action: ConcurrentAction) => {
@@ -1030,7 +1119,7 @@ export default function ContentCreator() {
                   {placementLabels[imagePlacement]} · Compression {imageConfig.compressionEnabled ?? true ? "on" : "off"}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {sourceModeLabels[userSettings?.image_source_mode || "stock_first"] || "Stock first"} · AI fallback {userSettings?.ai_fallback_enabled ?? true ? "queued" : "off"} · {userSettings?.max_ai_images_per_post ?? 1}/post
+                  Cover uses selected model · Inline tries free AI, then stock
                 </p>
               </div>
             </div>
@@ -1072,6 +1161,8 @@ export default function ContentCreator() {
             </div>
 
             <ActiveJobsPanel jobs={activeJobs} onDismiss={dismissJob} />
+
+            <CostEstimateCard estimate={articleCostEstimate} />
 
             <Button
               onClick={handleGenerate}
@@ -1238,7 +1329,11 @@ export default function ContentCreator() {
                 onConfigChange={setImageConfig}
                 defaults={imageDefaults}
                 compact
+                imageModelId={selectedImageModelId}
+                aiFallbackEnabled={userSettings?.ai_fallback_enabled ?? true}
               />
+
+              <CostEstimateCard estimate={campaignCostEstimate} />
 
               <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm">
                 <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />
@@ -1274,6 +1369,31 @@ export default function ContentCreator() {
         canStartParallel={canStartParallel}
         maxParallel={maxParallel}
       />
+      <Dialog open={!!pendingCostAction} onOpenChange={(open) => !open && setPendingCostAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+              Confirm projected cost
+            </DialogTitle>
+          </DialogHeader>
+          {pendingCostAction && (
+            <div className="space-y-4">
+              <CostEstimateCard estimate={pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate} />
+              <div className="rounded-lg border border-byword-border p-3 text-sm text-muted-foreground">
+                {(pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate).assumptions.map((item) => (
+                  <p key={item}>- {item}</p>
+                ))}
+                <p className="mt-2">Actual cost uses provider-returned billing data after each call.</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingCostAction(null)}>Cancel</Button>
+            <Button onClick={confirmCost}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </BywordPageShell>
   );
 }

@@ -1,6 +1,14 @@
 import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -18,6 +26,7 @@ import {
   Loader2,
   BarChart3,
   TrendingUp,
+  Image,
 } from "lucide-react";
 import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { UsageCostChart } from "@/components/usage/UsageCostChart";
@@ -28,7 +37,7 @@ import { startOfMonth, format } from "date-fns";
 
 export default function UsageAnalytics() {
   const [days, setDays] = useState(30);
-  const { summary, modelBreakdown, dailyUsage, isLoading, logs } = useUsageAnalytics(days);
+  const { summary, modelBreakdown, dailyUsage, isLoading, logs, costs, openRouterUsage } = useUsageAnalytics(days);
 
   // Calculate current month spend from logs
   const currentMonthSpend = useMemo(() => {
@@ -45,6 +54,10 @@ export default function UsageAnalytics() {
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(amount);
 
   const formatNumber = (num: number) => new Intl.NumberFormat("en-US").format(Math.round(num));
+  const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
+  const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? openRouterData.credits ?? 0);
+  const recentCalls = costs?.recentCalls || [];
+  const imageSummary = costs?.imageSummary;
 
   const statCards = [
     {
@@ -54,22 +67,22 @@ export default function UsageAnalytics() {
       description: `Last ${days} days`,
     },
     {
-      title: "Total Requests",
-      value: formatNumber(summary.totalRequests),
+      title: "Text Cost",
+      value: formatCurrency(summary.textCost),
       icon: Hash,
-      description: `Avg ${formatCurrency(summary.avgCostPerRequest)}/req`,
+      description: `${formatNumber(summary.totalTokens)} tokens`,
     },
     {
-      title: "Total Tokens",
-      value: formatNumber(summary.totalTokens),
-      icon: Zap,
-      description: "Prompt + completion",
+      title: "Image Cost",
+      value: formatCurrency(summary.imageCost),
+      icon: Image,
+      description: imageSummary ? `${imageSummary.ai} AI · ${imageSummary.stock} stock` : "Generated images",
     },
     {
-      title: "Avg Latency",
-      value: summary.avgLatency ? `${formatNumber(summary.avgLatency)}ms` : "—",
+      title: "Avg / Post",
+      value: summary.avgCostPerPost ? formatCurrency(summary.avgCostPerPost) : "—",
       icon: Clock,
-      description: "Per request",
+      description: `${summary.postCount || 0} attributed posts`,
     },
   ];
 
@@ -116,6 +129,48 @@ export default function UsageAnalytics() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+
+          <div className="grid gap-4 mb-8 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">OpenRouter Key</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Remaining</span>
+                  <span className="font-medium">{openRouterRemaining ? formatCurrency(openRouterRemaining) : "—"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Daily usage</span>
+                  <span className="font-medium">{formatCurrency(Number(openRouterData.usage_daily || 0))}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Monthly usage</span>
+                  <span className="font-medium">{formatCurrency(Number(openRouterData.usage_monthly || 0))}</span>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Calls</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Requests</span><span className="font-medium">{formatNumber(summary.totalRequests)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Failed</span><span className="font-medium">{formatNumber(summary.failedCalls)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Avg latency</span><span className="font-medium">{summary.avgLatency ? `${formatNumber(summary.avgLatency)}ms` : "—"}</span></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Images</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Cover / inline</span><span className="font-medium">{imageSummary ? `${imageSummary.cover} / ${imageSummary.inline}` : "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Queued / failed</span><span className="font-medium">{imageSummary ? `${imageSummary.queued} / ${imageSummary.failed}` : "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Retries</span><span className="font-medium">{imageSummary ? formatNumber(imageSummary.retries) : "—"}</span></div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Charts */}
@@ -170,6 +225,47 @@ export default function UsageAnalytics() {
             </CardHeader>
             <CardContent>
               <ModelBreakdownTable data={modelBreakdown} />
+            </CardContent>
+          </Card>
+
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle className="text-base">Recent Provider Calls</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentCalls.length ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Provider / Model</TableHead>
+                      <TableHead>Post / Job</TableHead>
+                      <TableHead className="text-right">Tokens</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentCalls.slice(0, 25).map((call) => (
+                      <TableRow key={call.id}>
+                        <TableCell className="whitespace-nowrap text-xs">{call.created_at ? format(new Date(call.created_at), "MMM d HH:mm") : "—"}</TableCell>
+                        <TableCell>{call.usage_type}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">{call.provider}</div>
+                          <div className="max-w-[280px] truncate font-mono text-xs text-muted-foreground">{call.model_id}</div>
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate text-xs">{call.post_id || call.session_id || "—"}</TableCell>
+                        <TableCell className="text-right">{formatNumber(call.total_tokens || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(call.cost || 0))}</TableCell>
+                        <TableCell>{call.status || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">No provider calls in this range.</p>
+              )}
             </CardContent>
           </Card>
 

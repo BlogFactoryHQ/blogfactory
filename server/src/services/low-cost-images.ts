@@ -4,7 +4,6 @@ import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db
 import { getPexelsKey, getPixabayKey } from "./api-keys.js";
 import { saveImageBuffer } from "./image-storage.js";
 
-export type ImageSourceMode = "stock_first" | "manual_first" | "ai_first";
 export type ImageTargetType = "cover" | "inline";
 
 export interface SourceImageCandidate {
@@ -15,11 +14,9 @@ export interface SourceImageCandidate {
 }
 
 export interface LowCostImageSettings {
-  imageSourceMode?: string | null;
   sourceImageAllowed?: boolean | null;
   aiFallbackEnabled?: boolean | null;
   maxAiImagesPerDay?: number | null;
-  maxAiImagesPerPost?: number | null;
   minMinutesBetweenAiImages?: number | null;
   imageCompressionEnabled?: boolean | null;
 }
@@ -39,8 +36,12 @@ export function chooseImageResolution(input: ResolvePriorityInput) {
   return "none";
 }
 
-export function shouldQueueAiBeforeStock(mode: string | null | undefined, type: ImageTargetType, aiAllowed: boolean, manual: boolean) {
-  return mode === "ai_first" && type === "cover" && aiAllowed && !manual;
+export function shouldQueueAiBeforeStock(type: ImageTargetType, aiAllowed: boolean) {
+  return (type === "cover" || type === "inline") && aiAllowed;
+}
+
+export function imageModelForTarget(selectedModel: string, type: ImageTargetType) {
+  return type === "inline" ? "openrouter/free" : selectedModel;
 }
 
 function clampInt(value: number | null | undefined, fallback: number, min: number, max: number) {
@@ -291,7 +292,7 @@ function sourceCandidateAllowed(candidate: SourceImageCandidate, settings: LowCo
   return /creative commons|public domain|cc0|pexels|pixabay|unsplash/i.test(license);
 }
 
-function imageTargets(imageConfig: any, maxPerPost: number) {
+function imageTargets(imageConfig: any) {
   const targets: Array<{ type: ImageTargetType; position: number; aspectRatio: string; resolution: string }> = [];
   if (imageConfig?.cover && imageConfig.cover.enabled !== false) {
     targets.push({
@@ -301,8 +302,8 @@ function imageTargets(imageConfig: any, maxPerPost: number) {
       resolution: imageConfig.cover?.resolution || "1K",
     });
   }
-  if (imageConfig?.inline?.enabled && targets.length < maxPerPost) {
-    const count = Math.min(imageConfig.inline?.count || 2, maxPerPost - targets.length);
+  if (imageConfig?.inline?.enabled) {
+    const count = imageConfig.inline?.count || 2;
     for (let i = 0; i < count; i++) {
       targets.push({
         type: "inline",
@@ -312,7 +313,7 @@ function imageTargets(imageConfig: any, maxPerPost: number) {
       });
     }
   }
-  return targets.slice(0, maxPerPost);
+  return targets;
 }
 
 async function queueFallback(opts: {
@@ -326,13 +327,12 @@ async function queueFallback(opts: {
   position: number;
   aspectRatio: string;
   resolution: string;
-  manual: boolean;
 }) {
   await db.insert(imageGenerationRequests).values({
     userId: opts.userId,
     postId: opts.postId,
     jobId: opts.jobId,
-    provider: opts.manual ? opts.imageModel.replace("manual/", "") || "local" : "ai-deferred",
+    provider: "ai-deferred",
     modelId: opts.imageModel,
     prompt: opts.prompt,
     altText: opts.altText,
@@ -340,7 +340,7 @@ async function queueFallback(opts: {
     position: opts.position,
     aspectRatio: opts.aspectRatio,
     resolution: opts.resolution,
-    status: opts.manual ? "pending" : "queued",
+    status: "queued",
   });
 }
 
@@ -357,15 +357,11 @@ export async function resolveLowCostImages(opts: {
   sourceImages?: SourceImageCandidate[];
 }): Promise<{ coverPath: string | null; inlinePaths: string[]; queued: number; cost: number }> {
   const settings = opts.settings || {};
-  const maxPerPost = clampInt(settings.maxAiImagesPerPost, 1, 0, 5);
-  if (maxPerPost < 1) return { coverPath: null, inlinePaths: [], queued: 0, cost: 0 };
 
-  const mode = (settings.imageSourceMode || "stock_first") as ImageSourceMode;
   const imageModel = opts.imageModel || "auto/consistent-cover";
-  const manual = mode === "manual_first" || imageModel.startsWith("manual/");
   const aiAllowed = settings.aiFallbackEnabled !== false;
   const compressionEnabled = settings.imageCompressionEnabled ?? true;
-  const targets = imageTargets(opts.imageConfig, maxPerPost);
+  const targets = imageTargets(opts.imageConfig);
   let coverPath: string | null = null;
   const inlinePaths: string[] = [];
   let queued = 0;
@@ -376,13 +372,13 @@ export async function resolveLowCostImages(opts: {
 
     const cached = await findCachedAsset(opts.userId, prompt);
     let path = cached?.storagePath || null;
-    if (!path && shouldQueueAiBeforeStock(mode, target.type, aiAllowed, manual)) {
-      await queueFallback({ ...opts, ...target, imageModel, prompt, altText, manual: false });
+    if (!path && shouldQueueAiBeforeStock(target.type, aiAllowed)) {
+      await queueFallback({ ...opts, ...target, imageModel: imageModelForTarget(imageModel, target.type), prompt, altText });
       queued += 1;
       continue;
     }
 
-    if (!path && !manual && mode !== "ai_first") {
+    if (!path) {
       const cachedStock = await findCachedAsset(opts.userId, prompt, "stock");
       path = cachedStock?.storagePath || null;
       if (!path) {
@@ -421,12 +417,6 @@ export async function resolveLowCostImages(opts: {
     if (path) {
       if (target.type === "cover" && !coverPath) coverPath = path;
       if (target.type === "inline") inlinePaths.push(path);
-      continue;
-    }
-
-    if (manual || aiAllowed) {
-      await queueFallback({ ...opts, ...target, imageModel, prompt, altText, manual });
-      queued += 1;
     }
   }
 

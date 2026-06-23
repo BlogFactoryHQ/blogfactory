@@ -106,6 +106,8 @@ export interface Job {
 export interface GenerationLog {
   id: string;
   user_id: string;
+  post_id: string | null;
+  usage_type: string | null;
   model_id: string | null;
   provider: string | null;
   status: string | null;
@@ -119,6 +121,7 @@ export interface GenerationLog {
   raw_trace: any;
   request_data: any;
   response_data: any;
+  generation_id?: string | null;
   created_at: string;
 }
 
@@ -170,11 +173,9 @@ export interface UserSettings {
   image_style_prompt: string | null;
   image_placement: string | null;
   image_compression_enabled: boolean | null;
-  image_source_mode: string | null;
   source_image_allowed: boolean | null;
   ai_fallback_enabled: boolean | null;
   max_ai_images_per_day: number | null;
-  max_ai_images_per_post: number | null;
   min_minutes_between_ai_images: number | null;
   image_advanced_options: any;
   cover_enabled: boolean | null;
