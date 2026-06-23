@@ -325,8 +325,8 @@ export default function Programmatic() {
         description="Build templates, feed structured data, and generate many article drafts from one repeatable pattern."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-        <div className="space-y-6">
+      <div className="grid gap-6 2xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-6">
           <BywordCard>
             <SectionHeader icon={Grid2X2} title="Templates" />
             <div className="space-y-2 p-4">
@@ -356,25 +356,33 @@ export default function Programmatic() {
           <BywordCard>
             <SectionHeader icon={Database} title="Saved Data" />
             <div className="space-y-3 p-4">
-              <Select onValueChange={handleDatasetLoad}>
-                <SelectTrigger><SelectValue placeholder="Load dataset..." /></SelectTrigger>
-                <SelectContent>
-                  {datasets.map((dataset) => (
-                    <SelectItem key={dataset.id} value={dataset.id}>{dataset.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2">
-                <Input value={datasetName} onChange={(event) => setDatasetName(event.target.value)} placeholder="Dataset name" />
-                <Button variant="outline" size="icon" onClick={() => saveDataset.mutate()} disabled={!datasetName.trim() || !materialized.rows.length || saveDataset.isPending}>
-                  <Save className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2">
+                <Label>Load saved dataset</Label>
+                <Select onValueChange={handleDatasetLoad} disabled={!datasets.length}>
+                  <SelectTrigger className="min-w-0">
+                    <SelectValue placeholder={datasets.length ? "Choose dataset" : "No saved datasets"} />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70]">
+                    {datasets.map((dataset) => (
+                      <SelectItem key={dataset.id} value={dataset.id}>{dataset.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Save current data as</Label>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <Input className="min-w-0" value={datasetName} onChange={(event) => setDatasetName(event.target.value)} placeholder="Dataset name" />
+                  <Button variant="outline" onClick={() => saveDataset.mutate()} disabled={!datasetName.trim() || !materialized.rows.length || saveDataset.isPending}>
+                    <Save className="mr-2 h-4 w-4" />Save
+                  </Button>
+                </div>
               </div>
             </div>
           </BywordCard>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <BywordCard>
             <SectionHeader
               icon={FileText}
@@ -429,18 +437,18 @@ export default function Programmatic() {
                         </Button>
                       )}
                     </div>
-                    <div className="grid gap-3 md:grid-cols-[160px_1fr_120px_120px]">
+                    <div className="grid min-w-0 gap-3 sm:grid-cols-[150px_minmax(0,1fr)_96px_96px]">
                       <Select value={section.type} onValueChange={(value) => updateSection(index, { type: value })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="min-w-0"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {["title", "introduction", "tldr", "text", "table", "faq", "how-to", "conclusion", "cta"].map((type) => (
                             <SelectItem key={type} value={type}>{type}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <Input value={section.heading} onChange={(event) => updateSection(index, { heading: event.target.value })} placeholder="Heading" />
-                      <Input type="number" value={section.minWords || ""} onChange={(event) => updateSection(index, { minWords: Number(event.target.value) || undefined })} placeholder="Min" />
-                      <Input type="number" value={section.maxWords || ""} onChange={(event) => updateSection(index, { maxWords: Number(event.target.value) || undefined })} placeholder="Max" />
+                      <Input className="min-w-0" value={section.heading} onChange={(event) => updateSection(index, { heading: event.target.value })} placeholder="Heading" />
+                      <Input className="min-w-0" type="number" value={section.minWords || ""} onChange={(event) => updateSection(index, { minWords: Number(event.target.value) || undefined })} placeholder="Min" />
+                      <Input className="min-w-0" type="number" value={section.maxWords || ""} onChange={(event) => updateSection(index, { maxWords: Number(event.target.value) || undefined })} placeholder="Max" />
                     </div>
                     <Textarea value={section.instructions} onChange={(event) => updateSection(index, { instructions: event.target.value })} className="mt-3 min-h-20" placeholder="Instructions" />
                     <label className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -473,8 +481,8 @@ export default function Programmatic() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <Input value={csvUrl} onChange={(event) => setCsvUrl(event.target.value)} placeholder="Public CSV URL" />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <Input className="min-w-0" value={csvUrl} onChange={(event) => setCsvUrl(event.target.value)} placeholder="Public CSV URL" />
                 <Button variant="outline" onClick={() => importCsvUrl.mutate()} disabled={!csvUrl.trim() || importCsvUrl.isPending}>
                   {importCsvUrl.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LinkIcon className="mr-2 h-4 w-4" />}
                   Import
@@ -543,7 +551,7 @@ export default function Programmatic() {
           </BywordCard>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <BywordCard>
             <SectionHeader icon={Zap} title="Template Score" />
             <div className="p-6">
