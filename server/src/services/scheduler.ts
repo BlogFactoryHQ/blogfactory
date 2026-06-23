@@ -2,6 +2,12 @@ import { db } from "../db/index.js";
 import { feeds, jobs, userSettings, schedulerLogs } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 
+type SchedulerOptions = {
+  maxFeeds?: number;
+  maxPostsPerFeed?: number;
+  awaitGeneration?: boolean;
+};
+
 function getIntervalMs(frequency: string): number {
   switch (frequency) {
     case "hourly": return 60 * 60 * 1000;
@@ -13,8 +19,15 @@ function getIntervalMs(frequency: string): number {
   }
 }
 
-export async function runScheduler(userId?: string) {
+function positiveInt(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+export async function runScheduler(userId?: string, options: SchedulerOptions = {}) {
   const now = new Date();
+  const maxFeeds = positiveInt(options.maxFeeds, 25);
+  const maxPostsPerFeed = options.maxPostsPerFeed ? positiveInt(options.maxPostsPerFeed, 1) : null;
 
   // Fetch active feeds (for a specific user or all users)
   const conditions = [eq(feeds.isActive, true)];
@@ -35,7 +48,7 @@ export async function runScheduler(userId?: string) {
     if (!feed.lastRunAt) return true;
     const lastRun = new Date(feed.lastRunAt);
     return now >= new Date(lastRun.getTime() + intervalMs);
-  });
+  }).slice(0, maxFeeds);
 
   if (!dueFeeds.length) {
     return { message: "No feeds due", triggered: 0 };
@@ -86,20 +99,23 @@ export async function runScheduler(userId?: string) {
 
       // Call generate-content directly (no HTTP round-trip)
       const { generateContent } = await import("./generate-content.js");
-      generateContent({
+      const generation = generateContent({
         userId: feed.userId,
         sourceType: "rss_feed",
         sourceValue: feed.sourceUrl || "",
         personaId: feed.personaId,
         modelId: feed.modelId,
-        variations: feed.postsPerRun ?? 5,
+        variations: maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5,
         feedId: feed.id,
         extractFullContent: feed.extractFullContent,
         filterOldPostsDays: feed.filterOldPostsDays || undefined,
         platformConfig: feed.platformConfig || {},
         generateImages,
         imageConfig: Object.keys(imageConfig).length > 0 ? imageConfig : undefined,
-      }).catch((err) => console.error(`[scheduler] Feed "${feed.name}" error:`, err));
+      });
+
+      if (options.awaitGeneration) await generation;
+      else generation.catch((err) => console.error(`[scheduler] Feed "${feed.name}" error:`, err));
 
       results.push({ feedId: feed.id, feedName: feed.name, status: "triggered" });
     } catch (error: any) {
