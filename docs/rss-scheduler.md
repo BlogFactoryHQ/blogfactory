@@ -22,7 +22,7 @@ Optional GitHub variable:
 BLOGFACTORY_CRON_URL = https://blogfactory.io/api/cron/drain?task=feeds
 ```
 
-The action runs every 15 minutes. The app still decides which feeds are due from
+The action runs every hour. The app still decides which feeds are due from
 `last_run_at + frequency`, so 10 or 1,000 feeds do not require 10 or 1,000 crons.
 
 Runtime safety knobs in Vercel env:
