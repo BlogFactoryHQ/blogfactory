@@ -28,13 +28,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Search,
   Plus,
   Save,
@@ -43,11 +36,8 @@ import {
   Building2,
   MessageSquare,
   Globe2,
-  HelpCircle,
   FileText,
   FileUp,
-  ListChecks,
-  Target,
   Link2,
   Wand2,
   Wrench,
@@ -60,16 +50,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, type KnowledgeDocument } from "@/lib/knowledge";
+import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, limitKnowledgeContent, type KnowledgeDocument } from "@/lib/knowledge";
 import { SimplePromptView } from "@/components/personas/SimplePromptView";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
-import { PromptBuilder } from "@/components/personas/PromptBuilder";
+import type { LiveTextModel } from "@/hooks/useTextModels";
 import { SEOGuardrails } from "@/components/personas/SEOGuardrails";
 import { PersonaToolsTab } from "@/components/personas/PersonaToolsTab";
 import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTextModels } from "@/hooks/useTextModels";
 
 interface ToolDefinition {
@@ -167,6 +156,8 @@ interface UserSettings {
   custom_article_instructions?: string | null;
   include_table_of_contents?: boolean | null;
   enable_research?: boolean | null;
+  enable_internal_links?: boolean | null;
+  internal_link_density?: string | null;
   brand_company_name?: string | null;
   brand_description?: string | null;
   brand_target_audience?: string | null;
@@ -177,15 +168,6 @@ interface UserSettings {
   knowledge_documents?: KnowledgeDocument[] | null;
 }
 
-const articleLengthOptions = [
-  { label: "Short", words: 500 },
-  { label: "Standard", words: 1500 },
-  { label: "Detailed", words: 2500 },
-  { label: "Long", words: 3500 },
-  { label: "Smart", words: 0 },
-];
-
-const languageOptions = ["US English", "UK English", "Turkish", "German", "French", "Spanish"];
 const voiceOptions = [
   { name: "Natural", description: "Balanced and human-sounding. Not too formal, not too casual." },
   { name: "Professional", description: "Polished and business-appropriate for B2B and industry content." },
@@ -231,27 +213,6 @@ function siteLanguageToArticleLanguage(language?: string | null) {
   return "";
 }
 
-function HelpTip({ label, children }: { label: string; children: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label={label}
-          onClick={(event) => event.stopPropagation()}
-          className="inline-flex text-muted-foreground hover:text-foreground"
-        >
-          <HelpCircle className="h-3.5 w-3.5" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs leading-5">
-        {children}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 export default function Personas() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -262,6 +223,7 @@ export default function Personas() {
   const [editedPersona, setEditedPersona] = useState<Persona | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("overview");
   const [activeTab, setActiveTab] = useState("tools");
   const [newPersona, setNewPersona] = useState({
     name: "",
@@ -320,7 +282,8 @@ export default function Personas() {
       })) as Persona[];
     },
   });
-  const { data: textModels = [] } = useTextModels();
+  const { data: textModelsData = [] } = useTextModels();
+  const textModels: LiveTextModel[] = Array.isArray(textModelsData) ? textModelsData : [];
 
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
@@ -460,16 +423,12 @@ export default function Personas() {
   const saveBrandVoiceMutation = useMutation({
     mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
       await api.put("/settings", {
-        article_word_count: articleWordCount,
-        article_language: articleLanguage,
         article_voice: articleVoice,
         voice_mode: voiceMode,
         custom_voice_profile: customVoiceProfile,
         voice_training_samples: voiceTrainingSamples,
         content_rules: contentRules,
         custom_article_instructions: customArticleInstructions,
-        include_table_of_contents: includeTableOfContents,
-        enable_research: enableResearch,
         brand_company_name: brandCompanyName,
         brand_description: brandDescription,
         brand_target_audience: brandTargetAudience,
@@ -779,546 +738,27 @@ export default function Personas() {
     trainingWordCount >= 2000 ? "Good coverage" :
     trainingWordCount >= 500 ? "Good start" :
     "Minimal";
-  const trainingProgress = Math.min(100, Math.round((trainingWordCount / 10000) * 100));
-  const contentRuleCount =
-    contentRules.bannedWords.length +
-    contentRules.bannedPhrases.length +
-    contentRules.preferredTerms.length +
-    (contentRules.competitorAvoidance ? contentRules.competitors.length : 0) +
-    (contentRules.avoidAiPhrases ? 1 : 0);
   const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
   const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
   const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
-
-  const brandVoiceDefaults = (
-    <div className="rounded-lg border border-border">
-      <div className="flex items-start justify-between gap-4 border-b border-border p-5">
-        <div className="flex items-start gap-3">
-          <Building2 className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h3 className="font-semibold">Voice & Content</h3>
-            <p className="text-sm text-muted-foreground">Tone, vocabulary, length, and content rules used with every profile.</p>
-          </div>
-        </div>
-        <Button onClick={() => saveBrandVoiceMutation.mutate()} disabled={saveBrandVoiceMutation.isPending}>
-          <Save className="h-4 w-4 mr-2" />
-          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Voice & Content"}
-        </Button>
-      </div>
-
-      <div className="space-y-6 p-5">
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-primary" />
-              <h4 className="font-medium">Voice</h4>
-              <HelpTip label="Voice help">Default writing tone. The selected persona prompt can still be more specific.</HelpTip>
-            </div>
-            <Badge variant="outline">{voiceMode === "custom" ? "Custom profile" : articleVoice}</Badge>
-          </div>
-          <div className="grid rounded-lg border border-border bg-muted/30 p-1 sm:inline-grid sm:grid-cols-2">
-            {(["preset", "custom"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setVoiceMode(mode)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium",
-                  voiceMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {mode === "preset" ? "Preset tones" : "Custom training"}
-              </button>
-            ))}
-          </div>
-
-          {voiceMode === "preset" ? (
-            <div className="grid gap-3 md:grid-cols-3">
-              {voiceOptions.map((voice) => (
-                <button
-                  key={voice.name}
-                  type="button"
-                  onClick={() => setArticleVoice(voice.name)}
-                  className={cn(
-                    "rounded-lg border p-3 text-left transition-calm",
-                    articleVoice === voice.name ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
-                  )}
-                >
-                  <p className="text-sm font-medium">{voice.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{voice.description}</p>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">Custom training</p>
-                    <Badge variant={trainingWordCount >= 2000 ? "default" : "secondary"}>{trainingQuality}</Badge>
-                  </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    <div className="h-2 min-w-40 flex-1 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${trainingProgress}%` }} />
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">{trainingWordCount.toLocaleString()} words</span>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => analyzeVoiceMutation.mutate()}
-                  disabled={analyzeVoiceMutation.isPending || voiceTrainingSamples.length === 0}
-                >
-                  {analyzeVoiceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-                  Generate profile
-                </Button>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Pasted sample</Label>
-                  <Input value={sampleTitle} onChange={(event) => setSampleTitle(event.target.value)} placeholder="Sample title, optional" />
-                  <Textarea value={sampleContent} onChange={(event) => setSampleContent(event.target.value)} placeholder="Paste your best writing here" className="min-h-[120px]" />
-                  <Button type="button" variant="outline" onClick={addPastedVoiceSample}>Add pasted sample</Button>
-                </div>
-                <div className="space-y-2">
-                  <Label>Import sample</Label>
-                  <div className="flex gap-2">
-                    <Input value={sampleUrl} onChange={(event) => setSampleUrl(event.target.value)} placeholder="https://example.com/article" />
-                    <Button type="button" variant="outline" onClick={importVoiceSampleUrl} disabled={isImportingVoiceSample} aria-label="Import URL sample">
-                      <Link2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <Button type="button" variant="outline" className="w-full justify-start" disabled={isImportingVoiceSample} asChild>
-                    <label>
-                      {isImportingVoiceSample ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
-                      Import PDF, DOCX, or TXT
-                      <input
-                        type="file"
-                        accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        className="hidden"
-                        onChange={handleVoiceSampleFileChange}
-                      />
-                    </label>
-                  </Button>
-                  {customVoiceProfile?.summary && (
-                    <div className="rounded-lg border border-border bg-background p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">Generated profile</p>
-                        <Badge variant="secondary">Active when custom</Badge>
-                      </div>
-                      <p className="mt-1 text-muted-foreground">{customVoiceProfile.summary}</p>
-                      {Boolean(customVoiceProfile.styleTraits?.length) && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {customVoiceProfile.styleTraits!.slice(0, 4).map((trait) => (
-                            <Badge key={trait} variant="outline">{trait}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {voiceTrainingSamples.length > 0 ? (
-                <div className="space-y-2">
-                  {voiceTrainingSamples.map((sample) => (
-                    <div key={sample.id} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background p-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{sample.title}</p>
-                          <Badge variant="outline">{sample.sourceType}</Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{sample.content.split(/\s+/).filter(Boolean).length.toLocaleString()} words</p>
-                      </div>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${sample.title}`} onClick={() => setVoiceTrainingSamples((current) => current.filter((item) => item.id !== sample.id))}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">
-                  Add at least one sample to train a custom profile. Aim for 2,000+ words for useful style matching.
-                </div>
-              )}
-            </div>
-          )}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label>Language</Label>
-                <HelpTip label="Language help">Default output language for generated articles.</HelpTip>
-              </div>
-              <Select value={articleLanguage} onValueChange={setArticleLanguage}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {languageOptions.map((language) => (
-                    <SelectItem key={language} value={language}>{language}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label>Article Length</Label>
-                <HelpTip label="Article length help">Target length for the draft. Smart lets the model choose based on the topic.</HelpTip>
-              </div>
-              <Select value={String(articleWordCount)} onValueChange={(value) => setArticleWordCount(Number(value))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {articleLengthOptions.map((option) => (
-                    <SelectItem key={option.label} value={String(option.words)}>
-                      {option.label} {option.words ? `(${option.words.toLocaleString()} words)` : "(Auto)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex items-center justify-between rounded-lg border border-border p-4">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <Globe2 className="h-4 w-4 text-primary" />
-                Research
-                <HelpTip label="Research help">Adds an instruction to include useful research context. It does not browse by itself unless the selected profile has web/search tools enabled.</HelpTip>
-              </span>
-              <Switch checked={enableResearch} onCheckedChange={setEnableResearch} />
-            </label>
-            <label className="flex items-center justify-between rounded-lg border border-border p-4">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <ListChecks className="h-4 w-4 text-primary" />
-                Table of contents
-                <HelpTip label="Table of contents help">Adds a short clickable-style outline near the top of long articles.</HelpTip>
-              </span>
-              <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
-            </label>
-          </div>
-        </section>
-
-        <section className="space-y-4 border-t border-border pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ListChecks className="h-4 w-4 text-primary" />
-              <h4 className="font-medium">Word and phrase controls</h4>
-              <HelpTip label="Vocabulary help">Terminology rules sent with every article generation.</HelpTip>
-            </div>
-            <Badge variant="outline">{contentRuleCount} active rule{contentRuleCount === 1 ? "" : "s"}</Badge>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-4 rounded-lg border border-border p-4">
-              <div className="space-y-2">
-                <Label>Banned words</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={newBannedWord}
-                    onChange={(event) => setNewBannedWord(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""));
-                      }
-                    }}
-                    placeholder="utilize"
-                  />
-                  <Button type="button" variant="outline" onClick={() => addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""))}>Add</Button>
-                </div>
-                <div className="flex min-h-8 flex-wrap gap-2">
-                  {contentRules.bannedWords.length ? contentRules.bannedWords.map((word) => (
-                    <span key={word} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                      {word}
-                      <button type="button" onClick={() => updateContentRules({ bannedWords: contentRules.bannedWords.filter((item) => item !== word) })} aria-label={`Remove ${word}`}>
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  )) : <p className="text-sm text-muted-foreground">No banned words yet.</p>}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Banned phrases</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={newBannedPhrase}
-                    onChange={(event) => setNewBannedPhrase(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addRuleItem("bannedPhrases", newBannedPhrase, () => setNewBannedPhrase(""));
-                      }
-                    }}
-                    placeholder="at the end of the day"
-                  />
-                  <Button type="button" variant="outline" onClick={() => addRuleItem("bannedPhrases", newBannedPhrase, () => setNewBannedPhrase(""))}>Add</Button>
-                </div>
-                <div className="flex min-h-8 flex-wrap gap-2">
-                  {contentRules.bannedPhrases.length ? contentRules.bannedPhrases.map((phrase) => (
-                    <span key={phrase} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                      {phrase}
-                      <button type="button" onClick={() => updateContentRules({ bannedPhrases: contentRules.bannedPhrases.filter((item) => item !== phrase) })} aria-label={`Remove ${phrase}`}>
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  )) : <p className="text-sm text-muted-foreground">No banned phrases yet.</p>}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-lg border border-border p-4">
-              <div className="space-y-2">
-                <Label>Preferred terms</Label>
-                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <Input value={newPreferredFrom} onChange={(event) => setNewPreferredFrom(event.target.value)} placeholder="Avoid term" />
-                  <Input value={newPreferredTo} onChange={(event) => setNewPreferredTo(event.target.value)} placeholder="Preferred term" />
-                  <Button type="button" variant="outline" onClick={addPreferredTerm}>Add</Button>
-                </div>
-                <div className="space-y-2">
-                  {contentRules.preferredTerms.length ? contentRules.preferredTerms.map((term) => (
-                    <div key={`${term.from}-${term.to}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-2 text-sm">
-                      <span>{term.from} → {term.to}</span>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${term.from}`} onClick={() => updateContentRules({ preferredTerms: contentRules.preferredTerms.filter((item) => item !== term) })}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">No preferred term mappings yet.</p>}
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
-                  Avoid AI-sounding phrases
-                  <Switch checked={contentRules.avoidAiPhrases} onCheckedChange={(checked) => updateContentRules({ avoidAiPhrases: checked })} />
-                </label>
-                <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
-                  Competitor avoidance
-                  <Switch checked={contentRules.competitorAvoidance} onCheckedChange={(checked) => updateContentRules({ competitorAvoidance: checked })} />
-                </label>
-              </div>
-
-              {contentRules.competitorAvoidance && (
-                <div className="space-y-2">
-                  <Label>Competitors</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newCompetitor}
-                      onChange={(event) => setNewCompetitor(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addRuleItem("competitors", newCompetitor, () => setNewCompetitor(""));
-                        }
-                      }}
-                      placeholder="Competitor name"
-                    />
-                    <Button type="button" variant="outline" onClick={() => addRuleItem("competitors", newCompetitor, () => setNewCompetitor(""))}>Add</Button>
-                  </div>
-                  <div className="flex min-h-8 flex-wrap gap-2">
-                    {contentRules.competitors.length ? contentRules.competitors.map((competitor) => (
-                      <span key={competitor} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                        {competitor}
-                        <button type="button" onClick={() => updateContentRules({ competitors: contentRules.competitors.filter((item) => item !== competitor) })} aria-label={`Remove ${competitor}`}>
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </span>
-                    )) : <p className="text-sm text-muted-foreground">Add names to avoid in generated drafts.</p>}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Custom instructions</Label>
-            <Textarea
-              value={customArticleInstructions}
-              onChange={(event) => setCustomArticleInstructions(event.target.value)}
-              placeholder="Always include a practical example in how-to sections."
-              className="min-h-[90px]"
-            />
-          </div>
-        </section>
-
-        <section className="space-y-4 border-t border-border pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" />
-              <h4 className="font-medium">Brand</h4>
-              <HelpTip label="Brand help">Global company context used by every writing profile.</HelpTip>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={autofillFromActiveSite}>
-              <Globe2 className="mr-2 h-4 w-4" />
-              Autofill from active site
-            </Button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Input value={brandCompanyName} onChange={(event) => setBrandCompanyName(event.target.value)} placeholder="Company name" />
-            <Input value={brandTargetAudience} onChange={(event) => setBrandTargetAudience(event.target.value)} placeholder="Target audience" />
-          </div>
-          <Textarea
-            value={brandDescription}
-            onChange={(event) => setBrandDescription(event.target.value)}
-            placeholder="What your company does"
-            className="min-h-[100px]"
-          />
-          <div className="grid gap-3 md:grid-cols-3">
-            {brandMentionOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setBrandMentions(option.value)}
-                className={cn(
-                  "rounded-lg border p-3 text-left transition-calm",
-                  brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
-                )}
-              >
-                <p className="text-sm font-medium">{option.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={newValueProp}
-              onChange={(event) => setNewValueProp(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addValueProp();
-                }
-              }}
-              placeholder="Add value proposition"
-            />
-            <Button type="button" variant="outline" onClick={addValueProp}>Add</Button>
-          </div>
-          {brandValueProps.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {brandValueProps.map((prop) => (
-                <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                  {prop}
-                  <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="grid gap-6 border-t border-border pt-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <span className="flex items-center gap-2 font-medium">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Knowledge Documents
-                  <HelpTip label="Knowledge documents help">When on, ready documents are searched for relevant chunks during generation. Voice still comes from the selected profile.</HelpTip>
-                </span>
-                <p className="mt-1 text-sm text-muted-foreground">Facts and product context, separate from writing style.</p>
-              </div>
-              <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
-            </div>
-            <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border text-sm">
-              <div className="p-3">
-                <p className="font-semibold">{knowledgeDocuments.length}</p>
-                <p className="text-muted-foreground">Documents</p>
-              </div>
-              <div className="border-l border-border p-3">
-                <p className="font-semibold">{readyKnowledgeCount}</p>
-                <p className="text-muted-foreground">Ready</p>
-              </div>
-              <div className="border-l border-border p-3">
-                <p className="font-semibold">{knowledgeChunkTotal}</p>
-                <p className="text-muted-foreground">Chunks</p>
-              </div>
-            </div>
-            <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/20 p-4">
-              <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
-              <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Paste notes, product facts, FAQs, or brand context" className="min-h-[100px]" />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">PDF, DOCX, and TXT imports are chunked automatically.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>Add Knowledge</Button>
-                  <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
-                    <label>
-                      {isImportingKnowledge ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <FileUp className="mr-2 h-4 w-4" />
-                      )}
-                      Import File
-                      <input
-                        type="file"
-                        accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        className="hidden"
-                        onChange={handleKnowledgeFileChange}
-                      />
-                    </label>
-                  </Button>
-                </div>
-              </div>
-            </div>
-            {knowledgeDocuments.length === 0 ? (
-              <div className="rounded-lg border border-border p-5 text-center">
-                <FileText className="mx-auto h-6 w-6 text-muted-foreground" />
-                <p className="mt-3 font-medium">No knowledge documents yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">Add product specs, FAQs, pricing notes, or brand facts.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {knowledgeDocuments.map((document) => {
-                  const status = knowledgeStatus(document);
-                  return (
-                    <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{document.title}</p>
-                          <Badge variant={status === "ready" ? "default" : status === "failed" ? "destructive" : "secondary"} className="capitalize">
-                            {status}
-                          </Badge>
-                          <Badge variant="outline">{knowledgeChunkCount(document)} chunks</Badge>
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
-                      </div>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.title}`}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <span className="flex items-center gap-2 font-medium">
-              <Target className="h-4 w-4 text-primary" />
-              Calls to Action
-              <HelpTip label="Calls to action help">Optional offers or links the model can mention when it naturally fits.</HelpTip>
-            </span>
-            <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
-            <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
-            <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
-            <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
-            {brandCtas.map((cta) => (
-              <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                <div className="min-w-0">
-                  <p className="font-medium">{cta.label}</p>
-                  <p className="text-sm text-muted-foreground">{cta.description}</p>
-                  {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
-                </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+  const activeProfileCount = personas.filter((persona) => persona.status === "active").length;
+  const wordRange = articleWordCount > 0
+    ? `${Math.round(articleWordCount * 0.8).toLocaleString()}-${Math.round(articleWordCount * 1.2).toLocaleString()} words`
+    : "Smart length";
+  const linkDensityLabels: Record<string, string> = {
+    minimal: "1-2 links",
+    light: "3-4 links",
+    balanced: "5-7 links",
+    rich: "8-12 links",
+  };
+  const outputDefaults = [
+    { label: "Length", value: articleWordCount > 0 ? `${articleWordCount.toLocaleString()} target · ${wordRange}` : wordRange },
+    { label: "Language", value: articleLanguage },
+    { label: "FAQ", value: "3-5 questions" },
+    { label: "Internal links", value: userSettings?.enable_internal_links ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "5-7 links" : "Off" },
+    { label: "Research", value: enableResearch ? "On" : "Off" },
+    { label: "TOC", value: includeTableOfContents ? "On" : "Off" },
+  ];
 
   return (
     <div className="p-8 h-[calc(100vh-2rem)] max-w-7xl">
@@ -1400,214 +840,432 @@ export default function Personas() {
           </div>
         </div>
 
-        {/* Right Panel - Editor */}
+        {/* Right Panel - Brand Workspace */}
         <div className="flex-1 calm-card overflow-hidden flex flex-col">
-          {editedPersona ? (
-            <>
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <Bot className="h-6 w-6 text-primary" />
-                  <h2 className="text-xl font-semibold">{editedPersona.name}</h2>
-                  <div
-                    className={cn(
-                      "px-2 py-0.5 rounded text-xs font-medium",
-                      editedPersona.status === "active"
-                        ? "bg-status-success/20 text-status-success"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {editedPersona.status === "active" ? "Active" : "Inactive"}
-                  </div>
-                  {hasAdvancedConfig && (
-                    <div className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
-                      Advanced
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setIsDeleteOpen(true)}
-                  >
-                    Delete
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => selectedPersona && duplicateMutation.mutate(selectedPersona)}
-                    disabled={duplicateMutation.isPending}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    {duplicateMutation.isPending ? "Duplicating..." : "Duplicate"}
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={updateMutation.isPending || isUnavailableModel(editedPersona?.base_model, textModels)}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    {updateMutation.isPending ? "Saving..." : "Save Profile"}
-                  </Button>
-                </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
+            <div className="flex items-center gap-3">
+              <Building2 className="h-6 w-6 text-primary" />
+              <div>
+                <h2 className="text-xl font-semibold">Brand Voice</h2>
+                <p className="text-sm text-muted-foreground">Voice rules, brand context, knowledge, and writer profiles.</p>
               </div>
+            </div>
+            <Button onClick={() => saveBrandVoiceMutation.mutate(undefined)} disabled={saveBrandVoiceMutation.isPending}>
+              <Save className="mr-2 h-4 w-4" />
+              {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+            </Button>
+          </div>
 
-              {/* Content Area */}
-	              <div className="flex-1 overflow-y-auto p-6">
-	                {/* Simple Mode - Always Visible */}
-	                <div className="space-y-6">
-	                  {brandVoiceDefaults}
+          <Tabs value={activeWorkspaceTab} onValueChange={setActiveWorkspaceTab} className="flex min-h-0 flex-1 flex-col">
+            <div className="border-b border-border px-6 py-3">
+              <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-muted/50 p-1">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="voice">Voice Rules</TabsTrigger>
+                <TabsTrigger value="brand">Brand Context</TabsTrigger>
+                <TabsTrigger value="profiles">Writer Profiles</TabsTrigger>
+              </TabsList>
+            </div>
 
-	                  {/* Prompt Builder - Advanced Only */}
-	                  {isAdvanced && (
-	                    <PromptBuilder
-                      onApply={(prompt) =>
-                        updateEditedPersona({ system_prompt: prompt })
-                      }
-                    />
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <TabsContent value="overview" className="mt-0 space-y-6">
+                <div className="grid gap-3 md:grid-cols-4">
+                  {[
+                    { label: "Voice", value: voiceMode === "custom" ? "Custom profile" : articleVoice, icon: MessageSquare },
+                    { label: "Brand", value: brandCompanyName || "Not set", icon: Building2 },
+                    { label: "Knowledge", value: `${readyKnowledgeCount}/${knowledgeDocuments.length} ready`, icon: FileText },
+                    { label: "Profiles", value: `${activeProfileCount} active`, icon: Bot },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-lg border border-border bg-muted/20 p-4">
+                      <item.icon className="mb-3 h-4 w-4 text-primary" />
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                      <p className="mt-1 truncate font-semibold">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-border">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+                    <div>
+                      <h3 className="font-semibold">Output defaults</h3>
+                      <p className="text-sm text-muted-foreground">Article mechanics live in Settings, not Brand Voice.</p>
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href="/settings">Open Settings</a>
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 p-4 md:grid-cols-3">
+                    {outputDefaults.map((item) => (
+                      <div key={item.label} className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                        <p className="mt-1 text-sm font-medium">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border p-4">
+                  <h3 className="font-semibold">Selected writer profile</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {editedPersona ? `${editedPersona.name} · ${editedPersona.base_model}` : "Create a writer profile when you need a specific prompt or model."}
+                  </p>
+                  {!editedPersona && (
+                    <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Profile
+                    </Button>
                   )}
+                </div>
+              </TabsContent>
 
-                  {/* Core Simple View */}
-                  <SimplePromptView
-                    persona={editedPersona}
-	                    onChange={updateEditedPersona}
-	                  />
+              <TabsContent value="voice" className="mt-0 space-y-6">
+                <div className="grid rounded-lg border border-border bg-muted/30 p-1 sm:inline-grid sm:grid-cols-2">
+                  {(["preset", "custom"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setVoiceMode(mode)}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-sm font-medium",
+                        voiceMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {mode === "preset" ? "Preset tones" : "Custom training"}
+                    </button>
+                  ))}
+                </div>
 
-	                  {/* Advanced Toggle */}
-                  <button
-                    onClick={toggleAdvanced}
-                    className={cn(
-                      "w-full flex items-center justify-between p-4 rounded-lg border transition-colors",
-                      isAdvanced
-                        ? "border-primary/30 bg-primary/5"
-                        : "border-border hover:border-primary/30 hover:bg-muted/50"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Settings2 className={cn("h-5 w-5", isAdvanced ? "text-primary" : "text-muted-foreground")} />
-                      <div className="text-left">
-                        <p className="font-medium">Advanced Settings</p>
-                        <p className="text-sm text-muted-foreground">
-                          Tools, plugins, guardrails, and testing
-                        </p>
+                {voiceMode === "preset" ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {voiceOptions.map((voice) => (
+                      <button
+                        key={voice.name}
+                        type="button"
+                        onClick={() => setArticleVoice(voice.name)}
+                        className={cn(
+                          "rounded-lg border p-3 text-left transition-calm",
+                          articleVoice === voice.name ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                        )}
+                      >
+                        <p className="text-sm font-medium">{voice.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{voice.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium">Custom training</p>
+                        <p className="text-sm text-muted-foreground">{trainingWordCount.toLocaleString()} words · {trainingQuality}</p>
+                      </div>
+                      <Button type="button" onClick={() => analyzeVoiceMutation.mutate()} disabled={analyzeVoiceMutation.isPending || voiceTrainingSamples.length === 0}>
+                        {analyzeVoiceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                        Generate profile
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Input value={sampleTitle} onChange={(event) => setSampleTitle(event.target.value)} placeholder="Sample title, optional" />
+                        <Textarea value={sampleContent} onChange={(event) => setSampleContent(event.target.value)} placeholder="Paste writing sample" className="min-h-[120px]" />
+                        <Button type="button" variant="outline" onClick={addPastedVoiceSample}>Add pasted sample</Button>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input value={sampleUrl} onChange={(event) => setSampleUrl(event.target.value)} placeholder="https://example.com/article" />
+                          <Button type="button" variant="outline" onClick={importVoiceSampleUrl} disabled={isImportingVoiceSample} aria-label="Import URL sample">
+                            <Link2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <Button type="button" variant="outline" className="w-full justify-start" disabled={isImportingVoiceSample} asChild>
+                          <label>
+                            {isImportingVoiceSample ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                            Import PDF, DOCX, or TXT
+                            <input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleVoiceSampleFileChange} />
+                          </label>
+                        </Button>
+                        {customVoiceProfile?.summary && <p className="rounded-lg border border-border bg-background p-3 text-sm text-muted-foreground">{customVoiceProfile.summary}</p>}
                       </div>
                     </div>
-                    <ChevronRight
-                      className={cn(
-                        "h-5 w-5 transition-transform",
-                        isAdvanced ? "rotate-90 text-primary" : "text-muted-foreground"
-                      )}
-                    />
-                  </button>
-
-                  {/* Advanced Mode Content */}
-                  {isAdvanced && (
-                    <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
-                      {/* SEO Guardrails */}
-                      <SEOGuardrails
-                        responseFormat={editedPersona.response_format}
-                        responseSchema={editedPersona.response_schema}
-                        validationRules={editedPersona.validation_rules}
-                        onChange={(updates) =>
-                          updateEditedPersona({
-                            response_format: updates.response_format ?? editedPersona.response_format,
-                            response_schema: updates.response_schema !== undefined ? updates.response_schema : editedPersona.response_schema,
-                            validation_rules: updates.validation_rules ?? editedPersona.validation_rules,
-                          })
-                        }
-                      />
-
-                      {/* Tabs for Tools / Plugins / Test */}
-                      <Tabs
-                        value={activeTab}
-                        onValueChange={setActiveTab}
-                        className="border border-border rounded-lg overflow-hidden"
-                      >
-                        <div className="border-b border-border bg-muted/30 px-4">
-                          <TabsList className="h-12 bg-transparent gap-1">
-                            <TabsTrigger value="tools" className="gap-2">
-                              <Wrench className="h-4 w-4" />
-                              Tools
-                              {toolCount > 0 && (
-                                <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-primary/20 text-primary">
-                                  {toolCount}
-                                </span>
-                              )}
-                            </TabsTrigger>
-                            <TabsTrigger value="plugins" className="gap-2">
-                              <Plug className="h-4 w-4" />
-                              Plugins
-                              {pluginCount > 0 && (
-                                <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-primary/20 text-primary">
-                                  {pluginCount}
-                                </span>
-                              )}
-                            </TabsTrigger>
-                            <TabsTrigger value="test" className="gap-2">
-                              <FlaskConical className="h-4 w-4" />
-                              Test
-                            </TabsTrigger>
-                          </TabsList>
+                    {voiceTrainingSamples.map((sample) => (
+                      <div key={sample.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{sample.title}</p>
+                          <p className="text-xs text-muted-foreground">{sample.sourceType} · {sample.content.split(/\s+/).filter(Boolean).length.toLocaleString()} words</p>
                         </div>
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${sample.title}`} onClick={() => setVoiceTrainingSamples((current) => current.filter((item) => item.id !== sample.id))}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                        <div className="p-6">
-                          <TabsContent value="tools" className="mt-0">
-                            <PersonaToolsTab
-                              toolsConfig={editedPersona.tools_config || []}
-                              toolChoice={editedPersona.tool_choice || "auto"}
-                              parallelToolCalls={editedPersona.parallel_tool_calls ?? true}
-                              onChange={(updates) =>
-                                updateEditedPersona({
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <h3 className="font-semibold">Banned language</h3>
+                    <div className="flex gap-2">
+                      <Input value={newBannedWord} onChange={(event) => setNewBannedWord(event.target.value)} placeholder="Banned word" />
+                      <Button type="button" variant="outline" onClick={() => addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""))}>Add</Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={newBannedPhrase} onChange={(event) => setNewBannedPhrase(event.target.value)} placeholder="Banned phrase" />
+                      <Button type="button" variant="outline" onClick={() => addRuleItem("bannedPhrases", newBannedPhrase, () => setNewBannedPhrase(""))}>Add</Button>
+                    </div>
+                    <div className="flex min-h-8 flex-wrap gap-2">
+                      {[...contentRules.bannedWords, ...contentRules.bannedPhrases].map((item) => (
+                        <Badge key={item} variant="outline">{item}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <h3 className="font-semibold">Preferred terms</h3>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                      <Input value={newPreferredFrom} onChange={(event) => setNewPreferredFrom(event.target.value)} placeholder="Avoid" />
+                      <Input value={newPreferredTo} onChange={(event) => setNewPreferredTo(event.target.value)} placeholder="Use instead" />
+                      <Button type="button" variant="outline" onClick={addPreferredTerm}>Add</Button>
+                    </div>
+                    {contentRules.preferredTerms.map((term) => (
+                      <div key={`${term.from}-${term.to}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-2 text-sm">
+                        <span>{term.from} → {term.to}</span>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => updateContentRules({ preferredTerms: contentRules.preferredTerms.filter((item) => item !== term) })}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
+                      Avoid AI-sounding phrases
+                      <Switch checked={contentRules.avoidAiPhrases} onCheckedChange={(checked) => updateContentRules({ avoidAiPhrases: checked })} />
+                    </label>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold">Competitor avoidance</h3>
+                      <Switch checked={contentRules.competitorAvoidance} onCheckedChange={(checked) => updateContentRules({ competitorAvoidance: checked })} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={newCompetitor} onChange={(event) => setNewCompetitor(event.target.value)} placeholder="Competitor name" />
+                      <Button type="button" variant="outline" onClick={() => addRuleItem("competitors", newCompetitor, () => setNewCompetitor(""))}>Add</Button>
+                    </div>
+                    <div className="flex min-h-8 flex-wrap gap-2">
+                      {contentRules.competitors.map((competitor) => (
+                        <Badge key={competitor} variant="outline" className="gap-1">
+                          {competitor}
+                          <button type="button" onClick={() => updateContentRules({ competitors: contentRules.competitors.filter((item) => item !== competitor) })} aria-label={`Remove ${competitor}`}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Custom article instructions</Label>
+                  <Textarea value={customArticleInstructions} onChange={(event) => setCustomArticleInstructions(event.target.value)} placeholder="Always include a practical example in how-to sections." className="min-h-[90px]" />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="brand" className="mt-0 space-y-6">
+                <div className="space-y-4 rounded-lg border border-border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-semibold">Brand profile</h3>
+                    <Button type="button" variant="outline" size="sm" onClick={autofillFromActiveSite}>
+                      <Globe2 className="mr-2 h-4 w-4" />
+                      Autofill from active site
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input value={brandCompanyName} onChange={(event) => setBrandCompanyName(event.target.value)} placeholder="Company name" />
+                    <Input value={brandTargetAudience} onChange={(event) => setBrandTargetAudience(event.target.value)} placeholder="Target audience" />
+                  </div>
+                  <Textarea value={brandDescription} onChange={(event) => setBrandDescription(event.target.value)} placeholder="What your company does" className="min-h-[100px]" />
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {brandMentionOptions.map((option) => (
+                      <button key={option.value} type="button" onClick={() => setBrandMentions(option.value)} className={cn("rounded-lg border p-3 text-left transition-calm", brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40")}>
+                        <p className="text-sm font-medium">{option.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input value={newValueProp} onChange={(event) => setNewValueProp(event.target.value)} placeholder="Add value proposition" />
+                    <Button type="button" variant="outline" onClick={addValueProp}>Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {brandValueProps.map((prop) => (
+                      <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                        {prop}
+                        <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold">Knowledge documents</h3>
+                      <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
+                    </div>
+                    <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border text-sm">
+                      <div className="p-3"><p className="font-semibold">{knowledgeDocuments.length}</p><p className="text-muted-foreground">Docs</p></div>
+                      <div className="border-l border-border p-3"><p className="font-semibold">{readyKnowledgeCount}</p><p className="text-muted-foreground">Ready</p></div>
+                      <div className="border-l border-border p-3"><p className="font-semibold">{knowledgeChunkTotal}</p><p className="text-muted-foreground">Chunks</p></div>
+                    </div>
+                    <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
+                    <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Paste product facts, FAQs, or brand context" className="min-h-[100px]" />
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>Add Knowledge</Button>
+                      <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
+                        <label>
+                          {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                          Import File
+                          <input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleKnowledgeFileChange} />
+                        </label>
+                      </Button>
+                    </div>
+                    {knowledgeDocuments.map((document) => (
+                      <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{document.title}</p>
+                          <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.title}`}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <h3 className="font-semibold">Calls to action</h3>
+                    <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
+                    <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
+                    <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
+                    <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
+                    {brandCtas.map((cta) => (
+                      <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                        <div className="min-w-0">
+                          <p className="font-medium">{cta.label}</p>
+                          <p className="text-sm text-muted-foreground">{cta.description}</p>
+                          {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="profiles" className="mt-0 space-y-6">
+                {editedPersona ? (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+                      <div className="flex items-center gap-3">
+                        <Bot className="h-5 w-5 text-primary" />
+                        <div>
+                          <h3 className="font-semibold">{editedPersona.name}</h3>
+                          <p className="text-sm text-muted-foreground">{editedPersona.status === "active" ? "Active" : "Inactive"} · {editedPersona.base_model}</p>
+                        </div>
+                        {hasAdvancedConfig && <Badge variant="secondary">Advanced</Badge>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setIsDeleteOpen(true)}>Delete</Button>
+                        <Button variant="outline" onClick={() => selectedPersona && duplicateMutation.mutate(selectedPersona)} disabled={duplicateMutation.isPending}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          {duplicateMutation.isPending ? "Duplicating..." : "Duplicate"}
+                        </Button>
+                        <Button onClick={handleSave} disabled={updateMutation.isPending || isUnavailableModel(editedPersona?.base_model, textModels)}>
+                          <Save className="mr-2 h-4 w-4" />
+                          {updateMutation.isPending ? "Saving..." : "Save Profile"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <SimplePromptView persona={editedPersona} onChange={updateEditedPersona} />
+
+                    <button
+                      onClick={toggleAdvanced}
+                      className={cn("flex w-full items-center justify-between rounded-lg border p-4 transition-colors", isAdvanced ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/30 hover:bg-muted/50")}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Settings2 className={cn("h-5 w-5", isAdvanced ? "text-primary" : "text-muted-foreground")} />
+                        <div className="text-left">
+                          <p className="font-medium">Advanced lab</p>
+                          <p className="text-sm text-muted-foreground">Tools, plugins, output guardrails, and profile testing.</p>
+                        </div>
+                      </div>
+                      <ChevronRight className={cn("h-5 w-5 transition-transform", isAdvanced ? "rotate-90 text-primary" : "text-muted-foreground")} />
+                    </button>
+
+                    {isAdvanced && (
+                      <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
+                        <SEOGuardrails
+                          responseFormat={editedPersona.response_format}
+                          responseSchema={editedPersona.response_schema}
+                          validationRules={editedPersona.validation_rules}
+                          onChange={(updates) =>
+                            updateEditedPersona({
+                              response_format: updates.response_format ?? editedPersona.response_format,
+                              response_schema: updates.response_schema !== undefined ? updates.response_schema : editedPersona.response_schema,
+                              validation_rules: updates.validation_rules ?? editedPersona.validation_rules,
+                            })
+                          }
+                        />
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-hidden rounded-lg border border-border">
+                          <div className="border-b border-border bg-muted/30 px-4">
+                            <TabsList className="h-12 gap-1 bg-transparent">
+                              <TabsTrigger value="tools" className="gap-2"><Wrench className="h-4 w-4" />Tools</TabsTrigger>
+                              <TabsTrigger value="plugins" className="gap-2"><Plug className="h-4 w-4" />Plugins</TabsTrigger>
+                              <TabsTrigger value="test" className="gap-2"><FlaskConical className="h-4 w-4" />Test</TabsTrigger>
+                            </TabsList>
+                          </div>
+                          <div className="p-6">
+                            <TabsContent value="tools" className="mt-0">
+                              <PersonaToolsTab
+                                toolsConfig={editedPersona.tools_config || []}
+                                toolChoice={editedPersona.tool_choice || "auto"}
+                                parallelToolCalls={editedPersona.parallel_tool_calls ?? true}
+                                onChange={(updates) => updateEditedPersona({
                                   tools_config: updates.tools_config ?? editedPersona.tools_config,
                                   tool_choice: updates.tool_choice ?? editedPersona.tool_choice,
-                                  parallel_tool_calls:
-                                    updates.parallel_tool_calls ?? editedPersona.parallel_tool_calls,
-                                })
-                              }
-                            />
-                          </TabsContent>
-
-                          <TabsContent value="plugins" className="mt-0">
-                            <PersonaPluginsTab
-                              pluginsConfig={editedPersona.plugins_config || {}}
-                              onChange={(config) => updateEditedPersona({ plugins_config: config })}
-                            />
-                          </TabsContent>
-
-                          <TabsContent value="test" className="mt-0">
-                            <PersonaTestTab
-                              personaId={editedPersona.id}
-                              personaName={editedPersona.name}
-                            />
-                          </TabsContent>
-                        </div>
-                      </Tabs>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-	          ) : (
-	            <div className="flex-1 overflow-y-auto p-6">
-	              <div className="space-y-6">
-	                {brandVoiceDefaults}
-	                <div className="rounded-lg border border-dashed border-border p-6 text-center">
-	                  {isLoading ? (
-	                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-	                  ) : (
-	                    <>
-	                      <Bot className="mx-auto h-8 w-8 text-muted-foreground" />
-	                      <p className="mt-3 font-medium">No writer profiles yet</p>
-	                      <p className="mt-1 text-sm text-muted-foreground">Brand defaults are global. Add a profile when you want a specific writing behavior or model.</p>
-	                      <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
-	                        <Plus className="mr-2 h-4 w-4" />
-	                        Create Profile
-	                      </Button>
-	                    </>
-	                  )}
-	                </div>
-	              </div>
-	            </div>
-	          )}
+                                  parallel_tool_calls: updates.parallel_tool_calls ?? editedPersona.parallel_tool_calls,
+                                })}
+                              />
+                            </TabsContent>
+                            <TabsContent value="plugins" className="mt-0">
+                              <PersonaPluginsTab pluginsConfig={editedPersona.plugins_config || {}} onChange={(config) => updateEditedPersona({ plugins_config: config })} />
+                            </TabsContent>
+                            <TabsContent value="test" className="mt-0">
+                              <PersonaTestTab personaId={editedPersona.id} personaName={editedPersona.name} />
+                            </TabsContent>
+                          </div>
+                        </Tabs>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                    {isLoading ? <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /> : (
+                      <>
+                        <Bot className="mx-auto h-8 w-8 text-muted-foreground" />
+                        <p className="mt-3 font-medium">No writer profiles yet</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Create one when you need a specific prompt or model.</p>
+                        <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Create Profile
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
         </div>
       </div>
 

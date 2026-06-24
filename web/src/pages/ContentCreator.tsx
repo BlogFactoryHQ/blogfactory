@@ -79,6 +79,11 @@ interface ContentUserSettings {
   ai_fallback_enabled?: boolean | null;
   max_ai_images_per_day?: number | null;
   article_word_count?: number | null;
+  article_language?: string | null;
+  include_table_of_contents?: boolean | null;
+  enable_research?: boolean | null;
+  enable_internal_links?: boolean | null;
+  internal_link_density?: string | null;
   monthly_budget?: number | null;
   cover_enabled?: boolean | null;
   cover_resolution?: string | null;
@@ -369,6 +374,12 @@ export default function ContentCreator() {
     after_intro: "After introduction",
     between_sections: "Between sections",
   };
+  const linkDensityLabels: Record<string, string> = {
+    minimal: "1-2 links",
+    light: "3-4 links",
+    balanced: "5-7 links",
+    rich: "8-12 links",
+  };
   const formatOutputs = (outputs?: string[]) => outputs?.length ? `Outputs: ${outputs.join(" + ")}` : "";
   const formatWebSearch = (cost?: number) => cost ? `Web search: $${cost.toFixed(3)}/use` : "";
 
@@ -538,6 +549,13 @@ export default function ContentCreator() {
     openRouterRemaining,
   });
   const selectedArticleType = ARTICLE_TYPE_OPTIONS.find((option) => option.value === articleType) || ARTICLE_TYPE_OPTIONS[0];
+  const contractWordTarget = Number(articleWordCount) || userSettings?.article_word_count || 0;
+  const contractWordLabel = contractWordTarget > 0
+    ? `${Math.round(contractWordTarget * 0.8).toLocaleString()}-${Math.round(contractWordTarget * 1.2).toLocaleString()} words`
+    : "Smart length";
+  const contractLinkLabel = userSettings?.enable_internal_links
+    ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "5-7 links"
+    : "Off";
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -1178,6 +1196,39 @@ export default function ContentCreator() {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Cover uses selected model · Inline tries free AI, then stock
                 </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4 text-byword-blue" />
+                <p className="font-semibold">Output contract</p>
+              </div>
+              <div className="grid gap-2 text-sm md:grid-cols-3">
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Length</p>
+                  <p className="mt-1 font-medium">{contractWordLabel}</p>
+                </div>
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">FAQ</p>
+                  <p className="mt-1 font-medium">3-5 questions</p>
+                </div>
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Internal links</p>
+                  <p className="mt-1 font-medium">{contractLinkLabel}</p>
+                </div>
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Language</p>
+                  <p className="mt-1 font-medium">{userSettings?.article_language || "Default"}</p>
+                </div>
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Research</p>
+                  <p className="mt-1 font-medium">{userSettings?.enable_research ? "On" : "Off"}</p>
+                </div>
+                <div className="rounded-md border border-byword-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Images</p>
+                  <p className="mt-1 font-medium">{imageConfig.cover.enabled || imageConfig.inline.enabled ? "On" : "Off"}</p>
+                </div>
               </div>
             </div>
 

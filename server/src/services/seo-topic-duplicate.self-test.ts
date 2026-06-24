@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { articleTemplateInstructions, buildArticleExtras, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage } from "./generate-content.js";
+import { articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
@@ -18,6 +18,65 @@ assert.deepEqual(
   [1, 2, 3]
 );
 assert.equal(expandDraftVariations([{ title: "RSS", content: "Content" }], "rss_feed", 3).length, 1);
+
+const wordContract = resolveGenerationContract({ articleWordCount: 1500 });
+assert.equal(wordContract.targetWords, 1500);
+assert.equal(wordContract.minWords, 1200);
+assert.equal(wordContract.maxWords, 1800);
+const shortContract = buildGenerationContractMetadata(
+  Array.from({ length: 800 }, (_, index) => `word${index}`).join(" "),
+  { articleWordCount: 1500 }
+);
+assert.equal(shortContract.actualWords! < shortContract.minWords!, true);
+
+const urlFaqRepair = enforceGeneratedArticleContracts(`# Source Rewrite
+
+This article explains the source in practical terms.
+`, {
+  sourceType: "url",
+  topic: "Source Rewrite",
+  settings: { articleLanguage: "US English" },
+});
+assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 3);
+
+const balancedLinkSettings = {
+  enableInternalLinks: true,
+  internalLinkDensity: "balanced",
+  internalLinkIndex: {
+    siteHost: "example.com",
+    pages: Array.from({ length: 6 }, (_, index) => ({
+      title: `Related Guide ${index + 1}`,
+      path: `/guide-${index + 1}`,
+      url: `https://example.com/guide-${index + 1}`,
+    })),
+  },
+};
+const balancedLinks = enforceGeneratedArticleContracts(`# Link Guide
+
+This draft has useful body copy but no natural anchors.
+`, {
+  sourceType: "raw_text",
+  topic: "Link Guide",
+  settings: balancedLinkSettings,
+});
+const balancedContract = buildGenerationContractMetadata(balancedLinks, balancedLinkSettings);
+assert.equal(balancedContract.internalLinkCount! >= 5, true);
+
+const ruleLinked = enforceGeneratedArticleContracts(`# Demo Guide
+
+Teams can book a demo when they are ready.
+`, {
+  sourceType: "article_title",
+  topic: "Demo Guide",
+  settings: {
+    enableInternalLinks: true,
+    internalLinkDensity: "minimal",
+    internalLinkRules: [{ id: "demo", triggers: "book a demo", url: "https://example.com/demo" }],
+    internalLinkIndex: { siteHost: "example.com", pages: [] },
+  },
+});
+assert.match(ruleLinked, /\[book a demo]\(https:\/\/example\.com\/demo\)/i);
+assert.equal(buildGenerationContractMetadata(ruleLinked, { internalLinkIndex: { siteHost: "example.com" } }).internalLinkCount, 1);
 
 const qa = evaluateSeoQa(`## Template Used
 How-to
@@ -82,6 +141,19 @@ const leanSettingsPrompt = buildSettingsInstructions({
 assert.doesNotMatch(leanSettingsPrompt, /Internal link density|Pricing:|Table of contents|research/i);
 assert.match(leanSettingsPrompt, /Write with short paragraphs/);
 assert.match(leanSettingsPrompt, /ExampleCo/);
+
+const snakeSettingsPrompt = buildSettingsInstructions({
+  article_language: "Turkish",
+  custom_article_instructions: "Use first-hand product language.",
+  brand_company_name: "SnakeCo",
+  brand_description: "A platform for saved API snapshots.",
+  knowledge_base_enabled: true,
+  knowledge_documents: [{ title: "Fact", content: "SnakeCo supports URL, PDF, raw text, YouTube, RSS, and campaigns." }],
+}, "campaigns");
+
+assert.match(snakeSettingsPrompt, /Write in Turkish/);
+assert.match(snakeSettingsPrompt, /SnakeCo/);
+assert.match(snakeSettingsPrompt, /URL, PDF, raw text, YouTube, RSS, and campaigns/);
 
 const leanArticleExtras = buildArticleExtras({
   userId: "user",
