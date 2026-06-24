@@ -118,12 +118,27 @@ function summarizeJsonList(value: unknown, maxItems = 5) {
     .slice(0, maxItems);
 }
 
-function openRouterErrorMessage(value: string) {
+export function openRouterErrorMessage(value: string, status?: number, modelId?: string): string {
   try {
-    const parsed = JSON.parse(value) as { error?: { message?: string }; message?: string };
-    return parsed.error?.message || parsed.message || value;
+    const parsed = JSON.parse(value) as {
+      error?: { message?: string; metadata?: { raw?: string; provider_name?: string } };
+      message?: string;
+    };
+    const message = parsed.error?.message || parsed.message || value;
+    const raw = parsed.error?.metadata?.raw;
+    const provider = parsed.error?.metadata?.provider_name;
+    const rawMessage: string = raw && raw !== value ? openRouterErrorMessage(raw) : "";
+    const details: string = rawMessage && rawMessage !== message ? ` — ${truncatePromptText(rawMessage, 300)}` : "";
+    const prefix = modelId ? `${modelId}: ` : "";
+    const statusText = status ? `HTTP ${status}` : "provider error";
+    if (/^provider returned error$/i.test(message)) {
+      return `${prefix}${provider ? `${provider} ` : ""}${statusText}${details}`;
+    }
+    return `${prefix}${message}${details}`;
   } catch {
-    return value;
+    const prefix = modelId ? `${modelId}: ` : "";
+    const statusText = status ? `HTTP ${status}: ` : "";
+    return `${prefix}${statusText}${value}`;
   }
 }
 
@@ -645,7 +660,7 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
   });
 
   if (!resp.ok) {
-    const message = openRouterErrorMessage(await resp.text());
+    const message = openRouterErrorMessage(await resp.text(), resp.status, modelId);
     throw new Error(message);
   }
 
@@ -902,7 +917,7 @@ export async function generateContent(opts: GenerateOpts) {
 
         if (!aiResp.ok) {
           const errText = await aiResp.text();
-          const message = openRouterErrorMessage(errText);
+          const message = openRouterErrorMessage(errText, aiResp.status, modelId);
           console.error(`[generate] AI error for draft ${i + 1}:`, message);
           throw new Error(message);
         }

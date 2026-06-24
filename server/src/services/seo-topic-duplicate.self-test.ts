@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { articleTemplateInstructions, buildArticleExtras, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate } from "./generate-content.js";
+import { articleTemplateInstructions, buildArticleExtras, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage } from "./generate-content.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
@@ -154,5 +154,14 @@ assert.equal(
   "Biyolojide yapay zeka ajanlarının önündeki temel engeller"
 );
 assert.equal(truncateAtWord("Biyolojide yapay zeka ajanları veri tabanı engellerini aşmaya çalışıyor.", 42), "Biyolojide yapay zeka ajanları veri tabanı");
+assert.equal(
+  openRouterErrorMessage(JSON.stringify({
+    error: {
+      message: "Provider returned error",
+      metadata: { provider_name: "xAI", raw: JSON.stringify({ error: { message: "upstream overloaded" } }) },
+    },
+  }), 502, "x-ai/grok-4.3"),
+  "x-ai/grok-4.3: xAI HTTP 502 — upstream overloaded"
+);
 
 console.log("seo-topic-duplicate self-check passed");
