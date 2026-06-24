@@ -1,6 +1,7 @@
 import { CheckCircle2, Loader2, Link, FileText, Youtube, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { DraftProgressList, DraftProgressItem } from "@/components/content/DraftProgressList";
 
 export type GenerationStep = "idle" | "extracting" | "generating" | "images" | "complete" | "error";
 export type SourceType = "article_keyword" | "article_title" | "url" | "raw_text" | "youtube" | "pdf";
@@ -9,6 +10,7 @@ export interface DraftProgress {
   current: number;
   total: number;
   completed: number;
+  failedDrafts?: Array<{ index: number; error: string }>;
 }
 
 interface GenerationProgressProps {
@@ -137,6 +139,20 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
     return step.label;
   };
 
+  const draftSteps: DraftProgressItem[] = draftProgress && draftProgress.total > 1
+    ? Array.from({ length: draftProgress.total }, (_, i) => {
+      const draftNum = i + 1;
+      const failed = draftProgress.failedDrafts?.find((draft) => draft.index === i);
+      return {
+        label: `Draft ${draftNum}`,
+        done: !failed && draftNum <= draftProgress.completed,
+        active: currentStep !== "complete" && !failed && draftNum === draftProgress.current,
+        failed: Boolean(failed),
+        error: failed?.error,
+      };
+    })
+    : [];
+
   return (
     <div className="space-y-4 p-4 bg-accent/50 rounded-lg border border-border">
       <div className="flex items-center justify-between text-sm">
@@ -161,34 +177,7 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
       
       <Progress value={progressPercent} className="h-2" />
 
-      {/* Draft chips for multi-draft jobs */}
-      {draftProgress && draftProgress.total > 1 && currentStep !== "error" && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {Array.from({ length: draftProgress.total }, (_, i) => {
-            const draftNum = i + 1;
-            const isCompleted = draftNum <= draftProgress.completed;
-            const isCurrent = currentStep !== "complete" && draftNum === draftProgress.current;
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors",
-                  isCompleted && "bg-primary/15 text-primary",
-                  isCurrent && "bg-accent-foreground/10 text-accent-foreground ring-1 ring-accent-foreground/20",
-                  !isCompleted && !isCurrent && "bg-muted text-muted-foreground"
-                )}
-              >
-                {isCompleted ? (
-                  <CheckCircle2 className="h-3 w-3" />
-                ) : isCurrent ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : null}
-                Draft {draftNum}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <DraftProgressList steps={draftSteps} className="mt-3" />
 
       <div className="space-y-2">
         {steps.map((step, index) => {

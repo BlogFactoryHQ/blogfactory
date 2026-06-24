@@ -35,14 +35,15 @@ interface JobStatus {
 const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resultPostIds: string[]): DraftProgress | null => {
   const total = plan?.totalDrafts || plan?.items?.length || 0;
   if (total <= 1) return null;
+  const failedDrafts = plan?.failedDrafts || [];
 
   const match = step.match(/(?:generating_draft|generating_post|completed_post|generating_images|failed_post|retrying_draft)_(\d+)_of_(\d+)/);
   if (match) {
     const current = parseInt(match[1], 10);
     const completed = (resultPostIds || []).length;
-    return { current, total: parseInt(match[2], 10), completed };
+    return { current, total: parseInt(match[2], 10), completed, failedDrafts };
   }
-  return { current: 1, total, completed: (resultPostIds || []).length };
+  return { current: 1, total, completed: (resultPostIds || []).length, failedDrafts };
 };
 
 export function useJobTracker(onJobComplete?: () => void) {
@@ -102,7 +103,7 @@ export function useJobTracker(onJobComplete?: () => void) {
             if (postIds.length > 0) {
               updateJob(trackId, {
                 step: "complete",
-                draftProgress: { current: total, total, completed: postIds.length },
+                draftProgress: { current: total, total, completed: postIds.length, failedDrafts },
                 error: failedDrafts.length
                   ? `${postIds.length}/${total} drafts created. ${failedDrafts.length} draft${failedDrafts.length === 1 ? "" : "s"} failed: ${failedDrafts.map((draft) => `Draft ${draft.index + 1}: ${draft.error}`).join("; ")}`
                   : "",
@@ -152,7 +153,7 @@ export function useJobTracker(onJobComplete?: () => void) {
         variations: params.variations,
         step: params.immediateComplete ? "complete" : "extracting",
         error: "",
-        draftProgress: null,
+        draftProgress: params.variations > 1 ? { current: 1, total: params.variations, completed: 0 } : null,
         startedAt: new Date(),
       };
 

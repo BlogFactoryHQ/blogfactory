@@ -19,6 +19,7 @@ import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, Chec
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { DraftProgressList } from "@/components/content/DraftProgressList";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -422,31 +423,7 @@ export default function Jobs() {
                     <p className="text-sm text-muted-foreground mb-2">{progress.label}</p>
                     {/* Step list */}
                     {progress.steps.length > 0 && (
-                      <div className="space-y-1.5 mt-3">
-                        {progress.steps.map((s, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-sm">
-                            {s.done ? (
-                              <CheckCircle className="h-3.5 w-3.5 text-status-success flex-shrink-0" />
-                            ) : s.failed ? (
-                              <AlertCircle className="h-3.5 w-3.5 text-status-error flex-shrink-0" />
-                            ) : s.active ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-status-running flex-shrink-0" />
-                            ) : (
-                              <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
-                            )}
-                            <span className={cn(
-                              s.done ? "text-muted-foreground line-through" : s.failed ? "text-status-error" : s.active ? "text-foreground font-medium" : "text-muted-foreground/60"
-                            )}>
-                              {s.label}
-                            </span>
-                            {s.failed && s.error && (
-                              <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={s.error}>
-                                — {s.error}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <DraftProgressList steps={progress.steps} className="mt-3" />
                     )}
                   </div>
                 );
