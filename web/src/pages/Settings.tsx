@@ -228,10 +228,10 @@ const brandMentionOptions = [
 ];
 
 const linkDensityOptions = [
-  { value: "minimal", label: "Minimal", count: "1-2", description: "Light touch" },
-  { value: "light", label: "Light", count: "3-4", description: "Subtle linking" },
-  { value: "balanced", label: "Balanced", count: "5-7", description: "Recommended", badge: "Best" },
-  { value: "rich", label: "Rich", count: "8-12", description: "Comprehensive" },
+  { value: "minimal", label: "Minimal", count: "Up to 1-2", description: "Only strong matches" },
+  { value: "light", label: "Light", count: "Up to 3-4", description: "Subtle linking" },
+  { value: "balanced", label: "Balanced", count: "Up to 5-7", description: "Relevant matches", badge: "Best" },
+  { value: "rich", label: "Rich", count: "Up to 8-12", description: "When the article supports it" },
 ];
 
 export default function Settings() {
@@ -1403,6 +1403,14 @@ export default function Settings() {
                     </div>
                   </div>
 
+                  <label className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-5">
+                    <span>
+                      <span className="block font-semibold">Use internal links in generated articles</span>
+                      <span className="mt-1 block text-sm text-muted-foreground">Turn this off to stop adding backlink/internal-link suggestions during generation.</span>
+                    </span>
+                    <Switch checked={enableInternalLinks} onCheckedChange={setEnableInternalLinks} />
+                  </label>
+
                   {isIndexingInternalLinks && (
                     <div className="space-y-4 rounded-lg border border-byword-border p-5">
                       <div className="flex items-center justify-between gap-3">
@@ -1525,7 +1533,7 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div>
                     <h3 className="text-lg font-semibold">Links per article</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">How many internal links to add when generating.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Maximum relevant internal links to add. Nothing is appended when there is no natural match.</p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-4">
                     {linkDensityOptions.map((option) => (
@@ -1546,7 +1554,7 @@ export default function Settings() {
                           </span>
                         )}
                         <p className="font-semibold">{option.label}</p>
-                        <p className="mt-2 text-2xl font-bold">{option.count}</p>
+                        <p className="mt-2 text-xl font-bold">{option.count}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
                       </button>
                     ))}

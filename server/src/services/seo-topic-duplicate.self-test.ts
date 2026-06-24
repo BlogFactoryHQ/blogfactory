@@ -60,7 +60,10 @@ This draft has useful body copy but no natural anchors.
   settings: balancedLinkSettings,
 });
 const balancedContract = buildGenerationContractMetadata(balancedLinks, balancedLinkSettings);
-assert.equal(balancedContract.internalLinkCount! >= 5, true);
+assert.equal(balancedContract.internalLinkCount, 0);
+assert.doesNotMatch(balancedLinks, /Related Reading|İlgili Okumalar/);
+assert.doesNotMatch(urlFaqRepair, /Source Rewrite neden önemli/);
+assert.match(urlFaqRepair, /### Why does this topic matter\?/);
 
 const ruleLinked = enforceGeneratedArticleContracts(`# Demo Guide
 

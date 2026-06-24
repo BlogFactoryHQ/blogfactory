@@ -375,10 +375,10 @@ export default function ContentCreator() {
     between_sections: "Between sections",
   };
   const linkDensityLabels: Record<string, string> = {
-    minimal: "1-2 links",
-    light: "3-4 links",
-    balanced: "5-7 links",
-    rich: "8-12 links",
+    minimal: "Up to 1-2 relevant links",
+    light: "Up to 3-4 relevant links",
+    balanced: "Up to 5-7 relevant links",
+    rich: "Up to 8-12 relevant links",
   };
   const formatOutputs = (outputs?: string[]) => outputs?.length ? `Outputs: ${outputs.join(" + ")}` : "";
   const formatWebSearch = (cost?: number) => cost ? `Web search: $${cost.toFixed(3)}/use` : "";
@@ -554,7 +554,7 @@ export default function ContentCreator() {
     ? `${Math.round(contractWordTarget * 0.8).toLocaleString()}-${Math.round(contractWordTarget * 1.2).toLocaleString()} words`
     : "Smart length";
   const contractLinkLabel = userSettings?.enable_internal_links
-    ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "5-7 links"
+    ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "Up to 5-7 relevant links"
     : "Off";
 
   const getSourceLabel = () => {

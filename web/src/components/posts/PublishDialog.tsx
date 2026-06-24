@@ -100,6 +100,15 @@ function explicitTags(content: string) {
   return [...new Set(meta.tags.map((value) => value.trim()).filter(Boolean))].slice(0, 8).join(", ");
 }
 
+function plainText(markdown: string) {
+  return markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function markdownSection(content: string, heading: string) {
   const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
   return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
@@ -115,7 +124,19 @@ function parseMarkdownMeta(content: string) {
   };
 }
 
-export function PublishDialog({ postId, title, content, disabled, disabledReason }: PublishDialogProps) {
+export function buildPublishDefaults(title: string, content: string, summary?: string | null) {
+  const meta = parseMarkdownMeta(content);
+  const bodyText = plainText(content.replace(/^#\s+.+\n*/m, ""));
+  const fallbackDescription = summary || bodyText;
+  return {
+    slug: slugify(meta.slug || title),
+    tags: explicitTags(content),
+    metaTitle: truncate(meta.metaTitle || title, SEO_LIMITS.metaTitle),
+    metaDescription: truncate(meta.metaDescription || fallbackDescription, SEO_LIMITS.metaDescription),
+  };
+}
+
+export function PublishDialog({ postId, title, content, summary, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -145,11 +166,11 @@ export function PublishDialog({ postId, title, content, disabled, disabledReason
   const hasSeoError = seoChecks.some((check) => !check.ok);
 
   const fillDefaults = () => {
-    const meta = parseMarkdownMeta(content);
-    setSlug(meta.slug ? slugify(meta.slug) : "");
-    setTags(explicitTags(content));
-    setMetaTitle(truncate(meta.metaTitle, SEO_LIMITS.metaTitle));
-    setMetaDescription(truncate(meta.metaDescription, SEO_LIMITS.metaDescription));
+    const defaults = buildPublishDefaults(title, content, summary);
+    setSlug(defaults.slug);
+    setTags(defaults.tags);
+    setMetaTitle(defaults.metaTitle);
+    setMetaDescription(defaults.metaDescription);
   };
 
   const publishMutation = useMutation({

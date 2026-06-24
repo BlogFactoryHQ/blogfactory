@@ -438,9 +438,16 @@ function parseMarkdownMeta(content: string) {
   };
 }
 
-function articleBody(content: string) {
+export function articleBody(content: string) {
   const index = content.search(/^#\s+/m);
-  return (index >= 0 ? content.slice(index) : content).trim();
+  const body = (index >= 0 ? content.slice(index) : content).trim();
+  const firstTitle = body.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+  let next = body.replace(/^#\s+.+\n*/m, "").trim();
+  if (firstTitle) {
+    const duplicate = new RegExp(`^#{1,3}\\s+${escapeRegExp(firstTitle)}\\s*\\n*`, "i");
+    while (duplicate.test(next)) next = next.replace(duplicate, "").trim();
+  }
+  return next || body;
 }
 
 function normalizeStringList(values: string[]) {
@@ -527,6 +534,10 @@ function hasTurkishText(value: string) {
   return /[çğıöşüÇĞİÖŞÜ]/.test(value);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function truncateAtWord(value: string, maxChars: number) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxChars) return cleaned;
@@ -568,7 +579,7 @@ export function markdownToHtml(markdown: string) {
     if (faqItems.length) {
       html.push("<ul class=\"faq-list\">");
       for (const item of faqItems) {
-        html.push(`<li><strong>${inlineMarkdown(item.question)}</strong>${renderFaqBody(item.body)}</li>`);
+        html.push(`<li><p><strong>${inlineMarkdown(item.question)}</strong></p>${renderFaqBody(item.body)}</li>`);
       }
       html.push("</ul>");
     }

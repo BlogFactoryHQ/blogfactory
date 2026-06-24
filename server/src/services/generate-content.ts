@@ -521,14 +521,6 @@ function ensureInternalMarkdownLinks(content: string, settings?: GenerationSetti
     }
   }
 
-  if (usedUrls.size < minLinks) {
-    const relatedPages = pages
-      .filter((page) => (page.title || page.path) && (page.url || page.path))
-      .filter((page) => !usedUrls.has((page.url || page.path || "").trim()))
-      .slice(0, minLinks - usedUrls.size);
-    if (relatedPages.length) next = appendRelatedReading(next, relatedPages, settings);
-  }
-
   return next;
 }
 
@@ -550,18 +542,6 @@ function internalMarkdownLinks(content: string, siteHost = "") {
   return links.filter((url) => url.startsWith("/") || (siteHost ? url.includes(siteHost) : true));
 }
 
-function appendRelatedReading(content: string, pages: InternalLinkPromptPage[], settings?: GenerationSettings) {
-  const title = isTurkishContent(content, settings) ? "## İlgili Okumalar" : "## Related Reading";
-  const bullets = pages
-    .map((page) => {
-      const label = (page.title || page.path || "related guide").trim();
-      const url = (page.url || page.path || "").trim();
-      return label && url ? `- [${label}](${url})` : "";
-    })
-    .filter(Boolean);
-  return bullets.length ? `${content.trim()}\n\n${title}\n${bullets.join("\n")}` : content;
-}
-
 function linkFirstPlainMention(content: string, title: string, url: string) {
   const lines = content.split(/\r?\n/);
   const pattern = new RegExp(escapeRegExp(title), "i");
@@ -579,15 +559,14 @@ function ensureFaqSection(content: string, topic: string, settings?: GenerationS
   if (faqCount(content) >= FAQ_TARGET[0]) return content;
 
   const turkish = isTurkishContent(content, settings);
-  const label = cleanPostTitle(topic || (content.match(/^#\s+(.+)$/m)?.[1] || "bu konu")).replace(/[?.!]+$/g, "");
   const faq = turkish
     ? [
       "## Sık Sorulan Sorular",
       "",
-      `### ${label} neden önemli?`,
+      "### Bu konu neden önemli?",
       "Bu konu, karar alırken hangi becerilerin ve süreçlerin gerçekten değer yarattığını daha net görmeyi sağlar.",
       "",
-      `### ${label} kimler için faydalı?`,
+      "### Bu konu kimler için faydalı?",
       "Kendi iş akışını iyileştirmek, araçları daha bilinçli kullanmak ve sonuçları ölçmek isteyen ekipler için faydalıdır.",
       "",
       "### Bu konuda ilk adım ne olmalı?",
@@ -596,10 +575,10 @@ function ensureFaqSection(content: string, topic: string, settings?: GenerationS
     : [
       "## FAQs",
       "",
-      `### Why does ${label} matter?`,
+      "### Why does this topic matter?",
       "It helps readers see which skills, processes, and decisions create the most practical value.",
       "",
-      `### Who benefits most from ${label}?`,
+      "### Who benefits most from this topic?",
       "Teams that want to improve workflows, use tools more deliberately, and measure outcomes benefit most.",
       "",
       "### What is the best first step?",

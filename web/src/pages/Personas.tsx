@@ -746,16 +746,16 @@ export default function Personas() {
     ? `${Math.round(articleWordCount * 0.8).toLocaleString()}-${Math.round(articleWordCount * 1.2).toLocaleString()} words`
     : "Smart length";
   const linkDensityLabels: Record<string, string> = {
-    minimal: "1-2 links",
-    light: "3-4 links",
-    balanced: "5-7 links",
-    rich: "8-12 links",
+    minimal: "Up to 1-2 relevant links",
+    light: "Up to 3-4 relevant links",
+    balanced: "Up to 5-7 relevant links",
+    rich: "Up to 8-12 relevant links",
   };
   const outputDefaults = [
     { label: "Length", value: articleWordCount > 0 ? `${articleWordCount.toLocaleString()} target · ${wordRange}` : wordRange },
     { label: "Language", value: articleLanguage },
     { label: "FAQ", value: "3-5 questions" },
-    { label: "Internal links", value: userSettings?.enable_internal_links ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "5-7 links" : "Off" },
+    { label: "Internal links", value: userSettings?.enable_internal_links ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "Up to 5-7 relevant links" : "Off" },
     { label: "Research", value: enableResearch ? "On" : "Off" },
     { label: "TOC", value: includeTableOfContents ? "On" : "Off" },
   ];

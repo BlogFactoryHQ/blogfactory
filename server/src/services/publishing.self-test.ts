@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/blogfactory";
 
-const { markdownToHtml } = await import("./publishing.js");
+const { articleBody, markdownToHtml } = await import("./publishing.js");
 
 const html = markdownToHtml([
   "# Agentik Kodlama",
@@ -29,8 +29,9 @@ assert.match(html, /<a href="\/blog\/yapay-zeka-dijital-pazarlama">Yapay Zeka il
 assert.match(html, /<a href="https:\/\/example\.com\/path\?a=1&amp;b=2">external kaynak<\/a>/);
 assert.match(html, /<h2>Sık Sorulan Sorular<\/h2>\n<ul class="faq-list">/);
 assert.doesNotMatch(html, /<h3>Agentik kodlama araçları/);
-assert.match(html, /<li><strong>Agentik kodlama araçları kodlama bilmeyenleri tamamen ikame eder mi\?<\/strong><p>Hayır\./);
+assert.match(html, /<li><p><strong>Agentik kodlama araçları kodlama bilmeyenleri tamamen ikame eder mi\?<\/strong><\/p><p>Hayır\./);
 assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına ulaşıyor\.<\/li><li>Fark daha çok uzmanlık derinliğinde ortaya çıkıyor\.<\/li><\/ul>/);
 assert.match(html, /<h2>Sonuç<\/h2>/);
+assert.equal(articleBody("# Başlık\n\n# Başlık\n\n## Başlık\n\nGövde"), "Gövde");
 
 console.log("publishing self-check passed");
