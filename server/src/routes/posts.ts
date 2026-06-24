@@ -11,6 +11,7 @@ export const postsRoutes = new Hono();
 
 postsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
+  const ids = c.req.query("ids")?.split(",").map((id) => id.trim()).filter(Boolean).slice(0, 100) || [];
   const rows = await db
     .select({
       id: posts.id,
@@ -38,7 +39,7 @@ postsRoutes.get("/", async (c) => {
     .leftJoin(personas, eq(posts.personaId, personas.id))
     .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
     .leftJoin(jobs, eq(posts.jobId, jobs.id))
-    .where(eq(posts.userId, userId))
+    .where(ids.length ? and(eq(posts.userId, userId), inArray(posts.id, ids)) : eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 
   return c.json(rows.map(({ persona_name, campaign_name, ...post }) => ({
