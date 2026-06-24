@@ -1,5 +1,10 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
+import { eq } from "drizzle-orm";
+import { db } from "../db/index.js";
+import { jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
+import { getOpenRouterKey } from "../services/api-keys.js";
 
 export const contentRoutes = new Hono();
 
@@ -8,9 +13,31 @@ contentRoutes.post("/generate", async (c) => {
   const body = await c.req.json();
 
   try {
+    const openRouterKey = await getOpenRouterKey(userId);
+    if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
+
+    const [job] = await db.insert(jobs).values({
+      userId,
+      sourceType: body.sourceType,
+      sourceValue: body.sourceValue,
+      modelId: body.modelId || "openai/gpt-4o",
+      personaId: body.personaId || null,
+      status: "running",
+      currentStep: "starting",
+    }).returning();
+
     const { generateContent } = await import("../services/generate-content.js");
-    const result = await generateContent({ ...body, userId });
-    return c.json(result);
+    waitUntil(generateContent({ ...body, userId, jobId: job.id }).catch(async (err) => {
+      console.error("generate background error:", err);
+      await db.update(jobs).set({
+        status: "failed",
+        errorMessage: err?.message || "Content generation failed",
+        generationError: err?.message || "Content generation failed",
+        completedAt: new Date(),
+      }).where(eq(jobs.id, job.id));
+    }));
+
+    return c.json({ jobId: job.id, status: "running", postIds: [] }, 202);
   } catch (err: any) {
     console.error("generate error:", err);
     return c.json({ error: err.message || "Content generation failed" }, 500);
