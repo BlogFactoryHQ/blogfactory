@@ -20,6 +20,7 @@ const MAX_PARALLEL_JOBS = 3;
 interface JobPlan {
   totalDrafts?: number;
   items?: unknown[];
+  failedDrafts?: Array<{ index: number; error: string }>;
 }
 
 interface JobStatus {
@@ -96,10 +97,15 @@ export function useJobTracker(onJobComplete?: () => void) {
 
           if (job.status === "completed" || job.status === "failed") {
             const postIds = job.result_post_ids || [];
+            const failedDrafts = job.generation_plan?.failedDrafts || [];
+            const total = job.generation_plan?.totalDrafts || totalVariations;
             if (postIds.length > 0) {
               updateJob(trackId, {
                 step: "complete",
-                draftProgress: { current: totalVariations, total: totalVariations, completed: postIds.length },
+                draftProgress: { current: total, total, completed: postIds.length },
+                error: failedDrafts.length
+                  ? `${postIds.length}/${total} drafts created. ${failedDrafts.length} draft${failedDrafts.length === 1 ? "" : "s"} failed: ${failedDrafts.map((draft) => `Draft ${draft.index + 1}: ${draft.error}`).join("; ")}`
+                  : "",
               });
             } else {
               updateJob(trackId, {

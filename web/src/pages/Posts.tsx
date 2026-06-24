@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { api } from "@/lib/api";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -21,13 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
 import { useIntegrations } from "@/hooks/useIntegrations";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +40,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+interface FailedDraft {
+  index: number;
+  error: string;
+}
+
+interface GenerationPlan {
+  totalDrafts?: number;
+  failedDrafts?: FailedDraft[];
+}
 
 interface Post {
   id: string;
@@ -54,10 +66,15 @@ interface Post {
   created_at: string;
   cover_image_url: string | null;
   inline_images: string[] | null;
+  generation_plan?: GenerationPlan | null;
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
   campaigns?: { name: string } | null;
 }
+
+type DisplayRow =
+  | { type: "post"; key: string; post: Post }
+  | { type: "draftGroup"; key: string; jobId: string; post: Post; posts: Post[]; totalDrafts: number; failedDrafts: FailedDraft[] };
 
 const formatModelName = (modelId: string) => {
   const modelMap: Record<string, string> = {
@@ -68,6 +85,19 @@ const formatModelName = (modelId: string) => {
     "openai/gpt-5-mini": "GPT-5 Mini",
   };
   return modelMap[modelId] || modelId;
+};
+
+const cleanDraftTitle = (title: string) => title.replace(/\s+\(Draft\s+\d+\)$/i, "");
+
+const draftIndex = (post: Post) => {
+  const match = post.title.match(/\(Draft\s+(\d+)\)$/i);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+const sortDraftPosts = (a: Post, b: Post) => {
+  const byDraft = draftIndex(a) - draftIndex(b);
+  if (byDraft !== 0) return byDraft;
+  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 };
 
 export default function Posts() {
@@ -93,6 +123,7 @@ export default function Posts() {
   const [quickDeletePost, setQuickDeletePost] = useState<Post | null>(null);
   const [postsPerPage, setPostsPerPage] = useState(25);
   const [bulkIntegrationId, setBulkIntegrationId] = useState("");
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
 
   const queryClient = useQueryClient();
   const { bulkDelete, bulkPublish, bulkDraft, isDeleting, isPublishing, isDrafting, isLoading } = useBulkPostActions();
@@ -245,24 +276,53 @@ export default function Posts() {
     return result;
   }, [enrichedPosts, searchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection]);
 
-  const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
-  const paginatedPosts = filteredPosts.slice(
+  const displayRows = useMemo<DisplayRow[]>(() => {
+    const postsByJob = new Map<string, Post[]>();
+    filteredPosts.forEach((post) => {
+      if (!post.job_id || (post.generation_plan?.totalDrafts || 0) <= 1) return;
+      postsByJob.set(post.job_id, [...(postsByJob.get(post.job_id) || []), post]);
+    });
+
+    const seenJobs = new Set<string>();
+    return filteredPosts.flatMap((post): DisplayRow[] => {
+      const totalDrafts = post.generation_plan?.totalDrafts || 0;
+      if (!post.job_id || totalDrafts <= 1) return [{ type: "post", key: post.id, post }];
+      if (seenJobs.has(post.job_id)) return [];
+
+      seenJobs.add(post.job_id);
+      const groupedPosts = [...(postsByJob.get(post.job_id) || [post])].sort(sortDraftPosts);
+      const plan = groupedPosts.find((item) => item.generation_plan)?.generation_plan || post.generation_plan;
+      return [{
+        type: "draftGroup",
+        key: `job-${post.job_id}`,
+        jobId: post.job_id,
+        post: groupedPosts[0],
+        posts: groupedPosts,
+        totalDrafts: plan?.totalDrafts || groupedPosts.length,
+        failedDrafts: plan?.failedDrafts || [],
+      }];
+    });
+  }, [filteredPosts]);
+
+  const totalPages = Math.max(1, Math.ceil(displayRows.length / postsPerPage));
+  const paginatedRows = displayRows.slice(
     (currentPage - 1) * postsPerPage,
     currentPage * postsPerPage
   );
+  const paginatedSelectablePosts = paginatedRows.flatMap((row) => row.type === "draftGroup" ? row.posts : [row.post]);
 
   // Selection helpers
-  const allPageSelected = paginatedPosts.length > 0 && paginatedPosts.every((p) => selectedIds.has(p.id));
-  const somePageSelected = paginatedPosts.some((p) => selectedIds.has(p.id));
+  const allPageSelected = paginatedSelectablePosts.length > 0 && paginatedSelectablePosts.every((p) => selectedIds.has(p.id));
+  const somePageSelected = paginatedSelectablePosts.some((p) => selectedIds.has(p.id));
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       const newSelected = new Set(selectedIds);
-      paginatedPosts.forEach((p) => newSelected.add(p.id));
+      paginatedSelectablePosts.forEach((p) => newSelected.add(p.id));
       setSelectedIds(newSelected);
     } else {
       const newSelected = new Set(selectedIds);
-      paginatedPosts.forEach((p) => newSelected.delete(p.id));
+      paginatedSelectablePosts.forEach((p) => newSelected.delete(p.id));
       setSelectedIds(newSelected);
       setSelectAllAcrossPages(false);
     }
@@ -281,6 +341,16 @@ export default function Posts() {
       newSelected.delete(postId);
       setSelectAllAcrossPages(false);
     }
+    setSelectedIds(newSelected);
+  };
+
+  const handleGroupSelect = (posts: Post[], checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    posts.forEach((post) => {
+      if (checked) newSelected.add(post.id);
+      else newSelected.delete(post.id);
+    });
+    if (!checked) setSelectAllAcrossPages(false);
     setSelectedIds(newSelected);
   };
 
@@ -336,6 +406,145 @@ export default function Posts() {
     clearSelection();
   };
 
+  const toggleJobExpanded = (jobId: string) => {
+    setExpandedJobIds((current) => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
+
+  const renderDraftGroup = (row: Extract<DisplayRow, { type: "draftGroup" }>) => {
+    const isExpanded = expandedJobIds.has(row.jobId);
+    const selectedCount = row.posts.filter((post) => selectedIds.has(post.id)).length;
+    const allSelected = selectedCount === row.posts.length;
+    const status = row.failedDrafts.length
+      ? { type: "warning" as const, label: "Partial" }
+      : row.posts.every((post) => post.status === "published")
+        ? { type: "success" as const, label: "Published" }
+        : { type: "draft" as const, label: "Draft" };
+    const failedIndexes = new Set(row.failedDrafts.map((draft) => draft.index));
+    const failedDrafts = row.failedDrafts
+      .filter((draft) => draft.index >= 0)
+      .sort((a, b) => a.index - b.index);
+
+    return (
+      <Fragment key={row.key}>
+        <TableRow
+          key={row.key}
+          className="table-row-calm cursor-pointer"
+          onClick={() => toggleJobExpanded(row.jobId)}
+          title={isExpanded ? "Collapse drafts" : "Show drafts"}
+        >
+          <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={allSelected ? true : selectedCount > 0 ? "indeterminate" : false}
+              onCheckedChange={(checked) => handleGroupSelect(row.posts, checked === true)}
+              aria-label={`Select drafts for ${cleanDraftTitle(row.post.title)}`}
+            />
+          </TableCell>
+          <TableCell className="font-medium">
+            <div className="flex items-start gap-2">
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 mt-1 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 mt-1 text-muted-foreground" />
+              )}
+              <div className="min-w-0">
+                <div className="truncate">{cleanDraftTitle(row.post.title)}</div>
+                <div className="text-xs font-normal text-muted-foreground">
+                  {row.posts.length}/{row.totalDrafts} drafts created
+                  {row.failedDrafts.length > 0 && ` • ${row.failedDrafts.length} failed`}
+                </div>
+              </div>
+            </div>
+          </TableCell>
+          <TableCell className="capitalize text-sm text-muted-foreground">
+            {row.post.source_type?.replace("_", " ")}
+          </TableCell>
+          <TableCell>{row.post.personas?.name || "—"}</TableCell>
+          <TableCell>
+            <span className="inline-flex items-center px-2 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+              {formatModelName(row.post.model_id)}
+            </span>
+          </TableCell>
+          <TableCell>
+            <StatusBadge status={status.type} label={status.label} showIcon={false} />
+          </TableCell>
+          <TableCell className="text-muted-foreground">
+            {format(new Date(row.post.created_at), "MMM d, yyyy")}
+          </TableCell>
+          <TableCell className="w-24" />
+        </TableRow>
+
+        {isExpanded && row.posts.map((post, index) => (
+          <PostTableRow
+            key={post.id}
+            post={post}
+            isSelected={selectedIds.has(post.id)}
+            onSelect={(checked) => handleRowSelect(post.id, checked)}
+            onClick={() => navigate(`/posts/${post.id}/edit`)}
+            onQuickPublish={(e) => {
+              e.stopPropagation();
+              quickPublishMutation.mutate(post.id);
+            }}
+            onQuickDelete={(e) => {
+              e.stopPropagation();
+              setQuickDeletePost(post);
+            }}
+            formatModelName={formatModelName}
+            className="bg-muted/20"
+            displayTitle={cleanDraftTitle(post.title)}
+            titlePrefix={`Draft ${draftIndex(post) === Number.MAX_SAFE_INTEGER ? index + 1 : draftIndex(post)}`}
+          />
+        ))}
+
+        {isExpanded && failedDrafts.map((draft) => (
+          <TableRow key={`${row.key}-failed-${draft.index}`} className="bg-destructive/5">
+            <TableCell />
+            <TableCell className="font-medium">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <div>
+                  <div className="text-destructive">Draft {draft.index + 1} failed</div>
+                  <div className="text-xs font-normal text-muted-foreground line-clamp-2">
+                    {draft.error || "Not enough information returned for this draft."}
+                  </div>
+                </div>
+              </div>
+            </TableCell>
+            <TableCell />
+            <TableCell />
+            <TableCell />
+            <TableCell>
+              <StatusBadge status="error" label="Failed" showIcon={false} />
+            </TableCell>
+            <TableCell />
+            <TableCell />
+          </TableRow>
+        ))}
+
+        {isExpanded && Array.from({ length: Math.max(0, row.totalDrafts - row.posts.length - failedIndexes.size) }, (_, index) => (
+          <TableRow key={`${row.key}-missing-${index}`} className="bg-muted/10">
+            <TableCell />
+            <TableCell className="font-medium text-muted-foreground">
+              Draft pending information not available
+            </TableCell>
+            <TableCell />
+            <TableCell />
+            <TableCell />
+            <TableCell>
+              <StatusBadge status="warning" label="Missing" showIcon={false} />
+            </TableCell>
+            <TableCell />
+            <TableCell />
+          </TableRow>
+        ))}
+      </Fragment>
+    );
+  };
+
   return (
     <div className="p-8 max-w-7xl">
       <PageHeader
@@ -388,7 +597,7 @@ export default function Posts() {
           />
           {allPageSelected && !selectAllAcrossPages && filteredPosts.length > postsPerPage && (
             <div className="text-center text-sm text-muted-foreground mb-4">
-              All {paginatedPosts.length} posts on this page are selected.{" "}
+              All {paginatedSelectablePosts.length} posts on this page are selected.{" "}
               <Button
                 variant="link"
                 className="p-0 h-auto text-primary"
@@ -434,27 +643,27 @@ export default function Posts() {
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
-            ) : paginatedPosts.length === 0 ? (
+            ) : paginatedRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                   No posts yet. Generate one from Content Creator or add an RSS feed.
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedPosts.map((post) => (
+              paginatedRows.map((row) => row.type === "draftGroup" ? renderDraftGroup(row) : (
                 <PostTableRow
-                  key={post.id}
-                  post={post}
-                  isSelected={selectedIds.has(post.id)}
-                  onSelect={(checked) => handleRowSelect(post.id, checked)}
-                  onClick={() => navigate(`/posts/${post.id}/edit`)}
+                  key={row.post.id}
+                  post={row.post}
+                  isSelected={selectedIds.has(row.post.id)}
+                  onSelect={(checked) => handleRowSelect(row.post.id, checked)}
+                  onClick={() => navigate(`/posts/${row.post.id}/edit`)}
                   onQuickPublish={(e) => {
                     e.stopPropagation();
-                    quickPublishMutation.mutate(post.id);
+                    quickPublishMutation.mutate(row.post.id);
                   }}
                   onQuickDelete={(e) => {
                     e.stopPropagation();
-                    setQuickDeletePost(post);
+                    setQuickDeletePost(row.post);
                   }}
                   formatModelName={formatModelName}
                 />
@@ -464,12 +673,12 @@ export default function Posts() {
         </Table>
 
         {/* Pagination */}
-        {filteredPosts.length > 0 && (
+        {displayRows.length > 0 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <p className="text-sm text-muted-foreground">
               Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
-              {Math.min(currentPage * postsPerPage, filteredPosts.length)} of{" "}
-              {filteredPosts.length} posts
+              {Math.min(currentPage * postsPerPage, displayRows.length)} of{" "}
+              {displayRows.length} rows
             </p>
             <div className="flex items-center gap-2">
               <Select

@@ -49,6 +49,9 @@ interface PostTableRowProps {
   onQuickPublish: (e: React.MouseEvent) => void;
   onQuickDelete: (e: React.MouseEvent) => void;
   formatModelName: (modelId: string) => string;
+  className?: string;
+  displayTitle?: string;
+  titlePrefix?: string;
 }
 
 export function PostTableRow({
@@ -59,6 +62,9 @@ export function PostTableRow({
   onQuickPublish,
   onQuickDelete,
   formatModelName,
+  className,
+  displayTitle,
+  titlePrefix,
 }: PostTableRowProps) {
   const SourceIcon = sourceIcons[post.source_type] || FileText;
 
@@ -66,7 +72,8 @@ export function PostTableRow({
     <TableRow
       className={cn(
         "table-row-calm cursor-pointer group",
-        isSelected && "bg-primary/5"
+        isSelected && "bg-primary/5",
+        className
       )}
       onClick={onClick}
       title="Edit post"
@@ -78,7 +85,12 @@ export function PostTableRow({
           aria-label={`Select ${post.title}`}
         />
       </TableCell>
-      <TableCell className="font-medium">{post.title}</TableCell>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+          {titlePrefix && <span className="text-xs font-semibold text-muted-foreground">{titlePrefix}</span>}
+          <span>{displayTitle || post.title}</span>
+        </div>
+      </TableCell>
       <TableCell>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2 text-muted-foreground">

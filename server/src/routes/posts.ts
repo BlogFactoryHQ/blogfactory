@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { posts, personas, imageAssets, campaigns } from "../db/schema.js";
+import { posts, personas, imageAssets, campaigns, jobs } from "../db/schema.js";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
@@ -30,12 +30,14 @@ postsRoutes.get("/", async (c) => {
       inline_images: posts.inlineImages,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
+      generation_plan: jobs.generationPlan,
       persona_name: personas.name,
       campaign_name: campaigns.name,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
     .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
+    .leftJoin(jobs, eq(posts.jobId, jobs.id))
     .where(eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 

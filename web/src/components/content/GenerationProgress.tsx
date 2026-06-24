@@ -162,12 +162,12 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
       <Progress value={progressPercent} className="h-2" />
 
       {/* Draft chips for multi-draft jobs */}
-      {draftProgress && draftProgress.total > 1 && currentStep !== "complete" && currentStep !== "error" && (
+      {draftProgress && draftProgress.total > 1 && currentStep !== "error" && (
         <div className="flex items-center gap-1.5 flex-wrap">
           {Array.from({ length: draftProgress.total }, (_, i) => {
             const draftNum = i + 1;
             const isCompleted = draftNum <= draftProgress.completed;
-            const isCurrent = draftNum === draftProgress.current;
+            const isCurrent = currentStep !== "complete" && draftNum === draftProgress.current;
             return (
               <div
                 key={i}

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { articleTemplateInstructions, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate } from "./generate-content.js";
+import { articleTemplateInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate } from "./generate-content.js";
 
 const match = findIndexedTopicDuplicate({
   internalLinkIndex: {
@@ -62,5 +62,33 @@ Get started with our SEO workflow.
 
 assert.equal(qa.checks.some((item) => item.label === "Meta title under 60 chars" && item.ok), true);
 assert.equal(qa.articleType, "how_to");
+
+const repaired = enforceGeneratedArticleContracts(`# Agentik Kodlama
+
+## Gelecek İçin İpuçları
+
+Yapay Zeka ile Dijital Pazarlama Rehberi yazısında da benzer bir yaklaşım vardı.
+`, {
+  sourceType: "article_title",
+  topic: "Agentik Kodlama",
+  settings: {
+    articleLanguage: "Turkish",
+    enableInternalLinks: true,
+    internalLinkIndex: {
+      siteHost: "example.com",
+      pages: [
+        { title: "Yapay Zeka ile Dijital Pazarlama Rehberi", path: "/blog/yapay-zeka", url: "https://example.com/blog/yapay-zeka" },
+      ],
+    },
+  },
+});
+
+assert.match(repaired, /\[Yapay Zeka ile Dijital Pazarlama Rehberi]\(https:\/\/example\.com\/blog\/yapay-zeka\)/);
+assert.match(repaired, /## Sık Sorulan Sorular/);
+assert.equal(evaluateSeoQa(repaired, {
+  settings: { internalLinkIndex: { siteHost: "example.com" } },
+  articleType: "how_to",
+}).checks.find((item) => item.label === "Internal links included")?.ok, true);
+assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, true);
 
 console.log("seo-topic-duplicate self-check passed");

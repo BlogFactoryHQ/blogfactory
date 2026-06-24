@@ -273,9 +273,9 @@ async function summarizeInternalLinks(settings: GenerationSettings, sourceText =
         return `  - ${title}: ${page.url}${description}`;
       });
 
-    lines.push(`Use these indexed site pages as internal-link candidates where natural:\n${scored.join("\n")}`);
+    lines.push(`Use these indexed site pages as internal-link candidates where natural. Insert real markdown links exactly as [anchor text](URL); do not mention page titles as plain text without linking them:\n${scored.join("\n")}`);
   } else {
-    lines.push("Suggest natural internal link opportunities where relevant.");
+    lines.push("Suggest natural internal link opportunities where relevant, using real markdown links like [anchor text](URL).");
   }
 
   return lines;
@@ -395,8 +395,110 @@ function buildArticleExtras(opts: GenerateOpts) {
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
   if (direction) lines.push(`Unique angle or proprietary insight to include: ${direction}`);
   lines.push("Use these H2 sections before/after the article body: Template Used, SEO Keywords, Slug, Meta Title, Meta Description, Key Points, FAQs, Image Suggestions, References.");
+  lines.push("The FAQs section must be a real H2 followed by 3-5 H3 questions and short answers, for example `## FAQs` then `### Question?`.");
+  lines.push("If internal-link candidates are available, place them inline as markdown links like `[Anchor text](https://example.com/page)`; never leave candidate titles as unlinked plain text.");
 
   return lines.length ? `\n\nAdditional article instructions:\n${lines.join("\n\n")}` : "";
+}
+
+export function enforceGeneratedArticleContracts(content: string, opts: { sourceType: string; topic: string; settings?: GenerationSettings }) {
+  let next = ensureInternalMarkdownLinks(content, opts.settings);
+  if (isArticleSource(opts.sourceType)) next = ensureFaqSection(next, opts.topic, opts.settings);
+  return next;
+}
+
+function ensureInternalMarkdownLinks(content: string, settings?: GenerationSettings) {
+  if (settings?.enableInternalLinks !== true) return content;
+  const index = settings.internalLinkIndex as { siteHost?: string; pages?: InternalLinkPromptPage[] } | null | undefined;
+  const pages = Array.isArray(index?.pages) ? index.pages : [];
+  if (!pages.length) return content;
+
+  const siteHost = typeof index?.siteHost === "string" ? index.siteHost : "";
+  const existingInternalLinks = markdownLinks(content).filter((url) => url.startsWith("/") || (siteHost && url.includes(siteHost)));
+  if (existingInternalLinks.length) return content;
+
+  let next = content;
+  let inserted = 0;
+  for (const page of pages.slice(0, 12)) {
+    const title = (page.title || "").trim();
+    const url = (page.url || page.path || "").trim();
+    if (title.length < 4 || !url) continue;
+    const linked = linkFirstPlainMention(next, title, url);
+    if (linked !== next) {
+      next = linked;
+      inserted += 1;
+      if (inserted >= 3) break;
+    }
+  }
+
+  const fallback = pages.find((page) => (page.title || page.path) && (page.url || page.path));
+  if (!inserted && fallback) {
+    const label = (fallback.title || fallback.path || "related guide").trim();
+    const url = (fallback.url || fallback.path || "").trim();
+    const sentence = isTurkishContent(content, settings)
+      ? `Daha fazla okuma için [${label}](${url}) rehberine göz atabilirsiniz.`
+      : `For more context, read [${label}](${url}).`;
+    next = `${next.trim()}\n\n${sentence}`;
+  }
+  return next;
+}
+
+function linkFirstPlainMention(content: string, title: string, url: string) {
+  const lines = content.split(/\r?\n/);
+  const pattern = new RegExp(escapeRegExp(title), "i");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim() || /^#{1,6}\s/.test(line) || /\]\([^)]+\)/.test(line)) continue;
+    if (!pattern.test(line)) continue;
+    lines[index] = line.replace(pattern, (match) => `[${match}](${url})`);
+    return lines.join("\n");
+  }
+  return content;
+}
+
+function ensureFaqSection(content: string, topic: string, settings?: GenerationSettings) {
+  const faqCount = markdownHeadings(content, 3).filter((heading) => /\?/.test(heading)).length
+    || (markdownSection(content, "FAQs|FAQ|Sık Sorulan Sorular|SSS|Frequently Asked Questions").match(/^###\s+/gm) || []).length;
+  if (faqCount >= 3) return content;
+
+  const turkish = isTurkishContent(content, settings);
+  const label = cleanPostTitle(topic || (content.match(/^#\s+(.+)$/m)?.[1] || "bu konu")).replace(/[?.!]+$/g, "");
+  const faq = turkish
+    ? [
+      "## Sık Sorulan Sorular",
+      "",
+      `### ${label} neden önemli?`,
+      "Bu konu, karar alırken hangi becerilerin ve süreçlerin gerçekten değer yarattığını daha net görmeyi sağlar.",
+      "",
+      `### ${label} kimler için faydalı?`,
+      "Kendi iş akışını iyileştirmek, araçları daha bilinçli kullanmak ve sonuçları ölçmek isteyen ekipler için faydalıdır.",
+      "",
+      "### Bu konuda ilk adım ne olmalı?",
+      "Önce mevcut süreci küçük bir örnekle test etmek, çıktıları ölçmek ve işe yarayan yaklaşımı kademeli olarak genişletmek gerekir.",
+    ]
+    : [
+      "## FAQs",
+      "",
+      `### Why does ${label} matter?`,
+      "It helps readers see which skills, processes, and decisions create the most practical value.",
+      "",
+      `### Who benefits most from ${label}?`,
+      "Teams that want to improve workflows, use tools more deliberately, and measure outcomes benefit most.",
+      "",
+      "### What is the best first step?",
+      "Start with a small workflow test, measure the result, and expand the parts that clearly work.",
+    ];
+
+  return `${content.trim()}\n\n${faq.join("\n")}`;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isTurkishContent(content: string, settings?: GenerationSettings) {
+  const language = String(settings?.articleLanguage || "");
+  return /turkish|türkçe/i.test(language) || /[ğüşöçıİĞÜŞÖÇ]/.test(content);
 }
 
 function buildCampaignUserMessage(article: NonNullable<GenerateOpts["campaignArticle"]>) {
@@ -753,6 +855,7 @@ export async function generateContent(opts: GenerateOpts) {
 
     const createdPostIds: string[] = [];
     const seoQaResults: Array<{ postId: string; title: string; qa: ReturnType<typeof evaluateSeoQa> }> = [];
+    const failedDrafts: Array<{ index: number; error: string }> = [];
     let totalCost = 0;
     let totalTokens = 0;
     let lastGenerationError = "";
@@ -817,14 +920,21 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
         const aiData = await aiResp.json() as any;
-        const genContent = cleanGeneratedPostContent(aiData.choices?.[0]?.message?.content || "");
+        const genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(aiData.choices?.[0]?.message?.content || ""), {
+          sourceType: opts.sourceType,
+          topic: opts.articleTitleOverride || article.title || opts.sourceValue,
+          settings: promptSettings,
+        });
         const usage = aiData.usage;
         const openRouterUsage = await getOpenRouterCost(openRouterKey, aiData);
         const genLatency = Date.now() - genStart;
 
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
-        const postTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");
+        const generatedTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");
+        const postTitle = article.variationCount && article.variationCount > 1
+          ? `${generatedTitle} (Draft ${article.variationIndex})`
+          : generatedTitle;
 
         // Log generation
         const cost = openRouterUsage.cost;
@@ -871,6 +981,7 @@ export async function generateContent(opts: GenerateOpts) {
         });
 
         createdPostIds.push(post.id);
+        await db.update(jobs).set({ resultPostIds: createdPostIds }).where(eq(jobs.id, jobId));
 
         // Resolve images after the draft exists. Paid AI is queued, never run inline by default.
         if (opts.generateImages && opts.imageConfig) {
@@ -901,7 +1012,11 @@ export async function generateContent(opts: GenerateOpts) {
       } catch (draftErr: any) {
         lastGenerationError = generationErrorMessage(draftErr);
         console.error(`[generate] Error on draft ${i + 1}:`, lastGenerationError);
-        await db.update(jobs).set({ generationError: lastGenerationError }).where(eq(jobs.id, jobId));
+        failedDrafts.push({ index: i, error: lastGenerationError });
+        await db.update(jobs).set({
+          generationError: lastGenerationError,
+          generationPlan: { ...generationPlan, failedDrafts },
+        }).where(eq(jobs.id, jobId));
       }
     }
 
@@ -925,7 +1040,7 @@ export async function generateContent(opts: GenerateOpts) {
       status: "completed",
       currentStep: "done",
       resultPostIds: createdPostIds,
-      generationPlan: { ...generationPlan, seoQa: seoQaResults },
+      generationPlan: { ...generationPlan, failedDrafts, seoQa: seoQaResults },
       tokenCost: totalTokens,
       totalCost,
       completedAt: new Date(),
