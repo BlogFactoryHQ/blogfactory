@@ -88,6 +88,21 @@ const normalizeJob = (job: any): Job => ({
   personas: job.personas ?? (job.personaName ? { name: job.personaName } : null),
 });
 
+const failedDraftsFor = (job: Job): Array<{ index: number; error: string }> => {
+  return Array.isArray(job.generation_plan?.failedDrafts) ? job.generation_plan.failedDrafts : [];
+};
+
+const draftStatsFor = (job: Job) => {
+  const created = job.result_post_ids?.length ?? 0;
+  const failed = failedDraftsFor(job).length;
+  const plannedTotal = Number(job.generation_plan?.totalDrafts);
+  const total = Number.isFinite(plannedTotal) && plannedTotal > 0
+    ? plannedTotal
+    : Math.max(created + failed, created, 1);
+
+  return { created, failed, total, partial: created > 0 && failed > 0 };
+};
+
 export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -180,6 +195,18 @@ export default function Jobs() {
       default:
         return "pending";
     }
+  };
+
+  const getJobStatusBadge = (job: Job) => {
+    const stats = draftStatsFor(job);
+    if (stats.partial) {
+      return {
+        status: "warning" as const,
+        label: `${stats.created}/${stats.total} made · ${stats.failed} failed`,
+      };
+    }
+
+    return { status: getStatusBadgeType(job.status) as any, label: undefined };
   };
 
   const parseStepProgress = (step: string, resultPostIds: string[] | null, generationPlan?: any) => {
@@ -332,6 +359,7 @@ export default function Jobs() {
             ) : (
               filteredJobs.map((job) => {
                 const SourceIcon = sourceIcons[job.source_type] || FileText;
+                const statusBadge = getJobStatusBadge(job);
 
                 return (
                   <TableRow
@@ -356,7 +384,7 @@ export default function Jobs() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={getStatusBadgeType(job.status) as any} />
+                      <StatusBadge status={statusBadge.status} label={statusBadge.label} />
                     </TableCell>
                   </TableRow>
                 );
@@ -377,7 +405,10 @@ export default function Jobs() {
                     <p className="section-label mb-1">Selected Job</p>
                     <div className="flex items-center gap-3">
                       <SheetTitle className="font-mono">#{selectedJob.id.slice(0, 8)}</SheetTitle>
-                      <StatusBadge status={getStatusBadgeType(selectedJob.status) as any} />
+                      <StatusBadge
+                        status={getJobStatusBadge(selectedJob).status}
+                        label={getJobStatusBadge(selectedJob).label}
+                      />
                     </div>
                   </div>
                   {selectedJob.status === "running" && (
@@ -430,11 +461,12 @@ export default function Jobs() {
               })()}
 
               {/* Result or Error */}
-              {selectedJob.status === "completed" && (() => {
+              {(selectedJob.status === "completed" || draftStatsFor(selectedJob).partial) && (() => {
                 const plan = selectedJob.generation_plan;
                 const failedDrafts: Array<{index: number, error: string}> = plan?.failedDrafts || [];
                 const seoQa: SeoQaResult[] = Array.isArray(plan?.seoQa) ? plan.seoQa : [];
-                const isPartial = failedDrafts.length > 0 && jobPosts.length > 0;
+                const draftStats = draftStatsFor(selectedJob);
+                const isPartial = draftStats.partial;
 
                 return (
                   <div className={cn(
@@ -446,7 +478,7 @@ export default function Jobs() {
                     <div className={cn("flex items-center gap-2 mb-3", isPartial ? "text-amber-700 dark:text-amber-400" : "text-[hsl(158_64%_30%)]")}>
                       <CheckCircle className="h-4 w-4" />
                       <span className="font-medium text-sm">
-                        {isPartial ? `Partial Success (${jobPosts.length} of ${plan?.totalDrafts || '?'} drafts)` : "Generation Successful"}
+                        {isPartial ? `${draftStats.created}/${draftStats.total} drafts created · ${draftStats.failed} failed` : "Generation Successful"}
                       </span>
                     </div>
                     {jobPosts.map((post) => (
@@ -547,10 +579,10 @@ export default function Jobs() {
                 );
               })()}
 
-              {selectedJob.status === "failed" && (() => {
+              {selectedJob.status === "failed" && !draftStatsFor(selectedJob).partial && (() => {
                 const plan = selectedJob.generation_plan;
                 const failedDrafts: Array<{index: number, error: string}> = plan?.failedDrafts || [];
-                const hasRetryableItems = failedDrafts.length > 0 && plan?.items;
+                const hasRetryableItems = failedDrafts.length > 0;
 
                 return (
                   <div className="p-4 rounded-lg border border-status-error/30 bg-[hsl(var(--status-error)/0.05)] mb-6">

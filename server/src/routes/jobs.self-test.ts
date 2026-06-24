@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import { staleTimeoutUpdateForJob } from "./jobs.js";
+
+const partial = staleTimeoutUpdateForJob({
+  generationPlan: { totalDrafts: 3 },
+  resultPostIds: ["post-1"],
+});
+
+assert.equal(partial.status, "completed");
+assert.equal(partial.currentStep, "done");
+assert.equal(partial.errorMessage, null);
+assert.equal(partial.generationPlan.totalDrafts, 3);
+assert.deepEqual(partial.generationPlan.failedDrafts, [
+  {
+    index: 1,
+    error: "Generation timed out after 1/3 drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.",
+  },
+  {
+    index: 2,
+    error: "Generation timed out after 1/3 drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.",
+  },
+]);
+
+const failed = staleTimeoutUpdateForJob({
+  generationPlan: { totalDrafts: 3 },
+  resultPostIds: [],
+});
+
+assert.equal(failed.status, "failed");
+assert.equal(failed.currentStep, "timeout");
+assert.equal(failed.generationPlan.failedDrafts.length, 3);
+assert.match(failed.errorMessage, /before creating any drafts/);
+
+const completed = staleTimeoutUpdateForJob({
+  generationPlan: { totalDrafts: 2 },
+  resultPostIds: ["post-1", "post-2"],
+});
+
+assert.equal(completed.status, "completed");
+assert.equal(completed.errorMessage, null);
+assert.equal(completed.generationPlan.totalDrafts, 2);
+assert.equal(completed.generationPlan.failedDrafts, undefined);
+
+const preserved = staleTimeoutUpdateForJob({
+  generationPlan: {
+    totalDrafts: 3,
+    failedDrafts: [{ index: 1, error: "Model refused this draft." }],
+  },
+  resultPostIds: ["post-1"],
+});
+
+assert.equal(preserved.status, "completed");
+assert.deepEqual(preserved.generationPlan.failedDrafts, [
+  { index: 1, error: "Model refused this draft." },
+  {
+    index: 2,
+    error: "Generation timed out after 1/3 drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.",
+  },
+]);
+
+console.log("jobs stale timeout self-test passed");

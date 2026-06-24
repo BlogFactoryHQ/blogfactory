@@ -419,12 +419,20 @@ export default function Posts() {
     const isExpanded = expandedJobIds.has(row.jobId);
     const selectedCount = row.posts.filter((post) => selectedIds.has(post.id)).length;
     const allSelected = selectedCount === row.posts.length;
-    const status = row.failedDrafts.length
+    const failedIndexes = new Set(row.failedDrafts.map((draft) => draft.index));
+    const completedIndexes = new Set(
+      row.posts.map((post, index) => {
+        const value = draftIndex(post);
+        return value === Number.MAX_SAFE_INTEGER ? index : value - 1;
+      })
+    );
+    const missingDraftIndexes = Array.from({ length: Math.max(0, row.totalDrafts) }, (_, index) => index)
+      .filter((index) => !failedIndexes.has(index) && !completedIndexes.has(index));
+    const status = row.failedDrafts.length || missingDraftIndexes.length
       ? { type: "warning" as const, label: "Partial" }
       : row.posts.every((post) => post.status === "published")
         ? { type: "success" as const, label: "Published" }
         : { type: "draft" as const, label: "Draft" };
-    const failedIndexes = new Set(row.failedDrafts.map((draft) => draft.index));
     const failedDrafts = row.failedDrafts
       .filter((draft) => draft.index >= 0)
       .sort((a, b) => a.index - b.index);
@@ -455,7 +463,7 @@ export default function Posts() {
                 <div className="truncate">{cleanDraftTitle(row.post.title)}</div>
                 <div className="text-xs font-normal text-muted-foreground">
                   {row.posts.length}/{row.totalDrafts} drafts created
-                  {row.failedDrafts.length > 0 && ` • ${row.failedDrafts.length} failed`}
+                  {(row.failedDrafts.length + missingDraftIndexes.length) > 0 && ` • ${row.failedDrafts.length + missingDraftIndexes.length} failed`}
                 </div>
               </div>
             </div>
@@ -525,17 +533,25 @@ export default function Posts() {
           </TableRow>
         ))}
 
-        {isExpanded && Array.from({ length: Math.max(0, row.totalDrafts - row.posts.length - failedIndexes.size) }, (_, index) => (
-          <TableRow key={`${row.key}-missing-${index}`} className="bg-muted/10">
+        {isExpanded && missingDraftIndexes.map((draftIndex) => (
+          <TableRow key={`${row.key}-missing-${draftIndex}`} className="bg-destructive/5">
             <TableCell />
-            <TableCell className="font-medium text-muted-foreground">
-              Draft pending information not available
+            <TableCell className="font-medium">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <div>
+                  <div className="text-destructive">Draft {draftIndex + 1} failed to finish</div>
+                  <div className="text-xs font-normal text-muted-foreground line-clamp-2">
+                    No failure detail was recorded for this draft. The job may have timed out before writing the reason.
+                  </div>
+                </div>
+              </div>
             </TableCell>
             <TableCell />
             <TableCell />
             <TableCell />
             <TableCell>
-              <StatusBadge status="warning" label="Missing" showIcon={false} />
+              <StatusBadge status="error" label="Failed" showIcon={false} />
             </TableCell>
             <TableCell />
             <TableCell />

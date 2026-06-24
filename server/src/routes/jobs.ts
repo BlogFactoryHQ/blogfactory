@@ -6,21 +6,138 @@ import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
 const STALE_RUNNING_MS = 10 * 60 * 1000;
-const TIMEOUT_MESSAGE = "Generation timed out before creating content. Try again with a faster model or shorter source.";
+const NO_DRAFT_TIMEOUT_MESSAGE =
+  "Generation timed out before creating any drafts. Try again with a faster model, fewer variations, or a shorter source.";
+
+type FailedDraft = { index: number; error: string };
+
+function partialTimeoutMessage(createdCount: number, totalDrafts: number) {
+  return `Generation timed out after ${createdCount}/${totalDrafts} drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.`;
+}
+
+export function staleTimeoutUpdateForJob(job: {
+  generationPlan: unknown;
+  resultPostIds: string[] | null;
+}) {
+  const plan = job.generationPlan && typeof job.generationPlan === "object"
+    ? job.generationPlan as Record<string, unknown>
+    : {};
+  const createdCount = Array.isArray(job.resultPostIds) ? job.resultPostIds.length : 0;
+  const plannedTotal = Number(plan.totalDrafts);
+  const totalDrafts = Number.isFinite(plannedTotal) && plannedTotal > 0
+    ? plannedTotal
+    : Math.max(createdCount, 1);
+  const existingFailedDrafts = Array.isArray(plan.failedDrafts)
+    ? plan.failedDrafts.filter((draft): draft is FailedDraft => {
+        return Boolean(
+          draft &&
+          typeof draft === "object" &&
+          typeof (draft as FailedDraft).index === "number"
+        );
+      })
+    : [];
+  const failedIndexes = new Set(existingFailedDrafts.map((draft) => draft.index));
+
+  if (createdCount > 0 && createdCount >= totalDrafts) {
+    return {
+      status: "completed",
+      currentStep: "done",
+      errorMessage: null,
+      generationPlan: { ...plan, totalDrafts },
+      completedAt: new Date(),
+    };
+  }
+
+  if (createdCount > 0 && createdCount < totalDrafts) {
+    const message = partialTimeoutMessage(createdCount, totalDrafts);
+    const failedDrafts = [...existingFailedDrafts];
+    for (let index = createdCount; index < totalDrafts; index += 1) {
+      if (!failedIndexes.has(index)) {
+        failedDrafts.push({ index, error: message });
+      }
+    }
+
+    return {
+      status: "completed",
+      currentStep: "done",
+      errorMessage: null,
+      generationError: message,
+      generationPlan: { ...plan, totalDrafts, failedDrafts },
+      completedAt: new Date(),
+    };
+  }
+
+  const failedDrafts = [...existingFailedDrafts];
+  for (let index = 0; index < totalDrafts; index += 1) {
+    if (!failedIndexes.has(index)) {
+      failedDrafts.push({ index, error: NO_DRAFT_TIMEOUT_MESSAGE });
+    }
+  }
+
+  return {
+    status: "failed",
+    currentStep: "timeout",
+    errorMessage: NO_DRAFT_TIMEOUT_MESSAGE,
+    generationPlan: { ...plan, totalDrafts, failedDrafts },
+    completedAt: new Date(),
+  };
+}
+
+async function markStaleRunningJobs(userId: string, jobId?: string) {
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
+  const staleClauses = [
+    eq(jobs.userId, userId),
+    eq(jobs.status, "running"),
+    isNull(jobs.campaignId),
+    lt(jobs.createdAt, staleBefore),
+  ];
+  if (jobId) staleClauses.push(eq(jobs.id, jobId));
+
+  const staleJobs = await db
+    .select({
+      id: jobs.id,
+      generationPlan: jobs.generationPlan,
+      resultPostIds: jobs.resultPostIds,
+    })
+    .from(jobs)
+    .where(and(...staleClauses));
+
+  await Promise.all(
+    staleJobs.map((job) => db
+      .update(jobs)
+      .set(staleTimeoutUpdateForJob(job))
+      .where(eq(jobs.id, job.id)))
+  );
+
+  const failedClauses = [
+    eq(jobs.userId, userId),
+    eq(jobs.status, "failed"),
+    isNull(jobs.campaignId),
+  ];
+  if (jobId) failedClauses.push(eq(jobs.id, jobId));
+
+  const failedJobs = await db
+    .select({
+      id: jobs.id,
+      generationPlan: jobs.generationPlan,
+      resultPostIds: jobs.resultPostIds,
+    })
+    .from(jobs)
+    .where(and(...failedClauses));
+
+  await Promise.all(
+    failedJobs
+      .filter((job) => Array.isArray(job.resultPostIds) && job.resultPostIds.length > 0)
+      .map((job) => db
+        .update(jobs)
+        .set(staleTimeoutUpdateForJob(job))
+        .where(eq(jobs.id, job.id)))
+  );
+}
 
 jobsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
-  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
-
-  await db
-    .update(jobs)
-    .set({
-      status: "failed",
-      currentStep: "timeout",
-      errorMessage: TIMEOUT_MESSAGE,
-      completedAt: new Date(),
-    })
-    .where(and(eq(jobs.userId, userId), eq(jobs.status, "running"), isNull(jobs.campaignId), lt(jobs.createdAt, staleBefore)));
+  await markStaleRunningJobs(userId);
 
   const rows = await db
     .select({
@@ -59,17 +176,7 @@ jobsRoutes.get("/", async (c) => {
 jobsRoutes.get("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
-
-  await db
-    .update(jobs)
-    .set({
-      status: "failed",
-      currentStep: "timeout",
-      errorMessage: TIMEOUT_MESSAGE,
-      completedAt: new Date(),
-    })
-    .where(and(eq(jobs.id, id), eq(jobs.userId, userId), eq(jobs.status, "running"), isNull(jobs.campaignId), lt(jobs.createdAt, staleBefore)));
+  await markStaleRunningJobs(userId, id);
 
   const [job] = await db
     .select({
