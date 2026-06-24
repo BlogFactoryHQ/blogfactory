@@ -23,7 +23,7 @@ export function cleanGeneratedPostContent(content: string) {
 }
 
 export function cleanPostTitle(title: string) {
-  return title.replace(/\\\|/g, "|").replace(/\s+/g, " ").trim();
+  return title.replace(/\\\|/g, "|").replace(/\s+\(Draft\s+\d+\)$/i, "").replace(/\s+/g, " ").trim();
 }
 
 /**

@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -277,12 +278,21 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
 
             <div className="space-y-2">
               <Label>Meta başlık</Label>
-              <Input value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} />
+              <Textarea
+                value={metaTitle}
+                onChange={(event) => setMetaTitle(event.target.value)}
+                className="min-h-[76px] resize-none break-words"
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Meta açıklama</Label>
-              <Input value={metaDescription} onChange={(event) => setMetaDescription(event.target.value)} placeholder="Oluşturulan özeti kullan" />
+              <Textarea
+                value={metaDescription}
+                onChange={(event) => setMetaDescription(event.target.value)}
+                placeholder="Oluşturulan özeti kullan"
+                className="min-h-[96px] resize-none break-words"
+              />
             </div>
           </div>
         )}

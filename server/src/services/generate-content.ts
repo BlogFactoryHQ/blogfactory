@@ -932,9 +932,7 @@ export async function generateContent(opts: GenerateOpts) {
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
         const generatedTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");
-        const postTitle = article.variationCount && article.variationCount > 1
-          ? `${generatedTitle} (Draft ${article.variationIndex})`
-          : generatedTitle;
+        const postTitle = generatedTitle;
 
         // Log generation
         const cost = openRouterUsage.cost;

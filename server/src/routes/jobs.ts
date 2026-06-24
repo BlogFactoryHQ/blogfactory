@@ -5,7 +5,7 @@ import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
-const STALE_RUNNING_MS = 2 * 60 * 1000;
+const STALE_RUNNING_MS = 10 * 60 * 1000;
 const TIMEOUT_MESSAGE = "Generation timed out before creating content. Try again with a faster model or shorter source.";
 
 jobsRoutes.get("/", async (c) => {
