@@ -10,6 +10,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const sourceIcons: Record<string, typeof FileText> = {
+  article_keyword: FileText,
+  article_title: FileText,
   rss_feed: Rss,
   url: LinkIcon,
   pdf: FileUp,
@@ -67,6 +69,7 @@ export function PostTableRow({
         isSelected && "bg-primary/5"
       )}
       onClick={onClick}
+      title="Edit post"
     >
       <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
         <Checkbox
@@ -111,7 +114,7 @@ export function PostTableRow({
         {format(new Date(post.created_at), "MMM d, yyyy")}
       </TableCell>
       <TableCell className="w-24">
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1">
           {post.status !== "published" && (
             <Button
               variant="ghost"

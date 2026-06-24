@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const sourceIcons: Record<string, typeof FileText> = {
+  article_keyword: FileText,
+  article_title: FileText,
   rss_feed: Rss,
   url: LinkIcon,
   pdf: FileText,
@@ -53,6 +55,18 @@ interface Post {
   title: string;
   status: string;
   created_at: string;
+}
+
+interface SeoQaResult {
+  postId: string;
+  title: string;
+  qa: {
+    score: number;
+    passed: number;
+    total: number;
+    articleType?: string;
+    checks: Array<{ label: string; ok: boolean | null; detail: string }>;
+  };
 }
 
 const normalizeJob = (job: any): Job => ({
@@ -442,6 +456,7 @@ export default function Jobs() {
               {selectedJob.status === "completed" && (() => {
                 const plan = selectedJob.generation_plan;
                 const failedDrafts: Array<{index: number, error: string}> = plan?.failedDrafts || [];
+                const seoQa: SeoQaResult[] = Array.isArray(plan?.seoQa) ? plan.seoQa : [];
                 const isPartial = failedDrafts.length > 0 && jobPosts.length > 0;
 
                 return (
@@ -470,6 +485,53 @@ export default function Jobs() {
                         </div>
                       </div>
                     ))}
+                    {seoQa.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border space-y-3">
+                        <p className="text-xs font-medium text-muted-foreground">SEO QA</p>
+                        {seoQa.map((item) => {
+                          const failedChecks = item.qa.checks.filter((qaCheck) => qaCheck.ok === false);
+                          const skippedChecks = item.qa.checks.filter((qaCheck) => qaCheck.ok === null);
+                          const passedChecks = item.qa.checks.filter((qaCheck) => qaCheck.ok === true);
+                          const orderedChecks = [...failedChecks, ...skippedChecks, ...passedChecks];
+                          return (
+                          <div key={item.postId} className="rounded-lg border border-border bg-card p-3">
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">{item.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {passedChecks.length}/{item.qa.total} passed
+                                  {failedChecks.length ? ` • ${failedChecks.length} fix` : ""}
+                                  {skippedChecks.length ? ` • ${skippedChecks.length} skipped` : ""}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                                item.qa.score >= 80 ? "bg-status-success/10 text-[hsl(158_64%_30%)]" : item.qa.score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-status-error/10 text-status-error"
+                              )}>
+                                {item.qa.score}
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              {orderedChecks.map((qaCheck) => (
+                                <div key={qaCheck.label} className="flex items-start gap-2 text-xs">
+                                  {qaCheck.ok === null ? (
+                                    <div className="mt-0.5 h-3.5 w-3.5 rounded-full border border-muted-foreground/30" />
+                                  ) : qaCheck.ok ? (
+                                    <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-success" />
+                                  ) : (
+                                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-error" />
+                                  )}
+                                  <span className="flex-1">
+                                    {qaCheck.label}
+                                    <span className="text-muted-foreground"> - {qaCheck.detail}</span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )})}
+                      </div>
+                    )}
                     {failedDrafts.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border space-y-2">
                         <div className="flex items-center justify-between">

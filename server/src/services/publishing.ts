@@ -471,61 +471,181 @@ function plainText(markdown: string) {
     .trim();
 }
 
-function markdownToHtml(markdown: string) {
+type ListKind = "ul" | "ol";
+
+export function markdownToHtml(markdown: string) {
   const lines = markdown.split(/\r?\n/);
   const html: string[] = [];
-  let inList = false;
+  let listKind: ListKind | null = null;
+  let paragraph: string[] = [];
+  let inFaqSection = false;
+  let faqItems: Array<{ question: string; body: string[] }> = [];
+  let activeFaqItem: { question: string; body: string[] } | null = null;
+
+  const closeList = () => {
+    if (!listKind) return;
+    html.push(`</${listKind}>`);
+    listKind = null;
+  };
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+
+  const flushFaqItem = () => {
+    if (!activeFaqItem) return;
+    faqItems.push(activeFaqItem);
+    activeFaqItem = null;
+  };
+
+  const flushFaqSection = () => {
+    flushFaqItem();
+    if (faqItems.length) {
+      html.push("<ul class=\"faq-list\">");
+      for (const item of faqItems) {
+        html.push(`<li><strong>${inlineMarkdown(item.question)}</strong>${renderFaqBody(item.body)}</li>`);
+      }
+      html.push("</ul>");
+    }
+    faqItems = [];
+    inFaqSection = false;
+  };
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
-      if (inList) {
-        html.push("</ul>");
-        inList = false;
-      }
+      flushParagraph();
+      closeList();
       continue;
     }
     const image = trimmed.match(/^!\[([^\]]*)]\(([^)]+)\)/);
     if (image) {
-      if (inList) {
-        html.push("</ul>");
-        inList = false;
-      }
+      if (inFaqSection) flushFaqSection();
+      flushParagraph();
+      closeList();
       html.push(`<figure><img src="${escapeAttribute(image[2])}" alt="${escapeAttribute(image[1] || "")}" /></figure>`);
       continue;
     }
     const heading = trimmed.match(/^(#{1,6})\s+(.+)/);
     if (heading) {
-      if (inList) {
-        html.push("</ul>");
-        inList = false;
+      const level = heading[1].length;
+      const title = heading[2].trim();
+      if (inFaqSection && level === 3) {
+        flushFaqItem();
+        activeFaqItem = { question: title, body: [] };
+        continue;
       }
-      html.push(`<h${heading[1].length}>${inlineMarkdown(heading[2])}</h${heading[1].length}>`);
+      if (inFaqSection) flushFaqSection();
+      flushParagraph();
+      closeList();
+      html.push(`<h${level}>${inlineMarkdown(title)}</h${level}>`);
+      if (level === 2 && isFaqHeading(title)) inFaqSection = true;
       continue;
     }
-    const listItem = trimmed.match(/^[-*]\s+(.+)/);
+    if (inFaqSection && activeFaqItem) {
+      activeFaqItem.body.push(trimmed);
+      continue;
+    }
+    const listItem = parseListItem(trimmed);
     if (listItem) {
-      if (!inList) {
-        html.push("<ul>");
-        inList = true;
+      flushParagraph();
+      if (listKind && listKind !== listItem.kind) closeList();
+      if (!listKind) {
+        html.push(`<${listItem.kind}>`);
+        listKind = listItem.kind;
       }
-      html.push(`<li>${inlineMarkdown(listItem[1])}</li>`);
+      html.push(`<li>${inlineMarkdown(listItem.value)}</li>`);
       continue;
     }
-    if (inList) {
-      html.push("</ul>");
-      inList = false;
-    }
-    html.push(`<p>${inlineMarkdown(trimmed)}</p>`);
+    closeList();
+    paragraph.push(trimmed);
   }
-  if (inList) html.push("</ul>");
+  if (inFaqSection) flushFaqSection();
+  flushParagraph();
+  closeList();
   return html.join("\n");
 }
 
+function renderFaqBody(lines: string[]) {
+  const html: string[] = [];
+  let listKind: ListKind | null = null;
+  let paragraph: string[] = [];
+  const closeList = () => {
+    if (!listKind) return;
+    html.push(`</${listKind}>`);
+    listKind = null;
+  };
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      continue;
+    }
+    const listItem = parseListItem(trimmed);
+    if (listItem) {
+      flushParagraph();
+      if (listKind && listKind !== listItem.kind) closeList();
+      if (!listKind) {
+        html.push(`<${listItem.kind}>`);
+        listKind = listItem.kind;
+      }
+      html.push(`<li>${inlineMarkdown(listItem.value)}</li>`);
+      continue;
+    }
+    closeList();
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  closeList();
+  return html.join("");
+}
+
+function isFaqHeading(value: string) {
+  return /^(sık sorulan sorular|sss|faq|faqs|frequently asked questions)$/i.test(value.trim());
+}
+
+function parseListItem(value: string): { kind: ListKind; value: string } | null {
+  const unordered = value.match(/^[-*]\s+(.+)/);
+  if (unordered) return { kind: "ul", value: unordered[1] };
+  const ordered = value.match(/^\d+[.)]\s+(.+)/);
+  if (ordered) return { kind: "ol", value: ordered[1] };
+  return null;
+}
+
 function inlineMarkdown(value: string) {
-  return escapeHtml(value)
+  const linkTokens: string[] = [];
+  const withLinkTokens = value.replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_match, label: string, href: string) => {
+    const safeHref = href.trim();
+    if (!isSafeHref(safeHref)) return label;
+    const token = `\u0000LINK_${linkTokens.length}\u0000`;
+    linkTokens.push(`<a href="${escapeAttribute(safeHref)}">${inlineMarkdown(label)}</a>`);
+    return token;
+  });
+
+  let html = escapeHtml(withLinkTokens)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>');
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  for (const [index, linkHtml] of linkTokens.entries()) {
+    html = html.split(`\u0000LINK_${index}\u0000`).join(linkHtml);
+  }
+
+  return html;
+}
+
+function isSafeHref(value: string) {
+  return /^(https?:\/\/|mailto:|tel:|\/(?!\/)|#)/i.test(value);
 }
 
 function escapeHtml(value: string) {

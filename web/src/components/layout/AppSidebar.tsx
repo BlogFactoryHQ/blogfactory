@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   FileText,
@@ -40,12 +41,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 const primaryNavigation = [
-  { name: "News", href: "/news", icon: Newspaper },
   { name: "Create Content", href: "/content-creator", icon: PenTool },
-  { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
+  { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },
+  { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
+];
+
+const monitorNavigation = [
   { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
   { name: "Job Queue", href: "/jobs", icon: ListTodo },
   { name: "Brand Voice", href: "/brand-voice", icon: Users },
@@ -60,18 +66,45 @@ const lowerNavigation = [
   { name: "Sites", href: "/sites", icon: Globe2 },
 ];
 
+const searchNavigation = [...primaryNavigation, ...monitorNavigation, ...lowerNavigation];
+
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { sites, activeSite, activeSiteId, activateSite } = useSites();
   const { isCollapsed, toggle } = useSidebar();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
-  const visibleNavigation = primaryNavigation;
   const workspaceName = activeSite?.domain || activeSite?.name || "Connect site";
   const workspaceInitial = (activeSite?.name || activeSite?.domain || "B").charAt(0).toUpperCase();
+  const filteredNavigation = searchNavigation.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const openSearch = () => {
+    setSearchQuery("");
+    setIsSearchOpen(true);
+  };
+
+  const goTo = (href: string) => {
+    setIsSearchOpen(false);
+    navigate(href);
+  };
 
   const handleSidebarClick = (e: React.MouseEvent) => {
     if (!isCollapsed) return;
@@ -89,24 +122,24 @@ export function AppSidebar() {
         className={cn(
           "fixed inset-y-0 left-0 z-50 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden",
           "transition-[width] duration-200 ease-out",
-          isCollapsed ? "w-[64px] cursor-pointer" : "w-[236px]"
+          isCollapsed ? "w-[60px] cursor-pointer" : "w-[224px]"
         )}
       >
-        <div className="shrink-0 space-y-3 border-b border-sidebar-border p-3">
+        <div className="shrink-0 space-y-2 border-b border-sidebar-border p-2.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={isCollapsed}>
-              <button className="flex h-12 w-full items-center gap-3 overflow-hidden rounded-md border border-sidebar-border bg-card px-3 text-left transition-calm hover:border-byword-blue/50">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-byword-blue-soft text-byword-blue">
-                  <span className="text-[11px] font-bold tracking-tight">{workspaceInitial}</span>
+              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-md border border-sidebar-border bg-card px-2.5 text-left transition-calm hover:border-byword-blue/50">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-byword-blue-soft text-byword-blue">
+                  <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{workspaceName}</p>
-                  <p className="truncate text-[11px] text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
+                  <p className="truncate text-[13px] font-semibold leading-tight text-foreground">{workspaceName}</p>
+                  <p className="truncate text-[10px] leading-tight text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
                 <span
                   className={cn(
-                    "ml-1 h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    "ml-0.5 h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     isCollapsed ? "hidden" : "flex"
                   )}
                   onClick={(e) => { e.stopPropagation(); toggle(); }}
@@ -177,81 +210,35 @@ export function AppSidebar() {
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className={cn("flex h-9 items-center gap-2 rounded-md bg-muted/60 px-3 text-sm text-muted-foreground", isCollapsed && "hidden")}>
+          <button
+            type="button"
+            onClick={openSearch}
+            className={cn("flex h-8 w-full items-center gap-2 rounded-md bg-muted/60 px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:bg-muted hover:text-foreground", isCollapsed && "hidden")}
+          >
             <Search className="h-4 w-4" />
             <span className="flex-1">Search</span>
             <span className="text-[11px] text-muted-foreground/60">⌘K</span>
-          </div>
+          </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-hidden px-3 py-4">
-          {visibleNavigation.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? location.pathname === "/"
-                : location.pathname.startsWith(item.href);
-
-            const inner = (
-              <div
-                className={cn(
-                  "flex h-9 items-center overflow-hidden rounded-md transition-calm",
-                  isActive
-                    ? "bg-byword-blue-soft text-byword-blue"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center">
-                  <item.icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.5} />
-                </div>
-                <span className="shrink-0 whitespace-nowrap pr-2 text-[14px] font-medium">
-                  {item.name}
-                </span>
-              </div>
-            );
-
-            if (isCollapsed) {
-              return (
-                <Tooltip key={item.name}>
-                  <TooltipTrigger asChild>{inner}</TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">{item.name}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return <Link key={item.name} to={item.href}>{inner}</Link>;
-          })}
+        <nav className="flex-1 overflow-hidden px-2.5 py-3">
+          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
+          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
+          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
         </nav>
 
-        <div className="space-y-1 border-t border-sidebar-border px-3 py-3">
-          {!isCollapsed && lowerNavigation.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? location.pathname === "/"
-                : location.pathname.startsWith(item.href);
-            return (
-              <Link key={item.name} to={item.href} className={cn(
-                "flex h-9 items-center gap-3 rounded-md px-2 text-sm transition-calm",
-                isActive ? "bg-byword-blue-soft text-byword-blue" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}>
-                <item.icon className="h-4 w-4" strokeWidth={1.7} />
-                {item.name}
-              </Link>
-            );
-          })}
-        </div>
-
-        <div className="border-t border-sidebar-border px-3 py-3 overflow-hidden">
+        <div className="border-t border-sidebar-border px-2.5 py-2.5 overflow-hidden">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 data-profile-menu
-                className="flex w-full items-center overflow-hidden rounded-md p-1.5 text-left transition-calm hover:bg-sidebar-accent"
+                className="flex w-full items-center overflow-hidden rounded-md p-1 text-left transition-calm hover:bg-sidebar-accent"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-byword-blue text-[11px] font-semibold text-white">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-byword-blue text-[11px] font-semibold text-white">
                   {displayName[0].toUpperCase()}
                 </span>
-                <span className={cn("ml-2.5 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
-                  <span className="block truncate text-[13px] font-medium leading-tight text-foreground">{displayName}</span>
+                <span className={cn("ml-2 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
+                  <span className="block truncate text-[12px] font-medium leading-tight text-foreground">{displayName}</span>
                   <span className="block truncate text-[11px] leading-tight text-sidebar-muted">{email}</span>
                 </span>
                 <ChevronDown className={cn("ml-2 h-3.5 w-3.5 shrink-0 text-sidebar-muted", isCollapsed && "hidden")} />
@@ -281,7 +268,100 @@ export function AppSidebar() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+          <DialogContent className="top-[20%] max-w-md gap-3 p-4">
+            <DialogTitle className="sr-only">Search navigation</DialogTitle>
+            <div className="flex items-center gap-2 rounded-md border border-input px-3">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search pages..."
+                className="h-10 border-0 px-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+            </div>
+            <div className="max-h-72 space-y-1 overflow-y-auto">
+              {filteredNavigation.map((item) => (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => goTo(item.href)}
+                  className="flex h-9 w-full items-center gap-3 rounded-md px-2 text-left text-sm transition-calm hover:bg-sidebar-accent"
+                >
+                  <item.icon className="h-4 w-4 text-sidebar-muted" />
+                  <span>{item.name}</span>
+                </button>
+              ))}
+              {filteredNavigation.length === 0 && (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">No pages found.</p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </aside>
     </TooltipProvider>
+  );
+}
+
+type NavItem = {
+  name: string;
+  href: string;
+  icon: typeof FileText;
+};
+
+function SidebarSection({
+  title,
+  items,
+  locationPath,
+  isCollapsed,
+}: {
+  title: string;
+  items: NavItem[];
+  locationPath: string;
+  isCollapsed: boolean;
+}) {
+  return (
+    <div className="mb-4 last:mb-0">
+      {!isCollapsed && (
+        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted/70">
+          {title}
+        </p>
+      )}
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isActive = item.href === "/" ? locationPath === "/" : locationPath.startsWith(item.href);
+          const inner = (
+            <div
+              className={cn(
+                "flex h-8 items-center overflow-hidden rounded-md border-l-2 transition-calm",
+                isActive
+                  ? "border-byword-blue bg-byword-blue-soft/70 text-byword-blue"
+                  : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                <item.icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.5} />
+              </div>
+              <span className="shrink-0 whitespace-nowrap pr-2 text-[13px] font-medium">
+                {item.name}
+              </span>
+            </div>
+          );
+
+          if (isCollapsed) {
+            return (
+              <Tooltip key={item.name}>
+                <TooltipTrigger asChild>{inner}</TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">{item.name}</TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          return <Link key={item.name} to={item.href}>{inner}</Link>;
+        })}
+      </div>
+    </div>
   );
 }

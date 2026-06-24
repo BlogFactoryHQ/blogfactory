@@ -116,6 +116,19 @@ interface ArticlePlanResponse {
 
 type CreationMode = "article" | "campaign";
 type CampaignMode = "keyword" | "title" | "title_outline";
+type ArticleType = "auto" | "how_to" | "list" | "what_is" | "pillar" | "alternatives" | "best_of" | "comparison" | "newsjacking";
+
+const ARTICLE_TYPE_OPTIONS: Array<{ value: ArticleType; label: string; description: string }> = [
+  { value: "auto", label: "Auto", description: "Pick the best structure from the brief." },
+  { value: "how_to", label: "How-to", description: "Step-by-step educational article." },
+  { value: "list", label: "List", description: "Tips, examples, resources, or ideas." },
+  { value: "what_is", label: "What is", description: "Definition-led informational article." },
+  { value: "pillar", label: "Pillar", description: "Broad guide with cluster-style sections." },
+  { value: "alternatives", label: "Alternatives", description: "Commercial list against one competitor." },
+  { value: "best_of", label: "Best-of", description: "Ranked products with selection criteria." },
+  { value: "comparison", label: "Comparison", description: "One product versus another." },
+  { value: "newsjacking", label: "Newsjacking", description: "Timely article tied to a news event." },
+];
 
 interface Campaign {
   id: string;
@@ -181,6 +194,7 @@ export default function ContentCreator() {
   const [articleRelatedKeywords, setArticleRelatedKeywords] = useState("");
   const [articleOutline, setArticleOutline] = useState("");
   const [articleDirection, setArticleDirection] = useState("");
+  const [articleType, setArticleType] = useState<ArticleType>("auto");
   const [articleWordCount, setArticleWordCount] = useState("");
   const [articleIncludeToc, setArticleIncludeToc] = useState(false);
   const [articleResearchFocus, setArticleResearchFocus] = useState(false);
@@ -520,6 +534,7 @@ export default function ContentCreator() {
     currentMonthSpend,
     openRouterRemaining,
   });
+  const selectedArticleType = ARTICLE_TYPE_OPTIONS.find((option) => option.value === articleType) || ARTICLE_TYPE_OPTIONS[0];
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -558,6 +573,7 @@ export default function ContentCreator() {
           : undefined,
         outline: isArticleSource ? articleOutline : undefined,
         articleDirection: isArticleSource ? articleDirection : undefined,
+        articleType: isArticleSource ? articleType : undefined,
         articleTitleOverride: sourceType === "article_keyword" ? articleTitlePreview : undefined,
         articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
         includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
@@ -651,6 +667,7 @@ export default function ContentCreator() {
         modelId,
         relatedKeywords: articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5),
         articleDirection,
+        articleType,
         articleWordCount: articleWordCount ? Number(articleWordCount) : undefined,
         includeTableOfContents: articleIncludeToc || undefined,
         enableResearch: articleResearchFocus || undefined,
@@ -878,7 +895,22 @@ export default function ContentCreator() {
                   </div>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Article Type</Label>
+                    <Select value={articleType} onValueChange={(value) => setArticleType(value as ArticleType)}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ARTICLE_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{selectedArticleType.description}</p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Related Keywords</Label>
                     <Input
@@ -893,13 +925,14 @@ export default function ContentCreator() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Direction</Label>
+                    <Label>Unique Angle</Label>
                     <Input
-                      placeholder="Focus on beginner-friendly examples"
+                      placeholder="Original data, product POV, customer example"
                       value={articleDirection}
                       onChange={(e) => setArticleDirection(e.target.value)}
                       className="h-11"
                     />
+                    <p className="text-xs text-muted-foreground">Optional. Gives the article something competitors do not have.</p>
                   </div>
                 </div>
 

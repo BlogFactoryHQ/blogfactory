@@ -29,6 +29,7 @@ interface GenerateOpts {
   relatedKeywords?: string[] | string;
   outline?: string;
   articleDirection?: string;
+  articleType?: string;
   articleTitleOverride?: string;
   articleWordCount?: number | string;
   includeTableOfContents?: boolean;
@@ -62,12 +63,14 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
-type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; sourceImages?: SourceImageCandidate[] };
+type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; sourceImages?: SourceImageCandidate[]; variationIndex?: number; variationCount?: number };
+type SeoQaCheck = { label: string; ok: boolean | null; detail: string };
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
 const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
+const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 
 export function costEffectiveImageModel(opts: {
   modelId: string;
@@ -166,6 +169,41 @@ function tokenize(value: string) {
 
 type InternalLinkPromptPage = { url?: string; title?: string; description?: string; path?: string; embedding?: number[] };
 
+function normalizeTopic(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function topicCoveredByText(topic: string, text: string) {
+  const normalizedTopic = normalizeTopic(topic);
+  const normalizedText = normalizeTopic(text);
+  return normalizedTopic.length >= 8 && normalizedText.includes(normalizedTopic);
+}
+
+export function findIndexedTopicDuplicate(settings: GenerationSettings | undefined, topic: string) {
+  const index = settings?.internalLinkIndex as { pages?: InternalLinkPromptPage[] } | null | undefined;
+  const pages = Array.isArray(index?.pages) ? index.pages : [];
+  return pages.find((page) => topicCoveredByText(topic, `${page.title || ""} ${page.path || ""} ${page.url || ""}`)) || null;
+}
+
+async function findExistingTopicDuplicate(userId: string, topic: string, sourceRef?: string | null) {
+  if (sourceRef) {
+    const [sameSource] = await db.select({ id: posts.id, title: posts.title }).from(posts)
+      .where(and(eq(posts.userId, userId), eq(posts.sourceRefId, sourceRef)))
+      .limit(1);
+    if (sameSource) return sameSource.title || "existing draft";
+  }
+
+  const rows = await db.select({ title: posts.title }).from(posts).where(eq(posts.userId, userId)).limit(200);
+  return rows.find((row) => topicCoveredByText(topic, row.title || ""))?.title || null;
+}
+
 function lexicalInternalLinkPages(pages: InternalLinkPromptPage[], sourceText: string) {
   const sourceTokens = tokenize(sourceText);
   return pages
@@ -250,11 +288,13 @@ async function buildSettingsInstructions(settings?: GenerationSettings, sourceTe
 
   if (settings.articleWordCount) instructions.push(`Target article length: about ${settings.articleWordCount} words.`);
   if (settings.articleLanguage) instructions.push(`Write in ${settings.articleLanguage}.`);
+  instructions.push("Stay on the exact assigned topic; do not switch to a related topic.");
   instructions.push(...buildVoiceContentInstructions(settings));
   if (settings.customInstructions) instructions.push(`Campaign instructions: ${settings.customInstructions}.`);
   if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
   if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
   if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
+  instructions.push("Identify the likely search intent and match the structure, tone, and CTA to it.");
   instructions.push(...await summarizeInternalLinks(settings, sourceText, openAiKey));
 
   const brand: string[] = [];
@@ -285,9 +325,51 @@ function isArticleSource(sourceType: string) {
   return sourceType === "article_keyword" || sourceType === "article_title";
 }
 
+function supportsDraftVariations(sourceType: string) {
+  return ["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf"].includes(sourceType);
+}
+
+function variationCount(value: unknown) {
+  const count = Math.round(Number(value));
+  return Number.isFinite(count) ? Math.max(1, Math.min(count, 5)) : 1;
+}
+
+export function expandDraftVariations(articles: SourceArticle[], sourceType: string, requested: unknown) {
+  const count = supportsDraftVariations(sourceType) ? variationCount(requested) : 1;
+  if (count <= 1) return articles;
+  return articles.flatMap((article) =>
+    Array.from({ length: count }, (_, index) => ({
+      ...article,
+      variationIndex: index + 1,
+      variationCount: count,
+    }))
+  );
+}
+
 function normalizeList(value: unknown, maxItems = 5) {
   const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
   return items.map((item) => String(item).trim()).filter(Boolean).slice(0, maxItems);
+}
+
+function articleType(value: unknown) {
+  const type = typeof value === "string" ? value.trim() : "";
+  return ARTICLE_TYPES.has(type) ? type : "auto";
+}
+
+export function articleTemplateInstructions(value: unknown) {
+  const type = articleType(value);
+  const templates: Record<string, string> = {
+    auto: "Choose the best-fit template from the brief and state it in a '## Template Used' section.",
+    how_to: "Template: How-to. Use a pain-point intro, one differentiator section, step-by-step H2s, a product/helpful CTA, and FAQs.",
+    list: "Template: List. Start with the list quickly, give each item its own section, explain why each item matters, and close with CTA and FAQs.",
+    what_is: "Template: What-is. Define the topic early, explain why it matters, cover practical examples, and close with CTA and FAQs.",
+    pillar: "Template: Pillar page. Cover the broad topic comprehensively, group cluster sections clearly, and include internal-link opportunities.",
+    alternatives: "Template: Alternatives. Address why readers want an alternative, put our product first when relevant, compare options fairly, and finish with CTA and FAQs.",
+    best_of: "Template: Best-of. Give the shortlist early, categorize each option by best use case, include selection criteria, comparison table, CTA, and FAQs.",
+    comparison: "Template: Comparison. Open with the decision problem, include an at-a-glance table, compare shared features fairly, then recommend who should choose what.",
+    newsjacking: "Template: Newsjacking. Cover what happened, why it matters, what it means for the reader, reliable sources, careful caveats, and a subscription/news CTA.",
+  };
+  return templates[type];
 }
 
 function isSportsNewsMode(value: unknown) {
@@ -305,12 +387,14 @@ function buildArticleExtras(opts: GenerateOpts) {
   const wordCount = Number(opts.articleWordCount);
 
   if (titleOverride) lines.push(`Use this exact H1 title: ${titleOverride}.`);
+  lines.push(articleTemplateInstructions(opts.articleType));
   if (relatedKeywords.length) lines.push(`Naturally cover these related keywords: ${relatedKeywords.join(", ")}.`);
   if (Number.isFinite(wordCount) && wordCount > 0) lines.push(`Target article length: about ${Math.round(wordCount)} words.`);
   if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
   if (opts.enableResearch === true) lines.push("Add useful research context, examples, and clearly explained claims.");
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
-  if (direction) lines.push(`Article direction: ${direction}`);
+  if (direction) lines.push(`Unique angle or proprietary insight to include: ${direction}`);
+  lines.push("Use these H2 sections before/after the article body: Template Used, SEO Keywords, Slug, Meta Title, Meta Description, Key Points, FAQs, Image Suggestions, References.");
 
   return lines.length ? `\n\nAdditional article instructions:\n${lines.join("\n\n")}` : "";
 }
@@ -358,28 +442,31 @@ function buildCampaignUserMessage(article: NonNullable<GenerateOpts["campaignArt
   return lines.join("\n");
 }
 
-function buildDraftUserMessage(article: { title: string; content: string; url?: string }, sourceType: string, opts: GenerateOpts) {
+function buildDraftUserMessage(article: SourceArticle, sourceType: string, opts: GenerateOpts) {
   const articleExtras = buildArticleExtras(opts);
+  const variationInstruction = "variationIndex" in article && article.variationCount && article.variationCount > 1
+    ? `\n\nDraft variation ${article.variationIndex} of ${article.variationCount}: make this a meaningfully distinct version with a different angle, intro, examples, and section framing while staying on the same topic.`
+    : "";
 
   if (sourceType === "campaign" && opts.campaignArticle) {
-    return `${buildCampaignUserMessage(opts.campaignArticle)}${articleExtras}`;
+    return `${buildCampaignUserMessage(opts.campaignArticle)}${articleExtras}${variationInstruction}`;
   }
 
   if (sourceType === "article_keyword") {
     return `Write a complete, publish-ready SEO article for this target keyword: "${article.content}".
 
-${opts.articleTitleOverride ? "Use the provided H1 title, then" : "Generate an SEO-optimized H1 title that matches search intent, then"} write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
+${opts.articleTitleOverride ? "Use the provided H1 title, then" : "Generate an SEO-optimized H1 title that matches search intent, then"} write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}${variationInstruction}`;
   }
 
   if (sourceType === "article_title") {
     return `Write a complete, publish-ready SEO article using this exact H1 title: "${article.title}".
 
-Keep the title unchanged, then write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}`;
+Keep the title unchanged, then write the article in markdown with a clear intro, useful H2/H3 structure, and a concise conclusion.${articleExtras}${variationInstruction}`;
   }
 
   return article.url
-    ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}`
-    : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}`;
+    ? `Write a blog post based on this source:\n\nTitle: ${article.title}\nURL: ${article.url}\n\nContent:\n${article.content.substring(0, 8000)}${variationInstruction}`
+    : `Write a blog post based on this content:\n\n${article.content.substring(0, 8000)}${variationInstruction}`;
 }
 
 function parseArticlePlan(value: string) {
@@ -410,7 +497,7 @@ function normalizeOutline(lines: string[]) {
 }
 
 export async function generateArticlePlan(opts: Pick<GenerateOpts,
-  "userId" | "sourceType" | "sourceValue" | "modelId" | "personaId" | "relatedKeywords" | "articleDirection" | "articleWordCount" | "includeTableOfContents" | "enableResearch"
+  "userId" | "sourceType" | "sourceValue" | "modelId" | "personaId" | "relatedKeywords" | "articleDirection" | "articleType" | "articleWordCount" | "includeTableOfContents" | "enableResearch"
 >) {
   const userId = opts.userId;
   if (!isArticleSource(opts.sourceType)) throw new Error("Article planning only supports article keyword or title sources");
@@ -440,6 +527,7 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
       ? `Create an SEO article outline for this exact title: ${sourceValue}`
       : `Create an SEO article title and outline for this target keyword: ${sourceValue}`,
     relatedKeywords.length ? `Related keywords: ${relatedKeywords.join(", ")}` : "",
+    articleTemplateInstructions(opts.articleType),
     opts.articleDirection ? `Direction: ${opts.articleDirection}` : "",
     Number.isFinite(wordCount) && wordCount > 0 ? `Target length: about ${Math.round(wordCount)} words.` : "",
     opts.includeTableOfContents ? "The article may include a table of contents." : "",
@@ -583,6 +671,28 @@ export async function generateContent(opts: GenerateOpts) {
       }];
     }
 
+    if (isArticleSource(opts.sourceType)) {
+      const topic = opts.sourceValue.trim();
+      const existingTitle = await findExistingTopicDuplicate(userId, topic, opts.sourceValue);
+      const indexedPage = findIndexedTopicDuplicate(promptSettings, topic);
+      const duplicateLabel = existingTitle || indexedPage?.title || indexedPage?.path || indexedPage?.url || "";
+      if (duplicateLabel) {
+        const message = `This topic appears to be covered already: ${duplicateLabel}`;
+        await db.update(jobs).set({
+          status: "failed",
+          currentStep: "done",
+          errorMessage: message,
+          generationError: message,
+          generationPlan: { totalDrafts: 0, articles: [], duplicateTopic: duplicateLabel },
+          resultPostIds: [],
+          completedAt: new Date(),
+        }).where(eq(jobs.id, jobId));
+        return { jobId, status: "failed", error: message, postIds: [] };
+      }
+    }
+
+    articles = expandDraftVariations(articles, opts.sourceType, opts.variations);
+
     if (!articles.length) {
       await db.update(jobs).set({ status: "completed", currentStep: "done", completedAt: new Date() }).where(eq(jobs.id, jobId));
       return { jobId, status: "completed", posts: [] };
@@ -628,17 +738,21 @@ export async function generateContent(opts: GenerateOpts) {
       return { jobId, status: "failed", error: message, postIds: [] };
     }
 
+    const generationPlan = {
+      totalDrafts: articles.length,
+      articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
+      skippedSportsNews: sportsSkipped,
+      articleType: isArticleSource(opts.sourceType) ? articleType(opts.articleType) : undefined,
+    };
+
     // Set generation plan
     await db.update(jobs).set({
-      generationPlan: {
-        totalDrafts: articles.length,
-        articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
-        skippedSportsNews: sportsSkipped,
-      },
+      generationPlan,
       currentStep: `generating_draft_1_of_${articles.length}`,
     }).where(eq(jobs.id, jobId));
 
     const createdPostIds: string[] = [];
+    const seoQaResults: Array<{ postId: string; title: string; qa: ReturnType<typeof evaluateSeoQa> }> = [];
     let totalCost = 0;
     let totalTokens = 0;
     let lastGenerationError = "";
@@ -656,7 +770,8 @@ export async function generateContent(opts: GenerateOpts) {
       if (currentJob?.status === "failed") break;
 
       // Check content hash dedup
-      const contentHash = hashContent(article.content + article.title + (isArticleSource(opts.sourceType) ? buildArticleExtras(opts) : ""));
+      const variationKey = article.variationCount && article.variationCount > 1 ? `variation:${article.variationIndex}/${article.variationCount}` : "";
+      const contentHash = hashContent(article.content + article.title + (isArticleSource(opts.sourceType) ? buildArticleExtras(opts) : "") + variationKey);
       if (article.url || isArticleSource(opts.sourceType)) {
         const existing = await db.select({ id: posts.id }).from(posts)
           .where(and(eq(posts.userId, userId), eq(posts.sourceContentHash, contentHash)))
@@ -731,6 +846,14 @@ export async function generateContent(opts: GenerateOpts) {
           modelId,
         }).returning();
 
+        if (isArticleSource(opts.sourceType)) {
+          seoQaResults.push({
+            postId: post.id,
+            title: postTitle,
+            qa: evaluateSeoQa(genContent, { keyword: opts.sourceValue, settings: promptSettings, articleType: opts.articleType }),
+          });
+        }
+
         await db.insert(generationLogs).values({
           userId,
           postId: post.id,
@@ -802,6 +925,7 @@ export async function generateContent(opts: GenerateOpts) {
       status: "completed",
       currentStep: "done",
       resultPostIds: createdPostIds,
+      generationPlan: { ...generationPlan, seoQa: seoQaResults },
       tokenCost: totalTokens,
       totalCost,
       completedAt: new Date(),
@@ -891,6 +1015,72 @@ function hashContent(content: string): string {
     hash = ((hash << 5) - hash + data[i]) | 0;
   }
   return Math.abs(hash).toString(36);
+}
+
+function markdownSection(content: string, heading: string) {
+  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
+  return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
+}
+
+function markdownHeadings(content: string, level: 2 | 3) {
+  const pattern = new RegExp(`^#{${level}}\\s+(.+)$`, "gm");
+  return Array.from(content.matchAll(pattern)).map((match) => match[1].trim());
+}
+
+function wordCount(content: string) {
+  return plainText(content, 200_000).split(/\s+/).filter(Boolean).length;
+}
+
+function markdownLinks(content: string) {
+  return Array.from(content.matchAll(/\[[^\]]+]\(([^)]+)\)/g)).map((match) => match[1]);
+}
+
+function check(label: string, ok: boolean | null, detail: string): SeoQaCheck {
+  return { label, ok, detail };
+}
+
+export function evaluateSeoQa(content: string, opts: { keyword?: string; settings?: GenerationSettings; articleType?: string } = {}) {
+  const keyword = (opts.keyword || "").trim();
+  const text = plainText(content, 200_000);
+  const words = wordCount(content);
+  const slug = markdownSection(content, "Slug");
+  const metaTitle = markdownSection(content, "Meta Title");
+  const metaDescription = markdownSection(content, "Meta Description");
+  const faqCount = markdownHeadings(content, 3).filter((heading) => /\?/.test(heading)).length
+    || (markdownSection(content, "FAQs|Frequently Asked Questions").match(/^###\s+/gm) || []).length;
+  const headings = markdownHeadings(content, 2).concat(markdownHeadings(content, 3)).map(normalizeTopic);
+  const duplicateHeadingCount = headings.length - new Set(headings).size;
+  const index = opts.settings?.internalLinkIndex as { siteHost?: unknown } | null | undefined;
+  const siteHost = typeof index?.siteHost === "string" ? index.siteHost : "";
+  const links = markdownLinks(content);
+  const internalLinks = links.filter((url) => url.startsWith("/") || (siteHost && url.includes(siteHost)));
+  const first100 = text.split(/\s+/).slice(0, 100).join(" ");
+  const ctaPattern = /\b(get started|book|schedule|contact|try|download|subscribe|learn more|request a demo)\b/i;
+  const checks = [
+    check("Template stated", Boolean(markdownSection(content, "Template Used")), articleType(opts.articleType).replace(/_/g, " ")),
+    check("SEO keywords listed", Boolean(markdownSection(content, "SEO Keywords|Keywords")), "Expected a keyword list."),
+    check("Slug max 5 words", Boolean(slug) && slug.split(/[-\s/]+/).filter(Boolean).length <= 5, slug || "Missing slug."),
+    check("Meta title under 60 chars", Boolean(metaTitle) && metaTitle.length <= 60, metaTitle ? `${metaTitle.length} chars` : "Missing meta title."),
+    check("Meta description 150-160 chars", metaDescription.length >= 150 && metaDescription.length <= 160, metaDescription ? `${metaDescription.length} chars` : "Missing meta description."),
+    check("Key points included", Boolean(markdownSection(content, "Key Points")), "Expected 3-6 bullets."),
+    check("Article length reasonable", words >= 1200 && words <= 2500, `${words} words`),
+    check("Keyword appears early", keyword ? normalizeTopic(first100).includes(normalizeTopic(keyword)) : null, keyword || "No primary keyword."),
+    check("FAQs included", faqCount >= 3 && faqCount <= 7, `${faqCount} FAQs`),
+    check("No repeated headings", duplicateHeadingCount === 0, duplicateHeadingCount ? `${duplicateHeadingCount} repeated` : "No duplicates."),
+    check("CTA included", ctaPattern.test(content), "Looks for action language."),
+    check("Internal links included", siteHost ? internalLinks.length > 0 : null, siteHost ? `${internalLinks.length} internal links` : "No sitemap host."),
+    check("Image suggestions included", Boolean(markdownSection(content, "Image Suggestions")), "Expected filenames and alt text."),
+    check("References included", Boolean(markdownSection(content, "References")), "Expected external sources when used."),
+  ];
+  const scored = checks.filter((item) => item.ok !== null);
+  const passed = scored.filter((item) => item.ok).length;
+  return {
+    articleType: articleType(opts.articleType),
+    score: scored.length ? Math.round((passed / scored.length) * 100) : 0,
+    passed,
+    total: scored.length,
+    checks,
+  };
 }
 
 function plainText(value: string, maxChars = 900) {

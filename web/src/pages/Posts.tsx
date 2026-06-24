@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { useSignedUrl, useSignedUrls } from "@/hooks/useSignedUrl";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -15,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -23,15 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Loader2, Edit3, Copy } from "lucide-react";
-import { format } from "date-fns";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
 import { useIntegrations } from "@/hooks/useIntegrations";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,8 +89,6 @@ export default function Posts() {
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  // UI state
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [quickDeletePost, setQuickDeletePost] = useState<Post | null>(null);
   const [postsPerPage, setPostsPerPage] = useState(25);
@@ -316,13 +310,6 @@ export default function Posts() {
     bulkPushIntegrationMutation.mutate(ids);
   };
 
-  const copyContent = () => {
-    if (selectedPost) {
-      navigator.clipboard.writeText(selectedPost.content);
-      toast.success("Content copied to clipboard");
-    }
-  };
-
   const activeFiltersCount = [
     sourceFilter !== "all",
     modelFilter !== "all",
@@ -460,7 +447,7 @@ export default function Posts() {
                   post={post}
                   isSelected={selectedIds.has(post.id)}
                   onSelect={(checked) => handleRowSelect(post.id, checked)}
-                  onClick={() => setSelectedPost(post)}
+                  onClick={() => navigate(`/posts/${post.id}/edit`)}
                   onQuickPublish={(e) => {
                     e.stopPropagation();
                     quickPublishMutation.mutate(post.id);
@@ -547,148 +534,6 @@ export default function Posts() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Post Detail Sheet */}
-      <Sheet open={!!selectedPost} onOpenChange={(open) => !open && setSelectedPost(null)}>
-        <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
-          {selectedPost && (
-            <>
-              <SheetHeader className="mb-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <SheetTitle className="text-xl font-semibold leading-tight mb-2">
-                      {selectedPost.title}
-                    </SheetTitle>
-                    <StatusBadge
-                      status={selectedPost.status === "published" ? "success" : "draft"}
-                      label={selectedPost.status === "published" ? "Published" : "Draft"}
-                    />
-                  </div>
-                </div>
-              </SheetHeader>
-
-              {/* Cover Image */}
-              {selectedPost.cover_image_url && (
-                <PostPreviewCoverImage url={selectedPost.cover_image_url} />
-              )}
-
-              {/* Inline Images */}
-              {selectedPost.inline_images && selectedPost.inline_images.length > 0 && (
-                <PostPreviewInlineImages urls={selectedPost.inline_images} />
-              )}
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 mb-6">
-                <Button onClick={() => {
-                  setSelectedPost(null);
-                  navigate(`/posts/${selectedPost.id}/edit`);
-                }}>
-                  <Edit3 className="h-4 w-4 mr-1.5" />
-                  Edit Post
-                </Button>
-                <Button variant="outline" onClick={copyContent}>
-                  <Copy className="h-4 w-4 mr-1.5" />
-                  Copy
-                </Button>
-              </div>
-
-              {/* Metadata */}
-              <div className="space-y-4 mb-6">
-                <p className="section-label">Metadata</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Source</p>
-                    <p className="text-sm font-medium capitalize">
-                      {selectedPost.source_type?.replace("_", " ")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Persona</p>
-                    <p className="text-sm font-medium">
-                      {selectedPost.personas?.name || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Campaign</p>
-                    <p className="text-sm font-medium">
-                      {selectedPost.campaigns?.name || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Model</p>
-                    <p className="text-sm font-medium">
-                      {formatModelName(selectedPost.model_id)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Created</p>
-                    <p className="text-sm font-medium">
-                      {format(new Date(selectedPost.created_at), "MMM d, yyyy 'at' h:mm a")}
-                    </p>
-                  </div>
-                  {selectedPost.job_id && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Job ID</p>
-                      <p className="text-sm font-medium font-mono">#{selectedPost.job_id.slice(0, 8)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Content Preview */}
-              <div className="space-y-3">
-                <p className="section-label">Content Preview</p>
-                <div className="rounded-lg border border-border bg-muted/30 p-4">
-                  <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed line-clamp-[20]">
-                    {selectedPost.content}
-                  </pre>
-                </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
-}
-
-function PostPreviewCoverImage({ url }: { url: string }) {
-  const signedUrl = useSignedUrl(url);
-  return (
-    <div className="mb-6">
-      <p className="section-label mb-2">Cover Image</p>
-      {signedUrl ? (
-        <img
-          src={signedUrl}
-          alt="Cover"
-          className="w-full h-48 object-cover rounded-lg border border-border"
-        />
-      ) : (
-        <div className="w-full h-48 bg-muted animate-pulse rounded-lg" />
-      )}
-    </div>
-  );
-}
-
-function PostPreviewInlineImages({ urls }: { urls: string[] }) {
-  const signedUrls = useSignedUrls(urls);
-  return (
-    <div className="mb-6">
-      <p className="section-label mb-2">Inline Images ({urls.length})</p>
-      <div className="grid grid-cols-2 gap-2">
-        {urls.map((_, idx) => {
-          const signedUrl = signedUrls[idx];
-          return signedUrl ? (
-            <img
-              key={idx}
-              src={signedUrl}
-              alt={`Inline ${idx + 1}`}
-              className="w-full h-24 object-cover rounded-lg border border-border"
-            />
-          ) : (
-            <div key={idx} className="w-full h-24 bg-muted animate-pulse rounded-lg" />
-          );
-        })}
-      </div>
     </div>
   );
 }
