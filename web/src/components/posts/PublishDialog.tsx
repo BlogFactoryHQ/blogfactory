@@ -43,13 +43,38 @@ const providerLabels: Record<string, string> = {
 };
 
 function slugify(value: string) {
-  return value
+  const slug = transliterate(value)
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 90) || "article";
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 8)
+    .join("-")
+    .slice(0, 70)
+    .replace(/-+$/g, "");
+  return slug || "article";
+}
+
+function transliterate(value: string) {
+  const map: Record<string, string> = {
+    ç: "c",
+    Ç: "C",
+    ğ: "g",
+    Ğ: "G",
+    ı: "i",
+    I: "I",
+    İ: "I",
+    ö: "o",
+    Ö: "O",
+    ş: "s",
+    Ş: "S",
+    ü: "u",
+    Ü: "U",
+  };
+  return value.replace(/[çÇğĞıİöÖşŞüÜ]/g, (char) => map[char] || char);
 }
 
 function plainText(markdown: string) {
@@ -69,19 +94,37 @@ function firstSentence(content: string) {
   return plainText(content).split(/(?<=[.!?])\s+/)[0]?.trim() || "";
 }
 
+function withoutMarkdownTitle(content: string) {
+  return content.replace(/^#\s+.+\n*/m, "").trim();
+}
+
 function hasTurkishText(value: string) {
   return /[çğıöşüÇĞİÖŞÜ]/.test(value);
 }
 
 function truncate(value: string, max: number) {
-  return value.trim().slice(0, max).trim();
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  const clipped = cleaned.slice(0, max + 1).replace(/\s+\S*$/, "").trim();
+  return clipped || cleaned.slice(0, max).trim();
 }
 
 function metaTitleFallback(title: string, content: string) {
   const markdownTitle = extractMarkdownTitle(content);
+  const candidate = markdownTitle || title;
+  if (hasTurkishText(content) && !hasTurkishText(candidate)) return turkishTitleFromBody(content, title);
   if (markdownTitle) return markdownTitle;
-  if (hasTurkishText(content) && !hasTurkishText(title)) return firstSentence(content) || title;
   return title;
+}
+
+function turkishTitleFromBody(content: string, fallback: string) {
+  const sentence = firstSentence(withoutMarkdownTitle(content)) || fallback;
+  const polished = sentence
+    .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
+    .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
+    .replace(/,\s+.*$/, "")
+    .trim();
+  return truncate(polished || fallback, 90);
 }
 
 function chooseMetaTitle(metaTitle: string, fallbackTitle: string, content: string) {
@@ -91,10 +134,9 @@ function chooseMetaTitle(metaTitle: string, fallbackTitle: string, content: stri
   return cleaned;
 }
 
-function inferTags(title: string, content: string) {
+function explicitTags(content: string) {
   const meta = parseMarkdownMeta(content);
-  const values = meta.tags.length ? meta.tags : title.split(/\s+/).filter((word) => word.length > 3).slice(0, 5);
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 20).join(", ");
+  return [...new Set(meta.tags.map((value) => value.trim()).filter(Boolean))].slice(0, 8).join(", ");
 }
 
 function markdownSection(content: string, heading: string) {
@@ -130,12 +172,12 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
 
   const fillDefaults = () => {
     const meta = parseMarkdownMeta(content);
-    const excerpt = (meta.metaDescription || summary || plainText(content)).slice(0, 220);
+    const excerpt = truncate(meta.metaDescription || summary || plainText(withoutMarkdownTitle(content)), 145);
     const fallbackTitle = metaTitleFallback(title, content);
     setSlug(slugify(meta.slug || fallbackTitle));
-    setTags(inferTags(fallbackTitle, content));
-    setMetaTitle(truncate(chooseMetaTitle(meta.metaTitle, fallbackTitle, content), 70));
-    setMetaDescription(excerpt.slice(0, 160));
+    setTags(explicitTags(content));
+    setMetaTitle(truncate(chooseMetaTitle(meta.metaTitle, fallbackTitle, content), 60));
+    setMetaDescription(excerpt);
   };
 
   const publishMutation = useMutation({

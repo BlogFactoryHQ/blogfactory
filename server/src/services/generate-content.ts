@@ -9,7 +9,6 @@ import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
-import { embedInternalLinkText, rankPagesByEmbedding } from "./internal-linking.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
 
@@ -29,6 +28,7 @@ interface GenerateOpts {
   relatedKeywords?: string[] | string;
   outline?: string;
   articleDirection?: string;
+  customInstructions?: string;
   articleType?: string;
   articleTitleOverride?: string;
   articleWordCount?: number | string;
@@ -221,103 +221,37 @@ function lexicalInternalLinkPages(pages: InternalLinkPromptPage[], sourceText: s
     .map(({ page }) => page);
 }
 
-async function summarizeInternalLinks(settings: GenerationSettings, sourceText = "", openAiKey?: string | null) {
-  if (settings.enableInternalLinks !== true) return [];
-
-  const index = settings.internalLinkIndex as
-    | { pages?: InternalLinkPromptPage[] }
-    | null
-    | undefined;
-  const rules = Array.isArray(settings.internalLinkRules) ? settings.internalLinkRules as Array<Record<string, unknown>> : [];
-  const lines: string[] = [];
-
-  if (settings.internalLinkDensity) {
-    const densityMap: Record<string, string> = {
-      minimal: "1-2 internal links",
-      light: "3-4 internal links",
-      balanced: "5-7 internal links",
-      rich: "8-12 internal links",
-    };
-    lines.push(`Internal link density: ${densityMap[settings.internalLinkDensity] || settings.internalLinkDensity}.`);
-  }
-
-  const ruleLines = rules
-    .map((rule) => {
-      const triggers = typeof rule.triggers === "string" ? rule.triggers.trim() : "";
-      const url = typeof rule.url === "string" ? rule.url.trim() : "";
-      if (!triggers || !url) return "";
-      return `When relevant to "${triggers}", link to ${url}.`;
-    })
-    .filter(Boolean)
-    .slice(0, 5);
-
-  if (ruleLines.length) {
-    lines.push(`Custom internal link rules:\n${ruleLines.map((line) => `  - ${line}`).join("\n")}`);
-  }
-
-  const pages = Array.isArray(index?.pages) ? index.pages : [];
-  if (pages.length) {
-    let ranked = lexicalInternalLinkPages(pages, sourceText);
-    if (openAiKey && pages.some((page) => page.embedding?.length)) {
-      try {
-        ranked = rankPagesByEmbedding(pages, await embedInternalLinkText(sourceText, openAiKey), 12);
-        if (ranked.length === 0) ranked = lexicalInternalLinkPages(pages, sourceText);
-      } catch (err) {
-        console.warn("[internal-linking] Semantic ranking failed, using lexical fallback:", err);
-      }
-    }
-    const scored = ranked
-      .map((page) => {
-        const title = page.title || page.path || page.url;
-        const description = page.description ? ` — ${page.description}` : "";
-        return `  - ${title}: ${page.url}${description}`;
-      });
-
-    lines.push(`Use these indexed site pages as internal-link candidates where natural. Insert real markdown links exactly as [anchor text](URL); do not mention page titles as plain text without linking them:\n${scored.join("\n")}`);
-  } else {
-    lines.push("Suggest natural internal link opportunities where relevant, using real markdown links like [anchor text](URL).");
-  }
-
-  return lines;
-}
-
-async function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "", openAiKey?: string | null) {
+export function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "") {
   if (!settings) return "";
 
   const instructions: string[] = [];
 
-  if (settings.articleWordCount) instructions.push(`Target article length: about ${settings.articleWordCount} words.`);
   if (settings.articleLanguage) instructions.push(`Write in ${settings.articleLanguage}.`);
-  instructions.push("Stay on the exact assigned topic; do not switch to a related topic.");
   instructions.push(...buildVoiceContentInstructions(settings));
-  if (settings.customInstructions) instructions.push(`Campaign instructions: ${settings.customInstructions}.`);
-  if (settings.includeTableOfContents === true) instructions.push("Include a concise table of contents near the beginning.");
-  if (settings.includeTableOfContents === false) instructions.push("Do not include a table of contents.");
-  if (settings.enableResearch === true) instructions.push("Add useful research context and explain claims clearly.");
-  instructions.push("Identify the likely search intent and match the structure, tone, and CTA to it.");
-  instructions.push(...await summarizeInternalLinks(settings, sourceText, openAiKey));
+  const customInstructions = String(settings.customInstructions || settings.customArticleInstructions || "").trim();
+  if (customInstructions) instructions.push(`Campaign instructions: ${truncatePromptText(customInstructions, 1000)}.`);
 
   const brand: string[] = [];
   if (settings.brandCompanyName) brand.push(`Company name: ${settings.brandCompanyName}`);
-  if (settings.brandDescription) brand.push(`What the company does: ${settings.brandDescription}`);
-  if (settings.brandTargetAudience) brand.push(`Target audience: ${settings.brandTargetAudience}`);
+  if (settings.brandDescription) brand.push(`What the company does: ${truncatePromptText(settings.brandDescription, 500)}`);
+  if (settings.brandTargetAudience) brand.push(`Audience: ${truncatePromptText(settings.brandTargetAudience, 300)}`);
   if (settings.brandMentions) brand.push(`Brand mention style: ${settings.brandMentions}`);
 
-  const valueProps = summarizeJsonList(settings.brandValueProps);
+  const valueProps = summarizeJsonList(settings.brandValueProps, 3);
   if (valueProps.length) brand.push(`Value propositions: ${valueProps.join("; ")}`);
 
-  const ctas = summarizeJsonList(settings.brandCtas, 3);
+  const ctas = summarizeJsonList(settings.brandCtas, 2);
   if (ctas.length) brand.push(`Calls to action to weave in when natural: ${ctas.join("; ")}`);
 
-  const knowledge = settings.knowledgeBaseEnabled ? retrieveKnowledgeChunks(settings.knowledgeDocuments, sourceText) : [];
-  if (knowledge.length) brand.push(`Knowledge document context:\n${knowledge.map((line) => `  - ${truncatePromptText(line, 1000)}`).join("\n")}`);
+  const knowledge = settings.knowledgeBaseEnabled ? retrieveKnowledgeChunks(settings.knowledgeDocuments, sourceText).slice(0, 2) : [];
+  if (knowledge.length) brand.push(`Knowledge context:\n${knowledge.map((line) => `  - ${truncatePromptText(line, 600)}`).join("\n")}`);
 
   if (brand.length) {
     instructions.push(`Brand context:\n${brand.map((line) => `- ${line}`).join("\n")}`);
   }
 
   return instructions.length
-    ? `\n\nFollow these saved BlogFactory article settings:\n${instructions.map((line) => `- ${line}`).join("\n")}`
+    ? `\n\nWriting context:\n${instructions.map((line) => `- ${line}`).join("\n")}`
     : "";
 }
 
@@ -359,13 +293,13 @@ function articleType(value: unknown) {
 export function articleTemplateInstructions(value: unknown) {
   const type = articleType(value);
   const templates: Record<string, string> = {
-    auto: "Choose the best-fit template from the brief and state it in a '## Template Used' section.",
-    how_to: "Template: How-to. Use a pain-point intro, one differentiator section, step-by-step H2s, a product/helpful CTA, and FAQs.",
-    list: "Template: List. Start with the list quickly, give each item its own section, explain why each item matters, and close with CTA and FAQs.",
-    what_is: "Template: What-is. Define the topic early, explain why it matters, cover practical examples, and close with CTA and FAQs.",
+    auto: "Choose the best-fit article structure from the brief.",
+    how_to: "Use a how-to structure with a pain-point intro, clear steps, examples, and a practical conclusion.",
+    list: "Use a list structure: start with the list quickly, then explain why each item matters.",
+    what_is: "Use a what-is structure: define the topic early, explain why it matters, and include practical examples.",
     pillar: "Template: Pillar page. Cover the broad topic comprehensively, group cluster sections clearly, and include internal-link opportunities.",
-    alternatives: "Template: Alternatives. Address why readers want an alternative, put our product first when relevant, compare options fairly, and finish with CTA and FAQs.",
-    best_of: "Template: Best-of. Give the shortlist early, categorize each option by best use case, include selection criteria, comparison table, CTA, and FAQs.",
+    alternatives: "Use an alternatives structure: address why readers want an alternative, compare options fairly, and give a clear recommendation.",
+    best_of: "Use a best-of structure: give the shortlist early, categorize each option by use case, and include selection criteria.",
     comparison: "Template: Comparison. Open with the decision problem, include an at-a-glance table, compare shared features fairly, then recommend who should choose what.",
     newsjacking: "Template: Newsjacking. Cover what happened, why it matters, what it means for the reader, reliable sources, careful caveats, and a subscription/news CTA.",
   };
@@ -378,33 +312,88 @@ function isSportsNewsMode(value: unknown) {
   return mode === "news" || mode === "sports_news";
 }
 
-function buildArticleExtras(opts: GenerateOpts) {
+export function buildArticleExtras(opts: GenerateOpts) {
   const lines: string[] = [];
   const relatedKeywords = normalizeList(opts.relatedKeywords);
   const outline = typeof opts.outline === "string" ? opts.outline.trim() : "";
   const direction = typeof opts.articleDirection === "string" ? opts.articleDirection.trim() : "";
+  const customInstructions = typeof opts.customInstructions === "string" ? opts.customInstructions.trim() : "";
   const titleOverride = cleanPostTitle(typeof opts.articleTitleOverride === "string" ? opts.articleTitleOverride : "");
   const wordCount = Number(opts.articleWordCount);
 
   if (titleOverride) lines.push(`Use this exact H1 title: ${titleOverride}.`);
-  lines.push(articleTemplateInstructions(opts.articleType));
+  const template = articleType(opts.articleType) === "auto" ? "" : articleTemplateInstructions(opts.articleType);
+  if (template) lines.push(template);
   if (relatedKeywords.length) lines.push(`Naturally cover these related keywords: ${relatedKeywords.join(", ")}.`);
   if (Number.isFinite(wordCount) && wordCount > 0) lines.push(`Target article length: about ${Math.round(wordCount)} words.`);
   if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
   if (opts.enableResearch === true) lines.push("Add useful research context, examples, and clearly explained claims.");
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
   if (direction) lines.push(`Unique angle or proprietary insight to include: ${direction}`);
-  lines.push("Use these H2 sections before/after the article body: Template Used, SEO Keywords, Slug, Meta Title, Meta Description, Key Points, FAQs, Image Suggestions, References.");
-  lines.push("The FAQs section must be a real H2 followed by 3-5 H3 questions and short answers, for example `## FAQs` then `### Question?`.");
-  lines.push("If internal-link candidates are available, place them inline as markdown links like `[Anchor text](https://example.com/page)`; never leave candidate titles as unlinked plain text.");
+  if (customInstructions) lines.push(`Custom instructions: ${truncatePromptText(customInstructions, 1500)}`);
 
   return lines.length ? `\n\nAdditional article instructions:\n${lines.join("\n\n")}` : "";
 }
 
 export function enforceGeneratedArticleContracts(content: string, opts: { sourceType: string; topic: string; settings?: GenerationSettings }) {
-  let next = ensureInternalMarkdownLinks(content, opts.settings);
+  let next = normalizeArticleMarkdown(content, opts.topic, opts.settings);
+  next = stripInternalSeoSections(next);
+  next = ensureInternalMarkdownLinks(next, opts.settings);
   if (isArticleSource(opts.sourceType)) next = ensureFaqSection(next, opts.topic, opts.settings);
   return next;
+}
+
+function normalizeArticleMarkdown(content: string, topic: string, settings?: GenerationSettings) {
+  const next = content.trim();
+  const h1 = next.match(/^#\s+(.+)$/m);
+  if (h1) {
+    const currentTitle = h1[1].trim();
+    if (shouldLocalizeTitle(currentTitle, next, settings)) {
+      const localizedTitle = titleFromTurkishBody(next, topic);
+      return next.replace(/^#\s+.+$/m, `# ${localizedTitle}`);
+    }
+    return next;
+  }
+  const title = cleanPostTitle(topic || "Untitled Post");
+  return `# ${title}\n\n${next}`;
+}
+
+function shouldLocalizeTitle(title: string, content: string, settings?: GenerationSettings) {
+  return isTurkishContent(content, settings) && !/[ğüşöçıİĞÜŞÖÇ]/.test(title);
+}
+
+function titleFromTurkishBody(content: string, topic: string) {
+  const withoutTitle = content.replace(/^#\s+.+\n*/m, "");
+  const sentence = plainArticleText(withoutTitle).split(/(?<=[.!?])\s+/)[0] || topic;
+  const polished = sentence
+    .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
+    .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
+    .replace(/,\s+.*$/, "")
+    .trim();
+  return truncateAtWord(cleanPostTitle(polished || topic), 62) || cleanPostTitle(topic || "Untitled Post");
+}
+
+function truncateAtWord(value: string, maxChars: number) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  const clipped = cleaned.slice(0, maxChars + 1).replace(/\s+\S*$/, "").trim();
+  return clipped || cleaned.slice(0, maxChars).trim();
+}
+
+function plainArticleText(markdown: string) {
+  return markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripInternalSeoSections(content: string) {
+  return content
+    .replace(/^##\s+(?:Template Used|SEO Keywords|Keywords|Slug|Meta Title|Meta Description|Image Suggestions|References)\s*\n+[\s\S]*?(?=\n##\s+|\n#\s+|$)/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function ensureInternalMarkdownLinks(content: string, settings?: GenerationSettings) {
@@ -419,7 +408,7 @@ function ensureInternalMarkdownLinks(content: string, settings?: GenerationSetti
 
   let next = content;
   let inserted = 0;
-  for (const page of pages.slice(0, 12)) {
+  for (const page of lexicalInternalLinkPages(pages, content).slice(0, 8)) {
     const title = (page.title || "").trim();
     const url = (page.url || page.path || "").trim();
     if (title.length < 4 || !url) continue;
@@ -721,10 +710,9 @@ export async function generateContent(opts: GenerateOpts) {
       }
     }
     const promptSettings = (opts.settingsSnapshot || settings) as GenerationSettings | undefined;
-    const semanticInternalLinkKey = promptSettings?.enableInternalLinks ? await getOpenAiKey(userId) : null;
 
     // Load persona if set
-    let systemPrompt = "You are a helpful AI content writer. Generate well-structured blog posts in markdown format. Do not include process notes, word-count notes, or internal-link placement summaries in the article.";
+    let systemPrompt = "You are a senior blog writer. Return only the finished article body in clean Markdown. Do not include process notes, SEO metadata sections, image suggestions, or internal-link summaries.";
     let personaModel = opts.modelId || "openai/gpt-4o";
 
     if (opts.personaId) {
@@ -889,7 +877,7 @@ export async function generateContent(opts: GenerateOpts) {
       try {
         // Generate blog post via AI
         const genStart = Date.now();
-        const settingsInstructions = await buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`, semanticInternalLinkKey);
+        const settingsInstructions = buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`);
         const sportsNewsInstructions = article.sportsDecision ? buildSportsNewsInstructions(article.sportsDecision) : "";
         const draftSystemPrompt = `${systemPrompt}${settingsInstructions}${sportsNewsInstructions}`;
         const userMessage = buildDraftUserMessage(article, opts.sourceType, opts);
@@ -1156,11 +1144,13 @@ export function evaluateSeoQa(content: string, opts: { keyword?: string; setting
   const keyword = (opts.keyword || "").trim();
   const text = plainText(content, 200_000);
   const words = wordCount(content);
-  const slug = markdownSection(content, "Slug");
   const metaTitle = markdownSection(content, "Meta Title");
   const metaDescription = markdownSection(content, "Meta Description");
+  const h1 = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+  const effectiveMetaTitle = metaTitle || h1;
+  const effectiveMetaDescription = metaDescription || text.slice(0, 160);
   const faqCount = markdownHeadings(content, 3).filter((heading) => /\?/.test(heading)).length
-    || (markdownSection(content, "FAQs|Frequently Asked Questions").match(/^###\s+/gm) || []).length;
+    || (markdownSection(content, "FAQs|FAQ|Sık Sorulan Sorular|SSS|Frequently Asked Questions").match(/^###\s+/gm) || []).length;
   const headings = markdownHeadings(content, 2).concat(markdownHeadings(content, 3)).map(normalizeTopic);
   const duplicateHeadingCount = headings.length - new Set(headings).size;
   const index = opts.settings?.internalLinkIndex as { siteHost?: unknown } | null | undefined;
@@ -1170,20 +1160,15 @@ export function evaluateSeoQa(content: string, opts: { keyword?: string; setting
   const first100 = text.split(/\s+/).slice(0, 100).join(" ");
   const ctaPattern = /\b(get started|book|schedule|contact|try|download|subscribe|learn more|request a demo)\b/i;
   const checks = [
-    check("Template stated", Boolean(markdownSection(content, "Template Used")), articleType(opts.articleType).replace(/_/g, " ")),
-    check("SEO keywords listed", Boolean(markdownSection(content, "SEO Keywords|Keywords")), "Expected a keyword list."),
-    check("Slug max 5 words", Boolean(slug) && slug.split(/[-\s/]+/).filter(Boolean).length <= 5, slug || "Missing slug."),
-    check("Meta title under 60 chars", Boolean(metaTitle) && metaTitle.length <= 60, metaTitle ? `${metaTitle.length} chars` : "Missing meta title."),
-    check("Meta description 150-160 chars", metaDescription.length >= 150 && metaDescription.length <= 160, metaDescription ? `${metaDescription.length} chars` : "Missing meta description."),
-    check("Key points included", Boolean(markdownSection(content, "Key Points")), "Expected 3-6 bullets."),
+    check("H1 included", Boolean(h1), h1 || "Missing H1."),
+    check("Meta title available", Boolean(effectiveMetaTitle) && effectiveMetaTitle.length <= 70, effectiveMetaTitle ? `${effectiveMetaTitle.length} chars` : "Missing title."),
+    check("Meta description available", effectiveMetaDescription.length >= 80 && effectiveMetaDescription.length <= 180, effectiveMetaDescription ? `${effectiveMetaDescription.length} chars` : "Missing description."),
     check("Article length reasonable", words >= 1200 && words <= 2500, `${words} words`),
     check("Keyword appears early", keyword ? normalizeTopic(first100).includes(normalizeTopic(keyword)) : null, keyword || "No primary keyword."),
     check("FAQs included", faqCount >= 3 && faqCount <= 7, `${faqCount} FAQs`),
     check("No repeated headings", duplicateHeadingCount === 0, duplicateHeadingCount ? `${duplicateHeadingCount} repeated` : "No duplicates."),
     check("CTA included", ctaPattern.test(content), "Looks for action language."),
     check("Internal links included", siteHost ? internalLinks.length > 0 : null, siteHost ? `${internalLinks.length} internal links` : "No sitemap host."),
-    check("Image suggestions included", Boolean(markdownSection(content, "Image Suggestions")), "Expected filenames and alt text."),
-    check("References included", Boolean(markdownSection(content, "References")), "Expected external sources when used."),
   ];
   const scored = checks.filter((item) => item.ok !== null);
   const passed = scored.filter((item) => item.ok).length;

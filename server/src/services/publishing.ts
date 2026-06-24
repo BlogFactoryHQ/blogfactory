@@ -378,16 +378,17 @@ function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
 }
 
 function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, altByPath: Map<string, string | null>): ArticlePayload {
-  const title = post.title.trim();
+  const rawTitle = post.title.trim();
   const content = post.content || "";
   const meta = parseMarkdownMeta(content);
   const body = articleBody(content);
-  const excerpt = (options.excerpt || meta.metaDescription || plainText(body)).slice(0, 220);
-  const tags = normalizeStringList(options.tags?.length ? options.tags : meta.tags.length ? meta.tags : inferTags(title, body));
+  const title = publishTitle(rawTitle, body);
+  const excerpt = truncateAtWord(options.excerpt || meta.metaDescription || plainText(withoutMarkdownTitle(body)), 220);
+  const tags = publishTags(options.tags?.length ? options.tags : meta.tags);
   const categories = normalizeStringList(options.categories || []);
   const slug = slugify(options.slug || meta.slug || title);
-  const metaTitle = (options.metaTitle || meta.metaTitle || title).slice(0, 70);
-  const metaDescription = (options.metaDescription || meta.metaDescription || excerpt).slice(0, 160);
+  const metaTitle = truncateAtWord(chooseMetaTitle(options.metaTitle || meta.metaTitle, title, body), 60);
+  const metaDescription = truncateAtWord(options.metaDescription || meta.metaDescription || excerpt, 145);
   const storedInlineImages = (post.inlineImages || []).map((url, index) => ({
     url,
     altText: altByPath.get(url) || fallbackImageAlt(title, "inline", index),
@@ -446,20 +447,43 @@ function normalizeStringList(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 20);
 }
 
-function inferTags(title: string, content: string) {
-  const match = content.match(/(?:tags?|categories?):\s*(.+)/i);
-  if (match) return match[1].split(",");
-  return title.split(/\s+/).filter((word) => word.length > 3).slice(0, 5);
+export function publishTags(values: string[] = []) {
+  return normalizeStringList(values).slice(0, 8);
 }
 
-function slugify(value: string) {
-  return value
+export function slugify(value: string) {
+  const slug = transliterate(value)
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 90) || "article";
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 8)
+    .join("-")
+    .slice(0, 70)
+    .replace(/-+$/g, "");
+  return slug || "article";
+}
+
+function transliterate(value: string) {
+  const map: Record<string, string> = {
+    ç: "c",
+    Ç: "C",
+    ğ: "g",
+    Ğ: "G",
+    ı: "i",
+    I: "I",
+    İ: "I",
+    ö: "o",
+    Ö: "O",
+    ş: "s",
+    Ş: "S",
+    ü: "u",
+    Ü: "U",
+  };
+  return value.replace(/[çÇğĞıİöÖşŞüÜ]/g, (char) => map[char] || char);
 }
 
 function plainText(markdown: string) {
@@ -469,6 +493,45 @@ function plainText(markdown: string) {
     .replace(/[#>*_`~-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function withoutMarkdownTitle(markdown: string) {
+  return markdown.replace(/^#\s+.+\n*/m, "").trim();
+}
+
+export function publishTitle(title: string, content: string) {
+  const markdownTitle = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+  const candidate = markdownTitle || title;
+  if (hasTurkishText(content) && !hasTurkishText(candidate)) return titleFromTurkishBody(content, title);
+  return truncateAtWord(candidate, 90);
+}
+
+function chooseMetaTitle(value: string | undefined, fallbackTitle: string, content: string) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) return fallbackTitle;
+  if (hasTurkishText(content) && !hasTurkishText(cleaned) && hasTurkishText(fallbackTitle)) return fallbackTitle;
+  return cleaned;
+}
+
+function titleFromTurkishBody(content: string, fallback: string) {
+  const sentence = plainText(withoutMarkdownTitle(content)).split(/(?<=[.!?])\s+/)[0] || fallback;
+  const polished = sentence
+    .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
+    .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
+    .replace(/,\s+.*$/, "")
+    .trim();
+  return truncateAtWord(polished || fallback, 90);
+}
+
+function hasTurkishText(value: string) {
+  return /[çğıöşüÇĞİÖŞÜ]/.test(value);
+}
+
+export function truncateAtWord(value: string, maxChars: number) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  const clipped = cleaned.slice(0, maxChars + 1).replace(/\s+\S*$/, "").trim();
+  return clipped || cleaned.slice(0, maxChars).trim();
 }
 
 type ListKind = "ul" | "ol";

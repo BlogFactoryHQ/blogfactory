@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -194,10 +195,12 @@ export default function ContentCreator() {
   const [articleRelatedKeywords, setArticleRelatedKeywords] = useState("");
   const [articleOutline, setArticleOutline] = useState("");
   const [articleDirection, setArticleDirection] = useState("");
+  const [articleCustomInstructions, setArticleCustomInstructions] = useState("");
   const [articleType, setArticleType] = useState<ArticleType>("auto");
   const [articleWordCount, setArticleWordCount] = useState("");
   const [articleIncludeToc, setArticleIncludeToc] = useState(false);
   const [articleResearchFocus, setArticleResearchFocus] = useState(false);
+  const [articleAdvancedOpen, setArticleAdvancedOpen] = useState(false);
   const [isPlanningArticle, setIsPlanningArticle] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
@@ -573,6 +576,7 @@ export default function ContentCreator() {
           : undefined,
         outline: isArticleSource ? articleOutline : undefined,
         articleDirection: isArticleSource ? articleDirection : undefined,
+        customInstructions: isArticleSource ? articleCustomInstructions : undefined,
         articleType: isArticleSource ? articleType : undefined,
         articleTitleOverride: sourceType === "article_keyword" ? articleTitlePreview : undefined,
         articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
@@ -895,97 +899,118 @@ export default function ContentCreator() {
                   </div>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Article Type</Label>
-                    <Select value={articleType} onValueChange={(value) => setArticleType(value as ArticleType)}>
-                      <SelectTrigger className="h-11">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ARTICLE_TYPE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">{selectedArticleType.description}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Related Keywords</Label>
-                    <Input
-                      placeholder="free project management software, agile project management"
-                      value={articleRelatedKeywords}
-                      onChange={(e) => setArticleRelatedKeywords(e.target.value)}
-                      className="h-11"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional, comma-separated. The first 5 are used.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Unique Angle</Label>
+                    <Label>Angle</Label>
                     <Input
                       placeholder="Original data, product POV, customer example"
                       value={articleDirection}
                       onChange={(e) => setArticleDirection(e.target.value)}
                       className="h-11"
                     />
-                    <p className="text-xs text-muted-foreground">Optional. Gives the article something competitors do not have.</p>
                   </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label>Word Count</Label>
+                    <Label>Custom Instructions</Label>
                     <Input
-                      type="number"
-                      min={300}
-                      step={100}
-                      placeholder="Smart"
-                      value={articleWordCount}
-                      onChange={(e) => setArticleWordCount(e.target.value)}
+                      placeholder="Keep it practical, skeptical, and example-led"
+                      value={articleCustomInstructions}
+                      onChange={(e) => setArticleCustomInstructions(e.target.value)}
                       className="h-11"
                     />
                   </div>
-
-                  <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
-                    <Checkbox checked={articleIncludeToc} onCheckedChange={(checked) => setArticleIncludeToc(Boolean(checked))} />
-                    Table of contents
-                  </label>
-
-                  <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
-                    <Checkbox checked={articleResearchFocus} onCheckedChange={(checked) => setArticleResearchFocus(Boolean(checked))} />
-                    Research emphasis
-                  </label>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label>Outline</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateArticlePlan}
-                      disabled={isPlanningArticle || selectedModelUnavailable}
-                    >
-                      {isPlanningArticle ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="mr-2 h-4 w-4" />
-                      )}
-                      Generate title + outline
+                <Collapsible open={articleAdvancedOpen} onOpenChange={setArticleAdvancedOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="outline" className="w-full justify-between">
+                      <span className="inline-flex items-center gap-2">
+                        <SlidersHorizontal className="h-4 w-4" />
+                        Advanced article controls
+                      </span>
+                      <span className="text-xs text-muted-foreground">{articleAdvancedOpen ? "Hide" : "Show"}</span>
                     </Button>
-                  </div>
-                  <Textarea
-                    placeholder={"H2: What to look for\nH2: Top options\nH3: Budget picks"}
-                    value={articleOutline}
-                    onChange={(e) => setArticleOutline(e.target.value)}
-                    className="min-h-[120px] resize-none"
-                  />
-                </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4 space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Article Type</Label>
+                        <Select value={articleType} onValueChange={(value) => setArticleType(value as ArticleType)}>
+                          <SelectTrigger className="h-11">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ARTICLE_TYPE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">{selectedArticleType.description}</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Related Keywords</Label>
+                        <Input
+                          placeholder="free project management software, agile project management"
+                          value={articleRelatedKeywords}
+                          onChange={(e) => setArticleRelatedKeywords(e.target.value)}
+                          className="h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Word Count</Label>
+                        <Input
+                          type="number"
+                          min={300}
+                          step={100}
+                          placeholder="Smart"
+                          value={articleWordCount}
+                          onChange={(e) => setArticleWordCount(e.target.value)}
+                          className="h-11"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                        <Checkbox checked={articleIncludeToc} onCheckedChange={(checked) => setArticleIncludeToc(Boolean(checked))} />
+                        Table of contents
+                      </label>
+
+                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                        <Checkbox checked={articleResearchFocus} onCheckedChange={(checked) => setArticleResearchFocus(Boolean(checked))} />
+                        Research emphasis
+                      </label>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>Outline</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleGenerateArticlePlan}
+                          disabled={isPlanningArticle || selectedModelUnavailable}
+                        >
+                          {isPlanningArticle ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="mr-2 h-4 w-4" />
+                          )}
+                          Generate title + outline
+                        </Button>
+                      </div>
+                      <Textarea
+                        placeholder={"H2: What to look for\nH2: Top options\nH3: Budget picks"}
+                        value={articleOutline}
+                        onChange={(e) => setArticleOutline(e.target.value)}
+                        className="min-h-[120px] resize-none"
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </TabsContent>
 
               <TabsContent value="url" className="space-y-2">

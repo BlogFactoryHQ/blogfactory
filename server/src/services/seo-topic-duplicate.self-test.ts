@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { articleTemplateInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate } from "./generate-content.js";
+import { articleTemplateInstructions, buildArticleExtras, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate } from "./generate-content.js";
+import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
   internalLinkIndex: {
@@ -60,8 +61,39 @@ Get started with our SEO workflow.
 - Google Search Central
 `, { keyword: "seo content", settings: { internalLinkIndex: { siteHost: "example.com" } }, articleType: "how_to" });
 
-assert.equal(qa.checks.some((item) => item.label === "Meta title under 60 chars" && item.ok), true);
+assert.equal(qa.checks.some((item) => item.label === "Meta title available" && item.ok), true);
 assert.equal(qa.articleType, "how_to");
+
+const leanSettingsPrompt = buildSettingsInstructions({
+  articleWordCount: 2400,
+  includeTableOfContents: true,
+  enableResearch: true,
+  enableInternalLinks: true,
+  internalLinkDensity: "rich",
+  internalLinkIndex: {
+    siteHost: "example.com",
+    pages: [{ title: "Pricing", path: "/pricing", url: "https://example.com/pricing" }],
+  },
+  customArticleInstructions: "Write with short paragraphs.",
+  brandCompanyName: "ExampleCo",
+  brandDescription: "A useful product for content teams.",
+}, "pricing guide");
+
+assert.doesNotMatch(leanSettingsPrompt, /Internal link density|Pricing:|Table of contents|research/i);
+assert.match(leanSettingsPrompt, /Write with short paragraphs/);
+assert.match(leanSettingsPrompt, /ExampleCo/);
+
+const leanArticleExtras = buildArticleExtras({
+  userId: "user",
+  sourceType: "article_title",
+  sourceValue: "Prompt Quality",
+  articleType: "auto",
+  customInstructions: "Use a direct, skeptical tone.",
+  articleDirection: "Compare bloated prompts with short prompts.",
+});
+
+assert.doesNotMatch(leanArticleExtras, /Template Used|SEO Keywords|Meta Title|Image Suggestions|internal-link/i);
+assert.match(leanArticleExtras, /Use a direct, skeptical tone/);
 
 const repaired = enforceGeneratedArticleContracts(`# Agentik Kodlama
 
@@ -90,5 +122,37 @@ assert.equal(evaluateSeoQa(repaired, {
   articleType: "how_to",
 }).checks.find((item) => item.label === "Internal links included")?.ok, true);
 assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, true);
+
+const localized = enforceGeneratedArticleContracts(`# Paving the way for agents in biology \\ Anthropic
+
+Biyolojide yapay zeka ajanlarının karşılaştığı temel engellerden biri, insan kullanımına göre tasarlanmış veritabanlarının karmaşık yapısıdır. Virüs dizisi gibi verilere ulaşmak isteyen ajanlar zorlanıyor.
+`, {
+  sourceType: "url",
+  topic: "Paving the way for agents in biology",
+  settings: { articleLanguage: "Turkish" },
+});
+
+assert.match(localized, /^# Biyolojide yapay zeka ajanlarının önündeki temel/m);
+assert.doesNotMatch(localized, /^# Paving the way/m);
+assert.equal(
+  slugify("Biyolojide yapay zeka ajanlarının önündeki temel engeller"),
+  "biyolojide-yapay-zeka-ajanlarinin-onundeki-temel-engeller"
+);
+assert.deepEqual(publishTags(), []);
+assert.deepEqual(publishTags(["Biyolojide", "yapay", "zeka", "ajanlarının", "karşılaştığı", "fazla", "etiket", "son", "dokuzuncu"]), [
+  "Biyolojide",
+  "yapay",
+  "zeka",
+  "ajanlarının",
+  "karşılaştığı",
+  "fazla",
+  "etiket",
+  "son",
+]);
+assert.equal(
+  publishTitle("Paving the way for agents in biology \\ Anthropic", localized),
+  "Biyolojide yapay zeka ajanlarının önündeki temel engeller"
+);
+assert.equal(truncateAtWord("Biyolojide yapay zeka ajanları veri tabanı engellerini aşmaya çalışıyor.", 42), "Biyolojide yapay zeka ajanları veri tabanı");
 
 console.log("seo-topic-duplicate self-check passed");
