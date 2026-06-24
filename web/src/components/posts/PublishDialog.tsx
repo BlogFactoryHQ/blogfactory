@@ -42,6 +42,17 @@ const providerLabels: Record<string, string> = {
   framer: "Framer",
 };
 
+const SEO_LIMITS = {
+  slug: 70,
+  metaTitle: 60,
+  metaDescription: 145,
+  tags: 8,
+};
+
+function commaList(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 function slugify(value: string) {
   const slug = transliterate(value)
     .toLowerCase()
@@ -169,6 +180,19 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
 
   const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const selected = connected.find((integration) => integration.id === integrationId) || connected[0];
+  const seoChecks = useMemo(() => {
+    const tagCount = commaList(tags).length;
+    const slugValid = Boolean(slug) && slug.length <= SEO_LIMITS.slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+    const titleValid = metaTitle.length > 0 && metaTitle.length <= SEO_LIMITS.metaTitle;
+    const descriptionValid = metaDescription.length > 0 && metaDescription.length <= SEO_LIMITS.metaDescription;
+    return [
+      { label: "Slug", value: `${slug.length}/${SEO_LIMITS.slug}`, ok: slugValid },
+      { label: "Meta başlık", value: `${metaTitle.length}/${SEO_LIMITS.metaTitle}`, ok: titleValid },
+      { label: "Meta açıklama", value: `${metaDescription.length}/${SEO_LIMITS.metaDescription}`, ok: descriptionValid },
+      { label: "Etiket", value: `${tagCount}/${SEO_LIMITS.tags}`, ok: tagCount <= SEO_LIMITS.tags },
+    ];
+  }, [metaDescription, metaTitle, slug, tags]);
+  const hasSeoError = seoChecks.some((check) => !check.ok);
 
   const fillDefaults = () => {
     const meta = parseMarkdownMeta(content);
@@ -336,6 +360,15 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
                 className="min-h-[96px] resize-none break-words"
               />
             </div>
+
+            <div className="grid gap-2 rounded-lg border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-4">
+              {seoChecks.map((check) => (
+                <div key={check.label} className={check.ok ? "text-muted-foreground" : "text-destructive"}>
+                  <span className="font-medium">{check.label}</span>
+                  <span className="ml-2">{check.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -343,7 +376,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
           <Button variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>
-          <Button onClick={() => publishMutation.mutate()} disabled={connected.length === 0 || publishMutation.isPending}>
+          <Button onClick={() => publishMutation.mutate()} disabled={connected.length === 0 || publishMutation.isPending || hasSeoError}>
             {publishMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
             {mode === "publish" ? "Canlı yayınla" : "Taslak oluştur"}
           </Button>
