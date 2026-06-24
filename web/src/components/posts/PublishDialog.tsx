@@ -88,61 +88,11 @@ function transliterate(value: string) {
   return value.replace(/[çÇğĞıİöÖşŞüÜ]/g, (char) => map[char] || char);
 }
 
-function plainText(markdown: string) {
-  return markdown
-    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
-    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
-    .replace(/[#>*_`~-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractMarkdownTitle(content: string) {
-  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
-}
-
-function firstSentence(content: string) {
-  return plainText(content).split(/(?<=[.!?])\s+/)[0]?.trim() || "";
-}
-
-function withoutMarkdownTitle(content: string) {
-  return content.replace(/^#\s+.+\n*/m, "").trim();
-}
-
-function hasTurkishText(value: string) {
-  return /[çğıöşüÇĞİÖŞÜ]/.test(value);
-}
-
 function truncate(value: string, max: number) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= max) return cleaned;
   const clipped = cleaned.slice(0, max + 1).replace(/\s+\S*$/, "").trim();
   return clipped || cleaned.slice(0, max).trim();
-}
-
-function metaTitleFallback(title: string, content: string) {
-  const markdownTitle = extractMarkdownTitle(content);
-  const candidate = markdownTitle || title;
-  if (hasTurkishText(content) && !hasTurkishText(candidate)) return turkishTitleFromBody(content, title);
-  if (markdownTitle) return markdownTitle;
-  return title;
-}
-
-function turkishTitleFromBody(content: string, fallback: string) {
-  const sentence = firstSentence(withoutMarkdownTitle(content)) || fallback;
-  const polished = sentence
-    .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
-    .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
-    .replace(/,\s+.*$/, "")
-    .trim();
-  return truncate(polished || fallback, 90);
-}
-
-function chooseMetaTitle(metaTitle: string, fallbackTitle: string, content: string) {
-  const cleaned = metaTitle.trim();
-  if (!cleaned) return fallbackTitle;
-  if (hasTurkishText(content) && !hasTurkishText(cleaned) && hasTurkishText(fallbackTitle)) return fallbackTitle;
-  return cleaned;
 }
 
 function explicitTags(content: string) {
@@ -165,7 +115,7 @@ function parseMarkdownMeta(content: string) {
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, disabled, disabledReason }: PublishDialogProps) {
+export function PublishDialog({ postId, title, content, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -196,12 +146,10 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
 
   const fillDefaults = () => {
     const meta = parseMarkdownMeta(content);
-    const excerpt = truncate(meta.metaDescription || summary || plainText(withoutMarkdownTitle(content)), 145);
-    const fallbackTitle = metaTitleFallback(title, content);
-    setSlug(slugify(meta.slug || fallbackTitle));
+    setSlug(meta.slug ? slugify(meta.slug) : "");
     setTags(explicitTags(content));
-    setMetaTitle(truncate(chooseMetaTitle(meta.metaTitle, fallbackTitle, content), 60));
-    setMetaDescription(excerpt);
+    setMetaTitle(truncate(meta.metaTitle, SEO_LIMITS.metaTitle));
+    setMetaDescription(truncate(meta.metaDescription, SEO_LIMITS.metaDescription));
   };
 
   const publishMutation = useMutation({
@@ -330,11 +278,11 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
               </div>
               <div className="space-y-2">
                 <Label>URL slug</Label>
-                <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="otomatik" />
+                <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="slug gir" />
               </div>
               <div className="space-y-2">
                 <Label>Etiketler</Label>
-                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="seo, lansman, rehber" />
+                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="opsiyonel" />
               </div>
               <div className="space-y-2">
                 <Label>Kategoriler</Label>
@@ -347,6 +295,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
               <Textarea
                 value={metaTitle}
                 onChange={(event) => setMetaTitle(event.target.value)}
+                placeholder="AI meta yoksa elle gir"
                 className="min-h-[76px] resize-none break-words"
               />
             </div>
@@ -356,7 +305,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
               <Textarea
                 value={metaDescription}
                 onChange={(event) => setMetaDescription(event.target.value)}
-                placeholder="Oluşturulan özeti kullan"
+                placeholder="AI meta yoksa elle gir"
                 className="min-h-[96px] resize-none break-words"
               />
             </div>
