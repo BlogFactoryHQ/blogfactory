@@ -902,8 +902,14 @@ function stripSeoPackageSections(content: string) {
   let skipping = false;
 
   for (const line of content.split(/\r?\n/)) {
-    const h2 = line.match(/^##\s+(.+)$/);
-    if (h2 && stripHeading.test(h2[1].trim())) {
+    const heading = line
+      .trim()
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^\*\*(.+)\*\*$/, "$1")
+      .replace(/:$/, "")
+      .trim();
+    const shouldStrip = stripHeading.test(heading);
+    if (shouldStrip) {
       skipping = true;
       continue;
     }

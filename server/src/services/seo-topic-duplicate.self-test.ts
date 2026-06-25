@@ -282,6 +282,29 @@ Eski cevap.
 assert.equal((turkishSeoPackaged.match(/## Sık Sorulan Sorular/g) || []).length, 1);
 assert.doesNotMatch(turkishSeoPackaged, /Sıkça Sorulan Sorular|Eski soru|Eski cevap|## Key Points/);
 
+const plainFaqPackaged = applySeoPackage(`# Apple zamları
+
+Kısa giriş.
+
+Sıkça Sorulan Sorular
+
+Apple ürünleri neden zamlandı? Eski cevap.
+
+İkinci el MacBook almak güvenli mi? Eski cevap.
+`, {
+  slug: "apple zam",
+  metaTitle: "Apple MacBook ve iPad Zamları",
+  metaDescription: "Apple MacBook ve iPad zamlarını, fiyat etkilerini ve alternatif cihaz seçeneklerini öğrenin. Güncel önerileri inceleyin.",
+  faqs: [
+    { question: "Apple MacBook ve iPad fiyatlarında ne kadar artış oldu?", answer: "Artış oranı modele göre değişir; en güncel fiyatlar Apple Türkiye ve yetkili satıcılardan kontrol edilmelidir." },
+    { question: "Apple ürünlerinde zam neden Mac ve iPad odaklı oldu?", answer: "Tedarik ve maliyet baskısı özellikle bu ürün gruplarında daha görünür hale geldi." },
+    { question: "Alternatif olarak hangi cihazlar değerlendirilebilir?", answer: "Windows tabanlı ultrabook modelleri ve Linux uyumlu dizüstüler maliyet açısından seçenek olabilir." },
+  ],
+}, { topic: "Apple MacBook ve iPad zamları", settings: { articleLanguage: "Turkish" } });
+
+assert.equal((plainFaqPackaged.match(/Sık(?:ça)? Sorulan Sorular/g) || []).length, 1);
+assert.doesNotMatch(plainFaqPackaged, /Apple ürünleri neden zamlandı\? Eski cevap|İkinci el MacBook almak güvenli mi\? Eski cevap/);
+
 const cleanedMetaPackage = applySeoPackage(`# Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklarla Ortaya Çıkan Gerçekler
 
 Mythos Preview güvenlik benchmarklarında yeni sonuçlar üretiyor. ExploitBench ve ExploitGym gibi ölçümler modelin istismar zincirlerini nasıl kurduğunu gösteriyor.
