@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
+import { anchorGeneratedTitleToSource, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
@@ -16,6 +16,14 @@ assert.match(articleTemplateInstructions("comparison"), /at-a-glance table/);
 assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 3).map((article) => article.variationIndex),
   [1, 2, 3]
+);
+assert.match(
+  anchorGeneratedTitleToSource("# Ortak Alan olarak\n\nBody", "Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklar"),
+  /^# Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklar/
+);
+assert.match(
+  anchorGeneratedTitleToSource("# Mythos Preview exploit benchmark sonuçları\n\nBody", "Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklar"),
+  /^# Mythos Preview exploit benchmark sonuçları/
 );
 assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 1, { index: 4, count: 5 }).map((article) => [article.variationIndex, article.variationCount]),

@@ -104,7 +104,7 @@ const sortDraftPosts = (a: Post, b: Post) => {
 
 export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
   if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
-  const total = post.generation_plan?.totalDrafts || post.generation_plan?.variationCount || 0;
+  const total = draftTotalForPlan(post.generation_plan);
   if (total <= 1) return "";
   if (!post.job_id) return "";
   const day = post.created_at.slice(0, 10);
@@ -118,6 +118,12 @@ export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "s
     day,
   ].join("|");
 };
+
+export const draftTotalForPlan = (plan: GenerationPlan | null | undefined, created = 0) => Math.max(
+  Number(plan?.totalDrafts) || 0,
+  Number(plan?.variationCount) || 0,
+  created
+);
 
 export default function Posts() {
   const navigate = useNavigate();
@@ -318,7 +324,7 @@ export default function Posts() {
         jobId: post.job_id,
         post: groupedPosts[0],
         posts: groupedPosts,
-        totalDrafts: plan?.totalDrafts || plan?.variationCount || groupedPosts.length,
+        totalDrafts: draftTotalForPlan(plan, groupedPosts.length),
         failedDrafts: plan?.failedDrafts || [],
       }];
     });

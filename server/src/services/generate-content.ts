@@ -493,6 +493,33 @@ function titleFromTurkishBody(content: string, topic: string) {
   return truncateAtWord(cleanPostTitle(polished || topic), 62) || cleanPostTitle(topic || "Untitled Post");
 }
 
+const TITLE_STOPWORDS = new Set(["and", "the", "for", "with", "from", "that", "this", "why", "how", "what", "bir", "ile", "ve", "veya", "için", "icin", "olarak", "neden", "nasıl", "nasil", "yeni"]);
+
+function titleTokens(value: string) {
+  return [...tokenize(normalizeTopic(value))]
+    .filter((token) => token.length > 2 && !TITLE_STOPWORDS.has(token));
+}
+
+function titleMatchesSourceTitle(title: string, sourceTitle: string) {
+  const normalizedTitle = normalizeTopic(title);
+  const normalizedSource = normalizeTopic(sourceTitle);
+  if (!normalizedSource || normalizedSource.length < 8) return true;
+  if (normalizedTitle.includes(normalizedSource) || normalizedSource.includes(normalizedTitle)) return true;
+  const sourceTokens = titleTokens(sourceTitle);
+  if (sourceTokens.length < 2) return true;
+  const titleSet = new Set(titleTokens(title));
+  return sourceTokens.filter((token) => titleSet.has(token)).length >= Math.min(2, sourceTokens.length);
+}
+
+export function anchorGeneratedTitleToSource(content: string, sourceTitle?: string) {
+  const title = cleanPostTitle(sourceTitle || "");
+  if (!title) return content;
+  const h1 = content.match(/^#\s+(.+)$/m);
+  if (h1 && titleMatchesSourceTitle(h1[1], title)) return content;
+  if (h1) return content.replace(/^#\s+.+$/m, `# ${title}`);
+  return `# ${title}\n\n${content}`;
+}
+
 function truncateAtWord(value: string, maxChars: number) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxChars) return cleaned;
@@ -1290,6 +1317,7 @@ export async function generateContent(opts: GenerateOpts) {
           topic: opts.articleTitleOverride || article.title || opts.sourceValue,
           settings: promptSettings,
         });
+        genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
         const usage = aiData.usage;
         const openRouterUsage = await getOpenRouterCost(openRouterKey, aiData);
         const usageTotals = {
@@ -1317,6 +1345,7 @@ export async function generateContent(opts: GenerateOpts) {
                 topic: opts.articleTitleOverride || article.title || opts.sourceValue,
                 settings: promptSettings,
               });
+              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
               usageTotals.prompt += Number(repaired.usage?.prompt_tokens || 0);
               usageTotals.completion += Number(repaired.usage?.completion_tokens || 0);
               usageTotals.total += Number(repaired.usage?.total_tokens || 0);

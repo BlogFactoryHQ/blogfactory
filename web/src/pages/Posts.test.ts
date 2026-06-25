@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftGroupKey } from "./Posts";
+import { draftGroupKey, draftTotalForPlan } from "./Posts";
 
 const basePost = {
   job_id: "job-1",
@@ -14,6 +14,10 @@ describe("draftGroupKey", () => {
   it("groups sibling split jobs by batch id", () => {
     expect(draftGroupKey({ ...basePost, generation_plan: { totalDrafts: 1, variationCount: 5, batchId: "batch-1" } }))
       .toBe("batch-batch-1");
+  });
+
+  it("uses variation count when split child jobs each report one draft", () => {
+    expect(draftTotalForPlan({ totalDrafts: 1, variationCount: 3 }, 3)).toBe(3);
   });
 
   it("groups old split jobs by source/model/day fallback", () => {
