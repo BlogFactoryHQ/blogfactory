@@ -89,7 +89,11 @@ imagesRoutes.get("/requests", async (c) => {
   const userId = getUserId(c);
   const status = c.req.query("status");
   const conditions = [eq(imageGenerationRequests.userId, userId)];
-  if (status) conditions.push(eq(imageGenerationRequests.status, status));
+  if (status === "active") {
+    conditions.push(inArray(imageGenerationRequests.status, ["pending", "queued", "processing"]));
+  } else if (status) {
+    conditions.push(eq(imageGenerationRequests.status, status));
+  }
 
   const rows = await db
     .select({

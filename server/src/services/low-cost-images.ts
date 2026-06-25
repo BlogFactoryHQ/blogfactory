@@ -481,6 +481,12 @@ async function fallbackRequestToStock(request: typeof imageGenerationRequests.$i
 }
 
 export async function processNextDeferredImage(userId?: string) {
+  await db.update(imageGenerationRequests).set({ status: "queued", updatedAt: new Date() }).where(and(
+    eq(imageGenerationRequests.provider, "ai-deferred"),
+    eq(imageGenerationRequests.status, "processing"),
+    lte(imageGenerationRequests.updatedAt, new Date(Date.now() - 20 * 60_000))
+  ));
+
   const conditions = [
     eq(imageGenerationRequests.provider, "ai-deferred"),
     eq(imageGenerationRequests.status, "queued"),

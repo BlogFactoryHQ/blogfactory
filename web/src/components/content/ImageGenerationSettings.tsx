@@ -282,7 +282,7 @@ export function SplitImageGenerationSettings({
               <ImageIcon className="h-4 w-4 text-accent-foreground" />
             </div>
             <div>
-              <p className="font-medium text-sm">Generate Images</p>
+              <p className="font-medium text-sm">Images</p>
               <p className="text-xs text-muted-foreground">
                 {getSummary()}
               </p>
@@ -314,7 +314,7 @@ export function SplitImageGenerationSettings({
         <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="w-full justify-between">
-              <span className="text-sm">Image Settings</span>
+              <span className="text-sm">Image options</span>
               {settingsOpen ? (
                 <ChevronUp className="h-4 w-4" />
               ) : (
@@ -464,7 +464,7 @@ function ImageSettingsTabs({
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div>
           <Label>Include Images</Label>
-          <p className="text-xs text-muted-foreground">Generate article visuals with alt text.</p>
+          <p className="text-xs text-muted-foreground">Attach cover and inline visuals.</p>
         </div>
         <Switch checked={imagesEnabled} onCheckedChange={onImagesEnabledChange} />
       </div>
@@ -491,7 +491,7 @@ function ImageSettingsTabs({
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <div>
               <Label>Compression</Label>
-              <p className="text-xs text-muted-foreground">Smaller files, faster pages.</p>
+              <p className="text-xs text-muted-foreground">Store smaller web images.</p>
             </div>
             <Switch
               checked={compressionEnabled}
@@ -519,7 +519,7 @@ function ImageSettingsTabs({
           <div className="flex items-center justify-between">
             <div>
               <Label>Generate Cover Image</Label>
-              <p className="text-xs text-muted-foreground">Hero image for blog header</p>
+              <p className="text-xs text-muted-foreground">Primary image for the post</p>
             </div>
             <Switch
               checked={config.cover.enabled}
@@ -539,7 +539,7 @@ function ImageSettingsTabs({
                         <Info className="h-3.5 w-3.5 text-muted-foreground" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Higher resolution = better quality but higher cost</p>
+                        <p>Higher resolution may cost more.</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

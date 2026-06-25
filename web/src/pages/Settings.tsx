@@ -1657,7 +1657,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={Gauge}
                   title="Image Strategy"
-                  description="Pick how BlogFactory should source cover images."
+                  description="Choose the default source for blog visuals."
                   action={
                     <Button
                       size="sm"
@@ -1676,9 +1676,9 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { id: "consistent", title: "Consistent Covers", text: "Covers use your model. Inline tries free AI, then stock.", badge: "Recommended" },
-                      { id: "cheap", title: "Cheapest AI", text: "Covers use cheap AI. Inline tries free AI, then stock.", badge: "$" },
-                      { id: "stock", title: "Stock Only", text: "No AI image spend. Inline and covers use stock.", badge: "$0" },
+                      { id: "consistent", title: "Recommended", text: "Cover uses your selected model. Inline images use the low-cost queue.", badge: "Stable" },
+                      { id: "cheap", title: "Lowest Cost", text: "Use the cheapest available AI first, then stock if needed.", badge: "$" },
+                      { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
                     ].map((strategy) => (
                       <button
                         key={strategy.id}
@@ -1701,9 +1701,9 @@ export default function Settings() {
                   </div>
 
                   <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {imageStrategy === "consistent" && "Current: cover uses the selected model. Inline images try OpenRouter free, then stock."}
-                    {imageStrategy === "cheap" && "Current: cover uses cheapest AI. Inline images try OpenRouter free, then stock."}
-                    {imageStrategy === "stock" && "Current: stock images only. AI image queue is disabled."}
+                    {imageStrategy === "consistent" && "Current: covers queue on the selected model; inline images queue on the free/stock path."}
+                    {imageStrategy === "cheap" && "Current: images queue on the cheapest available provider, with stock fallback."}
+                    {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
                   </div>
 
                   <Button
@@ -1746,8 +1746,8 @@ export default function Settings() {
 
                       <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
                         <div>
-                          <Label>AI Fallback</Label>
-                          <p className="text-xs text-muted-foreground">Queue one AI image at a time.</p>
+                          <Label>AI Queue</Label>
+                          <p className="text-xs text-muted-foreground">Generate queued visuals when stock is not enough.</p>
                         </div>
                         <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
                       </div>
@@ -1755,7 +1755,7 @@ export default function Settings() {
                       <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
                         <div>
                           <Label>Source Images</Label>
-                          <p className="text-xs text-muted-foreground">Only with license/allowlist.</p>
+                          <p className="text-xs text-muted-foreground">Reuse source images only when license or allowlist permits it.</p>
                         </div>
                         <Switch checked={sourceImageAllowed} onCheckedChange={setSourceImageAllowed} />
                       </div>

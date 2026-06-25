@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Copy, ExternalLink, ImageIcon, Trash2, Upload, X } from "lucide-react";
+import { Copy, ExternalLink, ImageIcon, Loader2, Play, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +21,7 @@ import {
   useDetachImageAsset,
   useImageGenerationRequests,
   useImportImageGenerationRequest,
+  useProcessImageQueue,
   defaultFilters,
   type GalleryFilters as GalleryFiltersType,
   type ImageAsset,
@@ -40,22 +42,34 @@ function providerUrl(provider: string) {
   return null;
 }
 
-function ManualRequestCard({
+function requestLabel(request: ImageGenerationRequest) {
+  if (request.provider === "ai-deferred") return "AI";
+  return request.provider.replace("-", " ");
+}
+
+function ImageRequestCard({
   request,
   onImport,
   onCancel,
+  onProcess,
   importing,
   cancelling,
+  processing,
 }: {
   request: ImageGenerationRequest;
   onImport: (request: ImageGenerationRequest, file: File) => void;
   onCancel: (id: string) => void;
+  onProcess: () => void;
   importing: boolean;
   cancelling: boolean;
+  processing: boolean;
 }) {
   const url = providerUrl(request.provider);
   const fileInputId = `image-request-${request.id}`;
   const title = request.post_title || "Untitled post";
+  const isAiQueue = request.provider === "ai-deferred";
+  const nextRun = request.available_at ? new Date(request.available_at) : null;
+  const waiting = nextRun && nextRun.getTime() > Date.now();
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(request.prompt);
@@ -63,25 +77,36 @@ function ManualRequestCard({
   };
 
   return (
-    <div className="rounded-lg border border-border bg-background p-3">
+    <div className="rounded-lg border border-border bg-background px-3 py-2.5">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="capitalize">{request.provider.replace("-", " ")}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="capitalize">{request.type}{request.position != null ? ` #${request.position + 1}` : ""}</span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-medium">{title}</p>
+            <Badge variant="outline" className="text-[10px] capitalize">
+              {request.type}{request.position != null ? ` ${request.position + 1}` : ""}
+            </Badge>
+            <Badge variant={request.status === "processing" ? "default" : "secondary"} className="text-[10px] capitalize">
+              {request.status}
+            </Badge>
           </div>
-          <p className="truncate text-sm text-muted-foreground">{title}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {requestLabel(request)}
+            {request.model_id ? ` · ${request.model_id}` : ""}
+            {request.retry_count ? ` · retry ${request.retry_count}` : ""}
+          </p>
+          {request.prompt && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{request.prompt}</p>}
+          {isAiQueue && request.model_id && (
+            waiting && <p className="mt-1 text-xs text-muted-foreground">Retry after {nextRun.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+          )}
         </div>
-        <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling}>
+        <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling || request.status === "processing"}>
           <X className="h-4 w-4" />
         </Button>
       </div>
-      <p className="mt-3 line-clamp-3 text-sm">{request.prompt}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copyPrompt}>
           <Copy className="h-4 w-4" />
-          Copy prompt
+          Copy
         </Button>
         {url && (
           <Button variant="outline" size="sm" asChild>
@@ -91,23 +116,32 @@ function ManualRequestCard({
             </a>
           </Button>
         )}
-        <input
-          id={fileInputId}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onImport(request, file);
-            event.currentTarget.value = "";
-          }}
-        />
-        <Button variant="default" size="sm" asChild disabled={importing}>
-          <label htmlFor={fileInputId}>
-            <Upload className="h-4 w-4" />
-            Import
-          </label>
-        </Button>
+        {isAiQueue ? (
+          <Button size="sm" onClick={onProcess} disabled={processing || request.status === "processing"}>
+            {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Process
+          </Button>
+        ) : (
+          <>
+            <input
+              id={fileInputId}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onImport(request, file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Button variant="default" size="sm" asChild disabled={importing}>
+              <label htmlFor={fileInputId}>
+                <Upload className="h-4 w-4" />
+                Import
+              </label>
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -121,11 +155,12 @@ export default function ImageGallery() {
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
-  const { data: pendingRequests = [] } = useImageGenerationRequests("pending");
+  const { data: activeRequests = [] } = useImageGenerationRequests("active");
   const deleteImages = useDeleteImageAssets();
   const detachImage = useDetachImageAsset();
   const cancelRequest = useCancelImageGenerationRequest();
   const importRequest = useImportImageGenerationRequest();
+  const processQueue = useProcessImageQueue();
 
   const storagePaths = useMemo(() => (images || []).map((i) => i.storage_path), [images]);
   const signedUrls = useSignedUrls(storagePaths);
@@ -202,21 +237,32 @@ export default function ImageGallery() {
       </div>
 
       {/* Filters */}
-      {pendingRequests.length > 0 && (
-        <div className="mb-4 space-y-3">
+      {activeRequests.length > 0 && (
+        <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Manual image queue</h2>
-            <span className="text-xs text-muted-foreground">{pendingRequests.length} pending</span>
+            <div>
+              <h2 className="text-sm font-semibold">Image Queue</h2>
+              <p className="text-xs text-muted-foreground">Queued visuals attach automatically when processed.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{activeRequests.length} active</span>
+              <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending}>
+                {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Process
+              </Button>
+            </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {pendingRequests.map((request) => (
-              <ManualRequestCard
+          <div className="mt-3 grid gap-2">
+            {activeRequests.map((request) => (
+              <ImageRequestCard
                 key={request.id}
                 request={request}
                 onImport={(item, file) => importRequest.mutate({ id: item.id, file })}
                 onCancel={(id) => cancelRequest.mutate(id)}
+                onProcess={() => processQueue.mutate()}
                 importing={importRequest.isPending}
                 cancelling={cancelRequest.isPending}
+                processing={processQueue.isPending}
               />
             ))}
           </div>

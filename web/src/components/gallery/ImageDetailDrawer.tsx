@@ -61,6 +61,8 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
   ) : (
     <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600">Used</Badge>
   );
+  const sourceUrl = image.attribution_url || image.source_url;
+  const sourceName = image.provider === "pixabay" ? "Pixabay" : image.provider || "Source";
 
   return (
     <Dialog open={!!image} onOpenChange={(open) => !open && onClose()}>
@@ -142,6 +144,15 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
                 <Badge variant={image.post_status === "published" ? "default" : "secondary"} className="text-xs">
                   {image.post_status}
                 </Badge>
+              </div>
+            )}
+            {sourceUrl && (
+              <div className="col-span-2 flex items-center gap-2 text-muted-foreground">
+                <ExternalLink className="h-4 w-4 shrink-0" />
+                <a href={sourceUrl} target="_blank" rel="noreferrer" className="truncate text-primary underline-offset-2 hover:underline">
+                  {image.credit ? `${image.credit} on ${sourceName}` : sourceName}
+                </a>
+                {image.license_label && <Badge variant="outline" className="text-xs">{image.license_label}</Badge>}
               </div>
             )}
           </div>
