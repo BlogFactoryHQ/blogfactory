@@ -17,4 +17,9 @@ describe("post cleanup", () => {
   it("normalizes escaped markdown pipes in plain titles", () => {
     expect(cleanPostTitle("Natural Language Autoencoders \\| Anthropic")).toBe("Natural Language Autoencoders | Anthropic");
   });
+
+  it("removes Webrazzi as a source suffix", () => {
+    expect(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi")).toBe("Apple, MacBook ve iPad fiyatlarına zam yaptı");
+    expect(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:")).toBe("Apple, MacBook ve iPad fiyatlarına zam yaptı");
+  });
 });
