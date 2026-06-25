@@ -10,6 +10,17 @@ interface State {
   error: Error | null;
 }
 
+export function isChunkLoadError(error: Error | null) {
+  const message = error?.message || "";
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(message);
+}
+
+export function cacheBustUrl(current: string, now = Date.now()) {
+  const url = new URL(current);
+  url.searchParams.set("__bf_reload", String(now));
+  return url.toString();
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -22,6 +33,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info.componentStack);
+    if (isChunkLoadError(error)) {
+      const key = "blogfactory:last-chunk-error";
+      const message = error.message || "chunk-load-error";
+      if (window.sessionStorage.getItem(key) !== message) {
+        window.sessionStorage.setItem(key, message);
+        window.location.replace(cacheBustUrl(window.location.href));
+      }
+    }
   }
 
   render() {
