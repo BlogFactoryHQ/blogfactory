@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -44,11 +44,14 @@ interface Job {
   error_message: string | null;
   generation_error: string | null;
   token_cost: number | null;
+  total_cost: number | null;
   result_post_ids: string[] | null;
   created_at: string;
   completed_at: string | null;
   generation_plan: any;
   personas?: { name: string } | null;
+  child_jobs?: Job[];
+  is_batch?: boolean;
 }
 
 interface Post {
@@ -81,6 +84,7 @@ const normalizeJob = (job: any): Job => ({
   error_message: job.error_message ?? job.errorMessage ?? null,
   generation_error: job.generation_error ?? job.generationError ?? null,
   token_cost: job.token_cost ?? job.tokenCost ?? null,
+  total_cost: job.total_cost ?? job.totalCost ?? null,
   result_post_ids: job.result_post_ids ?? job.resultPostIds ?? null,
   created_at: job.created_at ?? job.createdAt,
   completed_at: job.completed_at ?? job.completedAt ?? null,
@@ -90,6 +94,103 @@ const normalizeJob = (job: any): Job => ({
 
 const failedDraftsFor = (job: Job): Array<{ index: number; error: string }> => {
   return Array.isArray(job.generation_plan?.failedDrafts) ? job.generation_plan.failedDrafts : [];
+};
+
+export const jobGroupKey = (job: Pick<Job, "generation_plan" | "source_type" | "source_value" | "persona_id" | "model_id" | "created_at">) => {
+  if (job.generation_plan?.batchId) return `batch-${job.generation_plan.batchId}`;
+  const total = Number(job.generation_plan?.variationCount || job.generation_plan?.totalDrafts || 0);
+  if (total <= 1) return "";
+  return [
+    "split",
+    job.source_type,
+    job.source_value,
+    job.persona_id || "",
+    job.model_id || "",
+    total,
+    job.created_at.slice(0, 10),
+  ].join("|");
+};
+
+const variationIndexFor = (job: Job, fallback: number) => Number(job.generation_plan?.variationIndex) || fallback;
+
+const batchStatus = (jobs: Job[]) => {
+  if (jobs.some((job) => job.status === "running")) return "running";
+  if (jobs.some((job) => job.status === "pending")) return "pending";
+  if (jobs.every((job) => job.status === "failed")) return "failed";
+  return "completed";
+};
+
+const aggregateJobBatch = (jobs: Job[]): Job => {
+  if (jobs.length === 1) return jobs[0];
+
+  const sorted = [...jobs].sort((a, b) => variationIndexFor(a, 999) - variationIndexFor(b, 999));
+  const first = sorted[0];
+  const active = sorted.find((job) => job.status === "running" || job.status === "pending");
+  const failedDrafts = new Map<number, { index: number; error: string }>();
+
+  sorted.forEach((job, idx) => {
+    const draftIndex = variationIndexFor(job, idx + 1) - 1;
+    const existing = failedDraftsFor(job);
+    if (existing.length) {
+      existing.forEach((draft) => failedDrafts.set(draftIndex, { index: draftIndex, error: draft.error }));
+    } else if (job.status === "failed") {
+      failedDrafts.set(draftIndex, { index: draftIndex, error: job.error_message || job.generation_error || "Draft failed to finish." });
+    }
+  });
+
+  const totalDrafts = Math.max(
+    Number(first.generation_plan?.variationCount || first.generation_plan?.totalDrafts || 0),
+    sorted.length
+  );
+  const activeIndex = active ? variationIndexFor(active, sorted.indexOf(active) + 1) : 0;
+  const currentStep = active?.current_step && activeIndex
+    ? active.current_step.replace(/_\d+_of_\d+$/, `_${activeIndex}_of_${totalDrafts}`)
+    : first.current_step;
+  const completedAt = sorted.every((job) => job.completed_at)
+    ? sorted.map((job) => job.completed_at).filter(Boolean).sort().at(-1) || null
+    : null;
+
+  return {
+    ...first,
+    status: batchStatus(sorted),
+    current_step: currentStep,
+    token_cost: sorted.reduce((sum, job) => sum + (Number(job.token_cost) || 0), 0),
+    total_cost: sorted.reduce((sum, job) => sum + (Number(job.total_cost) || 0), 0),
+    result_post_ids: sorted.flatMap((job) => job.result_post_ids || []),
+    completed_at: completedAt,
+    generation_plan: {
+      ...first.generation_plan,
+      totalDrafts,
+      variationCount: totalDrafts,
+      failedDrafts: [...failedDrafts.values()].sort((a, b) => a.index - b.index),
+      childJobIds: sorted.map((job) => job.id),
+    },
+    child_jobs: sorted,
+    is_batch: true,
+  };
+};
+
+export const aggregateJobRows = (jobs: Job[]) => {
+  const groups = new Map<string, Job[]>();
+  jobs.forEach((job) => {
+    const key = jobGroupKey(job) || `job-${job.id}`;
+    groups.set(key, [...(groups.get(key) || []), job]);
+  });
+  return [...groups.values()]
+    .map(aggregateJobBatch)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+};
+
+const activeJobIdsFor = (job: Job) => (job.child_jobs || [job])
+  .filter((child) => child.status === "running" || child.status === "pending")
+  .map((child) => child.id);
+
+const failedJobIdsFor = (job: Job) => (job.child_jobs || [])
+  .filter((child) => child.status === "failed")
+  .map((child) => child.id);
+
+const failedJobIdForDraft = (job: Job, draftIndex: number) => {
+  return (job.child_jobs || []).find((child, idx) => variationIndexFor(child, idx + 1) - 1 === draftIndex && child.status === "failed")?.id;
 };
 
 const draftStatsFor = (job: Job) => {
@@ -110,8 +211,8 @@ export default function Jobs() {
   const queryClient = useQueryClient();
 
   const stopJobMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      await api.put(`/jobs/${jobId}/stop`);
+    mutationFn: async (jobIds: string | string[]) => {
+      await Promise.all((Array.isArray(jobIds) ? jobIds : [jobIds]).map((jobId) => api.put(`/jobs/${jobId}/stop`)));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
@@ -124,8 +225,12 @@ export default function Jobs() {
   });
 
   const retryDraftsMutation = useMutation({
-    mutationFn: async ({ jobId, indices }: { jobId: string; indices: number[] }) => {
-      const data = await api.post<any>(`/jobs/${jobId}/retry`, { retryIndices: indices });
+    mutationFn: async ({ jobId, indices, jobIds }: { jobId?: string; indices?: number[]; jobIds?: string[] }) => {
+      if (jobIds?.length) {
+        await Promise.all(jobIds.map((id) => api.post<any>(`/jobs/${id}/retry`, {})));
+        return null;
+      }
+      const data = await api.post<any>(`/jobs/${jobId}/retry`, { retryIndices: indices || [] });
       return data;
     },
     onSuccess: () => {
@@ -140,13 +245,7 @@ export default function Jobs() {
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => {
-      const result = (await api.get<any[]>("/jobs")).map(normalizeJob);
-      // Keep selected job detail in sync during polling
-      if (selectedJob) {
-        const updated = result.find((j) => j.id === selectedJob.id);
-        if (updated) setSelectedJob(updated);
-      }
-      return result;
+      return (await api.get<any[]>("/jobs")).map(normalizeJob);
     },
     // Always poll every 5s -- lightweight query, ensures we catch state changes
     refetchInterval: 5000,
@@ -164,16 +263,27 @@ export default function Jobs() {
     enabled: !!selectedJob?.result_post_ids?.length,
   });
 
+  const jobRows = useMemo(() => aggregateJobRows(jobs), [jobs]);
+
+  useEffect(() => {
+    if (!selectedJob) return;
+    const selectedBatchId = selectedJob.generation_plan?.batchId;
+    const updated = jobRows.find((job) => job.id === selectedJob.id || (selectedBatchId && job.generation_plan?.batchId === selectedBatchId));
+    if (updated) setSelectedJob(updated);
+  }, [jobRows, selectedJob]);
+
   const statusCounts = {
-    all: jobs.length,
-    pending: jobs.filter((j) => j.status === "pending").length,
-    running: jobs.filter((j) => j.status === "running").length,
-    completed: jobs.filter((j) => j.status === "completed").length,
-    failed: jobs.filter((j) => j.status === "failed").length,
+    all: jobRows.length,
+    pending: jobRows.filter((j) => j.status === "pending").length,
+    running: jobRows.filter((j) => j.status === "running").length,
+    completed: jobRows.filter((j) => j.status === "completed").length,
+    failed: jobRows.filter((j) => j.status === "failed").length,
   };
 
-  const filteredJobs = jobs.filter((job) => {
-    const matchesSearch = job.id.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredJobs = jobRows.filter((job) => {
+    const query = searchQuery.toLowerCase();
+    const ids = [job.id, ...(job.child_jobs || []).map((child) => child.id)].join(" ").toLowerCase();
+    const matchesSearch = ids.includes(query);
     const matchesFilter = filter === "all" || job.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -370,7 +480,14 @@ export default function Jobs() {
                     )}
                     onClick={() => setSelectedJob(job)}
                   >
-                    <TableCell className="font-mono text-sm">#{job.id.slice(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      #{job.id.slice(0, 8)}
+                      {job.is_batch && (
+                        <span className="ml-2 font-sans text-xs text-muted-foreground">
+                          {draftStatsFor(job).created}/{draftStatsFor(job).total} drafts
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <SourceIcon className="h-4 w-4 text-muted-foreground" />
@@ -404,7 +521,14 @@ export default function Jobs() {
                   <div>
                     <p className="section-label mb-1">Selected Job</p>
                     <div className="flex items-center gap-3">
-                      <SheetTitle className="font-mono">#{selectedJob.id.slice(0, 8)}</SheetTitle>
+                      <SheetTitle className="font-mono">
+                        #{selectedJob.id.slice(0, 8)}
+                        {selectedJob.is_batch && (
+                          <span className="ml-2 font-sans text-sm font-medium text-muted-foreground">
+                            Batch
+                          </span>
+                        )}
+                      </SheetTitle>
                       <StatusBadge
                         status={getJobStatusBadge(selectedJob).status}
                         label={getJobStatusBadge(selectedJob).label}
@@ -415,7 +539,7 @@ export default function Jobs() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => stopJobMutation.mutate(selectedJob.id)}
+                      onClick={() => stopJobMutation.mutate(activeJobIdsFor(selectedJob))}
                       disabled={stopJobMutation.isPending}
                     >
                       {stopJobMutation.isPending ? (
@@ -549,7 +673,10 @@ export default function Jobs() {
                             variant="outline"
                             size="sm"
                             className="h-7 text-xs gap-1.5"
-                            onClick={() => retryDraftsMutation.mutate({ jobId: selectedJob.id, indices: failedDrafts.map(fd => fd.index) })}
+                            onClick={() => {
+                              const jobIds = failedJobIdsFor(selectedJob);
+                              retryDraftsMutation.mutate(jobIds.length ? { jobIds } : { jobId: selectedJob.id, indices: failedDrafts.map(fd => fd.index) });
+                            }}
                             disabled={retryDraftsMutation.isPending}
                           >
                             {retryDraftsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -565,7 +692,10 @@ export default function Jobs() {
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 flex-shrink-0"
-                              onClick={() => retryDraftsMutation.mutate({ jobId: selectedJob.id, indices: [fd.index] })}
+                              onClick={() => {
+                                const jobId = failedJobIdForDraft(selectedJob, fd.index);
+                                retryDraftsMutation.mutate(jobId ? { jobIds: [jobId] } : { jobId: selectedJob.id, indices: [fd.index] });
+                              }}
                               disabled={retryDraftsMutation.isPending}
                               title={`Retry draft ${fd.index + 1}`}
                             >
@@ -596,7 +726,10 @@ export default function Jobs() {
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs gap-1.5"
-                          onClick={() => retryDraftsMutation.mutate({ jobId: selectedJob.id, indices: failedDrafts.map(fd => fd.index) })}
+                          onClick={() => {
+                            const jobIds = failedJobIdsFor(selectedJob);
+                            retryDraftsMutation.mutate(jobIds.length ? { jobIds } : { jobId: selectedJob.id, indices: failedDrafts.map(fd => fd.index) });
+                          }}
                           disabled={retryDraftsMutation.isPending}
                         >
                           {retryDraftsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -618,7 +751,10 @@ export default function Jobs() {
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 flex-shrink-0"
-                              onClick={() => retryDraftsMutation.mutate({ jobId: selectedJob.id, indices: [fd.index] })}
+                              onClick={() => {
+                                const jobId = failedJobIdForDraft(selectedJob, fd.index);
+                                retryDraftsMutation.mutate(jobId ? { jobIds: [jobId] } : { jobId: selectedJob.id, indices: [fd.index] });
+                              }}
                               disabled={retryDraftsMutation.isPending}
                               title={`Retry draft ${fd.index + 1}`}
                             >
@@ -662,11 +798,11 @@ export default function Jobs() {
                           {(selectedJob.token_cost / 1000).toFixed(1)}k tokens
                         </p>
                       </div>
-                      {(selectedJob as any).total_cost != null && (selectedJob as any).total_cost > 0 && (
+                      {selectedJob.total_cost != null && selectedJob.total_cost > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Total Cost</span>
                           <p className="font-medium">
-                            {(selectedJob as any).total_cost < 0.01 ? "<$0.01" : `$${Number((selectedJob as any).total_cost).toFixed(4)}`}
+                            {selectedJob.total_cost < 0.01 ? "<$0.01" : `$${Number(selectedJob.total_cost).toFixed(4)}`}
                           </p>
                         </div>
                       )}
