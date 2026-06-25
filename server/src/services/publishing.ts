@@ -388,7 +388,7 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
   const categories = normalizeStringList(options.categories || []);
   const slug = slugify(options.slug || meta.slug || title);
   const metaTitle = truncateAtWord(chooseMetaTitle(options.metaTitle || meta.metaTitle, title, body), 60);
-  const metaDescription = truncateAtWord(options.metaDescription || meta.metaDescription || excerpt, 145);
+  const metaDescription = truncateAtWord(options.metaDescription || meta.metaDescription || excerpt, 160);
   const storedInlineImages = (post.inlineImages || []).map((url, index) => ({
     url,
     altText: altByPath.get(url) || fallbackImageAlt(title, "inline", index),
@@ -467,7 +467,7 @@ export function slugify(value: string) {
     .replace(/^-|-$/g, "")
     .split("-")
     .filter(Boolean)
-    .slice(0, 8)
+    .slice(0, 5)
     .join("-")
     .slice(0, 70)
     .replace(/-+$/g, "");

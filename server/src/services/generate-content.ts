@@ -5,8 +5,9 @@ import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { resolveLowCostImages, type SourceImageCandidate } from "./low-cost-images.js";
-import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
+import { assertOpenRouterModelAvailable, getOpenRouterModels } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
+import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
@@ -68,11 +69,30 @@ type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
 type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; sourceImages?: SourceImageCandidate[]; variationIndex?: number; variationCount?: number };
 type SeoQaCheck = { label: string; ok: boolean | null; detail: string };
 type GenerationContract = ReturnType<typeof resolveGenerationContract>;
+export type SeoPackage = {
+  slug: string;
+  metaTitle: string;
+  metaDescription: string;
+  keyPoints: string[];
+  faqs: Array<{ question: string; answer: string; sourceQuery?: string }>;
+};
+type SeoPackageRun = {
+  content: string;
+  modelId: string;
+  status: "success" | "failed";
+  webSearch: boolean;
+  faqQueryCount: number;
+  cost: number;
+  usage?: { prompt: number; completion: number; total: number };
+  responseData?: Record<string, unknown>;
+  error?: string;
+};
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
 const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
+const SEO_META_DESCRIPTION_LIMIT = 160;
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "campaign"]);
 const FAQ_TARGET: [number, number] = [3, 5];
@@ -570,36 +590,7 @@ function linkFirstPlainMention(content: string, title: string, url: string) {
 }
 
 function ensureFaqSection(content: string, topic: string, settings?: GenerationSettings) {
-  if (faqCount(content) >= FAQ_TARGET[0]) return content;
-
-  const turkish = isTurkishContent(content, settings);
-  const faq = turkish
-    ? [
-      "## Sık Sorulan Sorular",
-      "",
-      "### Bu konu neden önemli?",
-      "Bu konu, karar alırken hangi becerilerin ve süreçlerin gerçekten değer yarattığını daha net görmeyi sağlar.",
-      "",
-      "### Bu konu kimler için faydalı?",
-      "Kendi iş akışını iyileştirmek, araçları daha bilinçli kullanmak ve sonuçları ölçmek isteyen ekipler için faydalıdır.",
-      "",
-      "### Bu konuda ilk adım ne olmalı?",
-      "Önce mevcut süreci küçük bir örnekle test etmek, çıktıları ölçmek ve işe yarayan yaklaşımı kademeli olarak genişletmek gerekir.",
-    ]
-    : [
-      "## FAQs",
-      "",
-      "### Why does this topic matter?",
-      "It helps readers see which skills, processes, and decisions create the most practical value.",
-      "",
-      "### Who benefits most from this topic?",
-      "Teams that want to improve workflows, use tools more deliberately, and measure outcomes benefit most.",
-      "",
-      "### What is the best first step?",
-      "Start with a small workflow test, measure the result, and expand the parts that clearly work.",
-    ];
-
-  return `${content.trim()}\n\n${faq.join("\n")}`;
+  return content;
 }
 
 function escapeRegExp(value: string) {
@@ -730,6 +721,210 @@ async function repairShortArticle(opts: {
     cost: openRouterUsage.cost,
     responseData: { id: data.id, generation: openRouterUsage.stats },
   };
+}
+
+async function chooseSeoModel(openRouterKey: string, fallbackModelId: string) {
+  try {
+    const models = await getOpenRouterModels(openRouterKey, "text") as Array<{ id: string; pricing: string }>;
+    return models.find((model) => model.pricing === "free" || model.pricing === "low")?.id || fallbackModelId;
+  } catch {
+    return fallbackModelId;
+  }
+}
+
+function jsonRecord(value: string) {
+  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const jsonText = fenced || value.match(/\{[\s\S]*\}/)?.[0] || value;
+  const parsed = JSON.parse(jsonText) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("SEO package was not a JSON object");
+  return parsed as Record<string, unknown>;
+}
+
+function cleanSeoValue(value: unknown, maxChars = 220) {
+  return truncateAtWord(String(value || "").replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim(), maxChars);
+}
+
+function sourceArray(value: unknown) {
+  return Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n|;/) : [];
+}
+
+function shortAnswer(value: unknown) {
+  const text = cleanSeoValue(value, 420);
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) || [];
+  return sentences.slice(0, 3).join(" ");
+}
+
+function titleWithKeyword(value: unknown, keyword: string) {
+  const cleaned = cleanSeoValue(value, 80) || keyword;
+  if (!keyword || normalizeTopic(cleaned).includes(normalizeTopic(keyword))) return truncateAtWord(cleaned, 60);
+  return truncateAtWord(`${keyword}: ${cleaned}`, 60);
+}
+
+function normalizeSeoPackage(value: string, topic: string): SeoPackage {
+  const record = jsonRecord(value);
+  const keyword = cleanSeoValue(record.primaryKeyword || record.primary_keyword || topic, 80);
+  const keyPoints = sourceArray(record.keyPoints ?? record.key_points)
+    .map((item) => cleanSeoValue(item, 260))
+    .filter(Boolean)
+    .slice(0, 6);
+  const faqs = sourceArray(record.faqs)
+    .map((item) => {
+      if (typeof item === "string") return { question: cleanSeoValue(item, 180), answer: "" };
+      if (!item || typeof item !== "object") return { question: "", answer: "" };
+      const faq = item as Record<string, unknown>;
+      return {
+        question: cleanSeoValue(faq.question, 180),
+        answer: shortAnswer(faq.answer),
+        sourceQuery: cleanSeoValue(faq.sourceQuery ?? faq.source_query ?? faq.query, 180),
+      };
+    })
+    .filter((item) => item.question && item.answer)
+    .slice(0, 7);
+  const slug = slugify(cleanSeoValue(record.slug || keyword || topic)).split("-").slice(0, 5).join("-") || "article";
+  const metaTitle = titleWithKeyword(record.metaTitle ?? record.meta_title, keyword);
+  const metaDescription = truncateAtWord(cleanSeoValue(record.metaDescription ?? record.meta_description, 220), SEO_META_DESCRIPTION_LIMIT);
+
+  if (!slug || !metaTitle || !metaDescription || keyPoints.length < 3 || faqs.length < 3) {
+    throw new Error("SEO package missed required fields");
+  }
+
+  return { slug, metaTitle, metaDescription, keyPoints, faqs };
+}
+
+function stripSeoPackageSections(content: string) {
+  const stripHeading = /^(template used|seo keywords|keywords|slug|meta title|meta description|key points|image suggestions|references|faqs?|sık sorulan sorular|sss|frequently asked questions)$/i;
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of content.split(/\r?\n/)) {
+    const h2 = line.match(/^##\s+(.+)$/);
+    if (h2 && stripHeading.test(h2[1].trim())) {
+      skipping = true;
+      continue;
+    }
+    if (skipping) {
+      if (/^#{1,2}\s+/.test(line)) skipping = false;
+      else continue;
+    }
+    kept.push(line);
+  }
+
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic: string; settings?: GenerationSettings }) {
+  const slug = slugify(seo.slug || opts.topic).split("-").slice(0, 5).join("-") || "article";
+  const metaTitle = truncateAtWord(seo.metaTitle, 60);
+  const metaDescription = truncateAtWord(seo.metaDescription, SEO_META_DESCRIPTION_LIMIT);
+  const keyPoints = ["## Key Points", "", ...seo.keyPoints.slice(0, 6).map((point) => `- ${cleanSeoValue(point, 260)}`)].join("\n");
+  const faqHeading = isTurkishContent(content, opts.settings) ? "## Sık Sorulan Sorular" : "## FAQs";
+  const faq = [
+    faqHeading,
+    "",
+    ...seo.faqs.slice(0, 7).flatMap((item) => [
+      `### ${item.question.endsWith("?") ? item.question : `${item.question}?`}`,
+      shortAnswer(item.answer),
+      "",
+    ]),
+  ].join("\n").trim();
+
+  const lines = normalizeArticleMarkdown(stripSeoPackageSections(content), opts.topic, opts.settings).split(/\r?\n/);
+  const h1Index = lines.findIndex((line) => /^#\s+/.test(line));
+  if (h1Index >= 0) lines.splice(h1Index + 1, 0, "", keyPoints, "");
+
+  return [
+    `## Slug\n${slug}`,
+    `## Meta Title\n${metaTitle}`,
+    `## Meta Description\n${metaDescription}`,
+    lines.join("\n").trim(),
+    faq,
+  ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function generateSeoPackage(opts: {
+  content: string;
+  topic: string;
+  sourceType: string;
+  sourceValue: string;
+  draftModelId: string;
+  openRouterKey: string;
+  settings?: GenerationSettings;
+}): Promise<SeoPackageRun> {
+  const modelId = await chooseSeoModel(opts.openRouterKey, opts.draftModelId);
+  const startedAt = Date.now();
+  try {
+    const articleText = truncatePromptText(plainArticleText(opts.content), 5000);
+    const language = isTurkishContent(opts.content, opts.settings) ? "Turkish" : "the article language";
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${opts.openRouterKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          {
+            role: "system",
+            content: "You are a search-backed SEO editor. Return only valid JSON.",
+          },
+          {
+            role: "user",
+            content: [
+              `Create SEO packaging in ${language} for this blog draft.`,
+              `Primary topic/keyword: ${opts.topic}`,
+              `Source type: ${opts.sourceType}`,
+              `Source value: ${truncatePromptText(opts.sourceValue, 500)}`,
+              "Use web search results for Google People Also Ask / real user-query style FAQ ideas.",
+              "Rules: slug max 5 words; metaTitle under 60 chars and includes the primary keyword; metaDescription 150-160 chars with at least two long-tail keywords and a call to action; 3-6 keyPoints; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
+              'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","keyPoints":["..."],"faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
+              `Article draft:\n${articleText}`,
+            ].join("\n\n"),
+          },
+        ],
+        max_tokens: 1400,
+        plugins: [{ id: "web", max_results: 5 }],
+      }),
+    });
+
+    if (!resp.ok) throw new Error(openRouterErrorMessage(await resp.text(), resp.status, modelId));
+
+    const data = await resp.json() as any;
+    const raw = data.choices?.[0]?.message?.content || "";
+    const seo = normalizeSeoPackage(raw, opts.topic);
+    const usage = data.usage;
+    const totals = {
+      prompt: Number(usage?.prompt_tokens || 0),
+      completion: Number(usage?.completion_tokens || 0),
+      total: Number(usage?.total_tokens || 0),
+    };
+    const openRouterUsage = await getOpenRouterCost(opts.openRouterKey, data);
+    return {
+      content: applySeoPackage(opts.content, seo, { topic: opts.topic, settings: opts.settings }),
+      modelId,
+      status: "success",
+      webSearch: true,
+      faqQueryCount: seo.faqs.filter((item) => item.sourceQuery || item.question).length,
+      cost: openRouterUsage.cost,
+      usage: totals,
+      responseData: {
+        id: data.id,
+        generation: openRouterUsage.stats,
+        latencyMs: Date.now() - startedAt,
+      },
+    };
+  } catch (err) {
+    return {
+      content: opts.content,
+      modelId,
+      status: "failed",
+      webSearch: true,
+      faqQueryCount: 0,
+      cost: 0,
+      error: err instanceof Error ? err.message : "SEO packaging failed",
+    };
+  }
 }
 
 function parseArticlePlan(value: string) {
@@ -1022,6 +1217,7 @@ export async function generateContent(opts: GenerateOpts) {
     const createdPostIds: string[] = [];
     const seoQaResults: Array<{ postId: string; title: string; qa: ReturnType<typeof evaluateSeoQa> }> = [];
     const contractResults: Array<{ postId: string; title: string; contract: ReturnType<typeof buildGenerationContractMetadata> }> = [];
+    const seoPackagingResults: Array<{ postId: string; title: string; modelId: string; status: string; webSearch: boolean; faqQueryCount: number; error?: string }> = [];
     const failedDrafts: Array<{ index: number; error: string }> = [];
     let totalCost = 0;
     let totalTokens = 0;
@@ -1131,6 +1327,22 @@ export async function generateContent(opts: GenerateOpts) {
           }
         }
         const genLatency = Date.now() - genStart;
+        let seoPackage: SeoPackageRun | null = null;
+
+        if (isBlogDraftSource(opts.sourceType)) {
+          await db.update(jobs).set({ currentStep: `packaging_seo_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+          const h1 = genContent.match(/^#\s+(.+)$/m)?.[1]?.trim();
+          seoPackage = await generateSeoPackage({
+            content: genContent,
+            topic: isArticleSource(opts.sourceType) ? opts.sourceValue : h1 || article.title || opts.sourceValue,
+            sourceType: opts.sourceType,
+            sourceValue: opts.sourceValue,
+            draftModelId: modelId,
+            openRouterKey,
+            settings: promptSettings,
+          });
+          genContent = seoPackage.content;
+        }
 
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
@@ -1139,8 +1351,8 @@ export async function generateContent(opts: GenerateOpts) {
 
         // Log generation
         const cost = requestCost;
-        totalCost += cost;
-        totalTokens += usageTotals.total;
+        totalCost += cost + (seoPackage?.cost || 0);
+        totalTokens += usageTotals.total + (seoPackage?.usage?.total || 0);
 
         const [post] = await db.insert(posts).values({
           userId,
@@ -1159,6 +1371,17 @@ export async function generateContent(opts: GenerateOpts) {
 
         const contractMetadata = buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired);
         contractResults.push({ postId: post.id, title: postTitle, contract: contractMetadata });
+        if (seoPackage) {
+          seoPackagingResults.push({
+            postId: post.id,
+            title: postTitle,
+            modelId: seoPackage.modelId,
+            status: seoPackage.status,
+            webSearch: seoPackage.webSearch,
+            faqQueryCount: seoPackage.faqQueryCount,
+            error: seoPackage.error,
+          });
+        }
 
         if (isArticleSource(opts.sourceType)) {
           seoQaResults.push({
@@ -1184,6 +1407,24 @@ export async function generateContent(opts: GenerateOpts) {
           responseData,
         });
 
+        if (seoPackage?.status === "success" && seoPackage.usage) {
+          await db.insert(generationLogs).values({
+            userId,
+            postId: post.id,
+            usageType: "text",
+            modelId: seoPackage.modelId,
+            provider: seoPackage.modelId.split("/")[0],
+            status: "success",
+            promptTokens: seoPackage.usage.prompt || undefined,
+            completionTokens: seoPackage.usage.completion || undefined,
+            totalTokens: seoPackage.usage.total || undefined,
+            cost: seoPackage.cost,
+            latencyMs: Number(seoPackage.responseData?.latencyMs) || undefined,
+            sessionId: jobId,
+            responseData: seoPackage.responseData,
+          });
+        }
+
         createdPostIds.push(post.id);
         await db.update(jobs).set({
           resultPostIds: createdPostIds,
@@ -1191,6 +1432,7 @@ export async function generateContent(opts: GenerateOpts) {
             ...generationPlan,
             contract: contractMetadata,
             contracts: contractResults,
+            seoPackaging: seoPackagingResults,
           },
         }).where(eq(jobs.id, jobId));
 
@@ -1226,7 +1468,7 @@ export async function generateContent(opts: GenerateOpts) {
         failedDrafts.push({ index: i, error: lastGenerationError });
         await db.update(jobs).set({
           generationError: lastGenerationError,
-          generationPlan: { ...generationPlan, failedDrafts },
+          generationPlan: { ...generationPlan, failedDrafts, seoPackaging: seoPackagingResults },
         }).where(eq(jobs.id, jobId));
       }
     }
@@ -1256,6 +1498,7 @@ export async function generateContent(opts: GenerateOpts) {
         contract: contractResults[0]?.contract || generationPlan.contract,
         contracts: contractResults,
         failedDrafts,
+        seoPackaging: seoPackagingResults,
         seoQa: seoQaResults,
       },
       tokenCost: totalTokens,

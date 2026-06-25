@@ -45,7 +45,7 @@ const providerLabels: Record<string, string> = {
 const SEO_LIMITS = {
   slug: 70,
   metaTitle: 60,
-  metaDescription: 145,
+  metaDescription: 160,
   tags: 8,
 };
 
@@ -62,7 +62,7 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "")
     .split("-")
     .filter(Boolean)
-    .slice(0, 8)
+    .slice(0, 5)
     .join("-")
     .slice(0, 70)
     .replace(/-+$/g, "");

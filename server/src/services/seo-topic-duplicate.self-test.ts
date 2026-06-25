@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
+import { applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
@@ -41,7 +41,7 @@ This article explains the source in practical terms.
   topic: "Source Rewrite",
   settings: { articleLanguage: "US English" },
 });
-assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 3);
+assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 0);
 
 const balancedLinkSettings = {
   enableInternalLinks: true,
@@ -67,7 +67,7 @@ const balancedContract = buildGenerationContractMetadata(balancedLinks, balanced
 assert.equal(balancedContract.internalLinkCount, 0);
 assert.doesNotMatch(balancedLinks, /Related Reading|İlgili Okumalar/);
 assert.doesNotMatch(urlFaqRepair, /Source Rewrite neden önemli/);
-assert.match(urlFaqRepair, /### Why does this topic matter\?/);
+assert.doesNotMatch(urlFaqRepair, /### Why does this topic matter\?/);
 
 const ruleLinked = enforceGeneratedArticleContracts(`# Demo Guide
 
@@ -195,12 +195,47 @@ Yapay Zeka ile Dijital Pazarlama Rehberi yazısında da benzer bir yaklaşım va
 });
 
 assert.match(repaired, /\[Yapay Zeka ile Dijital Pazarlama Rehberi]\(https:\/\/example\.com\/blog\/yapay-zeka\)/);
-assert.match(repaired, /## Sık Sorulan Sorular/);
+assert.doesNotMatch(repaired, /## Sık Sorulan Sorular/);
 assert.equal(evaluateSeoQa(repaired, {
   settings: { internalLinkIndex: { siteHost: "example.com" } },
   articleType: "how_to",
 }).checks.find((item) => item.label === "Internal links included")?.ok, true);
-assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, true);
+assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, false);
+
+const seoPackaged = applySeoPackage(`## Meta Title
+Old title
+
+# SEO Content Guide
+
+Intro paragraph.
+
+## Key Points
+- Old point.
+
+## FAQs
+### Old question?
+Old answer.
+`, {
+  slug: "ultimate seo content strategy guide for teams",
+  metaTitle: "SEO Content Strategy Guide for Teams",
+  metaDescription: "Plan SEO content strategy for SaaS teams with long-tail keyword research and search intent mapping. Start improving briefs today.",
+  keyPoints: [
+    "SEO content strategy starts with search intent and a clear primary keyword.",
+    "Strong briefs map long-tail keywords to useful sections before drafting.",
+    "FAQ ideas should come from real user queries instead of generic filler.",
+  ],
+  faqs: [
+    { question: "How do SaaS teams plan SEO content strategy?", answer: "They map search intent, product proof, and long-tail keywords before drafting.", sourceQuery: "how to plan seo content strategy" },
+    { question: "What should an SEO content brief include?", answer: "It should include the primary keyword, target audience, headings, proof points, and FAQs.", sourceQuery: "seo content brief checklist" },
+    { question: "How are People Also Ask questions used in SEO articles?", answer: "They reveal real user questions that can become concise FAQ entries.", sourceQuery: "people also ask seo faq" },
+  ],
+}, { topic: "SEO content strategy", settings: { articleLanguage: "US English" } });
+
+assert.match(seoPackaged, /^## Slug\nultimate-seo-content-strategy-guide/m);
+assert.match(seoPackaged, /^## Meta Title\nSEO Content Strategy Guide for Teams/m);
+assert.match(seoPackaged, /^# SEO Content Guide\n\n## Key Points\n\n- SEO content strategy starts/m);
+assert.match(seoPackaged, /## FAQs\n\n### How do SaaS teams plan SEO content strategy\?/);
+assert.doesNotMatch(seoPackaged, /Old question|Old point|Old title/);
 
 const localized = enforceGeneratedArticleContracts(`# Paving the way for agents in biology \\ Anthropic
 
@@ -215,7 +250,7 @@ assert.match(localized, /^# Biyolojide yapay zeka ajanlarının önündeki temel
 assert.doesNotMatch(localized, /^# Paving the way/m);
 assert.equal(
   slugify("Biyolojide yapay zeka ajanlarının önündeki temel engeller"),
-  "biyolojide-yapay-zeka-ajanlarinin-onundeki-temel-engeller"
+  "biyolojide-yapay-zeka-ajanlarinin-onundeki"
 );
 assert.deepEqual(publishTags(), []);
 assert.deepEqual(publishTags(["Biyolojide", "yapay", "zeka", "ajanlarının", "karşılaştığı", "fazla", "etiket", "son", "dokuzuncu"]), [
