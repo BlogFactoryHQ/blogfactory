@@ -49,6 +49,8 @@ interface FailedDraft {
 interface GenerationPlan {
   totalDrafts?: number;
   failedDrafts?: FailedDraft[];
+  batchId?: string | null;
+  variationCount?: number | null;
 }
 
 interface Post {
@@ -74,7 +76,7 @@ interface Post {
 
 type DisplayRow =
   | { type: "post"; key: string; post: Post }
-  | { type: "draftGroup"; key: string; jobId: string; post: Post; posts: Post[]; totalDrafts: number; failedDrafts: FailedDraft[] };
+  | { type: "draftGroup"; key: string; jobId: string | null; post: Post; posts: Post[]; totalDrafts: number; failedDrafts: FailedDraft[] };
 
 const formatModelName = (modelId: string) => {
   const modelMap: Record<string, string> = {
@@ -98,6 +100,23 @@ const sortDraftPosts = (a: Post, b: Post) => {
   const byDraft = draftIndex(a) - draftIndex(b);
   if (byDraft !== 0) return byDraft;
   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+};
+
+export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
+  if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
+  const total = post.generation_plan?.totalDrafts || post.generation_plan?.variationCount || 0;
+  if (total <= 1) return "";
+  if (!post.job_id) return "";
+  const day = post.created_at.slice(0, 10);
+  return [
+    "split",
+    post.source_type,
+    post.source_ref_id || "",
+    post.persona_id || "",
+    post.model_id || "",
+    total,
+    day,
+  ].join("|");
 };
 
 export default function Posts() {
@@ -277,28 +296,29 @@ export default function Posts() {
   }, [enrichedPosts, searchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection]);
 
   const displayRows = useMemo<DisplayRow[]>(() => {
-    const postsByJob = new Map<string, Post[]>();
+    const postsByGroup = new Map<string, Post[]>();
     filteredPosts.forEach((post) => {
-      if (!post.job_id || (post.generation_plan?.totalDrafts || 0) <= 1) return;
-      postsByJob.set(post.job_id, [...(postsByJob.get(post.job_id) || []), post]);
+      const groupKey = draftGroupKey(post);
+      if (!groupKey) return;
+      postsByGroup.set(groupKey, [...(postsByGroup.get(groupKey) || []), post]);
     });
 
-    const seenJobs = new Set<string>();
+    const seenGroups = new Set<string>();
     return filteredPosts.flatMap((post): DisplayRow[] => {
-      const totalDrafts = post.generation_plan?.totalDrafts || 0;
-      if (!post.job_id || totalDrafts <= 1) return [{ type: "post", key: post.id, post }];
-      if (seenJobs.has(post.job_id)) return [];
+      const groupKey = draftGroupKey(post);
+      if (!groupKey) return [{ type: "post", key: post.id, post }];
+      if (seenGroups.has(groupKey)) return [];
 
-      seenJobs.add(post.job_id);
-      const groupedPosts = [...(postsByJob.get(post.job_id) || [post])].sort(sortDraftPosts);
+      seenGroups.add(groupKey);
+      const groupedPosts = [...(postsByGroup.get(groupKey) || [post])].sort(sortDraftPosts);
       const plan = groupedPosts.find((item) => item.generation_plan)?.generation_plan || post.generation_plan;
       return [{
         type: "draftGroup",
-        key: `job-${post.job_id}`,
+        key: groupKey,
         jobId: post.job_id,
         post: groupedPosts[0],
         posts: groupedPosts,
-        totalDrafts: plan?.totalDrafts || groupedPosts.length,
+        totalDrafts: plan?.totalDrafts || plan?.variationCount || groupedPosts.length,
         failedDrafts: plan?.failedDrafts || [],
       }];
     });

@@ -20,6 +20,7 @@ interface GenerateOpts {
   modelId?: string;
   personaId?: string | null;
   variations?: number;
+  draftBatchId?: string;
   draftVariationIndex?: number;
   draftVariationCount?: number;
   feedId?: string;
@@ -1204,6 +1205,9 @@ export async function generateContent(opts: GenerateOpts) {
     const generationPlan = {
       totalDrafts: articles.length,
       articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
+      batchId: opts.draftBatchId || null,
+      variationIndex: opts.draftVariationIndex || null,
+      variationCount: opts.draftVariationCount || null,
       skippedSportsNews: sportsSkipped,
       articleType: isArticleSource(opts.sourceType) ? articleType(opts.articleType) : undefined,
       contract: buildGenerationContractMetadata("", promptSettings, effectiveOpts),

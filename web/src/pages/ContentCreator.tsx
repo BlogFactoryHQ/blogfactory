@@ -584,40 +584,42 @@ export default function ContentCreator() {
     const sourceValue = getSourceValue();
     const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
     const isArticleSource = sourceType.startsWith("article_");
+    const draftBatchId = variations > 1 ? `draft_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : undefined;
 
     const buildPayload = (draftIndex?: number) => ({
-        sourceType,
-        sourceValue,
-        personaId,
-        modelId,
-        variations: 1,
-        draftVariationIndex: draftIndex,
-        draftVariationCount: variations > 1 ? variations : undefined,
-        relatedKeywords: isArticleSource
-          ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
-          : undefined,
-        outline: isArticleSource ? articleOutline : undefined,
-        articleDirection: isArticleSource ? articleDirection : undefined,
-        customInstructions: isArticleSource ? articleCustomInstructions : undefined,
-        articleType: isArticleSource ? articleType : undefined,
-        articleTitleOverride: sourceType === "article_keyword" ? articleTitlePreview : undefined,
-        articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
-        includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
-        enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
-        generateImages: imagesEnabled,
-        imageConfig: imagesEnabled ? {
-          imagePlacement: imageConfig.imagePlacement || "auto",
-          compressionEnabled: imageConfig.compressionEnabled ?? true,
-          cover: imageConfig.cover.enabled ? {
-            resolution: imageConfig.cover.resolution,
-            aspectRatio: imageConfig.cover.aspectRatio,
-          } : null,
-          inline: imageConfig.inline.enabled ? {
-            count: imageConfig.inline.count,
-            resolution: imageConfig.inline.resolution,
-            aspectRatio: imageConfig.inline.aspectRatio,
-          } : null,
-        } : undefined,
+      sourceType,
+      sourceValue,
+      personaId,
+      modelId,
+      variations: 1,
+      draftBatchId,
+      draftVariationIndex: draftIndex,
+      draftVariationCount: variations > 1 ? variations : undefined,
+      relatedKeywords: isArticleSource
+        ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
+        : undefined,
+      outline: isArticleSource ? articleOutline : undefined,
+      articleDirection: isArticleSource ? articleDirection : undefined,
+      customInstructions: isArticleSource ? articleCustomInstructions : undefined,
+      articleType: isArticleSource ? articleType : undefined,
+      articleTitleOverride: sourceType === "article_keyword" ? articleTitlePreview : undefined,
+      articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
+      includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
+      enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
+      generateImages: imagesEnabled,
+      imageConfig: imagesEnabled ? {
+        imagePlacement: imageConfig.imagePlacement || "auto",
+        compressionEnabled: imageConfig.compressionEnabled ?? true,
+        cover: imageConfig.cover.enabled ? {
+          resolution: imageConfig.cover.resolution,
+          aspectRatio: imageConfig.cover.aspectRatio,
+        } : null,
+        inline: imageConfig.inline.enabled ? {
+          count: imageConfig.inline.count,
+          resolution: imageConfig.inline.resolution,
+          aspectRatio: imageConfig.inline.aspectRatio,
+        } : null,
+      } : undefined,
     });
 
     const startOneDraft = async (draftIndex?: number) => {
