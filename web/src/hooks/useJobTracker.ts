@@ -32,7 +32,7 @@ interface JobStatus {
   result_post_ids?: string[] | null;
 }
 
-const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resultPostIds: string[]): DraftProgress | null => {
+export const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resultPostIds: string[]): DraftProgress | null => {
   const total = plan?.totalDrafts || plan?.items?.length || 0;
   if (total <= 1) return null;
   const failedDrafts = plan?.failedDrafts || [];
@@ -42,6 +42,15 @@ const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resu
     const current = parseInt(match[1], 10);
     const completed = (resultPostIds || []).length;
     return { current, total: parseInt(match[2], 10), completed, failedDrafts };
+  }
+  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  if (draftOnlyMatch) {
+    return {
+      current: parseInt(draftOnlyMatch[1], 10),
+      total,
+      completed: (resultPostIds || []).length,
+      failedDrafts,
+    };
   }
   return { current: 1, total, completed: (resultPostIds || []).length, failedDrafts };
 };
@@ -80,7 +89,7 @@ export function useJobTracker(onJobComplete?: () => void) {
 
       for (let i = 0; i < maxPolls; i++) {
         if (!pollingRefs.current.has(trackId)) return;
-        await new Promise((r) => setTimeout(r, 5000));
+        if (i > 0) await new Promise((r) => setTimeout(r, 5000));
         if (!pollingRefs.current.has(trackId)) return;
 
         try {
@@ -91,8 +100,9 @@ export function useJobTracker(onJobComplete?: () => void) {
           const progress = parseDraftProgress(step, job.generation_plan, job.result_post_ids || []);
 
           let genStep: GenerationStep = "generating";
-          if (step.startsWith("generating_images")) genStep = "images";
-          else if (step.startsWith("generating_post") || step.startsWith("completed_post") || step.startsWith("retrying")) genStep = "generating";
+          if (step.startsWith("fetching") || step === "starting") genStep = "extracting";
+          else if (step.startsWith("generating_images") || step.startsWith("resolving_images")) genStep = "images";
+          else if (step.startsWith("generating") || step.startsWith("repairing") || step.startsWith("completed") || step.startsWith("retrying")) genStep = "generating";
 
           updateJob(trackId, { draftProgress: progress, step: genStep });
 

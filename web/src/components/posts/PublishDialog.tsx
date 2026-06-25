@@ -225,56 +225,57 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
       setOpen(nextOpen);
     }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Yazıyı yayınla</DialogTitle>
           <DialogDescription>
             “{title}” yazısını bu siteye bağlı entegrasyonlardan birine gönder.
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Entegrasyonlar yükleniyor
-          </div>
-        ) : connected.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
-            <p className="font-medium text-foreground">Yayın entegrasyonu bağlı değil</p>
-            <p className="mt-2 text-sm text-muted-foreground">Önce Integrations bölümünden WordPress, Ghost, Wix veya Framer bağlayın.</p>
-            <Button asChild className="mt-5">
-              <a href="/integrations">Integrations aç</a>
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <Label>Hedef</Label>
-              <Select value={integrationId || selected?.id} onValueChange={setIntegrationId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Entegrasyon seç" />
-                </SelectTrigger>
-                <SelectContent>
-                  {connected.map((integration) => (
-                    <SelectItem key={integration.id} value={integration.id}>
-                      {providerLabels[integration.provider]} · {integration.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <div className="min-h-0 overflow-y-auto pr-1">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Entegrasyonlar yükleniyor
             </div>
+          ) : connected.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
+              <p className="font-medium text-foreground">Yayın entegrasyonu bağlı değil</p>
+              <p className="mt-2 text-sm text-muted-foreground">Önce Integrations bölümünden WordPress, Ghost, Wix veya Framer bağlayın.</p>
+              <Button asChild className="mt-5">
+                <a href="/integrations">Integrations aç</a>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Hedef</Label>
+                <Select value={integrationId || selected?.id} onValueChange={setIntegrationId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Entegrasyon seç" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connected.map((integration) => (
+                      <SelectItem key={integration.id} value={integration.id}>
+                        {providerLabels[integration.provider]} · {integration.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
             <div className="space-y-3">
               <Label>Yayın modu</Label>
               <RadioGroup value={mode} onValueChange={(value) => setMode(value as "draft" | "publish")} className="grid gap-3 sm:grid-cols-2">
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-byword-border p-4">
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-byword-border p-3">
                   <RadioGroupItem value="draft" />
                   <span>
                     <span className="block text-sm font-semibold">Taslak oluştur</span>
                     <span className="text-xs text-muted-foreground">Yayına almadan önce CMS içinde kontrol et.</span>
                   </span>
                 </label>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-byword-border p-4">
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-byword-border p-3">
                   <RadioGroupItem value="publish" />
                   <span>
                     <span className="block text-sm font-semibold">Canlı yayınla</span>
@@ -317,7 +318,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
                 value={metaTitle}
                 onChange={(event) => setMetaTitle(event.target.value)}
                 placeholder="AI meta yoksa elle gir"
-                className="min-h-[76px] resize-none break-words"
+                className="min-h-[60px] resize-none break-words"
               />
             </div>
 
@@ -327,22 +328,23 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
                 value={metaDescription}
                 onChange={(event) => setMetaDescription(event.target.value)}
                 placeholder="AI meta yoksa elle gir"
-                className="min-h-[96px] resize-none break-words"
+                className="min-h-[84px] resize-none break-words"
               />
             </div>
 
-            <div className="grid gap-2 rounded-lg border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-4">
+            <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-byword-border bg-muted/30 p-3 text-xs">
               {seoChecks.map((check) => (
-                <div key={check.label} className={check.ok ? "text-muted-foreground" : "text-destructive"}>
+                <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap text-destructive"}>
                   <span className="font-medium">{check.label}</span>
                   <span className="ml-2">{check.value}</span>
                 </div>
               ))}
             </div>
           </div>
-        )}
+          )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t border-byword-border pt-4">
           <Button variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>
