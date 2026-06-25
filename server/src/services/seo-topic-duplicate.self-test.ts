@@ -17,6 +17,10 @@ assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 3).map((article) => article.variationIndex),
   [1, 2, 3]
 );
+assert.deepEqual(
+  expandDraftVariations([{ title: "Source", content: "Content" }], "url", 1, { index: 4, count: 5 }).map((article) => [article.variationIndex, article.variationCount]),
+  [[4, 5]]
+);
 assert.equal(expandDraftVariations([{ title: "RSS", content: "Content" }], "rss_feed", 3).length, 1);
 
 const wordContract = resolveGenerationContract({ articleWordCount: 1500 });

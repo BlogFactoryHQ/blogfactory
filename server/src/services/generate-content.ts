@@ -19,6 +19,8 @@ interface GenerateOpts {
   modelId?: string;
   personaId?: string | null;
   variations?: number;
+  draftVariationIndex?: number;
+  draftVariationCount?: number;
   feedId?: string;
   extractFullContent?: boolean;
   filterOldPostsDays?: number;
@@ -298,7 +300,19 @@ function variationCount(value: unknown) {
   return Number.isFinite(count) ? Math.max(1, Math.min(count, 5)) : 1;
 }
 
-export function expandDraftVariations(articles: SourceArticle[], sourceType: string, requested: unknown) {
+export function expandDraftVariations(
+  articles: SourceArticle[],
+  sourceType: string,
+  requested: unknown,
+  singleDraft?: { index?: number; count?: number }
+) {
+  if (singleDraft?.count && singleDraft.count > 1 && singleDraft.index) {
+    return articles.slice(0, 1).map((article) => ({
+      ...article,
+      variationIndex: singleDraft.index,
+      variationCount: singleDraft.count,
+    }));
+  }
   const count = supportsDraftVariations(sourceType) ? variationCount(requested) : 1;
   if (count <= 1) return articles;
   return articles.flatMap((article) =>
@@ -921,7 +935,7 @@ export async function generateContent(opts: GenerateOpts) {
       }];
     }
 
-    if (isArticleSource(opts.sourceType)) {
+    if (isArticleSource(opts.sourceType) && !opts.draftVariationCount) {
       const topic = opts.sourceValue.trim();
       const existingTitle = await findExistingTopicDuplicate(userId, topic, opts.sourceValue);
       const indexedPage = findIndexedTopicDuplicate(promptSettings, topic);
@@ -941,7 +955,10 @@ export async function generateContent(opts: GenerateOpts) {
       }
     }
 
-    articles = expandDraftVariations(articles, opts.sourceType, opts.variations);
+    articles = expandDraftVariations(articles, opts.sourceType, opts.variations, {
+      index: opts.draftVariationIndex,
+      count: opts.draftVariationCount,
+    });
 
     if (!articles.length) {
       await db.update(jobs).set({ status: "completed", currentStep: "done", completedAt: new Date() }).where(eq(jobs.id, jobId));

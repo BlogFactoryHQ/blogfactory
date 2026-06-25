@@ -574,21 +574,14 @@ export default function ContentCreator() {
     const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
     const isArticleSource = sourceType.startsWith("article_");
 
-    // Show progress immediately before the API call returns
-    const trackId = startJob({
-      jobId: null,
-      sourceType: sourceType as SourceType,
-      sourceLabel: getSourceLabel(),
-      variations,
-    });
-
-    try {
-      const data = await api.post<GenerateResponse>("/content/generate", {
+    const buildPayload = (draftIndex?: number) => ({
         sourceType,
         sourceValue,
         personaId,
         modelId,
-        variations,
+        variations: 1,
+        draftVariationIndex: draftIndex,
+        draftVariationCount: variations > 1 ? variations : undefined,
         relatedKeywords: isArticleSource
           ? articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5)
           : undefined,
@@ -614,26 +607,49 @@ export default function ContentCreator() {
             aspectRatio: imageConfig.inline.aspectRatio,
           } : null,
         } : undefined,
+    });
+
+    const startOneDraft = async (draftIndex?: number) => {
+      const trackId = startJob({
+        jobId: null,
+        sourceType: sourceType as SourceType,
+        sourceLabel: variations > 1 ? `${getSourceLabel()} · Draft ${draftIndex}/${variations}` : getSourceLabel(),
+        variations: 1,
       });
 
-      if (data.error) throw new Error(data.error);
+      try {
+        const data = await api.post<GenerateResponse>("/content/generate", buildPayload(draftIndex));
+        if (data.error) throw new Error(data.error);
 
-      const jobId = data.jobId;
-      const immediateComplete = variations <= 1 && data.postIds?.length > 0;
+        const jobId = data.jobId;
+        if (data.postIds?.length) {
+          updateJob(trackId, { step: "complete", jobId });
+          refetchPosts();
+        } else if (jobId) {
+          updateJob(trackId, { jobId, step: "generating" });
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to generate content";
+        updateJob(trackId, { step: "error", error: errorMessage });
+        throw err;
+      }
+    };
 
-      if (immediateComplete) {
-        updateJob(trackId, { step: "complete", jobId });
-        toast.success("Draft generated! Check the Posts page.");
-        refetchPosts();
-      } else if (jobId) {
-        // Update the tracked job with the real jobId so polling can begin
-        updateJob(trackId, { jobId, step: "generating" });
-        toast.info(`Job started with ${variations} variation${variations > 1 ? "s" : ""}. Generating...`);
+    try {
+      if (variations > 1) {
+        const results = await Promise.allSettled(
+          Array.from({ length: variations }, (_, index) => startOneDraft(index + 1))
+        );
+        const failed = results.filter((result) => result.status === "rejected").length;
+        if (failed) throw new Error(`${failed}/${variations} drafts failed to start.`);
+        toast.info(`${variations} separate draft jobs started.`);
+      } else {
+        await startOneDraft();
+        toast.info("Draft job started. Generating...");
       }
     } catch (err) {
       console.error("Generation error:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to generate content";
-      updateJob(trackId, { step: "error", error: errorMessage });
       toast.error(errorMessage);
     }
   };
