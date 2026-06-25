@@ -40,6 +40,10 @@ export function shouldQueueAiBeforeStock(type: ImageTargetType, aiAllowed: boole
   return (type === "cover" || type === "inline") && aiAllowed;
 }
 
+export function shouldAttachStockWhileAiQueued(type: ImageTargetType) {
+  return type === "cover";
+}
+
 export function imageModelForTarget(selectedModel: string, type: ImageTargetType) {
   return type === "inline" ? "openrouter/free" : selectedModel;
 }
@@ -375,7 +379,7 @@ export async function resolveLowCostImages(opts: {
     if (!path && shouldQueueAiBeforeStock(target.type, aiAllowed)) {
       await queueFallback({ ...opts, ...target, imageModel: imageModelForTarget(imageModel, target.type), prompt, altText });
       queued += 1;
-      continue;
+      if (!shouldAttachStockWhileAiQueued(target.type)) continue;
     }
 
     if (!path) {

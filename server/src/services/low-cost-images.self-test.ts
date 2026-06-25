@@ -1,4 +1,4 @@
-import { chooseImageResolution, imageModelForTarget, shouldQueueAiBeforeStock } from "./low-cost-images.js";
+import { chooseImageResolution, imageModelForTarget, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -44,6 +44,18 @@ assertEqual(
   shouldQueueAiBeforeStock("inline", true),
   true,
   "inline queues free AI before stock"
+);
+
+assertEqual(
+  shouldAttachStockWhileAiQueued("cover"),
+  true,
+  "cover gets an immediate stock placeholder while AI is queued"
+);
+
+assertEqual(
+  shouldAttachStockWhileAiQueued("inline"),
+  false,
+  "inline avoids duplicate stock placeholders while AI is queued"
 );
 
 assertEqual(
