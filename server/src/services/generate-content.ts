@@ -458,6 +458,7 @@ export function buildArticleExtras(opts: GenerateOpts) {
 export function enforceGeneratedArticleContracts(content: string, opts: { sourceType: string; topic: string; settings?: GenerationSettings }) {
   let next = normalizeArticleMarkdown(content, opts.topic, opts.settings);
   next = stripInternalSeoSections(next);
+  if (isBlogDraftSource(opts.sourceType)) next = ensureSectionHeadings(next, opts.topic, opts.settings);
   next = ensureInternalMarkdownLinks(next, opts.settings);
   if (isBlogDraftSource(opts.sourceType)) next = ensureFaqSection(next, opts.topic, opts.settings);
   return next;
@@ -541,6 +542,54 @@ function stripInternalSeoSections(content: string) {
     .replace(/^##\s+(?:Template Used|SEO Keywords|Keywords|Slug|Meta Title|Meta Description|Image Suggestions|References)\s*\n+[\s\S]*?(?=\n##\s+|\n#\s+|$)/gim, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function ensureSectionHeadings(content: string, topic: string, settings?: GenerationSettings) {
+  if (markdownHeadings(content, 2).length >= 2) return content;
+  const blocks = content.split(/\n{2,}/);
+  const bodyIndexes = blocks
+    .map((block, index) => ({ block: block.trim(), index }))
+    .filter(({ block }) => {
+      if (!block || /^#{1,6}\s+/.test(block) || /^[-*]\s+/.test(block) || /^\|/.test(block)) return false;
+      if (/^(slug|meta title|meta description)$/i.test(block)) return false;
+      return wordCount(block) >= 20;
+    })
+    .map(({ index }) => index);
+
+  if (bodyIndexes.length < 3) return content;
+
+  const turkish = isTurkishContent(content, settings);
+  const fallback = turkish
+    ? ["Temel Bulgular", "Pratik Etkiler", "Dikkat Edilmesi Gerekenler"]
+    : ["Key Findings", "Practical Impact", "What To Watch"];
+  const insertBefore = [...new Set(bodyIndexes.slice(1, 4))];
+
+  const used = new Set(markdownHeadings(content, 2).map(normalizeTopic));
+  const insertions = insertBefore.map((index, order) => ({
+    index,
+    heading: sectionHeadingFromParagraph(blocks[index], fallback[order] || fallback.at(-1)!, used, turkish),
+  }));
+  for (const { index, heading } of insertions.sort((a, b) => b.index - a.index)) {
+    blocks.splice(index, 0, `## ${heading}`);
+  }
+
+  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function sectionHeadingFromParagraph(paragraph: string, fallback: string, used: Set<string>, turkish: boolean) {
+  const text = cleanPostTitle(plainArticleText(paragraph));
+  const lead = text.match(/^([A-ZÇĞİÖŞÜ][\p{L}0-9-]{3,40})(?:,|\s+ise\b|\s+is\b|\s+are\b)/u)?.[1];
+  const candidate = lead
+    ? `${lead} ${turkish ? "sonuçları" : "results"}`
+    : truncateAtWord(text.split(/(?<=[.!?])\s+/)[0] || fallback, 64);
+  const heading = cleanPostTitle(candidate.replace(/[.:;!?]+$/g, "")) || fallback;
+  const key = normalizeTopic(heading);
+  if (!used.has(key)) {
+    used.add(key);
+    return heading;
+  }
+  used.add(normalizeTopic(fallback));
+  return fallback;
 }
 
 function ensureInternalMarkdownLinks(content: string, settings?: GenerationSettings) {

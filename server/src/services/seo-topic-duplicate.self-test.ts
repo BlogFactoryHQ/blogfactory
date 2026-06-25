@@ -51,6 +51,22 @@ This article explains the source in practical terms.
 });
 assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 0);
 
+const structuredUrlDraft = enforceGeneratedArticleContracts(`# Mythos Preview
+
+Claude Mythos Preview, önceki modellerin ulaştığı noktanın ötesine geçerek açıkları sadece tespit etmekle kalmıyor; bu açıkları gerçekçi saldırı zincirlerine dönüştürebiliyor. Bu yeteneği ölçmek için kullanılan yeni nesil benchmarklar, konuyu daha somut sayılara ve aşamalara indiriyor.
+
+ExploitBench, özellikle V8 motorundaki farklı güvenlik açıklarını temel alan bir ölçüm ortamı sunuyor. V8, Chrome, Edge, Node.js ve Electron tabanlı uygulamaların temelini oluşturduğu için bulguların pratik etkisi yüksek. Benchmark, istismar sürecini beş ana kademeye ayırıyor.
+
+ExploitGym, benzer bir değerlendirmeyi daha geniş bir hedef kümesine yayarak gerçekleştiriyor. Farklı yazılım ortamlarındaki istismar yeteneğini ölçmeyi amaçlıyor ve modelin zincir kurma becerisini daha görünür hale getiriyor.
+
+SCONE-bench ise akıllı sözleşme odaklı bir değerlendirme aracı olarak öne çıkıyor. Web3 ekipleri için model tabanlı testlerin ne kadar hızlı geliştiğini gösteriyor ve savunma otomasyonunun önemini artırıyor.
+`, {
+  sourceType: "url",
+  topic: "Mythos Preview’un İstismar Geliştirme Yeteneği",
+  settings: { articleLanguage: "Turkish" },
+});
+assert.equal((structuredUrlDraft.match(/^##\s+/gm) || []).length >= 2, true);
+
 const balancedLinkSettings = {
   enableInternalLinks: true,
   internalLinkDensity: "balanced",
