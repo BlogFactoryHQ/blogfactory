@@ -233,9 +233,30 @@ Old answer.
 
 assert.match(seoPackaged, /^## Slug\nultimate-seo-content-strategy-guide/m);
 assert.match(seoPackaged, /^## Meta Title\nSEO Content Strategy Guide for Teams/m);
-assert.match(seoPackaged, /^# SEO Content Guide\n\n## Key Points\n\n- SEO content strategy starts/m);
+assert.match(seoPackaged, /^# SEO Content Guide\n\nIntro paragraph\./m);
 assert.match(seoPackaged, /## FAQs\n\n### How do SaaS teams plan SEO content strategy\?/);
-assert.doesNotMatch(seoPackaged, /Old question|Old point|Old title/);
+assert.doesNotMatch(seoPackaged, /## Key Points|Old question|Old point|Old title/);
+
+const turkishSeoPackaged = applySeoPackage(`# Claude Mythos Preview
+
+Kisa giris.
+
+## Sıkça Sorulan Sorular
+### Eski soru?
+Eski cevap.
+`, {
+  slug: "claude mythos preview",
+  metaTitle: "Claude Mythos Preview Rehberi",
+  metaDescription: "Claude Mythos Preview sonuçlarını, benchmark farklarını ve güvenlik etkilerini öğrenin. Yeni modeli daha bilinçli değerlendirin.",
+  faqs: [
+    { question: "Claude Mythos Preview hangi benchmarklarda öne çıktı?", answer: "ExploitBench, ExploitGym ve SCONE-bench sonuçlarında diğer modellere göre daha güçlü performans gösterdi.", sourceQuery: "Claude Mythos Preview benchmark" },
+    { question: "ExploitBench T seviyeleri ne anlama gelir?", answer: "T seviyeleri modelin istismar zincirlerini ne kadar ileri taşıyabildiğini gösteren performans basamaklarıdır.", sourceQuery: "ExploitBench T levels" },
+    { question: "Web3 ekipleri bu sonuçlardan nasıl etkilenir?", answer: "Akıllı sözleşme güvenliği, model tabanlı test ve savunma otomasyonu daha önemli hale gelir.", sourceQuery: "AI exploit benchmark Web3 security" },
+  ],
+}, { topic: "Claude Mythos Preview", settings: { articleLanguage: "Turkish" } });
+
+assert.equal((turkishSeoPackaged.match(/## Sık Sorulan Sorular/g) || []).length, 1);
+assert.doesNotMatch(turkishSeoPackaged, /Sıkça Sorulan Sorular|Eski soru|Eski cevap|## Key Points/);
 
 const localized = enforceGeneratedArticleContracts(`# Paving the way for agents in biology \\ Anthropic
 

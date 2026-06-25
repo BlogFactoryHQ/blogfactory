@@ -74,7 +74,7 @@ export type SeoPackage = {
   slug: string;
   metaTitle: string;
   metaDescription: string;
-  keyPoints: string[];
+  keyPoints?: string[];
   faqs: Array<{ question: string; answer: string; sourceQuery?: string }>;
 };
 type SeoPackageRun = {
@@ -785,7 +785,7 @@ function normalizeSeoPackage(value: string, topic: string): SeoPackage {
   const metaTitle = titleWithKeyword(record.metaTitle ?? record.meta_title, keyword);
   const metaDescription = truncateAtWord(cleanSeoValue(record.metaDescription ?? record.meta_description, 220), SEO_META_DESCRIPTION_LIMIT);
 
-  if (!slug || !metaTitle || !metaDescription || keyPoints.length < 3 || faqs.length < 3) {
+  if (!slug || !metaTitle || !metaDescription || faqs.length < 3) {
     throw new Error("SEO package missed required fields");
   }
 
@@ -793,7 +793,7 @@ function normalizeSeoPackage(value: string, topic: string): SeoPackage {
 }
 
 function stripSeoPackageSections(content: string) {
-  const stripHeading = /^(template used|seo keywords|keywords|slug|meta title|meta description|key points|image suggestions|references|faqs?|sık sorulan sorular|sss|frequently asked questions)$/i;
+  const stripHeading = /^(template used|seo keywords|keywords|slug|meta title|meta description|key points|image suggestions|references|faqs?|sıkça sorulan sorular|sık sorulan sorular|sss|frequently asked questions)$/i;
   const kept: string[] = [];
   let skipping = false;
 
@@ -817,7 +817,6 @@ export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic:
   const slug = slugify(seo.slug || opts.topic).split("-").slice(0, 5).join("-") || "article";
   const metaTitle = truncateAtWord(seo.metaTitle, 60);
   const metaDescription = truncateAtWord(seo.metaDescription, SEO_META_DESCRIPTION_LIMIT);
-  const keyPoints = ["## Key Points", "", ...seo.keyPoints.slice(0, 6).map((point) => `- ${cleanSeoValue(point, 260)}`)].join("\n");
   const faqHeading = isTurkishContent(content, opts.settings) ? "## Sık Sorulan Sorular" : "## FAQs";
   const faq = [
     faqHeading,
@@ -829,15 +828,13 @@ export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic:
     ]),
   ].join("\n").trim();
 
-  const lines = normalizeArticleMarkdown(stripSeoPackageSections(content), opts.topic, opts.settings).split(/\r?\n/);
-  const h1Index = lines.findIndex((line) => /^#\s+/.test(line));
-  if (h1Index >= 0) lines.splice(h1Index + 1, 0, "", keyPoints, "");
+  const article = normalizeArticleMarkdown(stripSeoPackageSections(content), opts.topic, opts.settings);
 
   return [
     `## Slug\n${slug}`,
     `## Meta Title\n${metaTitle}`,
     `## Meta Description\n${metaDescription}`,
-    lines.join("\n").trim(),
+    article,
     faq,
   ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -879,8 +876,8 @@ async function generateSeoPackage(opts: {
               `Source type: ${opts.sourceType}`,
               `Source value: ${truncatePromptText(opts.sourceValue, 500)}`,
               "Create Google People Also Ask / real user-query style FAQ ideas from the article and topic. Do not browse.",
-              "Rules: slug max 5 words; metaTitle under 60 chars and includes the primary keyword; metaDescription 150-160 chars with at least two long-tail keywords and a call to action; 3-6 keyPoints; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
-              'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","keyPoints":["..."],"faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
+              "Rules: slug max 5 words; metaTitle under 60 chars and includes the primary keyword; metaDescription 150-160 chars with at least two long-tail keywords and a call to action; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
+              'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
               `Article draft:\n${articleText}`,
             ].join("\n\n"),
           },
