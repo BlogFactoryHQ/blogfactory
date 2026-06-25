@@ -20,6 +20,8 @@ describe("cost estimator", () => {
     expect(estimate.postCount).toBe(1);
     expect(estimate.coverImageCost).toBe(0);
     expect(estimate.totalExpected).toBeGreaterThan(0);
+    expect(estimate.textCost).toBeCloseTo(estimate.textCostPerPost);
+    expect(estimate.textCostPerPost).toBeCloseTo(estimate.promptCostPerPost + estimate.completionCostPerPost + estimate.requestCostPerPost);
   });
 
   it("estimates programmatic batches", () => {

@@ -179,6 +179,20 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
         <span>Cover {formatCost(estimate.coverImageCost)}</span>
         <span>Inline {formatCost(estimate.inlineImageCost)}</span>
       </div>
+      <div className="mt-3 rounded-md border border-byword-border bg-card p-3 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 font-medium text-foreground">
+          <span>Per draft text</span>
+          <span>{formatCost(estimate.textCostPerPost)} × {estimate.postCount}</span>
+        </div>
+        <div className="mt-2 grid gap-1 sm:grid-cols-3">
+          <span>Prompt ~{Math.round(estimate.promptTokensPerPost).toLocaleString()} tokens · {formatCost(estimate.promptCostPerPost)}</span>
+          <span>Output ~{Math.round(estimate.completionTokensPerPost).toLocaleString()} tokens · {formatCost(estimate.completionCostPerPost)}</span>
+          <span>Request {formatCost(estimate.requestCostPerPost)}</span>
+        </div>
+        <p className="mt-2">
+          Rates: ${estimate.promptPricePerMillion.toFixed(2)}/M input · ${estimate.completionPricePerMillion.toFixed(2)}/M output.
+        </p>
+      </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
       </p>

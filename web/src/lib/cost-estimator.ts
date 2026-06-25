@@ -3,6 +3,14 @@ import type { SplitImageConfig } from "@/components/content/ImageGenerationSetti
 export interface CostEstimate {
   postCount: number;
   textCost: number;
+  textCostPerPost: number;
+  promptTokensPerPost: number;
+  completionTokensPerPost: number;
+  promptCostPerPost: number;
+  completionCostPerPost: number;
+  requestCostPerPost: number;
+  promptPricePerMillion: number;
+  completionPricePerMillion: number;
   coverImageCost: number;
   inlineImageCost: number;
   totalLow: number;
@@ -42,9 +50,12 @@ export function estimateGenerationCost(input: {
   const promptTokens = estimatedTokens * 0.45;
   const completionTokens = estimatedTokens * 0.55;
   const textPricing = input.textModel?.rawPricing;
-  const textPerPost = ((promptTokens / 1_000_000) * (textPricing?.prompt || 0))
-    + ((completionTokens / 1_000_000) * (textPricing?.completion || 0))
-    + (textPricing?.request || 0);
+  const promptPrice = textPricing?.prompt || 0;
+  const completionPrice = textPricing?.completion || 0;
+  const requestPrice = textPricing?.request || 0;
+  const promptCostPerPost = (promptTokens / 1_000_000) * promptPrice;
+  const completionCostPerPost = (completionTokens / 1_000_000) * completionPrice;
+  const textPerPost = promptCostPerPost + completionCostPerPost + requestPrice;
 
   const aiImages = input.aiFallbackEnabled !== false;
   const imagePrice = input.imageModel?.rawPricing.image || 0;
@@ -70,6 +81,14 @@ export function estimateGenerationCost(input: {
   return {
     postCount,
     textCost,
+    textCostPerPost: textPerPost,
+    promptTokensPerPost: promptTokens,
+    completionTokensPerPost: completionTokens,
+    promptCostPerPost,
+    completionCostPerPost,
+    requestCostPerPost: requestPrice,
+    promptPricePerMillion: promptPrice,
+    completionPricePerMillion: completionPrice,
     coverImageCost,
     inlineImageCost,
     totalLow: textCost,
