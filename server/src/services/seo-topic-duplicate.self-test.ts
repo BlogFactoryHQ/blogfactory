@@ -282,6 +282,26 @@ Eski cevap.
 assert.equal((turkishSeoPackaged.match(/## Sık Sorulan Sorular/g) || []).length, 1);
 assert.doesNotMatch(turkishSeoPackaged, /Sıkça Sorulan Sorular|Eski soru|Eski cevap|## Key Points/);
 
+const cleanedMetaPackage = applySeoPackage(`# Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklarla Ortaya Çıkan Gerçekler
+
+Mythos Preview güvenlik benchmarklarında yeni sonuçlar üretiyor. ExploitBench ve ExploitGym gibi ölçümler modelin istismar zincirlerini nasıl kurduğunu gösteriyor.
+`, {
+  slug: "mythos preview benchmark",
+  metaTitle: "Mythos Preview’nin İstismar Geliştirme Yeteneği: Yeni",
+  metaDescription: "Mythos Preview’nin istismar geliştirme yeteneği ve yeni benchmark’lar. ExploitBench ve ExploitGym ile güvenlik açıkları tespit edin. Detaylı analiz için",
+  faqs: [
+    { question: "Mythos Preview hangi benchmarklarda öne çıkıyor?", answer: "ExploitBench ve ExploitGym gibi benchmarklarda zincir kurma performansıyla öne çıkıyor." },
+    { question: "ExploitBench neyi ölçer?", answer: "Modelin güvenlik açıklarını istismar zincirlerine dönüştürme becerisini ölçer." },
+    { question: "Bu sonuçlar ekipler için neden önemli?", answer: "Güvenlik ekiplerinin model tabanlı testleri daha dikkatli değerlendirmesini sağlar." },
+  ],
+}, { topic: "Mythos Preview’un İstismar Geliştirme Yeteneği", settings: { articleLanguage: "Turkish" } });
+const cleanedMetaTitle = cleanedMetaPackage.match(/^## Meta Title\n(.+)$/m)?.[1] || "";
+const cleanedMetaDescription = cleanedMetaPackage.match(/^## Meta Description\n(.+)$/m)?.[1] || "";
+assert.equal(cleanedMetaTitle.length <= 60, true);
+assert.doesNotMatch(cleanedMetaTitle, /(?:[:–—-]\s*)?Yeni$/i);
+assert.equal(cleanedMetaDescription.length <= 145, true);
+assert.doesNotMatch(cleanedMetaDescription, /\biçin$/i);
+
 const localized = enforceGeneratedArticleContracts(`# Paving the way for agents in biology \\ Anthropic
 
 Biyolojide yapay zeka ajanlarının karşılaştığı temel engellerden biri, insan kullanımına göre tasarlanmış veritabanlarının karmaşık yapısıdır. Virüs dizisi gibi verilere ulaşmak isteyen ajanlar zorlanıyor.

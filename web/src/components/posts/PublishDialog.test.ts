@@ -38,7 +38,7 @@ describe("publish defaults", () => {
 
     expect(defaults.slug).toBe("search-backed-seo-metadata-packaging");
     expect(defaults.metaTitle).toBe("Search-Backed SEO Metadata for Blog Drafts");
-    expect(defaults.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(defaults.metaDescription.length).toBeLessThanOrEqual(145);
     expect(defaults.metaDescription).toMatch(/People Also Ask/);
   });
 });

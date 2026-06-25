@@ -45,7 +45,7 @@ const providerLabels: Record<string, string> = {
 const SEO_LIMITS = {
   slug: 70,
   metaTitle: 60,
-  metaDescription: 160,
+  metaDescription: 145,
   tags: 8,
 };
 

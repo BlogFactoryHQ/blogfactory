@@ -93,7 +93,8 @@ const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
 const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
-const SEO_META_DESCRIPTION_LIMIT = 160;
+const SEO_META_TITLE_LIMIT = 60;
+const SEO_META_DESCRIPTION_LIMIT = 145;
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "campaign"]);
 const FAQ_TARGET: [number, number] = [3, 5];
@@ -833,8 +834,35 @@ function shortAnswer(value: unknown) {
 
 function titleWithKeyword(value: unknown, keyword: string) {
   const cleaned = cleanSeoValue(value, 80) || keyword;
-  if (!keyword || normalizeTopic(cleaned).includes(normalizeTopic(keyword))) return truncateAtWord(cleaned, 60);
-  return truncateAtWord(`${keyword}: ${cleaned}`, 60);
+  if (!keyword || normalizeTopic(cleaned).includes(normalizeTopic(keyword))) return cleanSeoMetaTitle(cleaned, keyword);
+  return cleanSeoMetaTitle(`${keyword}: ${cleaned}`, keyword);
+}
+
+function stripDanglingSeoEnding(value: string) {
+  let next = value.replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 3; i += 1) {
+    const cleaned = next
+      .replace(/\s*[:|/–—-]\s*$/g, "")
+      .replace(/\s*[:|/–—-]?\s+(?:new|yeni|with|for|and|or|ve|ile|için|icin|neden|nasıl|nasil|how|why|what)$/i, "")
+      .trim();
+    if (cleaned === next) break;
+    next = cleaned;
+  }
+  return next;
+}
+
+function cleanSeoMetaTitle(value: unknown, fallback: string) {
+  const fallbackTitle = stripDanglingSeoEnding(cleanPostTitle(fallback || "Untitled Post"));
+  const raw = stripDanglingSeoEnding(cleanPostTitle(cleanSeoValue(value, 100)));
+  const candidate = raw && titleMatchesSourceTitle(raw, fallbackTitle) ? raw : fallbackTitle;
+  const clipped = stripDanglingSeoEnding(truncateAtWord(candidate, SEO_META_TITLE_LIMIT));
+  return clipped || truncateAtWord(fallbackTitle, SEO_META_TITLE_LIMIT) || "Untitled Post";
+}
+
+function cleanSeoMetaDescription(value: unknown, fallbackText: string) {
+  const raw = cleanSeoValue(value, 260) || cleanSeoValue(fallbackText, 260);
+  const clipped = stripDanglingSeoEnding(truncateAtWord(raw, SEO_META_DESCRIPTION_LIMIT));
+  return clipped || truncateAtWord(cleanSeoValue(fallbackText, 260), SEO_META_DESCRIPTION_LIMIT);
 }
 
 function normalizeSeoPackage(value: string, topic: string): SeoPackage {
@@ -859,7 +887,7 @@ function normalizeSeoPackage(value: string, topic: string): SeoPackage {
     .slice(0, 7);
   const slug = slugify(cleanSeoValue(record.slug || keyword || topic)).split("-").slice(0, 5).join("-") || "article";
   const metaTitle = titleWithKeyword(record.metaTitle ?? record.meta_title, keyword);
-  const metaDescription = truncateAtWord(cleanSeoValue(record.metaDescription ?? record.meta_description, 220), SEO_META_DESCRIPTION_LIMIT);
+  const metaDescription = cleanSeoMetaDescription(record.metaDescription ?? record.meta_description, keyword);
 
   if (!slug || !metaTitle || !metaDescription || faqs.length < 3) {
     throw new Error("SEO package missed required fields");
@@ -891,8 +919,6 @@ function stripSeoPackageSections(content: string) {
 
 export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic: string; settings?: GenerationSettings }) {
   const slug = slugify(seo.slug || opts.topic).split("-").slice(0, 5).join("-") || "article";
-  const metaTitle = truncateAtWord(seo.metaTitle, 60);
-  const metaDescription = truncateAtWord(seo.metaDescription, SEO_META_DESCRIPTION_LIMIT);
   const faqHeading = isTurkishContent(content, opts.settings) ? "## Sık Sorulan Sorular" : "## FAQs";
   const faq = [
     faqHeading,
@@ -905,6 +931,9 @@ export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic:
   ].join("\n").trim();
 
   const article = normalizeArticleMarkdown(stripSeoPackageSections(content), opts.topic, opts.settings);
+  const articleTitle = article.match(/^#\s+(.+)$/m)?.[1]?.trim() || opts.topic;
+  const metaTitle = cleanSeoMetaTitle(seo.metaTitle, articleTitle);
+  const metaDescription = cleanSeoMetaDescription(seo.metaDescription, plainArticleText(article));
 
   return [
     `## Slug\n${slug}`,
@@ -952,7 +981,7 @@ async function generateSeoPackage(opts: {
               `Source type: ${opts.sourceType}`,
               `Source value: ${truncatePromptText(opts.sourceValue, 500)}`,
               "Create Google People Also Ask / real user-query style FAQ ideas from the article and topic. Do not browse.",
-              "Rules: slug max 5 words; metaTitle under 60 chars and includes the primary keyword; metaDescription 150-160 chars with at least two long-tail keywords and a call to action; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
+              "Rules: slug max 5 words; metaTitle 45-60 chars, includes the primary keyword, and never ends mid-phrase; metaDescription 120-145 chars with at least two long-tail keywords and a call to action; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
               'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
               `Article draft:\n${articleText}`,
             ].join("\n\n"),
