@@ -371,7 +371,7 @@ export default function ContentCreator() {
   const selectedImageModelId = userSettings?.image_model || "auto/consistent-cover";
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const imageStylePrompt = userSettings?.image_style_prompt?.trim() || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.";
-  const { summary: usageSummary, logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
+  const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
   const currentMonthSpend = useMemo(() => {
     const month = new Date().toISOString().slice(0, 7);
     return usageLogs
@@ -380,7 +380,6 @@ export default function ContentCreator() {
   }, [usageLogs]);
   const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
   const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? 0) || null;
-  const averageTokensPerPost = usageSummary.postCount ? usageSummary.totalTokens / usageSummary.postCount : null;
   const imagePlacement = imageConfig.imagePlacement || "auto";
   const placementLabels: Record<string, string> = {
     auto: "Auto placement",
@@ -544,18 +543,16 @@ export default function ContentCreator() {
     textModel: selectedTextModel,
     imageModel: selectedImageModel,
     imageConfig,
-    averageTokensPerPost,
     aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, imageConfig, averageTokensPerPost, userSettings?.ai_fallback_enabled]);
+  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
   const campaignCostEstimate = useMemo(() => estimateGenerationCost({
     postCount: Math.max(1, campaignItemCount),
     articleWordCount: userSettings?.article_word_count || 1500,
     textModel: selectedTextModel,
     imageModel: selectedImageModel,
     imageConfig,
-    averageTokensPerPost,
     aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, imageConfig, averageTokensPerPost, userSettings?.ai_fallback_enabled]);
+  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
   const costWarningInput = (estimate: CostEstimate) => ({
     estimate,
     monthlyBudget: userSettings?.monthly_budget,

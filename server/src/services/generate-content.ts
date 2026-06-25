@@ -723,12 +723,12 @@ async function repairShortArticle(opts: {
   };
 }
 
-async function chooseSeoModel(openRouterKey: string, fallbackModelId: string) {
+async function chooseSeoModel(openRouterKey: string) {
   try {
     const models = await getOpenRouterModels(openRouterKey, "text") as Array<{ id: string; pricing: string }>;
-    return models.find((model) => model.pricing === "free" || model.pricing === "low")?.id || fallbackModelId;
+    return models.find((model) => model.pricing === "free" || model.pricing === "low")?.id || null;
   } catch {
-    return fallbackModelId;
+    return null;
   }
 }
 
@@ -850,9 +850,10 @@ async function generateSeoPackage(opts: {
   openRouterKey: string;
   settings?: GenerationSettings;
 }): Promise<SeoPackageRun> {
-  const modelId = await chooseSeoModel(opts.openRouterKey, opts.draftModelId);
+  const modelId = await chooseSeoModel(opts.openRouterKey);
   const startedAt = Date.now();
   try {
+    if (!modelId) throw new Error("No low-cost SEO packaging model available");
     const articleText = truncatePromptText(plainArticleText(opts.content), 5000);
     const language = isTurkishContent(opts.content, opts.settings) ? "Turkish" : "the article language";
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -876,7 +877,7 @@ async function generateSeoPackage(opts: {
               `Primary topic/keyword: ${opts.topic}`,
               `Source type: ${opts.sourceType}`,
               `Source value: ${truncatePromptText(opts.sourceValue, 500)}`,
-              "Use web search results for Google People Also Ask / real user-query style FAQ ideas.",
+              "Create Google People Also Ask / real user-query style FAQ ideas from the article and topic. Do not browse.",
               "Rules: slug max 5 words; metaTitle under 60 chars and includes the primary keyword; metaDescription 150-160 chars with at least two long-tail keywords and a call to action; 3-6 keyPoints; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
               'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","keyPoints":["..."],"faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
               `Article draft:\n${articleText}`,
@@ -884,7 +885,7 @@ async function generateSeoPackage(opts: {
           },
         ],
         max_tokens: 1400,
-        plugins: [{ id: "web", max_results: 5 }],
+        plugins: [],
       }),
     });
 
@@ -904,7 +905,7 @@ async function generateSeoPackage(opts: {
       content: applySeoPackage(opts.content, seo, { topic: opts.topic, settings: opts.settings }),
       modelId,
       status: "success",
-      webSearch: true,
+      webSearch: false,
       faqQueryCount: seo.faqs.filter((item) => item.sourceQuery || item.question).length,
       cost: openRouterUsage.cost,
       usage: totals,
@@ -917,9 +918,9 @@ async function generateSeoPackage(opts: {
   } catch (err) {
     return {
       content: opts.content,
-      modelId,
+      modelId: modelId || "skipped",
       status: "failed",
-      webSearch: true,
+      webSearch: false,
       faqQueryCount: 0,
       cost: 0,
       error: err instanceof Error ? err.message : "SEO packaging failed",
