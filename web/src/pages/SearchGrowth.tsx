@@ -55,18 +55,26 @@ export default function SearchGrowth() {
           <TabsTrigger value="internal-links">Internal Links</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-0">
-          <SearchGrowthOverview onSelectTab={setTab} />
-        </TabsContent>
-        <TabsContent value="optimize" className="mt-0">
-          <OptimizePanel />
-        </TabsContent>
-        <TabsContent value="indexing" className="mt-0">
-          <IndexingPanel />
-        </TabsContent>
-        <TabsContent value="internal-links" className="mt-0">
-          <InternalLinksPanel />
-        </TabsContent>
+        {tab === "overview" && (
+          <TabsContent value="overview" className="mt-0">
+            <SearchGrowthOverview onSelectTab={setTab} />
+          </TabsContent>
+        )}
+        {tab === "optimize" && (
+          <TabsContent value="optimize" className="mt-0">
+            <OptimizePanel />
+          </TabsContent>
+        )}
+        {tab === "indexing" && (
+          <TabsContent value="indexing" className="mt-0">
+            <IndexingPanel />
+          </TabsContent>
+        )}
+        {tab === "internal-links" && (
+          <TabsContent value="internal-links" className="mt-0">
+            <InternalLinksPanel />
+          </TabsContent>
+        )}
       </Tabs>
     </BywordPageShell>
   );

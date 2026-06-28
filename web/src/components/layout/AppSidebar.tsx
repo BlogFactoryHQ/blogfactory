@@ -21,7 +21,6 @@ import {
   Plus,
   Check,
   Newspaper,
-  Grid2X2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -50,7 +49,6 @@ const primaryNavigation = [
   { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },
   { name: "Search Growth", href: "/search-growth", icon: SearchCheck },
-  { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
 ];
 
 const monitorNavigation = [

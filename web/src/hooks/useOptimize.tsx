@@ -70,6 +70,8 @@ export function useOptimize(status: OptimizeStatus = "all", siteId?: string | nu
       return api.get<{ pages: OptimizePage[] }>(`/optimize/pages?${params.toString()}`);
     },
     enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["optimize-pages", resolvedSiteId] });

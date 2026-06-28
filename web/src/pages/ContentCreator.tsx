@@ -71,6 +71,7 @@ import { useImageModels } from "@/hooks/useImageModels";
 import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
+import { ProgrammaticPanel } from "@/pages/Programmatic";
 
 interface ContentUserSettings {
   image_model?: string | null;
@@ -121,7 +122,7 @@ interface ArticlePlanResponse {
   outline: string;
 }
 
-type CreationMode = "article" | "campaign";
+type CreationMode = "article" | "campaign" | "programmatic";
 type CampaignMode = "keyword" | "title" | "title_outline";
 type ArticleType = "auto" | "how_to" | "list" | "what_is" | "pillar" | "alternatives" | "best_of" | "comparison" | "newsjacking";
 
@@ -222,7 +223,7 @@ export default function ContentCreator() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const initialCreationMode: CreationMode = new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article";
+  const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [sourceType, setSourceType] = useState("url");
   const [articleKeyword, setArticleKeyword] = useState("");
@@ -275,12 +276,12 @@ export default function ContentCreator() {
   });
 
   useEffect(() => {
-    setCreationMode(new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article");
+    setCreationMode(parseCreationMode(location.search));
   }, [location.search]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
-    navigate(mode === "campaign" ? "/content-creator?mode=campaign" : "/content-creator", { replace: true });
+    navigate(mode === "article" ? "/content-creator" : `/content-creator?mode=${mode}`, { replace: true });
   };
 
   // Fetch user settings for image defaults
@@ -835,7 +836,7 @@ export default function ContentCreator() {
         description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
       />
 
-      <div className="mx-auto max-w-5xl space-y-9">
+      <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
         <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           <div className="h-px flex-1 bg-byword-border" />
           Choose how to create
@@ -862,7 +863,8 @@ export default function ContentCreator() {
             icon={Grid2X2}
             title="Programmatic"
             description="Generate from templates and structured data at scale."
-            onClick={() => navigate("/programmatic")}
+            selected={creationMode === "programmatic"}
+            onClick={() => selectCreationMode("programmatic")}
           />
         </div>
 
@@ -1422,7 +1424,7 @@ export default function ContentCreator() {
 
               <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
                 Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
-                <Link to="/programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+                <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
               </div>
 
               {campaignMode === "title_outline" && (
@@ -1527,6 +1529,8 @@ export default function ContentCreator() {
             </div>
           </BywordCard>
         )}
+
+        {creationMode === "programmatic" && <ProgrammaticPanel />}
       </div>
 
       <ConcurrentJobDialog
@@ -1563,4 +1567,9 @@ export default function ContentCreator() {
       </Dialog>
     </BywordPageShell>
   );
+}
+
+function parseCreationMode(search: string): CreationMode {
+  const mode = new URLSearchParams(search).get("mode");
+  return mode === "campaign" || mode === "programmatic" ? mode : "article";
 }

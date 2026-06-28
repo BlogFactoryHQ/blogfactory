@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -111,8 +111,8 @@ const sectionTypes = [
 
 const dimensionalStrategies = [
   { dimension: "0D", title: "Flat keyword list", description: "Hand-picked targets with no shared pattern.", action: "Use Campaigns", to: "/content-creator?mode=campaign", icon: ListChecks },
-  { dimension: "1D", title: "One variable", description: "Example: how many calories in {{food}}.", action: "Use Programmatic", to: "/programmatic", icon: FileText },
-  { dimension: "2D", title: "Two variables", description: "Example: how much {{nutrient}} in {{food}}.", action: "Use all-combinations", to: "/programmatic", icon: Grid2X2 },
+  { dimension: "1D", title: "One variable", description: "Example: how many calories in {{food}}.", action: "Use Programmatic", to: "/content-creator?mode=programmatic", icon: FileText },
+  { dimension: "2D", title: "Two variables", description: "Example: how much {{nutrient}} in {{food}}.", action: "Use all-combinations", to: "/content-creator?mode=programmatic", icon: Grid2X2 },
 ];
 
 const variableExamples: Record<string, string> = {
@@ -237,7 +237,12 @@ function StrategyFitNote({ result }: { result: TopicFitResult }) {
   );
 }
 
-export default function Programmatic() {
+function ProgrammaticShell({ embedded, className, children }: { embedded?: boolean; className?: string; children: ReactNode }) {
+  if (embedded) return <div className={["space-y-8", className].filter(Boolean).join(" ")}>{children}</div>;
+  return <BywordPageShell className={className}>{children}</BywordPageShell>;
+}
+
+export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -597,7 +602,7 @@ export default function Programmatic() {
 
   if (view === "library") {
     return (
-      <BywordPageShell className="max-w-none px-8">
+      <ProgrammaticShell embedded={embedded} className="max-w-none px-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <BackButton onClick={() => setView("home")} />
@@ -663,13 +668,13 @@ export default function Programmatic() {
             );
           })}
         </div>
-      </BywordPageShell>
+      </ProgrammaticShell>
     );
   }
 
   if (view === "campaign") {
     return (
-      <BywordPageShell className="max-w-7xl">
+      <ProgrammaticShell embedded={embedded} className="max-w-7xl">
         <div className="mb-10 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <BackButton onClick={() => setView("home")} />
@@ -850,13 +855,13 @@ export default function Programmatic() {
             </div>
           </div>
         </div>
-      </BywordPageShell>
+      </ProgrammaticShell>
     );
   }
 
   if (view === "editor") {
     return (
-      <BywordPageShell className="max-w-none px-0 py-0">
+      <ProgrammaticShell embedded={embedded} className="max-w-none px-0 py-0">
         <div className="sticky top-0 z-30 border-b border-byword-border bg-background/95 backdrop-blur">
           <div className="flex min-h-16 items-center justify-between gap-4 px-6">
             <div className="flex items-center gap-4">
@@ -1011,13 +1016,13 @@ export default function Programmatic() {
             </div>
           </aside>
         </div>
-      </BywordPageShell>
+      </ProgrammaticShell>
     );
   }
 
   return (
-    <BywordPageShell className="max-w-7xl">
-      <PageHeader title="Programmatic" description="Scale your content with templates and data" />
+    <ProgrammaticShell embedded={embedded} className="max-w-7xl">
+      {!embedded && <PageHeader title="Programmatic" description="Scale your content with templates and data" />}
 
       <div className="mx-auto max-w-6xl space-y-8">
         <BywordCard>
@@ -1088,6 +1093,10 @@ export default function Programmatic() {
           </div>
         </BywordCard>
       </div>
-    </BywordPageShell>
+    </ProgrammaticShell>
   );
+}
+
+export default function Programmatic() {
+  return <ProgrammaticPanel embedded={false} />;
 }

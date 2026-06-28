@@ -43,6 +43,8 @@ export function useSearchConsole(siteId?: string | null) {
       return api.get<DashboardResponse>(`/search-console/dashboard${params}`);
     },
     enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });

@@ -51,6 +51,7 @@ export function OptimizePanel() {
   }), [pages]);
 
   const visiblePages = useMemo(() => pages.filter((page) => page.status === status), [pages, status]);
+  const hasNoSearchConsole = !isLoading && !integration;
 
   const openAnalyze = (page?: OptimizePage) => {
     setAnalysisDefaults({ pageUrl: page?.pageUrl || "", targetQuery: page?.targetQuery || "" });
@@ -197,7 +198,11 @@ export function OptimizePanel() {
               </TabsList>
             </Tabs>
 
-            {isLoadingPages ? (
+            {hasNoSearchConsole ? (
+              <div className="p-12 text-center text-muted-foreground">
+                Connect Search Console to sync tracked pages, or add a page manually.
+              </div>
+            ) : isLoadingPages ? (
               <div className="flex items-center justify-center p-12 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading pages
