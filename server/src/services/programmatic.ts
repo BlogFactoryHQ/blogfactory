@@ -39,6 +39,74 @@ const MAX_PROGRAMMATIC_ROWS = 1000;
 
 export const BUILT_IN_PROGRAMMATIC_TEMPLATES: ProgrammaticTemplate[] = [
   {
+    id: "builtin-calories-in-food",
+    name: "Calories in Food Pages",
+    description: "Create 1D nutrition pages for 'calories in [food]' searches.",
+    category: "Nutrition",
+    titleTemplate: "How Many Calories in {{food}}?",
+    wordRange: [850, 1200],
+    requiredVariables: ["food"],
+    builtIn: true,
+    sections: [
+      { id: "title", type: "title", heading: "How Many Calories in {{food}}?", instructions: "Use as the article H1 title." },
+      { id: "quick-answer", type: "tldr", heading: "Calories in {{food}}: Quick Answer", instructions: "Give the calorie answer first. Mention serving size, preparation assumptions, and when calories vary.", minWords: 80, maxWords: 120, snippable: true },
+      { id: "nutrition", type: "table", heading: "{{food}} Nutrition Facts", instructions: "Create a concise nutrition table for a common serving of {{food}}, including calories, protein, carbs, fat, fiber, and notable micronutrients.", minWords: 160, maxWords: 220, snippable: true },
+      { id: "servings", type: "text", heading: "{{food}} Calories by Serving Size", instructions: "Compare calories across common serving sizes and preparations. Keep numbers practical and easy to scan.", minWords: 220, maxWords: 300 },
+      { id: "faq", type: "faq", heading: "{{food}} Calorie FAQ", instructions: "Answer common questions about {{food}} calories, weight loss, portioning, and healthier preparation options.", minWords: 220, maxWords: 320 },
+    ],
+  },
+  {
+    id: "builtin-nutrient-in-food",
+    name: "Nutrient in Food Matrix",
+    description: "Create 2D nutrition pages from nutrient x food combinations.",
+    category: "Nutrition",
+    titleTemplate: "How Much {{nutrient}} in {{food}}?",
+    wordRange: [900, 1250],
+    requiredVariables: ["nutrient", "food"],
+    builtIn: true,
+    sections: [
+      { id: "title", type: "title", heading: "How Much {{nutrient}} in {{food}}?", instructions: "Use as the article H1 title." },
+      { id: "quick-answer", type: "tldr", heading: "{{nutrient}} in {{food}}: Quick Answer", instructions: "Answer directly for a common serving. State the serving size and whether {{food}} is a strong source of {{nutrient}}.", minWords: 80, maxWords: 120, snippable: true },
+      { id: "amounts", type: "table", heading: "{{food}} {{nutrient}} by Serving Size", instructions: "Show {{nutrient}} amounts across 3-5 common serving sizes of {{food}}, then explain the practical takeaway.", minWords: 180, maxWords: 240, snippable: true },
+      { id: "context", type: "text", heading: "Is {{food}} a Good Source of {{nutrient}}?", instructions: "Explain how {{food}} compares with daily needs and similar foods. Include useful dietary context without overclaiming.", minWords: 260, maxWords: 360 },
+      { id: "faq", type: "faq", heading: "{{food}} and {{nutrient}} FAQ", instructions: "Answer common questions about getting {{nutrient}} from {{food}}, preparation changes, and who should pay attention to intake.", minWords: 220, maxWords: 320 },
+    ],
+  },
+  {
+    id: "builtin-can-animal-eat-food",
+    name: "Can Pets Eat Food Pages",
+    description: "Create 2D pet safety articles from animal x food combinations.",
+    category: "Pet Care",
+    titleTemplate: "Can {{animal}} Eat {{food}}?",
+    wordRange: [950, 1300],
+    requiredVariables: ["animal", "food"],
+    builtIn: true,
+    sections: [
+      { id: "title", type: "title", heading: "Can {{animal}} Eat {{food}}?", instructions: "Use as the article H1 title." },
+      { id: "verdict", type: "tldr", heading: "Can {{animal}} Have {{food}}? Quick Verdict", instructions: "Give a clear safe, unsafe, or only-in-small-amounts answer. Mention the biggest risk first.", minWords: 80, maxWords: 120, snippable: true },
+      { id: "risks", type: "text", heading: "Risks of {{food}} for {{animal}}", instructions: "Explain the ingredients, portions, preparation methods, or health conditions that make {{food}} risky for {{animal}}.", minWords: 240, maxWords: 340 },
+      { id: "serving", type: "how-to", heading: "How to Safely Offer {{food}} to {{animal}}", instructions: "If appropriate, provide safe preparation and portion guidance. If unsafe, explain what to do instead.", minWords: 240, maxWords: 340 },
+      { id: "faq", type: "faq", heading: "{{animal}} and {{food}} FAQ", instructions: "Answer common follow-up questions about symptoms, emergency signs, safer alternatives, and when to call a vet.", minWords: 240, maxWords: 340, snippable: true },
+    ],
+  },
+  {
+    id: "builtin-salary-state",
+    name: "Salary by State Pages",
+    description: "Create profession x state salary pages with consistent structure.",
+    category: "Careers",
+    titleTemplate: "Average {{profession}} Salary in {{state}}",
+    wordRange: [1050, 1450],
+    requiredVariables: ["profession", "state"],
+    builtIn: true,
+    sections: [
+      { id: "title", type: "title", heading: "Average {{profession}} Salary in {{state}}", instructions: "Use as the article H1 title." },
+      { id: "quick-answer", type: "tldr", heading: "{{profession}} Salary in {{state}}: Quick Answer", instructions: "Summarize the typical salary range, important caveats, and what affects pay in {{state}}.", minWords: 80, maxWords: 120, snippable: true },
+      { id: "salary-table", type: "table", heading: "{{profession}} Salary Ranges in {{state}}", instructions: "Create a table with entry-level, median, experienced, and top-end salary ranges. Include hourly equivalent if relevant.", minWords: 180, maxWords: 260, snippable: true },
+      { id: "factors", type: "text", heading: "What Affects {{profession}} Pay in {{state}}?", instructions: "Explain location, certifications, experience, employer type, demand, and cost-of-living factors in {{state}}.", minWords: 320, maxWords: 440 },
+      { id: "faq", type: "faq", heading: "{{profession}} Salary in {{state}} FAQ", instructions: "Answer common questions about pay growth, best cities, requirements, and how {{state}} compares with nearby states.", minWords: 240, maxWords: 340 },
+    ],
+  },
+  {
     id: "builtin-local-seo",
     name: "Location Service Pages",
     description: "Create city-specific landing pages that rank for '[service] in [city]' queries.",
@@ -320,6 +388,8 @@ export function scoreProgrammaticTemplate(template: ProgrammaticTemplate) {
     ...(!hasIntro ? ["Add an introduction"] : []),
     ...(!hasConclusion ? ["Add a conclusion or CTA"] : []),
     ...(snippable < 2 ? ["Mark more sections as snippable"] : []),
+    ...(variables.length === 1 ? ["Add one more variable if this is a repeatable pattern."] : []),
+    ...(variables.length >= 2 ? ["Use all-combinations for true 2D templates."] : []),
   ];
   return { score, variables, quickWins };
 }
@@ -362,7 +432,7 @@ function sanitizeRow(row: unknown): ProgrammaticRow {
 }
 
 if (import.meta.main) {
-  const local = BUILT_IN_PROGRAMMATIC_TEMPLATES[0];
+  const local = BUILT_IN_PROGRAMMATIC_TEMPLATES.find((template) => template.id === "builtin-local-seo")!;
   assert.deepEqual(templateVariables(local), ["service", "city", "state", "year"]);
   assert.equal(renderTemplateText("Best {{service}} in {{city}}", { service: "Plumbers", city: "Austin" }), "Best Plumbers in Austin");
   assert.equal(parseCsv("city,state\nAustin,Texas").rows[0].city, "Austin");

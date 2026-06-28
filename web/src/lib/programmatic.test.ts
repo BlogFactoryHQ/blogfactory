@@ -4,6 +4,7 @@ import {
   parseCsv,
   renderTemplateText,
   scoreProgrammaticTemplate,
+  summarizeDimensionMath,
   templateVariables,
   validateRows,
   type ProgrammaticTemplate,
@@ -41,6 +42,12 @@ describe("programmatic helpers", () => {
 
   it("builds combinations", () => {
     expect(buildCombinations({ city: ["Austin", "Denver"], service: ["Plumbers"] })).toHaveLength(2);
+  });
+
+  it("summarizes dimensional keyword math", () => {
+    expect(summarizeDimensionMath({ nutrient: 6, food: 100 }).label).toBe("nutrient 6 x food 100 = 600 articles");
+    expect(summarizeDimensionMath({ food: 900 }).nearLimit).toBe(true);
+    expect(summarizeDimensionMath({ food: 1001 }).overLimit).toBe(true);
   });
 
   it("validates missing row values", () => {

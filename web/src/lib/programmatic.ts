@@ -123,6 +123,19 @@ export function buildCombinations(values: Record<string, string[]>, maxRows = MA
   return rows;
 }
 
+export function summarizeDimensionMath(counts: Record<string, number>, maxRows = MAX_PROGRAMMATIC_ROWS) {
+  const entries = Object.entries(counts).filter(([, count]) => count > 0);
+  const total = entries.reduce((product, [, count]) => product * count, entries.length ? 1 : 0);
+  return {
+    total,
+    label: entries.length
+      ? `${entries.map(([variable, count]) => `${variable} ${count}`).join(" x ")} = ${total} article${total === 1 ? "" : "s"}`
+      : "Add values to see article count.",
+    nearLimit: total >= maxRows * 0.8 && total <= maxRows,
+    overLimit: total > maxRows,
+  };
+}
+
 export function validateRows(template: ProgrammaticTemplate, rows: ProgrammaticRow[]) {
   const variables = templateVariables(template);
   const errors: string[] = [];
@@ -157,6 +170,8 @@ export function scoreProgrammaticTemplate(template: ProgrammaticTemplate) {
     ...(!hasIntro ? ["Add an introduction"] : []),
     ...(!hasConclusion ? ["Add a conclusion or CTA"] : []),
     ...(snippable < 2 ? ["Mark more sections as snippable"] : []),
+    ...(variables.length === 1 ? ["Add one more variable if this is a repeatable pattern."] : []),
+    ...(variables.length >= 2 ? ["Use all-combinations for true 2D templates."] : []),
   ];
   return { score, variables, quickWins };
 }

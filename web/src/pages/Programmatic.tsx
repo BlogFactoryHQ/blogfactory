@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { useTextModels } from "@/hooks/useTextModels";
 import { estimateGenerationCost, shouldWarnForCost } from "@/lib/cost-estimator";
+import { analyzeProgrammaticFit, type TopicFitResult } from "@/lib/topic-fit";
 import {
   MAX_PROGRAMMATIC_ROWS,
   buildCombinations,
@@ -50,6 +51,7 @@ import {
   parseCsv,
   renderTemplate,
   scoreProgrammaticTemplate,
+  summarizeDimensionMath,
   templateVariables,
   validateRows,
   type ProgrammaticDataMode,
@@ -107,6 +109,22 @@ const sectionTypes = [
   { type: "how-to", label: "How-To", description: "Numbered steps" },
 ];
 
+const dimensionalStrategies = [
+  { dimension: "0D", title: "Flat keyword list", description: "Hand-picked targets with no shared pattern.", action: "Use Campaigns", to: "/content-creator?mode=campaign", icon: ListChecks },
+  { dimension: "1D", title: "One variable", description: "Example: how many calories in {{food}}.", action: "Use Programmatic", to: "/programmatic", icon: FileText },
+  { dimension: "2D", title: "Two variables", description: "Example: how much {{nutrient}} in {{food}}.", action: "Use all-combinations", to: "/programmatic", icon: Grid2X2 },
+];
+
+const variableExamples: Record<string, string> = {
+  food: "rice, chicken, banana",
+  nutrient: "calories, protein, carbs",
+  animal: "cats, dogs, rabbits",
+  profession: "nurse, teacher, developer",
+  state: "Texas, Florida, California",
+  city: "Austin, Denver, Miami",
+  service: "plumbers, roofers, dentists",
+};
+
 const formatCost = (value: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(value);
 
@@ -138,6 +156,10 @@ function newSection(type = "text"): ProgrammaticSection {
 
 function variableLabel(variable: string) {
   return `{{${variable}}}`;
+}
+
+function variableExample(variable: string) {
+  return variableExamples[variable.toLowerCase()] || "one value per line";
 }
 
 function VariableBadge({ variable }: { variable: string }) {
@@ -195,6 +217,22 @@ function ScoreBar({ label, value, total }: { label: string; value: number; total
       <div className="h-1.5 overflow-hidden rounded bg-muted">
         <div className="h-full bg-byword-blue" style={{ width: `${percent}%` }} />
       </div>
+    </div>
+  );
+}
+
+function StrategyFitNote({ result }: { result: TopicFitResult }) {
+  const toneClass = {
+    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
+    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
+    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
+    neutral: "border-byword-border bg-muted/20 text-foreground",
+  }[result.tone];
+
+  return (
+    <div className={`rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground ${toneClass}`}>
+      <p className="font-semibold">{result.title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
     </div>
   );
 }
@@ -283,6 +321,10 @@ export default function Programmatic() {
     });
   }, [category, search, templates]);
   const score = useMemo(() => scoreProgrammaticTemplate(liveTemplate), [liveTemplate]);
+  const programmaticFit = useMemo(
+    () => analyzeProgrammaticFit(liveTemplate.titleTemplate, variables.length),
+    [liveTemplate.titleTemplate, variables.length]
+  );
   const scoreParts = useMemo(() => {
     const nonTitleSections = liveTemplate.sections.filter((section) => section.type !== "title");
     return {
@@ -302,6 +344,9 @@ export default function Programmatic() {
       return { rows: [] as ProgrammaticRow[], error: error instanceof Error ? error.message : "Invalid data" };
     }
   }, [dataMode, rows, variableValues, variables]);
+  const dimensionMath = useMemo(() => summarizeDimensionMath(
+    Object.fromEntries(variables.map((variable) => [variable, valuesFromText(variableValues[variable] || "").length]))
+  ), [variableValues, variables]);
   const validationErrors = useMemo(() => [
     ...(materialized.error ? [materialized.error] : []),
     ...validateRows(liveTemplate, materialized.rows),
@@ -631,11 +676,19 @@ export default function Programmatic() {
             <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">New Campaign</span>
           </div>
           <div className="grid grid-cols-2 rounded-lg bg-muted p-1">
-            <Button variant={dataMode === "all_combinations" ? "secondary" : "ghost"} onClick={() => setDataMode("all_combinations")}>
-              <Grid2X2 className="mr-2 h-4 w-4" />All combinations
+            <Button variant={dataMode === "all_combinations" ? "secondary" : "ghost"} className="h-auto justify-start py-2" onClick={() => setDataMode("all_combinations")}>
+              <Grid2X2 className="mr-2 h-4 w-4" />
+              <span className="text-left">
+                <span className="block">All combinations</span>
+                <span className="block text-xs font-normal text-muted-foreground">6 nutrients x 100 foods = 600 articles</span>
+              </span>
             </Button>
-            <Button variant={dataMode === "match_rows" ? "secondary" : "ghost"} onClick={() => setDataMode("match_rows")}>
-              <Table2 className="mr-2 h-4 w-4" />Match rows
+            <Button variant={dataMode === "match_rows" ? "secondary" : "ghost"} className="h-auto justify-start py-2" onClick={() => setDataMode("match_rows")}>
+              <Table2 className="mr-2 h-4 w-4" />
+              <span className="text-left">
+                <span className="block">Match rows</span>
+                <span className="block text-xs font-normal text-muted-foreground">Use when each row is already a complete target</span>
+              </span>
             </Button>
           </div>
         </div>
@@ -688,7 +741,7 @@ export default function Programmatic() {
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 p-5">
                           <Input
-                            placeholder="Add value..."
+                            placeholder={`Add ${variable}...`}
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               addVariableValue(variable, event.currentTarget.value);
@@ -699,14 +752,23 @@ export default function Programmatic() {
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
+                        <p className="px-5 pb-5 text-xs text-muted-foreground">Example: {variableExample(variable)}.</p>
                       </BywordCard>
                     ))}
                   </div>
-                  <BywordCard className="flex items-center gap-5 p-6">
+                  <BywordCard className="flex flex-wrap items-center justify-between gap-5 p-6">
+                    <div className="flex items-center gap-5">
                     <IconTile icon={FileText} className="h-12 w-12" />
                     <div>
                       <p className="text-4xl font-semibold text-byword-blue">{materialized.rows.length}</p>
                       <p className="text-sm text-muted-foreground">articles</p>
+                    </div>
+                    </div>
+                    <div className="max-w-xl text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">{dimensionMath.label}</p>
+                      <p className="mt-1">Clean URLs work best when they mirror the template, like /nutrition/protein-in-rice.</p>
+                      {dimensionMath.nearLimit && <p className="mt-1 text-amber-600">Close to the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
+                      {dimensionMath.overLimit && <p className="mt-1 text-destructive">Over the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
                     </div>
                   </BywordCard>
                 </>
@@ -912,6 +974,13 @@ export default function Programmatic() {
                 </div>
               </BywordCard>
 
+              <BywordCard>
+                <SectionHeader icon={HelpCircle} title="Strategy Fit" />
+                <div className="p-6">
+                  <StrategyFitNote result={programmaticFit} />
+                </div>
+              </BywordCard>
+
               {score.quickWins.length > 0 && (
                 <BywordCard>
                   <SectionHeader icon={HelpCircle} title="Quick Wins" />
@@ -951,6 +1020,31 @@ export default function Programmatic() {
       <PageHeader title="Programmatic" description="Scale your content with templates and data" />
 
       <div className="mx-auto max-w-6xl space-y-8">
+        <BywordCard>
+          <SectionHeader icon={Grid2X2} title="Dimensional Strategy" description="Choose the smallest workflow that fits the keyword pattern." />
+          <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0">
+            {dimensionalStrategies.map((strategy) => (
+              <div key={strategy.dimension} className="p-6">
+                <div className="flex items-center gap-3">
+                  <IconTile icon={strategy.icon} className="h-9 w-9" />
+                  <span className="rounded bg-muted px-2 py-1 text-xs font-bold text-muted-foreground">{strategy.dimension}</span>
+                </div>
+                <h2 className="mt-5 font-semibold">{strategy.title}</h2>
+                <p className="mt-2 min-h-12 text-sm leading-6 text-muted-foreground">{strategy.description}</p>
+                {strategy.dimension === "0D" ? (
+                  <Button variant="ghost" className="mt-4 px-0 text-byword-blue" asChild>
+                    <Link to={strategy.to}>{strategy.action}<ChevronRight className="ml-2 h-4 w-4" /></Link>
+                  </Button>
+                ) : (
+                  <Button variant="ghost" className="mt-4 px-0 text-byword-blue" onClick={() => setView("library")}>
+                    {strategy.action}<ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </BywordCard>
+
         <div className="grid gap-6 lg:grid-cols-3">
           <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
           <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />

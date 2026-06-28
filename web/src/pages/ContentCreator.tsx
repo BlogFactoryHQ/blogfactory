@@ -70,6 +70,7 @@ import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
 import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
+import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 
 interface ContentUserSettings {
   image_model?: string | null;
@@ -196,6 +197,22 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
       <p className="mt-2 text-xs text-muted-foreground">
         {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
       </p>
+    </div>
+  );
+}
+
+function TopicFitNote({ result }: { result: TopicFitResult }) {
+  const toneClass = {
+    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
+    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
+    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
+    neutral: "border-byword-border bg-muted/20 text-foreground",
+  }[result.tone];
+
+  return (
+    <div className={cn("rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground", toneClass)}>
+      <p className="font-semibold">{result.title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
     </div>
   );
 }
@@ -567,6 +584,11 @@ export default function ContentCreator() {
   const contractLinkLabel = userSettings?.enable_internal_links
     ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "Up to 5-7 relevant links"
     : "Off";
+  const articleTopicFit = useMemo(
+    () => analyzeTopicFit(sourceType === "article_title" ? articleTitle : articleKeyword),
+    [articleKeyword, articleTitle, sourceType]
+  );
+  const campaignTopicFit = useMemo(() => analyzeCampaignPattern(campaignLines), [campaignLines]);
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -916,6 +938,7 @@ export default function ContentCreator() {
                     <p className="text-xs text-muted-foreground">
                       Generate an SEO-focused title and article from this keyword.
                     </p>
+                    <TopicFitNote result={articleTopicFit} />
                   </TabsContent>
 
                   <TabsContent value="article_title" className="space-y-2">
@@ -932,6 +955,7 @@ export default function ContentCreator() {
                     <p className="text-xs text-muted-foreground">
                       Keep this title and generate a publish-ready article around it.
                     </p>
+                    <TopicFitNote result={articleTopicFit} />
                   </TabsContent>
                 </Tabs>
 
@@ -1396,6 +1420,11 @@ export default function ContentCreator() {
                 </div>
               </div>
 
+              <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
+                <Link to="/programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+              </div>
+
               {campaignMode === "title_outline" && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -1430,6 +1459,7 @@ export default function ContentCreator() {
                   <span>{campaignItemCount} item{campaignItemCount === 1 ? "" : "s"} ready</span>
                   {campaignHasTooManyItems && <span className="text-destructive">Campaigns support up to 100 items.</span>}
                 </div>
+                <TopicFitNote result={campaignTopicFit} />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
