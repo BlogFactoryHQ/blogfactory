@@ -68,6 +68,8 @@ export function useIndexing(siteId?: string | null) {
       return api.get<DashboardResponse>(`/indexing/dashboard${params}`);
     },
     enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });

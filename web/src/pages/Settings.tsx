@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -237,6 +238,7 @@ const linkDensityOptions = [
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [imageStylePrompt, setImageStylePrompt] = useState(
     "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays."
   );
@@ -256,7 +258,7 @@ export default function Settings() {
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
-  const [activeSection, setActiveSection] = useState("basics");
+  const [activeSection, setActiveSection] = useState(() => searchParams.get("section") || "basics");
   const [articleWordCount, setArticleWordCount] = useState(1500);
   const [articleLanguage, setArticleLanguage] = useState("US English");
   const [articleVoice, setArticleVoice] = useState("Natural");
@@ -293,6 +295,11 @@ export default function Settings() {
   const previousInternalLinkStatus = useRef<string | null>(null);
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (section) setActiveSection(section);
+  }, [searchParams]);
 
   const modelProviders = useMemo(() => {
     const providers = new Set([...imageModels, ...textModels].map((model) => model.provider).filter(Boolean));
@@ -744,7 +751,6 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
-    { id: "internal", title: "Internal Linking", description: "Sitemap index", icon: LinkIcon },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
     { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
@@ -1296,6 +1302,38 @@ export default function Settings() {
           )}
 
           {activeSection === "internal" && (
+            <BywordCard>
+              <SectionHeader
+                icon={LinkIcon}
+                title="Internal Links moved to Search Growth"
+                description="Sitemap indexing and semantic internal links now live beside Optimize and Indexing."
+                action={
+                  <Button asChild>
+                    <Link to="/search-growth?tab=internal-links">
+                      Open Search Growth
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                }
+              />
+              <div className="grid gap-4 p-6 md:grid-cols-3">
+                <div className="rounded-lg border border-byword-border p-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Status</p>
+                  <p className="mt-2 text-2xl font-semibold">{internalLinkStatus === "connected" ? "Ready" : internalLinkStatus}</p>
+                </div>
+                <div className="rounded-lg border border-byword-border p-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Pages</p>
+                  <p className="mt-2 text-2xl font-semibold">{internalLinkIndex?.pageCount || internalLinkIndexingState?.totalPages || 0}</p>
+                </div>
+                <div className="rounded-lg border border-byword-border p-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Last sync</p>
+                  <p className="mt-2 text-2xl font-semibold">{lastSyncLabel}</p>
+                </div>
+              </div>
+            </BywordCard>
+          )}
+
+          {activeSection === "__internal_legacy" && (
             <BywordCard>
               <SectionHeader
                 icon={LinkIcon}

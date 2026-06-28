@@ -4,5 +4,6 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": ["api/**/*", "server/src/**/*"]
+  "include": ["api/**/*", "server/src/**/*"],
+  "exclude": ["server/src/**/*.self-test.ts"]
 }

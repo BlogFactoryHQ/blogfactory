@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { staleTimeoutUpdateForJob } from "./jobs.js";
 
+function plan(update: ReturnType<typeof staleTimeoutUpdateForJob>) {
+  return update.generationPlan as { totalDrafts: number; failedDrafts?: Array<{ index: number; error: string }> };
+}
+
 const partial = staleTimeoutUpdateForJob({
   generationPlan: { totalDrafts: 3 },
   resultPostIds: ["post-1"],
@@ -9,8 +13,8 @@ const partial = staleTimeoutUpdateForJob({
 assert.equal(partial.status, "completed");
 assert.equal(partial.currentStep, "done");
 assert.equal(partial.errorMessage, null);
-assert.equal(partial.generationPlan.totalDrafts, 3);
-assert.deepEqual(partial.generationPlan.failedDrafts, [
+assert.equal(plan(partial).totalDrafts, 3);
+assert.deepEqual(plan(partial).failedDrafts, [
   {
     index: 1,
     error: "Generation timed out after 1/3 drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.",
@@ -28,7 +32,7 @@ const failed = staleTimeoutUpdateForJob({
 
 assert.equal(failed.status, "failed");
 assert.equal(failed.currentStep, "timeout");
-assert.equal(failed.generationPlan.failedDrafts.length, 3);
+assert.equal(plan(failed).failedDrafts?.length, 3);
 assert.match(failed.errorMessage, /before creating any drafts/);
 
 const completed = staleTimeoutUpdateForJob({
@@ -38,8 +42,8 @@ const completed = staleTimeoutUpdateForJob({
 
 assert.equal(completed.status, "completed");
 assert.equal(completed.errorMessage, null);
-assert.equal(completed.generationPlan.totalDrafts, 2);
-assert.equal(completed.generationPlan.failedDrafts, undefined);
+assert.equal(plan(completed).totalDrafts, 2);
+assert.equal(plan(completed).failedDrafts, undefined);
 
 const preserved = staleTimeoutUpdateForJob({
   generationPlan: {
@@ -50,7 +54,7 @@ const preserved = staleTimeoutUpdateForJob({
 });
 
 assert.equal(preserved.status, "completed");
-assert.deepEqual(preserved.generationPlan.failedDrafts, [
+assert.deepEqual(plan(preserved).failedDrafts, [
   { index: 1, error: "Model refused this draft." },
   {
     index: 2,

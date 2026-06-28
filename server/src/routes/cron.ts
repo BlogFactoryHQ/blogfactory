@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
+import { drainSearchConsoleSync } from "../services/search-console.js";
 import { processNextDeferredImage } from "../services/low-cost-images.js";
 
 export const cronRoutes = new Hono();
@@ -40,9 +41,16 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
   if (task === "campaigns") return c.json({ ok: true, campaigns: await drainCampaignQueue() });
   if (task === "indexing") return c.json({ ok: true, google: await drainQueuedGoogleIndexing() });
+  if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(positiveInt(process.env.GSC_CRON_MAX_SITES, 10)) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });
 
-  const [campaigns, google, feeds, images] = await Promise.all([drainCampaignQueue(), drainQueuedGoogleIndexing(), runFeeds(), runImages()]);
+  const [campaigns, google, searchConsole, feeds, images] = await Promise.all([
+    drainCampaignQueue(),
+    drainQueuedGoogleIndexing(),
+    drainSearchConsoleSync(positiveInt(process.env.GSC_CRON_MAX_SITES, 10)),
+    runFeeds(),
+    runImages(),
+  ]);
 
-  return c.json({ ok: true, campaigns, google, feeds, images });
+  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images });
 });

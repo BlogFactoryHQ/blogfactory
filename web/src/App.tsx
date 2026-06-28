@@ -18,14 +18,13 @@ const News = lazy(() => import("@/pages/News"));
 const RSSFeeds = lazy(() => import("@/pages/RSSFeeds"));
 const RSSFeedNew = lazy(() => import("@/pages/RSSFeedNew"));
 const ContentCreator = lazy(() => import("@/pages/ContentCreator"));
-const Programmatic = lazy(() => import("@/pages/Programmatic"));
 const Campaigns = lazy(() => import("@/pages/Campaigns"));
 const BatchImport = lazy(() => import("@/pages/BatchImport"));
 const Jobs = lazy(() => import("@/pages/Jobs"));
 const Personas = lazy(() => import("@/pages/Personas"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Integrations = lazy(() => import("@/pages/Integrations"));
-const Indexing = lazy(() => import("@/pages/Indexing"));
+const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
 const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
@@ -59,7 +58,7 @@ const App = () => (
                         <Route path="/rss-feeds" element={<RSSFeeds />} />
                         <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
                         <Route path="/content-creator" element={<ContentCreator />} />
-                        <Route path="/programmatic" element={<Programmatic />} />
+                        <Route path="/programmatic" element={<Navigate to="/content-creator?mode=programmatic" replace />} />
                         <Route path="/campaigns" element={<Campaigns />} />
                         <Route path="/campaigns/new" element={<Navigate to="/content-creator?mode=campaign" replace />} />
                         <Route path="/campaigns/:id" element={<Campaigns />} />
@@ -70,7 +69,9 @@ const App = () => (
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/sites" element={<Sites />} />
                         <Route path="/integrations" element={<Integrations />} />
-                        <Route path="/indexing" element={<Indexing />} />
+                        <Route path="/indexing" element={<Navigate to="/search-growth?tab=indexing" replace />} />
+                        <Route path="/optimize" element={<Navigate to="/search-growth?tab=optimize" replace />} />
+                        <Route path="/search-growth" element={<SearchGrowth />} />
                         <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                         <Route path="/gallery" element={<ImageGallery />} />
                         <Route path="/admin/users" element={<AdminUsers />} />

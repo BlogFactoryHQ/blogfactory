@@ -120,6 +120,9 @@ function CampaignList() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
           <p className="mt-2 text-muted-foreground">Batch article generation with shared voice and settings.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            More than a flat keyword list? <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+          </p>
         </div>
         <Button asChild>
           <Link to="/content-creator?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>

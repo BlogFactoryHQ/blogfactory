@@ -8,10 +8,10 @@ export const feedsRoutes = new Hono();
 
 function feedValues(body: Record<string, any>) {
   const value = (snake: string, camel = snake.replace(/_([a-z])/g, (_, char) => char.toUpperCase())) => body[camel] ?? body[snake];
-  const values: Partial<typeof feeds.$inferInsert> = {};
-  const set = (key: keyof typeof values, snake: string) => {
+  const values: Record<string, any> = {};
+  const set = (key: string, snake: string) => {
     const next = value(snake);
-    if (next !== undefined) values[key] = next as never;
+    if (next !== undefined) values[key] = next;
   };
 
   set("name", "name");

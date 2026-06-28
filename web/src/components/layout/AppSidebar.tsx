@@ -13,6 +13,7 @@ import {
   ChevronsLeft,
   Shield,
   Search,
+  SearchCheck,
   Plug,
   ChevronDown,
   Bell,
@@ -20,7 +21,6 @@ import {
   Plus,
   Check,
   Newspaper,
-  Grid2X2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,7 +48,7 @@ const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
   { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },
-  { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
+  { name: "Search Growth", href: "/search-growth", icon: SearchCheck },
 ];
 
 const monitorNavigation = [
@@ -61,7 +61,6 @@ const monitorNavigation = [
 
 const lowerNavigation = [
   { name: "Integrations", href: "/integrations", icon: Plug },
-  { name: "Indexing", href: "/indexing", icon: Search },
   { name: "Article Settings", href: "/settings", icon: Settings },
   { name: "Sites", href: "/sites", icon: Globe2 },
 ];

@@ -105,7 +105,7 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
   await Promise.all(
     staleJobs.map((job) => db
       .update(jobs)
-      .set(staleTimeoutUpdateForJob(job))
+      .set(staleTimeoutUpdateForJob(job) as any)
       .where(eq(jobs.id, job.id)))
   );
 
@@ -130,7 +130,7 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
       .filter((job) => Array.isArray(job.resultPostIds) && job.resultPostIds.length > 0)
       .map((job) => db
         .update(jobs)
-        .set(staleTimeoutUpdateForJob(job))
+        .set(staleTimeoutUpdateForJob(job) as any)
         .where(eq(jobs.id, job.id)))
   );
 }
@@ -215,7 +215,7 @@ jobsRoutes.put("/:id/stop", async (c) => {
 
   const [updated] = await db
     .update(jobs)
-    .set({ status: "failed", errorMessage: "Stopped by user", completedAt: new Date() })
+    .set({ status: "failed", errorMessage: "Stopped by user", completedAt: new Date() } as any)
     .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
     .returning();
 
@@ -244,7 +244,7 @@ jobsRoutes.post("/:id/retry", async (c) => {
       errorMessage: null,
       generationError: null,
       completedAt: null,
-    })
+    } as any)
     .where(eq(jobs.id, id))
     .returning();
 

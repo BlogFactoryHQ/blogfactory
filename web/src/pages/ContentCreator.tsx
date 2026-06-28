@@ -70,6 +70,8 @@ import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
 import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
+import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
+import { ProgrammaticPanel } from "@/pages/Programmatic";
 
 interface ContentUserSettings {
   image_model?: string | null;
@@ -120,7 +122,7 @@ interface ArticlePlanResponse {
   outline: string;
 }
 
-type CreationMode = "article" | "campaign";
+type CreationMode = "article" | "campaign" | "programmatic";
 type CampaignMode = "keyword" | "title" | "title_outline";
 type ArticleType = "auto" | "how_to" | "list" | "what_is" | "pillar" | "alternatives" | "best_of" | "comparison" | "newsjacking";
 
@@ -200,12 +202,28 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
   );
 }
 
+function TopicFitNote({ result }: { result: TopicFitResult }) {
+  const toneClass = {
+    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
+    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
+    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
+    neutral: "border-byword-border bg-muted/20 text-foreground",
+  }[result.tone];
+
+  return (
+    <div className={cn("rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground", toneClass)}>
+      <p className="font-semibold">{result.title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
+    </div>
+  );
+}
+
 export default function ContentCreator() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const initialCreationMode: CreationMode = new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article";
+  const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [sourceType, setSourceType] = useState("url");
   const [articleKeyword, setArticleKeyword] = useState("");
@@ -258,12 +276,12 @@ export default function ContentCreator() {
   });
 
   useEffect(() => {
-    setCreationMode(new URLSearchParams(location.search).get("mode") === "campaign" ? "campaign" : "article");
+    setCreationMode(parseCreationMode(location.search));
   }, [location.search]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
-    navigate(mode === "campaign" ? "/content-creator?mode=campaign" : "/content-creator", { replace: true });
+    navigate(mode === "article" ? "/content-creator" : `/content-creator?mode=${mode}`, { replace: true });
   };
 
   // Fetch user settings for image defaults
@@ -567,6 +585,11 @@ export default function ContentCreator() {
   const contractLinkLabel = userSettings?.enable_internal_links
     ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "Up to 5-7 relevant links"
     : "Off";
+  const articleTopicFit = useMemo(
+    () => analyzeTopicFit(sourceType === "article_title" ? articleTitle : articleKeyword),
+    [articleKeyword, articleTitle, sourceType]
+  );
+  const campaignTopicFit = useMemo(() => analyzeCampaignPattern(campaignLines), [campaignLines]);
 
   const getSourceLabel = () => {
     switch (sourceType) {
@@ -813,7 +836,7 @@ export default function ContentCreator() {
         description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
       />
 
-      <div className="mx-auto max-w-5xl space-y-9">
+      <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
         <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           <div className="h-px flex-1 bg-byword-border" />
           Choose how to create
@@ -840,7 +863,8 @@ export default function ContentCreator() {
             icon={Grid2X2}
             title="Programmatic"
             description="Generate from templates and structured data at scale."
-            onClick={() => navigate("/programmatic")}
+            selected={creationMode === "programmatic"}
+            onClick={() => selectCreationMode("programmatic")}
           />
         </div>
 
@@ -916,6 +940,7 @@ export default function ContentCreator() {
                     <p className="text-xs text-muted-foreground">
                       Generate an SEO-focused title and article from this keyword.
                     </p>
+                    <TopicFitNote result={articleTopicFit} />
                   </TabsContent>
 
                   <TabsContent value="article_title" className="space-y-2">
@@ -932,6 +957,7 @@ export default function ContentCreator() {
                     <p className="text-xs text-muted-foreground">
                       Keep this title and generate a publish-ready article around it.
                     </p>
+                    <TopicFitNote result={articleTopicFit} />
                   </TabsContent>
                 </Tabs>
 
@@ -1396,6 +1422,11 @@ export default function ContentCreator() {
                 </div>
               </div>
 
+              <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
+                <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+              </div>
+
               {campaignMode === "title_outline" && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -1430,6 +1461,7 @@ export default function ContentCreator() {
                   <span>{campaignItemCount} item{campaignItemCount === 1 ? "" : "s"} ready</span>
                   {campaignHasTooManyItems && <span className="text-destructive">Campaigns support up to 100 items.</span>}
                 </div>
+                <TopicFitNote result={campaignTopicFit} />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -1497,6 +1529,8 @@ export default function ContentCreator() {
             </div>
           </BywordCard>
         )}
+
+        {creationMode === "programmatic" && <ProgrammaticPanel />}
       </div>
 
       <ConcurrentJobDialog
@@ -1533,4 +1567,9 @@ export default function ContentCreator() {
       </Dialog>
     </BywordPageShell>
   );
+}
+
+function parseCreationMode(search: string): CreationMode {
+  const mode = new URLSearchParams(search).get("mode");
+  return mode === "campaign" || mode === "programmatic" ? mode : "article";
 }

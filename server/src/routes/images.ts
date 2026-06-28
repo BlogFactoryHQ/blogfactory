@@ -142,7 +142,7 @@ imagesRoutes.patch("/requests/:id", async (c) => {
 
   const [updated] = await db
     .update(imageGenerationRequests)
-    .set({ status, updatedAt: new Date() })
+    .set({ status, updatedAt: new Date() } as any)
     .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
     .returning();
 

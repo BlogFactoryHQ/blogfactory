@@ -360,6 +360,63 @@ export const indexingSubmissions = pgTable("indexing_submissions", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── Google Search Console + Optimize ──
+export const searchConsoleIntegrations = pgTable("search_console_integrations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  propertyUrl: text("property_url").notNull(),
+  status: text("status").default("connected").notNull(),
+  credentialsEncrypted: text("credentials_encrypted").notNull(),
+  credentialHint: text("credential_hint"),
+  lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+  lastTestResult: text("last_test_result"),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const searchConsoleMetrics = pgTable("search_console_metrics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  pageUrl: text("page_url").notNull(),
+  query: text("query").notNull(),
+  clicks: integer("clicks").default(0).notNull(),
+  impressions: integer("impressions").default(0).notNull(),
+  ctr: real("ctr").default(0).notNull(),
+  position: real("position").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const optimizePages = pgTable("optimize_pages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  pageUrl: text("page_url").notNull(),
+  targetQuery: text("target_query").notNull(),
+  status: text("status").default("tracking").notNull(),
+  baselineMetrics: jsonb("baseline_metrics"),
+  latestMetrics: jsonb("latest_metrics"),
+  optimizedAt: timestamp("optimized_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const optimizeAnalyses = pgTable("optimize_analyses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  pageUrl: text("page_url").notNull(),
+  targetQuery: text("target_query").notNull(),
+  ownContentSnapshot: jsonb("own_content_snapshot"),
+  competitorSnapshots: jsonb("competitor_snapshots"),
+  suggestions: jsonb("suggestions"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── user_settings ──
 export const userSettings = pgTable("user_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
