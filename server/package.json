@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "build": "tsc -p tsconfig.json",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:generate": "drizzle-kit generate"
   },

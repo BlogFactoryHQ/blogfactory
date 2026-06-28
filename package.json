@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
-    "build": "npm run build --workspace=web",
+    "build": "npm run build --workspace=server && npm run build --workspace=web",
     "db:generate": "npm run db:generate --workspace=server",
     "db:migrate": "npm run db:migrate --workspace=server"
   },
