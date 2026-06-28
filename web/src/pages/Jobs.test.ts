@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateJobRows, jobGroupKey } from "./Jobs";
+import { aggregateJobRows, jobGroupKey, parseStepProgress } from "./Jobs";
 
 const baseJob = {
   id: "job-1",
@@ -52,5 +52,25 @@ describe("job batch grouping", () => {
     expect(rows[0].current_step).toBe("generating_draft_2_of_3");
     expect(rows[0].result_post_ids).toEqual(["post-1"]);
     expect(rows[0].generation_plan.failedDrafts).toEqual([{ index: 2, error: "Model timed out" }]);
+  });
+});
+
+describe("job progress steps", () => {
+  it("shows source fetching before draft progress", () => {
+    const progress = parseStepProgress("fetching_content", [], { totalDrafts: 1, imagesEnabled: true });
+
+    expect(progress.label).toBe("Fetching source content");
+    expect(progress.percent).toBe(10);
+    expect(progress.steps[0]).toMatchObject({ label: "Fetch source content", active: true });
+    expect(progress.steps.some((step) => step.label.includes("Draft 0"))).toBe(false);
+  });
+
+  it("shows image resolution as the active draft step", () => {
+    const progress = parseStepProgress("resolving_images_for_draft_1", [], { totalDrafts: 1, imagesEnabled: true });
+
+    expect(progress.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Find stock/source images or queue AI images", active: true }),
+      expect.objectContaining({ label: "Draft 1 (images)", active: true }),
+    ]));
   });
 });

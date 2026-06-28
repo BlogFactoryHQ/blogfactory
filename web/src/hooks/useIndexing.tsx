@@ -102,6 +102,18 @@ export function useIndexing(siteId?: string | null) {
     onSuccess: invalidate,
   });
 
+  const startGoogleOAuth = useMutation({
+    mutationFn: async (input: { displayName?: string; autoSubmit?: boolean } = {}) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      const params = new URLSearchParams({
+        siteId: resolvedSiteId,
+        displayName: input.displayName || "Google",
+        autoSubmit: String(input.autoSubmit ?? true),
+      });
+      return api.get<{ authUrl: string }>(`/indexing/oauth/start?${params}`);
+    },
+  });
+
   return {
     dashboard: dashboard.data,
     integrations: dashboard.data?.integrations || [],
@@ -112,5 +124,6 @@ export function useIndexing(siteId?: string | null) {
     testIntegration,
     deleteIntegration,
     submitUrls,
+    startGoogleOAuth,
   };
 }

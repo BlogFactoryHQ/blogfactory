@@ -150,12 +150,18 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string, extr
       </div>
 
       {searchConsole && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-4">
           <InsightCard
             title="Best quick win"
             page={summary?.bestQuickWin || summary?.best_quick_win}
             empty="No quick win flagged yet."
             onClick={() => onSelectTab("optimize", { opportunity: "almost_ranking" })}
+          />
+          <InsightCard
+            title="Top growing page"
+            page={summary?.topGrowingPage || summary?.top_growing_page}
+            empty="No growing page yet."
+            onClick={() => onSelectTab("optimize", { opportunity: "growing" })}
           />
           <InsightCard
             title="Biggest decline"
@@ -165,7 +171,7 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string, extr
           />
           <InsightCard
             title="Low CTR"
-            page={summary?.bestQuickWin?.opportunities.includes("low_ctr") ? summary.bestQuickWin : null}
+            page={summary?.lowCtrPage || summary?.low_ctr_page}
             empty="No low-CTR page flagged."
             onClick={() => onSelectTab("optimize", { opportunity: "low_ctr" })}
           />

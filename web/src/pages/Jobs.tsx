@@ -19,7 +19,7 @@ import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, Chec
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { DraftProgressList } from "@/components/content/DraftProgressList";
+import { DraftProgressList, type DraftProgressItem } from "@/components/content/DraftProgressList";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -204,6 +204,91 @@ const draftStatsFor = (job: Job) => {
   return { created, failed, total, partial: created > 0 && failed > 0 };
 };
 
+export const parseStepProgress = (step: string, resultPostIds: string[] | null, generationPlan?: any) => {
+  const postsCompleted = resultPostIds?.length ?? 0;
+  const failedDrafts: Array<{index: number, error: string}> = generationPlan?.failedDrafts || [];
+  const failedIndices = new Set(failedDrafts.map(f => f.index));
+  const normalizedStep = step || "pending";
+
+  const totalMatch = normalizedStep.match(/_of_(\d+)$/);
+  const total = totalMatch ? parseInt(totalMatch[1]) : (generationPlan?.totalDrafts || 0);
+  const currentMatch = normalizedStep.match(/_(\d+)_of_/) || normalizedStep.match(/_draft_(\d+)$/);
+  const current = currentMatch ? parseInt(currentMatch[1]) : 0;
+
+  const phaseIndex = (() => {
+    if (normalizedStep === "pending" || normalizedStep === "queued" || normalizedStep === "starting") return 0;
+    if (normalizedStep === "fetching_content" || normalizedStep === "fetching_source") return 1;
+    if (normalizedStep.startsWith("generating_draft")) return 2;
+    if (normalizedStep.startsWith("repairing_length")) return 3;
+    if (normalizedStep.startsWith("packaging_seo")) return 4;
+    if (normalizedStep.startsWith("resolving_images")) return 5;
+    if (normalizedStep === "done") return 6;
+    return 2;
+  })();
+  const includeImages = generationPlan?.imagesEnabled !== false;
+  const baseSteps: DraftProgressItem[] = [
+    { label: "Fetch source content", done: phaseIndex > 1, active: phaseIndex === 1 },
+    { label: "Write draft", done: phaseIndex > 2 || postsCompleted > 0, active: phaseIndex === 2 },
+    ...(phaseIndex === 3 ? [{ label: "Repair short draft", done: false, active: true } as DraftProgressItem] : []),
+    { label: "Package SEO fields", done: phaseIndex > 4 || postsCompleted > 0, active: phaseIndex === 4 },
+    ...(includeImages ? [{ label: "Find stock/source images or queue AI images", done: phaseIndex > 5, active: phaseIndex === 5 } as DraftProgressItem] : []),
+  ];
+
+  if (normalizedStep === "pending" || normalizedStep === "queued" || normalizedStep === "starting") {
+    return { label: "Initializing...", percent: 5, steps: baseSteps };
+  }
+  if (normalizedStep === "fetching_content" || normalizedStep === "fetching_source") {
+    return { label: "Fetching source content", percent: 10, steps: baseSteps };
+  }
+
+  const steps: DraftProgressItem[] = [...baseSteps];
+  const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
+
+  for (let i = 0; i < effectiveTotal; i++) {
+    const draftNum = i + 1;
+    const failed = failedIndices.has(i);
+    const failedInfo = failedDrafts.find(f => f.index === i);
+
+    if (failed) {
+      steps.push({ label: `Draft ${draftNum}`, done: false, active: false, failed: true, error: failedInfo?.error });
+    } else if (i < postsCompleted + failedDrafts.filter(f => f.index < i).length) {
+      const completedBefore = postsCompleted - failedDrafts.filter(f => f.index > i).length;
+      if (completedBefore > 0 || i < postsCompleted) {
+        steps.push({ label: `Draft ${draftNum}`, done: true, active: false });
+      } else {
+        steps.push({ label: `Draft ${draftNum}`, done: false, active: false });
+      }
+    } else if (draftNum === current) {
+      const isImages = normalizedStep.startsWith("resolving_images");
+      const isRepair = normalizedStep.startsWith("repairing_length");
+      const isSeo = normalizedStep.startsWith("packaging_seo");
+      const isGen = normalizedStep.startsWith("generating_draft") || normalizedStep.startsWith("generating_post");
+      const isFailed = normalizedStep.startsWith("failed_post");
+      steps.push({
+        label: `Draft ${draftNum}${isImages ? " (images)" : isRepair ? " (length repair)" : isSeo ? " (SEO)" : isGen ? " (writing)" : isFailed ? " (failed)" : ""}`,
+        done: false,
+        active: !isFailed,
+        failed: isFailed,
+      });
+    } else {
+      steps.push({ label: `Draft ${draftNum}`, done: false, active: false });
+    }
+  }
+
+  if (effectiveTotal > 0) {
+    const perPost = 90 / effectiveTotal;
+    let pct = 10;
+    pct += (postsCompleted + failedDrafts.length) * perPost;
+    if (normalizedStep.startsWith("generating_draft") || normalizedStep.startsWith("generating_post")) pct += perPost * 0.3;
+    if (normalizedStep.startsWith("packaging_seo")) pct += perPost * 0.55;
+    if (normalizedStep.startsWith("resolving_images")) pct += perPost * 0.75;
+    const label = current ? `Draft ${current} of ${effectiveTotal}` : normalizedStep.replace(/_/g, " ");
+    return { label, percent: Math.min(Math.round(pct), 99), steps };
+  }
+
+  return { label: normalizedStep.replace(/_/g, " "), percent: 50, steps };
+};
+
 export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -317,71 +402,6 @@ export default function Jobs() {
     }
 
     return { status: getStatusBadgeType(job.status) as any, label: undefined };
-  };
-
-  const parseStepProgress = (step: string, resultPostIds: string[] | null, generationPlan?: any) => {
-    const postsCompleted = resultPostIds?.length ?? 0;
-    const failedDrafts: Array<{index: number, error: string}> = generationPlan?.failedDrafts || [];
-    const failedIndices = new Set(failedDrafts.map(f => f.index));
-
-    // Parse total from step patterns
-    const totalMatch = step?.match(/_of_(\d+)$/);
-    const total = totalMatch ? parseInt(totalMatch[1]) : (generationPlan?.totalDrafts || 0);
-    const currentMatch = step?.match(/_(\d+)_of_/);
-    const current = currentMatch ? parseInt(currentMatch[1]) : 0;
-
-    if (!step || step === "pending") {
-      return { label: "Initializing...", percent: 5, steps: [] as { label: string; done: boolean; active: boolean; failed?: boolean; error?: string }[] };
-    }
-    if (step === "fetching_source") {
-      return { label: "Fetching source content...", percent: 10, steps: [] as { label: string; done: boolean; active: boolean; failed?: boolean; error?: string }[] };
-    }
-
-    // Build step list showing completed posts, failures, and current activity
-    const steps: { label: string; done: boolean; active: boolean; failed?: boolean; error?: string }[] = [];
-    const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
-
-    for (let i = 0; i < effectiveTotal; i++) {
-      const draftNum = i + 1;
-      const failed = failedIndices.has(i);
-      const failedInfo = failedDrafts.find(f => f.index === i);
-
-      if (failed) {
-        steps.push({ label: `Draft ${draftNum}`, done: false, active: false, failed: true, error: failedInfo?.error });
-      } else if (i < postsCompleted + failedDrafts.filter(f => f.index < i).length) {
-        // Count completed: posts before this index minus failures before this index
-        const completedBefore = postsCompleted - failedDrafts.filter(f => f.index > i).length;
-        if (completedBefore > 0 || i < postsCompleted) {
-          steps.push({ label: `Draft ${draftNum}`, done: true, active: false });
-        } else {
-          steps.push({ label: `Draft ${draftNum}`, done: false, active: false });
-        }
-      } else if (draftNum === current) {
-        const isImages = step.startsWith("generating_images");
-        const isGen = step.startsWith("generating_post");
-        const isFailed = step.startsWith("failed_post");
-        steps.push({
-          label: `Draft ${draftNum}${isImages ? " (images)" : isGen ? " (writing)" : isFailed ? " (failed)" : ""}`,
-          done: false,
-          active: !isFailed,
-          failed: isFailed,
-        });
-      } else {
-        steps.push({ label: `Draft ${draftNum}`, done: false, active: false });
-      }
-    }
-
-    // Calculate percentage
-    if (effectiveTotal > 0) {
-      const perPost = 90 / effectiveTotal;
-      let pct = 10;
-      pct += (postsCompleted + failedDrafts.length) * perPost;
-      if (step.startsWith("generating_post")) pct += perPost * 0.3;
-      if (step.startsWith("generating_images")) pct += perPost * 0.7;
-      return { label: `Draft ${current} of ${effectiveTotal}`, percent: Math.min(Math.round(pct), 99), steps };
-    }
-
-    return { label: step.replace(/_/g, " "), percent: 50, steps };
   };
 
   const formatModelName = (modelId: string) => {
