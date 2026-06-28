@@ -34,6 +34,18 @@ const statuses: Array<{ value: OptimizeStatus; label: string }> = [
   { value: "improved", label: "Improved" },
 ];
 
+const searchConsoleOAuthSteps = [
+  "Use the Google account that owns or can read this Search Console property.",
+  "Click Continue with Google and approve read-only Search Console access.",
+  "If access fails, open Search Console Settings > Users and permissions and add that Google account.",
+];
+
+const searchConsoleServiceAccountSteps = [
+  "Use this only when you cannot connect a personal Google account.",
+  "In Google Cloud, create a service account key and download it as JSON.",
+  "In Search Console, add the service account client_email as a user for this property, then paste the whole JSON file here.",
+];
+
 export function OptimizePanel() {
   const { activeSite } = useSites();
   const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth } = useSearchConsole();
@@ -370,7 +382,7 @@ function SearchConsoleDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{integration ? "Manage" : "Connect"} Search Console</DialogTitle>
           <DialogDescription>Connect the Google account that has access to this Search Console property.</DialogDescription>
@@ -383,6 +395,11 @@ function SearchConsoleDialog({
           <div className="rounded-lg border border-byword-border p-4">
             <h3 className="font-semibold text-foreground">Google OAuth</h3>
             <p className="mt-1 text-sm text-muted-foreground">Approve read-only Search Console access. BlogFactory stores the refresh token encrypted.</p>
+            <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+              {searchConsoleOAuthSteps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
             <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting || !propertyUrl.trim()}>
               {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
               Continue with Google
@@ -391,6 +408,11 @@ function SearchConsoleDialog({
           <details className="rounded-lg border border-byword-border p-4">
             <summary className="cursor-pointer font-semibold text-foreground">Advanced: service account JSON</summary>
             <div className="mt-4 space-y-3">
+              <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+                {searchConsoleServiceAccountSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
               {integration && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Leave JSON blank to keep the saved credential.</p>}
               <div className="space-y-2">
                 <Label>Service account JSON</Label>
