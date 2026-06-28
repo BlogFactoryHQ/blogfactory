@@ -13,6 +13,7 @@ import {
   ChevronsLeft,
   Shield,
   Search,
+  SearchCheck,
   Plug,
   ChevronDown,
   Bell,
@@ -48,6 +49,7 @@ const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
   { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },
+  { name: "Optimize", href: "/optimize", icon: SearchCheck },
   { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
 ];
 
