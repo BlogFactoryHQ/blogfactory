@@ -143,6 +143,7 @@ export function InternalLinksPanel() {
   const refreshBlocked = status === "connected" && refreshAvailableAt ? refreshAvailableAt.getTime() > Date.now() : false;
   const sitemapChanged = Boolean(sitemapUrl.trim() && comparableSitemapUrl(sitemapUrl) !== comparableSitemapUrl(index?.sitemapUrl || settings?.internal_link_sitemap_url));
   const cooldownBlocksIndexing = refreshBlocked && !sitemapChanged;
+  const canManageIndex = status !== "disconnected" || Boolean(index);
   const indexingStep = state?.step || (isIndexing ? "queued" : status);
   const indexingStepIndex = Math.max(0, indexingSteps.findIndex((step) => step.key === indexingStep));
   const progress = useMemo(() => {
@@ -457,26 +458,28 @@ export function InternalLinksPanel() {
           </div>
         )}
 
-        <div className="flex flex-wrap justify-between gap-3 p-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => indexMutation.mutate()}
-            disabled={!sitemapUrl.trim() || isIndexing || cooldownBlocksIndexing || !hasOpenAiKey}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh Index
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => disconnectMutation.mutate()}
-            disabled={disconnectMutation.isPending || isIndexing}
-          >
-            <X className="mr-2 h-4 w-4" />
-            Disconnect
-          </Button>
-        </div>
+        {canManageIndex && (
+          <div className="flex flex-wrap justify-between gap-3 p-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => indexMutation.mutate()}
+              disabled={!sitemapUrl.trim() || isIndexing || cooldownBlocksIndexing || !hasOpenAiKey}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {cooldownBlocksIndexing && refreshAvailableAt ? `Refresh ${formatRelativeLabel(refreshAvailableAt.toISOString())}` : "Refresh Index"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => disconnectMutation.mutate()}
+              disabled={disconnectMutation.isPending || isIndexing}
+            >
+              <X className="mr-2 h-4 w-4" />
+              Disconnect
+            </Button>
+          </div>
+        )}
       </div>
     </BywordCard>
   );

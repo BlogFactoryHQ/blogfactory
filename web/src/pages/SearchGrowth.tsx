@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { type LucideIcon, ArrowRight, BarChart3, Link as LinkIcon, SearchCheck, Send } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
@@ -12,8 +13,14 @@ import { useSites } from "@/hooks/useSites";
 import { InternalLinksPanel } from "@/components/search-growth/InternalLinksPanel";
 import { IndexingPanel } from "@/pages/Indexing";
 import { OptimizePanel } from "@/pages/Optimize";
+import { api } from "@/lib/api";
 
 const tabs = new Set(["overview", "optimize", "indexing", "internal-links"]);
+
+interface InternalLinkSettings {
+  internal_link_status?: string | null;
+  internal_link_index?: { pageCount?: number } | null;
+}
 
 export default function SearchGrowth() {
   const [params, setParams] = useSearchParams();
@@ -57,9 +64,15 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => v
   const { integration: searchConsole, stats: gscStats } = useSearchConsole();
   const { integrations: indexingIntegrations, stats: indexingStats } = useIndexing();
   const { pages } = useOptimize("all");
+  const { data: internalLinks } = useQuery({
+    queryKey: ["user-settings"],
+    queryFn: () => api.get<InternalLinkSettings>("/settings"),
+  });
 
   const needsAttention = pages.filter((page) => page.status === "needs_attention").length;
   const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected").length;
+  const internalStatus = internalLinks?.internal_link_status || (internalLinks?.internal_link_index ? "connected" : "disconnected");
+  const internalPageCount = internalLinks?.internal_link_index?.pageCount || 0;
 
   return (
     <div className="space-y-8">
@@ -68,7 +81,7 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => v
           ["Site", activeSite?.domain || "No site selected"],
           ["GSC pages", String(gscStats.pageCount)],
           ["Needs attention", String(needsAttention)],
-          ["Indexed submissions", String(indexingStats.accepted)],
+          ["URL submissions", String(indexingStats.accepted)],
         ].map(([label, value]) => (
           <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
@@ -97,8 +110,8 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => v
         <OverviewCard
           icon={LinkIcon}
           title="Internal Links"
-          badge="Semantic index"
-          description="Build a sitemap-based index so generated articles can link to relevant existing pages."
+          badge={internalStatus === "connected" ? "Ready" : internalStatus}
+          description={internalStatus === "connected" ? `${internalPageCount} pages available for semantic internal links.` : "Build a sitemap-based index so generated articles can link to relevant existing pages."}
           action="Open Internal Links"
           onClick={() => onSelectTab("internal-links")}
         />
