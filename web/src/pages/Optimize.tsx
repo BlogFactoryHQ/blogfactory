@@ -34,7 +34,7 @@ const statuses: Array<{ value: OptimizeStatus; label: string }> = [
   { value: "improved", label: "Improved" },
 ];
 
-export default function Optimize() {
+export function OptimizePanel() {
   const { activeSite } = useSites();
   const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync } = useSearchConsole();
   const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
@@ -101,9 +101,7 @@ export default function Optimize() {
   };
 
   return (
-    <BywordPageShell className="max-w-7xl">
-      <PageHeader title="Optimize" description="Find pages that slipped in search and analyze what to improve." />
-
+    <>
       <div className="space-y-8">
         <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-4">
           {[
@@ -282,6 +280,15 @@ export default function Optimize() {
       />
 
       <AnalysisSheet analysis={analysis} onOpenChange={(open) => !open && setAnalysis(null)} />
+    </>
+  );
+}
+
+export default function Optimize() {
+  return (
+    <BywordPageShell className="max-w-7xl">
+      <PageHeader title="Optimize" description="Find pages that slipped in search and analyze what to improve." />
+      <OptimizePanel />
     </BywordPageShell>
   );
 }

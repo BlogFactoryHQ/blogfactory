@@ -62,7 +62,7 @@ const providerDetails: Record<IndexingProvider, {
 
 const providers: IndexingProvider[] = ["indexnow", "google"];
 
-export default function Indexing() {
+export function IndexingPanel() {
   const { activeSite } = useSites();
   const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls } = useIndexing();
   const [providerToConnect, setProviderToConnect] = useState<IndexingProvider | null>(null);
@@ -106,12 +106,7 @@ export default function Indexing() {
   };
 
   return (
-    <BywordPageShell className="max-w-7xl">
-      <PageHeader
-        title="Indexing"
-        description="Submit live URLs from the active site to connected indexing providers."
-      />
-
+    <>
       <div className="space-y-8">
         <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-5">
           {[
@@ -279,6 +274,18 @@ export default function Indexing() {
         }}
         isSaving={saveIntegration.isPending}
       />
+    </>
+  );
+}
+
+export default function Indexing() {
+  return (
+    <BywordPageShell className="max-w-7xl">
+      <PageHeader
+        title="Indexing"
+        description="Submit live URLs from the active site to connected indexing providers."
+      />
+      <IndexingPanel />
     </BywordPageShell>
   );
 }

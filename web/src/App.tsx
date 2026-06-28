@@ -25,8 +25,7 @@ const Jobs = lazy(() => import("@/pages/Jobs"));
 const Personas = lazy(() => import("@/pages/Personas"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Integrations = lazy(() => import("@/pages/Integrations"));
-const Indexing = lazy(() => import("@/pages/Indexing"));
-const Optimize = lazy(() => import("@/pages/Optimize"));
+const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
 const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
@@ -71,8 +70,9 @@ const App = () => (
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/sites" element={<Sites />} />
                         <Route path="/integrations" element={<Integrations />} />
-                        <Route path="/indexing" element={<Indexing />} />
-                        <Route path="/optimize" element={<Optimize />} />
+                        <Route path="/indexing" element={<Navigate to="/search-growth?tab=indexing" replace />} />
+                        <Route path="/optimize" element={<Navigate to="/search-growth?tab=optimize" replace />} />
+                        <Route path="/search-growth" element={<SearchGrowth />} />
                         <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                         <Route path="/gallery" element={<ImageGallery />} />
                         <Route path="/admin/users" element={<AdminUsers />} />

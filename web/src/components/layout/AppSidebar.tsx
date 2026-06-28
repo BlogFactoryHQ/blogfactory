@@ -49,7 +49,7 @@ const primaryNavigation = [
   { name: "Create Content", href: "/content-creator", icon: PenTool },
   { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },
-  { name: "Optimize", href: "/optimize", icon: SearchCheck },
+  { name: "Search Growth", href: "/search-growth", icon: SearchCheck },
   { name: "Programmatic", href: "/programmatic", icon: Grid2X2 },
 ];
 
@@ -63,7 +63,6 @@ const monitorNavigation = [
 
 const lowerNavigation = [
   { name: "Integrations", href: "/integrations", icon: Plug },
-  { name: "Indexing", href: "/indexing", icon: Search },
   { name: "Article Settings", href: "/settings", icon: Settings },
   { name: "Sites", href: "/sites", icon: Globe2 },
 ];
