@@ -29,6 +29,7 @@ const asNumber = (value: unknown) => {
 };
 const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined;
 const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
+type SettingsUpdate = Record<string, any>;
 
 function firstTextFromGemini(data: unknown) {
   const record = data as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
@@ -217,33 +218,33 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
   };
 }
 
-function buildSettingsUpdate(body: Record<string, unknown>): Partial<typeof userSettings.$inferInsert> {
-  const update: Partial<typeof userSettings.$inferInsert> = {};
+function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
+  const update: SettingsUpdate = {};
 
-  const setText = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setText = (camel: string, snake: string, camelName: string = String(camel)) => {
     const value = body[snake] ?? body[camelName];
-    if (value !== undefined) update[camel] = asText(value) as never;
+    if (value !== undefined) update[camel] = asText(value);
   };
-  const setOptionalText = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setOptionalText = (camel: string, snake: string, camelName: string = String(camel)) => {
     const value = body[snake] ?? body[camelName];
     const parsed = asOptionalText(value);
-    if (parsed !== undefined) update[camel] = parsed as never;
+    if (parsed !== undefined) update[camel] = parsed;
   };
-  const setBool = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setBool = (camel: string, snake: string, camelName: string = String(camel)) => {
     const parsed = asBool(body[snake] ?? body[camelName]);
-    if (parsed !== undefined) update[camel] = parsed as never;
+    if (parsed !== undefined) update[camel] = parsed;
   };
-  const setNumber = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setNumber = (camel: string, snake: string, camelName: string = String(camel)) => {
     const parsed = asNumber(body[snake] ?? body[camelName]);
-    if (parsed !== undefined) update[camel] = parsed as never;
+    if (parsed !== undefined) update[camel] = parsed;
   };
-  const setArray = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setArray = (camel: string, snake: string, camelName: string = String(camel)) => {
     const parsed = asJsonArray(body[snake] ?? body[camelName]);
-    if (parsed !== undefined) update[camel] = parsed as never;
+    if (parsed !== undefined) update[camel] = parsed;
   };
-  const setJson = (camel: keyof typeof update, snake: string, camelName: string = String(camel)) => {
+  const setJson = (camel: string, snake: string, camelName: string = String(camel)) => {
     const value = body[snake] ?? body[camelName];
-    if (value !== undefined) update[camel] = value as never;
+    if (value !== undefined) update[camel] = value;
   };
 
   setOptionalText("imageModel", "image_model");
@@ -380,7 +381,7 @@ async function runInternalLinkIndexing({
     state = { ...state, ...patch, jobId, startedAt };
     await db
       .update(userSettings)
-      .set({ internalLinkIndexingState: state as never, updatedAt: new Date() })
+      .set({ internalLinkIndexingState: state, updatedAt: new Date() } as any)
       .where(eq(userSettings.userId, userId));
   };
 
@@ -419,7 +420,7 @@ async function runInternalLinkIndexing({
         internalLinkIndexingState: completedState as never,
         internalLinkLastSyncedAt: completedAt,
         updatedAt: completedAt,
-      })
+      } as any)
       .onConflictDoUpdate({
         target: userSettings.userId,
         set: {
@@ -434,7 +435,7 @@ async function runInternalLinkIndexing({
           internalLinkIndexingState: completedState as never,
           internalLinkLastSyncedAt: completedAt,
           updatedAt: completedAt,
-        },
+        } as any,
       })
       .returning();
 
@@ -450,7 +451,7 @@ async function runInternalLinkIndexing({
           internalLinkIndex: index as never,
           internalLinkLastSyncedAt: result.internalLinkLastSyncedAt,
           updatedAt: new Date(),
-        } as never)
+        } as any)
         .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
     }
   } catch (err) {
@@ -467,7 +468,7 @@ async function runInternalLinkIndexing({
           completedAt: new Date().toISOString(),
         } as never,
         updatedAt: new Date(),
-      })
+      } as any)
       .where(eq(userSettings.userId, userId));
     console.error("[internal-linking] Indexing failed:", message);
   }
@@ -531,7 +532,7 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
         internalLinkExcludePatterns: excludePatterns,
         internalLinkIndexingState: indexingState as never,
         updatedAt: startedAt,
-      })
+      } as any)
       .onConflictDoUpdate({
         target: userSettings.userId,
         set: {
@@ -544,7 +545,7 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
           internalLinkExcludePatterns: excludePatterns,
           internalLinkIndexingState: indexingState as never,
           updatedAt: startedAt,
-        },
+        } as any,
       })
       .returning();
 
@@ -579,7 +580,7 @@ settingsRoutes.delete("/internal-linking", async (c) => {
       internalLinkIndexingState: null,
       internalLinkLastSyncedAt: null,
       updatedAt: new Date(),
-    })
+    } as any)
     .onConflictDoUpdate({
       target: userSettings.userId,
       set: {
@@ -590,7 +591,7 @@ settingsRoutes.delete("/internal-linking", async (c) => {
         internalLinkIndexingState: null,
         internalLinkLastSyncedAt: null,
         updatedAt: new Date(),
-      },
+      } as any,
     })
     .returning();
 
@@ -602,7 +603,7 @@ settingsRoutes.delete("/internal-linking", async (c) => {
         internalLinkIndex: null,
         internalLinkLastSyncedAt: null,
         updatedAt: new Date(),
-      } as never)
+      } as any)
       .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
   }
 
@@ -664,7 +665,7 @@ settingsRoutes.post("/voice-profile/analyze", async (c) => {
           customVoiceProfile: values.customVoiceProfile,
           voiceTrainingSamples: values.voiceTrainingSamples,
           updatedAt: values.updatedAt,
-        } as never,
+        } as any,
       })
       .returning();
 
@@ -687,7 +688,7 @@ settingsRoutes.get("/", async (c) => {
 settingsRoutes.put("/", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
-  let update: Partial<typeof userSettings.$inferInsert>;
+  let update: SettingsUpdate;
   try {
     update = buildSettingsUpdate(body);
   } catch (err) {
@@ -701,10 +702,10 @@ settingsRoutes.put("/", async (c) => {
   // Upsert: insert or update on conflict
   const [result] = await db
     .insert(userSettings)
-    .values({ ...update, userId })
+    .values({ ...update, userId } as any)
     .onConflictDoUpdate({
       target: userSettings.userId,
-      set: update,
+      set: update as any,
     })
     .returning();
 

@@ -82,7 +82,7 @@ authRoutes.post("/login", async (c) => {
   }
 
   const bootstrapped = await bootstrapUserAccess(user);
-  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, bootstrapped.id));
+  await db.update(users).set({ lastLoginAt: new Date() } as any).where(eq(users.id, bootstrapped.id));
 
   const token = await signJwt(user.id, rememberMe ?? false);
   return c.json({
@@ -131,7 +131,7 @@ authRoutes.post("/forgot-password", async (c) => {
   const resetToken = randomBytes(32).toString("hex");
   const resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-  await db.update(users).set({ resetToken, resetTokenExpiresAt }).where(eq(users.id, user.id));
+  await db.update(users).set({ resetToken, resetTokenExpiresAt } as any).where(eq(users.id, user.id));
 
   // In production, send email with reset link containing resetToken
   // For dev, log it
@@ -167,7 +167,7 @@ authRoutes.post("/reset-password", async (c) => {
   }
 
   const passwordHash = await hash(password, 10);
-  await db.update(users).set({ passwordHash, resetToken: null, resetTokenExpiresAt: null }).where(eq(users.id, user.id));
+  await db.update(users).set({ passwordHash, resetToken: null, resetTokenExpiresAt: null } as any).where(eq(users.id, user.id));
 
   return c.json({ message: "Password reset successfully. You can now sign in." });
 });
@@ -188,7 +188,7 @@ authRoutes.post("/verify-email", async (c) => {
     return c.json({ error: "Invalid verification token" }, 400);
   }
 
-  await db.update(users).set({ emailVerified: true, verifyToken: null }).where(eq(users.id, user.id));
+  await db.update(users).set({ emailVerified: true, verifyToken: null } as any).where(eq(users.id, user.id));
 
   return c.json({ message: "Email verified successfully. You can now sign in." });
 });

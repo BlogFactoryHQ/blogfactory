@@ -79,7 +79,7 @@ postsRoutes.post("/import-md", async (c) => {
       sourceType: "batch_import",
       sourceRefId: folder,
       modelId: "manual/import",
-    })
+    } as any)
     .returning();
 
   const images = formData.getAll("images").filter((value): value is File => value instanceof File);
@@ -96,14 +96,14 @@ postsRoutes.post("/import-md", async (c) => {
         status: "used",
         type: position === 0 ? "cover" : "inline",
         position,
-      })
+      } as any)
       .where(eq(imageAssets.id, asset.id));
 
     if (position === 0) coverImageUrl = asset.storagePath;
     else inlineImages.push(asset.storagePath);
   }
 
-  const update: Partial<typeof posts.$inferInsert> = {};
+  const update: Record<string, any> = {};
   if (coverImageUrl) update.coverImageUrl = coverImageUrl;
   if (inlineImages.length) update.inlineImages = inlineImages;
   if (Object.keys(update).length) await db.update(posts).set(update).where(eq(posts.id, post.id));
@@ -164,10 +164,10 @@ postsRoutes.post("/:id/images", async (c) => {
       status: "used",
       type,
       position: Number.isFinite(position) ? position : 0,
-    })
+    } as any)
     .where(eq(imageAssets.id, asset.id));
 
-  const update: Partial<typeof posts.$inferInsert> = {};
+  const update: Record<string, any> = {};
   if (type === "cover") update.coverImageUrl = asset.storagePath;
   else update.inlineImages = [...(post.inlineImages || []), asset.storagePath];
   await db.update(posts).set(update).where(and(eq(posts.id, id), eq(posts.userId, userId)));
@@ -263,7 +263,7 @@ postsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
   const body = await c.req.json();
-  const update: Partial<typeof posts.$inferInsert> = {};
+  const update: Record<string, any> = {};
   if (typeof body.title === "string") update.title = cleanPostTitle(body.title);
   if (typeof body.content === "string") update.content = cleanGeneratedPostContent(body.content);
   if (typeof body.status === "string") {
@@ -318,7 +318,7 @@ postsRoutes.post("/bulk-publish", async (c) => {
 
   await db
     .update(posts)
-    .set({ status: "published" })
+    .set({ status: "published" } as any)
     .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
   return c.json({ success: true });
 });
@@ -330,7 +330,7 @@ postsRoutes.post("/bulk-draft", async (c) => {
 
   await db
     .update(posts)
-    .set({ status: "draft" })
+    .set({ status: "draft" } as any)
     .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
   return c.json({ success: true });
 });
@@ -358,6 +358,6 @@ async function cleanupPostFiles(postIds: string[], userId: string) {
   // Mark image_assets as orphaned
   await db
     .update(imageAssets)
-    .set({ status: "orphaned", postId: null })
+    .set({ status: "orphaned", postId: null } as any)
     .where(inArray(imageAssets.postId, postIds));
 }
