@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { optimizeAnalyses, optimizePages, searchConsoleMetrics, sites } from "../db/schema.js";
+import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites, userSettings } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
 import { getOpenRouterKey } from "./api-keys.js";
 
@@ -33,6 +33,49 @@ interface Suggestion {
   detail: string;
 }
 
+type Opportunity =
+  | "needs_attention"
+  | "growing"
+  | "almost_ranking"
+  | "page_two"
+  | "low_ctr"
+  | "zero_clicks"
+  | "weak_focus"
+  | "wrong_page_risk";
+
+interface GscMetric {
+  date: string;
+  pageUrl: string;
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr?: number;
+  position: number;
+}
+
+interface MetricDelta {
+  clicks: number;
+  impressions: number;
+  position: number;
+  ctr: number;
+}
+
+export interface PageInsight {
+  pageUrl: string;
+  topQuery: string;
+  status: OptimizeStatus;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  baseline: MetricSummary & { ctr: number };
+  latest: MetricSummary & { ctr: number };
+  delta: MetricDelta;
+  opportunities: Opportunity[];
+  suggestedAction: string;
+  topQueries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+}
+
 export function classifyOptimizeStatus(input: {
   baseline: MetricSummary;
   latest: MetricSummary;
@@ -47,6 +90,116 @@ export function classifyOptimizeStatus(input: {
   if (optimizedAt && enoughData && (positionDelta <= -3 || clickGain >= 0.2)) return "improved";
   if (enoughData && (positionDelta >= 5 || clickDrop >= 0.2)) return "needs_attention";
   return "tracking";
+}
+
+export function buildPageInsightsFromMetrics(metrics: GscMetric[]): PageInsight[] {
+  if (!metrics.length) return [];
+  const maxDate = metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
+  const latestStart = shiftDate(maxDate, -13);
+  const baselineEnd = shiftDate(latestStart, -1);
+  const baselineStart = shiftDate(baselineEnd, -13);
+  const byPage = groupBy(metrics, (metric) => metric.pageUrl);
+  const queryWinners = buildQueryWinners(metrics.filter((row) => row.date >= latestStart && row.date <= maxDate));
+
+  return Array.from(byPage.entries())
+    .map(([pageUrl, rows]) => {
+      const latestRows = rows.filter((row) => row.date >= latestStart && row.date <= maxDate);
+      const baselineRows = rows.filter((row) => row.date >= baselineStart && row.date <= baselineEnd);
+      const latest = summarizeMetricsWithCtr(latestRows);
+      const baseline = summarizeMetricsWithCtr(baselineRows);
+      const topQueries = summarizeQueries(latestRows);
+      const topQuery = topQueries[0]?.query || rows[0]?.query || "";
+      const delta = {
+        clicks: latest.clicks - baseline.clicks,
+        impressions: latest.impressions - baseline.impressions,
+        position: Number((latest.position - baseline.position).toFixed(2)),
+        ctr: Number((latest.ctr - baseline.ctr).toFixed(4)),
+      };
+      const status = classifyOptimizeStatus({ baseline, latest });
+      const opportunities = classifyOpportunities({ pageUrl, latest, baseline, topQueries, queryWinners });
+      return {
+        pageUrl,
+        topQuery,
+        status,
+        clicks: latest.clicks,
+        impressions: latest.impressions,
+        ctr: latest.ctr,
+        position: latest.position,
+        baseline,
+        latest,
+        delta,
+        opportunities,
+        suggestedAction: suggestedAction(opportunities),
+        topQueries: topQueries.slice(0, 5),
+      };
+    })
+    .sort((a, b) => opportunityScore(b) - opportunityScore(a) || b.impressions - a.impressions);
+}
+
+export async function getOptimizeSummary(userId: string, siteId: string) {
+  const [integration] = await db
+    .select()
+    .from(searchConsoleIntegrations)
+    .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
+    .limit(1);
+  const metrics = await selectGscMetrics(userId, siteId);
+  const insights = buildPageInsightsFromMetrics(metrics);
+  const counts = opportunityCounts(insights);
+  const queryCount = new Set(metrics.map((metric) => metric.query)).size;
+  const statusCounts = insights.reduce((items, page) => {
+    items[page.status] = (items[page.status] || 0) + 1;
+    return items;
+  }, {} as Record<string, number>);
+  return {
+    lastSyncAt: integration?.lastSyncAt || null,
+    last_sync_at: integration?.lastSyncAt || null,
+    pageCount: insights.length,
+    page_count: insights.length,
+    queryCount,
+    query_count: queryCount,
+    clicks: insights.reduce((sum, page) => sum + page.clicks, 0),
+    impressions: insights.reduce((sum, page) => sum + page.impressions, 0),
+    needsAttentionCount: insights.filter((page) => page.status === "needs_attention").length,
+    needs_attention_count: insights.filter((page) => page.status === "needs_attention").length,
+    topGrowingPage: insights.find((page) => page.opportunities.includes("growing")) || null,
+    top_growing_page: insights.find((page) => page.opportunities.includes("growing")) || null,
+    biggestDecliningPage: insights.find((page) => page.status === "needs_attention") || null,
+    biggest_declining_page: insights.find((page) => page.status === "needs_attention") || null,
+    bestQuickWin: insights.find((page) => page.opportunities.includes("almost_ranking") || page.opportunities.includes("low_ctr")) || null,
+    best_quick_win: insights.find((page) => page.opportunities.includes("almost_ranking") || page.opportunities.includes("low_ctr")) || null,
+    opportunityCounts: counts,
+    opportunity_counts: counts,
+    statusCounts,
+    status_counts: statusCounts,
+  };
+}
+
+export async function listPageInsights(userId: string, siteId: string, status?: string, opportunity?: string) {
+  let insights = buildPageInsightsFromMetrics(await selectGscMetrics(userId, siteId));
+  if (status && status !== "all") insights = insights.filter((page) => page.status === status);
+  if (opportunity && opportunity !== "all") insights = insights.filter((page) => page.opportunities.includes(opportunity as Opportunity));
+  return insights.slice(0, 250);
+}
+
+export async function getPageInsightDetail(userId: string, siteId: string, pageUrl: string) {
+  const normalizedPageUrl = normalizeHttpUrl(pageUrl);
+  const metrics = (await selectGscMetrics(userId, siteId)).filter((metric) => normalizeHttpUrl(metric.pageUrl) === normalizedPageUrl);
+  const [insight] = buildPageInsightsFromMetrics(metrics);
+  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+  const analyses = await listOptimizeAnalyses({ userId, siteId, pageUrl: normalizedPageUrl });
+  return {
+    insight: insight || null,
+    dailyHistory: summarizeDaily(metrics),
+    daily_history: summarizeDaily(metrics),
+    queries: summarizeQueries(metrics),
+    queryIntentSummary: queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query)),
+    query_intent_summary: queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query)),
+    actionPlan: actionPlan(insight?.opportunities || []),
+    action_plan: actionPlan(insight?.opportunities || []),
+    analyses,
+    internalLinkTargets: internalLinkTargets(settings?.internalLinkIndex, normalizedPageUrl),
+    internal_link_targets: internalLinkTargets(settings?.internalLinkIndex, normalizedPageUrl),
+  };
 }
 
 export function fallbackSuggestions(own: ContentSnapshot, competitors: ContentSnapshot[]): Suggestion[] {
@@ -329,6 +482,183 @@ function summarizeMetrics(rows: Array<{ clicks: number; impressions: number; pos
       ? rows.reduce((sum, row) => sum + row.position, 0) / rows.length
       : 0;
   return { clicks, impressions, position: Number(position.toFixed(2)) };
+}
+
+function summarizeMetricsWithCtr(rows: Array<{ clicks: number; impressions: number; position: number }>) {
+  const summary = summarizeMetrics(rows);
+  return { ...summary, ctr: summary.impressions ? Number((summary.clicks / summary.impressions).toFixed(4)) : 0 };
+}
+
+function summarizeQueries(rows: GscMetric[]) {
+  return Array.from(groupBy(rows, (row) => row.query).entries())
+    .map(([query, queryRows]) => ({ query, ...summarizeMetricsWithCtr(queryRows) }))
+    .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks);
+}
+
+function summarizeDaily(rows: GscMetric[]) {
+  return Array.from(groupBy(rows, (row) => row.date).entries())
+    .map(([date, dateRows]) => ({ date, ...summarizeMetricsWithCtr(dateRows) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function classifyOpportunities(input: {
+  pageUrl: string;
+  latest: MetricSummary & { ctr: number };
+  baseline: MetricSummary & { ctr: number };
+  topQueries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  queryWinners: Map<string, { pageUrl: string; clicks: number; position: number }>;
+}): Opportunity[] {
+  const { pageUrl, latest, baseline, topQueries, queryWinners } = input;
+  const opportunities: Opportunity[] = [];
+  const enoughData = Math.max(latest.impressions, baseline.impressions) >= 50;
+  const clickDrop = baseline.clicks > 0 ? (baseline.clicks - latest.clicks) / baseline.clicks : 0;
+  const clickGain = baseline.clicks > 0 ? (latest.clicks - baseline.clicks) / baseline.clicks : latest.clicks > 0 ? 1 : 0;
+  const positionDelta = latest.position - baseline.position;
+  const topShare = latest.impressions ? (topQueries[0]?.impressions || 0) / latest.impressions : 0;
+
+  if (enoughData && (positionDelta >= 5 || clickDrop >= 0.2)) opportunities.push("needs_attention");
+  if (enoughData && (positionDelta <= -3 || clickGain >= 0.2)) opportunities.push("growing");
+  if (latest.position >= 4 && latest.position <= 20) opportunities.push("almost_ranking");
+  if (latest.position >= 11 && latest.position <= 20) opportunities.push("page_two");
+  if (latest.impressions >= 100 && latest.ctr < expectedCtr(latest.position)) opportunities.push("low_ctr");
+  if (latest.impressions >= 50 && latest.clicks === 0) opportunities.push("zero_clicks");
+  if (topQueries.length >= 8 && topShare < 0.4) opportunities.push("weak_focus");
+  if (topQueries.some((query) => {
+    const winner = queryWinners.get(query.query);
+    return winner && winner.pageUrl !== pageUrl && (winner.position + 1 < query.position || winner.clicks > query.clicks);
+  })) opportunities.push("wrong_page_risk");
+
+  return opportunities;
+}
+
+function suggestedAction(opportunities: Opportunity[]) {
+  if (opportunities.includes("needs_attention")) return "Refresh declining content and update stale sections.";
+  if (opportunities.includes("low_ctr")) return "Rewrite title and meta description for the top query.";
+  if (opportunities.includes("almost_ranking") || opportunities.includes("page_two")) return "Expand the matching section and add internal links.";
+  if (opportunities.includes("weak_focus")) return "Tighten the page around one primary intent.";
+  if (opportunities.includes("zero_clicks")) return "Improve the snippet or reassess search intent.";
+  if (opportunities.includes("growing")) return "Monitor gains and reinforce with internal links.";
+  return "Keep tracking performance.";
+}
+
+function actionPlan(opportunities: Opportunity[]) {
+  const items = opportunities.map((opportunity) => ({
+    opportunity,
+    title: suggestedAction([opportunity]),
+    detail: actionDetail(opportunity),
+  }));
+  return items.length ? items : [{ opportunity: "tracking", title: "Keep tracking performance.", detail: "No urgent GSC opportunity is flagged for this page." }];
+}
+
+function actionDetail(opportunity: string) {
+  const details: Record<string, string> = {
+    needs_attention: "Compare the latest ranking query against the page content and refresh sections that no longer match the SERP.",
+    low_ctr: "Keep the URL, but test a clearer title/meta angle around the top query.",
+    almost_ranking: "Add depth for the top query and point relevant internal links at this page.",
+    page_two: "Treat this as a near-win: expand topical coverage and strengthen internal anchors.",
+    weak_focus: "Choose one primary query, then make headings and intro match that intent.",
+    zero_clicks: "The page is visible but not earning clicks; improve snippet relevance first.",
+    growing: "Protect the gain with fresh examples and internal links from related pages.",
+    wrong_page_risk: "Review competing URLs for the same query and consolidate or differentiate intent.",
+  };
+  return details[opportunity] || "Review this page when new data arrives.";
+}
+
+function expectedCtr(position: number) {
+  if (position <= 3) return 0.08;
+  if (position <= 10) return 0.03;
+  if (position <= 20) return 0.01;
+  return 0.005;
+}
+
+function opportunityScore(page: PageInsight) {
+  const weights: Record<string, number> = {
+    needs_attention: 100,
+    low_ctr: 80,
+    zero_clicks: 70,
+    almost_ranking: 60,
+    page_two: 50,
+    weak_focus: 40,
+    wrong_page_risk: 30,
+    growing: 10,
+  };
+  return page.opportunities.reduce((sum, item) => sum + (weights[item] || 0), 0);
+}
+
+function opportunityCounts(insights: PageInsight[]) {
+  return insights.reduce((counts, page) => {
+    for (const opportunity of page.opportunities) counts[opportunity] = (counts[opportunity] || 0) + 1;
+    return counts;
+  }, {} as Record<string, number>);
+}
+
+function buildQueryWinners(rows: GscMetric[]) {
+  const winners = new Map<string, { pageUrl: string; clicks: number; position: number }>();
+  for (const [query, queryRows] of groupBy(rows, (row) => row.query)) {
+    const pages = Array.from(groupBy(queryRows, (row) => row.pageUrl).entries())
+      .map(([pageUrl, pageRows]) => ({ pageUrl, ...summarizeMetricsWithCtr(pageRows) }))
+      .sort((a, b) => b.clicks - a.clicks || a.position - b.position);
+    if (pages[0]) winners.set(query, { pageUrl: pages[0].pageUrl, clicks: pages[0].clicks, position: pages[0].position });
+  }
+  return winners;
+}
+
+function queryIntentSummary(queries: string[]) {
+  const text = Array.from(new Set(queries)).slice(0, 12).join(" ").toLowerCase();
+  if (/\b(best|vs|review|price|cost|alternative|compare)\b/.test(text)) return "Commercial comparison intent";
+  if (/\b(how|what|why|guide|tutorial|learn)\b/.test(text)) return "Informational intent";
+  if (/\bnear me|login|contact|support\b/.test(text)) return "Navigational or local intent";
+  return queries.length ? "Mixed search intent" : "No query intent available yet";
+}
+
+export function internalLinkTargets(index: unknown, pageUrl: string) {
+  const pages = ((index as { pages?: Array<{ title?: string; url?: string; path?: string }> } | null)?.pages || [])
+    .filter((page) => page.url && safeNormalizeHttpUrl(page.url) !== pageUrl);
+  const pageTokens = tokenSet(pageUrl);
+  return pages
+    .map((page) => ({ ...page, score: overlap(pageTokens, tokenSet(`${page.title || ""} ${page.url || ""} ${page.path || ""}`)) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map(({ score: _score, ...page }) => page);
+}
+
+function safeNormalizeHttpUrl(value: string) {
+  try {
+    return normalizeHttpUrl(value);
+  } catch {
+    return value;
+  }
+}
+
+function tokenSet(value: string) {
+  return new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3));
+}
+
+function overlap(a: Set<string>, b: Set<string>) {
+  let count = 0;
+  for (const item of a) if (b.has(item)) count += 1;
+  return count;
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string) {
+  const groups = new Map<string, T[]>();
+  for (const item of items) groups.set(key(item), [...(groups.get(key(item)) || []), item]);
+  return groups;
+}
+
+async function selectGscMetrics(userId: string, siteId: string): Promise<GscMetric[]> {
+  return db
+    .select({
+      date: searchConsoleMetrics.date,
+      pageUrl: searchConsoleMetrics.pageUrl,
+      query: searchConsoleMetrics.query,
+      clicks: searchConsoleMetrics.clicks,
+      impressions: searchConsoleMetrics.impressions,
+      ctr: searchConsoleMetrics.ctr,
+      position: searchConsoleMetrics.position,
+    })
+    .from(searchConsoleMetrics)
+    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
 }
 
 async function snapshotPage(url: string): Promise<ContentSnapshot> {

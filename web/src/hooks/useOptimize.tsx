@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { useSites } from "@/hooks/useSites";
 
 export type OptimizeStatus = "all" | "needs_attention" | "tracking" | "improved";
+export type OptimizeOpportunity = "all" | "needs_attention" | "growing" | "almost_ranking" | "page_two" | "low_ctr" | "zero_clicks" | "weak_focus" | "wrong_page_risk";
 
 export interface OptimizeMetricSummary {
   clicks: number;
@@ -40,6 +41,59 @@ export interface OptimizeAnalysis {
   suggestions: Array<{ impact: "high" | "medium" | "low"; title: string; detail: string }>;
   createdAt: string;
   created_at: string;
+}
+
+export interface OptimizePageInsight {
+  pageUrl: string;
+  topQuery: string;
+  status: OptimizeStatus | string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  baseline: OptimizeMetricSummary & { ctr: number };
+  latest: OptimizeMetricSummary & { ctr: number };
+  delta: { clicks: number; impressions: number; position: number; ctr: number };
+  opportunities: string[];
+  suggestedAction: string;
+  topQueries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+}
+
+export interface OptimizeSummary {
+  lastSyncAt: string | null;
+  last_sync_at: string | null;
+  pageCount: number;
+  page_count: number;
+  queryCount: number;
+  query_count: number;
+  clicks: number;
+  impressions: number;
+  needsAttentionCount: number;
+  needs_attention_count: number;
+  topGrowingPage: OptimizePageInsight | null;
+  top_growing_page: OptimizePageInsight | null;
+  biggestDecliningPage: OptimizePageInsight | null;
+  biggest_declining_page: OptimizePageInsight | null;
+  bestQuickWin: OptimizePageInsight | null;
+  best_quick_win: OptimizePageInsight | null;
+  opportunityCounts: Record<string, number>;
+  opportunity_counts: Record<string, number>;
+  statusCounts: Record<string, number>;
+  status_counts: Record<string, number>;
+}
+
+export interface OptimizePageDetail {
+  insight: OptimizePageInsight | null;
+  dailyHistory: Array<OptimizeMetricSummary & { date: string; ctr: number }>;
+  daily_history: Array<OptimizeMetricSummary & { date: string; ctr: number }>;
+  queries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  queryIntentSummary: string;
+  query_intent_summary: string;
+  actionPlan: Array<{ opportunity: string; title: string; detail: string }>;
+  action_plan: Array<{ opportunity: string; title: string; detail: string }>;
+  analyses: OptimizeAnalysis[];
+  internalLinkTargets: Array<{ title?: string; url?: string; path?: string }>;
+  internal_link_targets: Array<{ title?: string; url?: string; path?: string }>;
 }
 
 export interface ContentSnapshot {
@@ -105,5 +159,49 @@ export function useOptimize(status: OptimizeStatus = "all", siteId?: string | nu
     analyze,
     loadAnalyses,
     markOptimized,
+  };
+}
+
+export function useOptimizeInsights(status: OptimizeStatus = "all", opportunity: OptimizeOpportunity = "all", siteId?: string | null) {
+  const { activeSiteId } = useSites();
+  const resolvedSiteId = siteId || activeSiteId;
+  const queryClient = useQueryClient();
+
+  const summary = useQuery({
+    queryKey: ["optimize-summary", resolvedSiteId],
+    queryFn: async () => api.get<OptimizeSummary>(`/optimize/summary?siteId=${encodeURIComponent(resolvedSiteId || "")}`),
+    enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const pages = useQuery({
+    queryKey: ["optimize-page-insights", resolvedSiteId, status, opportunity],
+    queryFn: async () => {
+      const params = new URLSearchParams({ siteId: resolvedSiteId || "", status, opportunity });
+      return api.get<{ pages: OptimizePageInsight[] }>(`/optimize/page-insights?${params.toString()}`);
+    },
+    enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const detail = useMutation({
+    mutationFn: async (pageUrl: string) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      return api.get<OptimizePageDetail>(`/optimize/page-insights/${encodeURIComponent(pageUrl)}?siteId=${encodeURIComponent(resolvedSiteId)}`);
+    },
+  });
+
+  return {
+    summary: summary.data,
+    pageInsights: pages.data?.pages || [],
+    isLoadingSummary: summary.isLoading,
+    isLoadingPageInsights: pages.isLoading,
+    loadPageDetail: detail,
+    invalidateInsights: () => {
+      queryClient.invalidateQueries({ queryKey: ["optimize-summary", resolvedSiteId] });
+      queryClient.invalidateQueries({ queryKey: ["optimize-page-insights", resolvedSiteId] });
+    },
   };
 }

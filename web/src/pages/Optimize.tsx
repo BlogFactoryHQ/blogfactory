@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -24,7 +25,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchConsoleIntegration, useSearchConsole } from "@/hooks/useSearchConsole";
-import { ContentSnapshot, OptimizeAnalysis, OptimizePage, OptimizeStatus, useOptimize } from "@/hooks/useOptimize";
+import {
+  ContentSnapshot,
+  OptimizeAnalysis,
+  OptimizeOpportunity,
+  OptimizePage,
+  OptimizePageDetail,
+  OptimizePageInsight,
+  OptimizeStatus,
+  useOptimize,
+  useOptimizeInsights,
+} from "@/hooks/useOptimize";
+import { useIndexing } from "@/hooks/useIndexing";
 import { useSites } from "@/hooks/useSites";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +44,15 @@ const statuses: Array<{ value: OptimizeStatus; label: string }> = [
   { value: "needs_attention", label: "Needs Attention" },
   { value: "tracking", label: "Tracking" },
   { value: "improved", label: "Improved" },
+];
+
+const opportunityFilters: Array<{ value: OptimizeOpportunity; label: string }> = [
+  { value: "all", label: "All opportunities" },
+  { value: "low_ctr", label: "Low CTR" },
+  { value: "almost_ranking", label: "Almost ranking" },
+  { value: "page_two", label: "Page two" },
+  { value: "zero_clicks", label: "Zero clicks" },
+  { value: "weak_focus", label: "Weak focus" },
 ];
 
 const searchConsoleOAuthSteps = [
@@ -47,14 +68,25 @@ const searchConsoleServiceAccountSteps = [
 ];
 
 export function OptimizePanel() {
+  const [params, setParams] = useSearchParams();
   const { activeSite } = useSites();
   const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth } = useSearchConsole();
   const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
-  const [status, setStatus] = useState<OptimizeStatus>("needs_attention");
+  const { integrations: indexingIntegrations, submitUrls } = useIndexing();
+  const initialStatus = (params.get("status") as OptimizeStatus | null) || "needs_attention";
+  const initialOpportunity = (params.get("opportunity") as OptimizeOpportunity | null) || "all";
+  const [status, setStatus] = useState<OptimizeStatus>(statuses.some((item) => item.value === initialStatus) ? initialStatus : "needs_attention");
+  const [showOpportunities, setShowOpportunities] = useState(Boolean(params.get("opportunity")));
+  const [opportunity, setOpportunity] = useState<OptimizeOpportunity>(opportunityFilters.some((item) => item.value === initialOpportunity) ? initialOpportunity : "all");
   const [connectOpen, setConnectOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [analysis, setAnalysis] = useState<OptimizeAnalysis | null>(null);
+  const [pageDetail, setPageDetail] = useState<OptimizePageDetail | null>(null);
   const [analysisDefaults, setAnalysisDefaults] = useState({ pageUrl: "", targetQuery: "" });
+  const { summary, pageInsights, isLoadingPageInsights, loadPageDetail, invalidateInsights } = useOptimizeInsights(
+    showOpportunities ? "all" : status,
+    showOpportunities ? opportunity : "all",
+  );
 
   const statusCounts = useMemo(() => ({
     needs_attention: pages.filter((page) => page.status === "needs_attention").length,
@@ -64,6 +96,15 @@ export function OptimizePanel() {
 
   const visiblePages = useMemo(() => pages.filter((page) => page.status === status), [pages, status]);
   const hasNoSearchConsole = !isLoading && !integration;
+  const insightCounts = summary?.opportunityCounts || summary?.opportunity_counts || {};
+  const insightStatusCounts = summary?.statusCounts || summary?.status_counts || statusCounts;
+  const connectedIndexing = indexingIntegrations.some((item) => item.status === "connected");
+
+  useEffect(() => {
+    if (status === "needs_attention" && !insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !params.get("status") && !params.get("opportunity")) {
+      setStatus("tracking");
+    }
+  }, [insightStatusCounts.needs_attention, insightStatusCounts.tracking, params, status]);
 
   const openAnalyze = (page?: OptimizePage) => {
     setAnalysisDefaults({ pageUrl: page?.pageUrl || "", targetQuery: page?.targetQuery || "" });
@@ -83,6 +124,7 @@ export function OptimizePanel() {
   const handleSync = async () => {
     try {
       const result = await sync.mutateAsync();
+      invalidateInsights();
       toast.success(`${result.synced} GSC rows synced, ${result.optimizePages} pages refreshed`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sync failed");
@@ -113,15 +155,48 @@ export function OptimizePanel() {
     }
   };
 
+  const handleViewPageDetail = async (page: OptimizePageInsight) => {
+    try {
+      setPageDetail(await loadPageDetail.mutateAsync(page.pageUrl));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load page detail");
+    }
+  };
+
+  const handleSubmitAfterEdit = async (pageUrl: string) => {
+    try {
+      const result = await submitUrls.mutateAsync([pageUrl]);
+      toast.success(`${result.submitted} indexing submission created`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Indexing submission failed");
+    }
+  };
+
+  const setOptimizeFilter = (next: { status?: OptimizeStatus; opportunity?: OptimizeOpportunity }) => {
+    const search = new URLSearchParams(params);
+    if (next.opportunity) {
+      setShowOpportunities(true);
+      setOpportunity(next.opportunity);
+      search.set("opportunity", next.opportunity);
+      search.delete("status");
+    } else if (next.status) {
+      setShowOpportunities(false);
+      setStatus(next.status);
+      search.set("status", next.status);
+      search.delete("opportunity");
+    }
+    setParams(search, { replace: true });
+  };
+
   return (
     <>
       <div className="space-y-8">
         <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-4">
           {[
             ["Site", activeSite?.domain || "No site selected"],
-            ["Needs attention", String(statusCounts.needs_attention)],
-            ["Tracked pages", String(stats.pageCount || pages.length)],
-            ["GSC clicks", String(stats.clicks)],
+            ["Needs attention", String(summary?.needsAttentionCount ?? summary?.needs_attention_count ?? insightStatusCounts.needs_attention ?? 0)],
+            ["Tracked pages", String(summary?.pageCount ?? summary?.page_count ?? stats.pageCount ?? pages.length)],
+            ["GSC clicks", String(summary?.clicks ?? stats.clicks)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
@@ -162,7 +237,7 @@ export function OptimizePanel() {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">Credential: {integration.credentialHint || "saved"}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Last sync: {integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString() : "None yet"}
+                      Last sync: {formatDateTime(summary?.lastSyncAt || summary?.last_sync_at || integration.lastSyncAt)}
                       {integration.lastTestResult ? ` · ${integration.lastTestResult}` : ""}
                     </p>
                   </div>
@@ -200,62 +275,91 @@ export function OptimizePanel() {
             action={<Button size="sm" onClick={() => openAnalyze()}><Plus className="mr-1.5 h-4 w-4" />Add Page</Button>}
           />
           <div className="space-y-4 p-6">
-            <Tabs value={status} onValueChange={(value) => setStatus(value as OptimizeStatus)}>
+            <OpportunityStrip counts={insightCounts} active={showOpportunities ? opportunity : "all"} onSelect={(value) => setOptimizeFilter({ opportunity: value })} />
+
+            <Tabs value={showOpportunities ? "opportunities" : status} onValueChange={(value) => {
+              if (value === "opportunities") setOptimizeFilter({ opportunity });
+              else setOptimizeFilter({ status: value as OptimizeStatus });
+            }}>
               <TabsList>
                 {statuses.map((item) => (
                   <TabsTrigger key={item.value} value={item.value}>
-                    {item.label} ({statusCounts[item.value as keyof typeof statusCounts]})
+                    {item.label} ({insightStatusCounts[item.value] || 0})
                   </TabsTrigger>
                 ))}
+                <TabsTrigger value="opportunities">
+                  Opportunities ({Object.values(insightCounts).reduce((sum, value) => sum + value, 0)})
+                </TabsTrigger>
               </TabsList>
             </Tabs>
+
+            {showOpportunities && (
+              <select
+                value={opportunity}
+                onChange={(event) => setOptimizeFilter({ opportunity: event.target.value as OptimizeOpportunity })}
+                className="h-10 rounded-md border border-byword-border bg-background px-3 text-sm"
+              >
+                {opportunityFilters.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            )}
 
             {hasNoSearchConsole ? (
               <div className="p-12 text-center text-muted-foreground">
                 Connect Search Console to sync tracked pages, or add a page manually.
               </div>
-            ) : isLoadingPages ? (
+            ) : isLoadingPages || isLoadingPageInsights ? (
               <div className="flex items-center justify-center p-12 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading pages
               </div>
-            ) : visiblePages.length === 0 ? (
+            ) : pageInsights.length === 0 ? (
               <div className="p-12 text-center text-muted-foreground">
-                No pages in {statuses.find((item) => item.value === status)?.label.toLowerCase()}.
+                {!insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !showOpportunities
+                  ? "No declining pages. Showing tracked pages instead."
+                  : `No pages in ${showOpportunities ? "this opportunity" : statuses.find((item) => item.value === status)?.label.toLowerCase()}.`}
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Page</TableHead>
-                    <TableHead>Query</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Position</TableHead>
+                    <TableHead>Top query</TableHead>
                     <TableHead>Clicks</TableHead>
+                    <TableHead>Impr.</TableHead>
+                    <TableHead>CTR</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>14d change</TableHead>
+                    <TableHead>Suggested action</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visiblePages.map((page) => (
-                    <TableRow key={page.id}>
-                      <TableCell className="max-w-[360px] truncate font-medium">{page.pageUrl}</TableCell>
-                      <TableCell className="max-w-[220px] truncate">{page.targetQuery}</TableCell>
-                      <TableCell><OptimizeStatusBadge status={page.status} /></TableCell>
-                      <TableCell>{metricPosition(page)}</TableCell>
-                      <TableCell>{metricClicks(page)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openAnalyze(page)}>Analyze</Button>
-                          <Button variant="outline" size="sm" onClick={() => handleViewSavedAnalysis(page)} disabled={loadAnalyses.isPending}>
-                            View saved
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => markOptimized.mutate(page.id)} disabled={markOptimized.isPending}>
-                            Mark optimized
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {pageInsights.map((page) => {
+                    const tracked = visiblePages.find((oldPage) => oldPage.pageUrl === page.pageUrl && oldPage.targetQuery === page.topQuery);
+                    return (
+                      <TableRow key={page.pageUrl}>
+                        <TableCell className="max-w-[360px] truncate font-medium">{page.pageUrl}</TableCell>
+                        <TableCell className="max-w-[220px] truncate">{page.topQuery}</TableCell>
+                        <TableCell>{page.clicks}</TableCell>
+                        <TableCell>{page.impressions}</TableCell>
+                        <TableCell>{formatPercent(page.ctr)}</TableCell>
+                        <TableCell><OptimizeStatusBadge status={page.status} /></TableCell>
+                        <TableCell>{formatDelta(page)}</TableCell>
+                        <TableCell className="max-w-[260px]">{page.suggestedAction}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Open</Button>
+                            <Button variant="outline" size="sm" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
+                            <Button variant="ghost" size="sm" onClick={() => tracked && markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending || !tracked}>
+                              Mark optimized
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -307,6 +411,13 @@ export function OptimizePanel() {
       />
 
       <AnalysisSheet analysis={analysis} onOpenChange={(open) => !open && setAnalysis(null)} />
+      <PageDetailSheet
+        detail={pageDetail}
+        indexingConnected={connectedIndexing}
+        isSubmitting={submitUrls.isPending}
+        onSubmitAfterEdit={handleSubmitAfterEdit}
+        onOpenChange={(open) => !open && setPageDetail(null)}
+      />
     </>
   );
 }
@@ -508,6 +619,176 @@ function AnalyzeDialog({
   );
 }
 
+function OpportunityStrip({
+  counts,
+  active,
+  onSelect,
+}: {
+  counts: Record<string, number>;
+  active: OptimizeOpportunity;
+  onSelect: (value: OptimizeOpportunity) => void;
+}) {
+  const items = opportunityFilters.filter((item) => item.value !== "all");
+  return (
+    <div className="grid gap-3 md:grid-cols-5">
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          onClick={() => onSelect(item.value)}
+          className={cn(
+            "rounded-lg border border-byword-border bg-card p-3 text-left text-sm transition-colors hover:border-byword-blue",
+            active === item.value && "border-byword-blue bg-byword-blue-soft"
+          )}
+        >
+          <span className="block font-semibold text-foreground">{item.label}</span>
+          <span className="mt-1 block text-muted-foreground">{counts[item.value] || 0} pages</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PageDetailSheet({
+  detail,
+  indexingConnected,
+  isSubmitting,
+  onSubmitAfterEdit,
+  onOpenChange,
+}: {
+  detail: OptimizePageDetail | null;
+  indexingConnected: boolean;
+  isSubmitting: boolean;
+  onSubmitAfterEdit: (pageUrl: string) => Promise<void>;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const insight = detail?.insight;
+  const daily = detail?.dailyHistory || detail?.daily_history || [];
+  const actions = detail?.actionPlan || detail?.action_plan || [];
+  const targets = detail?.internalLinkTargets || detail?.internal_link_targets || [];
+  const analyses = detail?.analyses || [];
+
+  return (
+    <Sheet open={Boolean(detail)} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+        <SheetHeader>
+          <SheetTitle>{insight?.topQuery || "Page performance"}</SheetTitle>
+          <SheetDescription>{insight?.pageUrl}</SheetDescription>
+        </SheetHeader>
+        {insight && (
+          <div className="mt-6 space-y-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Metric label="Clicks" value={insight.clicks} />
+              <Metric label="Impr." value={insight.impressions} />
+              <Metric label="CTR" value={formatPercent(insight.ctr)} />
+              <Metric label="Position" value={insight.position.toFixed(1)} />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Action plan</h3>
+              <div className="mt-3 space-y-3">
+                {actions.map((item, index) => (
+                  <div key={`${item.opportunity}-${index}`} className="rounded-lg border border-byword-border p-4">
+                    <Badge variant={item.opportunity === "needs_attention" ? "destructive" : "secondary"}>{humanOpportunity(item.opportunity)}</Badge>
+                    <h4 className="mt-2 font-medium text-foreground">{item.title}</h4>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Top queries</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Query</TableHead>
+                    <TableHead>Clicks</TableHead>
+                    <TableHead>Impr.</TableHead>
+                    <TableHead>CTR</TableHead>
+                    <TableHead>Pos.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(detail?.queries || []).slice(0, 10).map((query) => (
+                    <TableRow key={query.query}>
+                      <TableCell className="max-w-[280px] truncate">{query.query}</TableCell>
+                      <TableCell>{query.clicks}</TableCell>
+                      <TableCell>{query.impressions}</TableCell>
+                      <TableCell>{formatPercent(query.ctr)}</TableCell>
+                      <TableCell>{query.position.toFixed(1)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="rounded-lg border border-byword-border p-4">
+              <h3 className="text-sm font-semibold text-foreground">Query intent</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{detail?.queryIntentSummary || detail?.query_intent_summary}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Daily history</h3>
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-byword-border">
+                {daily.slice(-14).map((day) => (
+                  <div key={day.date} className="grid grid-cols-4 gap-3 border-b border-byword-border px-4 py-2 text-sm last:border-b-0">
+                    <span>{day.date}</span>
+                    <span>{day.clicks} clicks</span>
+                    <span>{day.impressions} impr.</span>
+                    <span>{day.position.toFixed(1)} pos.</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {targets.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Internal link targets</h3>
+                <div className="mt-3 space-y-2">
+                  {targets.map((target) => (
+                    <a key={target.url || target.path} href={target.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-byword-border p-3 text-sm hover:border-byword-blue">
+                      <span className="font-medium text-foreground">{target.title || target.path || target.url}</span>
+                      <span className="mt-1 block truncate text-muted-foreground">{target.url || target.path}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analyses[0] && <AnalysisInline analysis={analyses[0]} />}
+
+            {indexingConnected && (
+              <Button onClick={() => onSubmitAfterEdit(insight.pageUrl)} disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
+                Submit to indexing after edit
+              </Button>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function AnalysisInline({ analysis }: { analysis: OptimizeAnalysis }) {
+  const suggestions = analysis.suggestions || [];
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-foreground">Saved analysis suggestions</h3>
+      <div className="mt-3 space-y-3">
+        {suggestions.slice(0, 4).map((suggestion, index) => (
+          <div key={`${suggestion.title}-${index}`} className="rounded-lg border border-byword-border p-4">
+            <Badge variant={suggestion.impact === "high" ? "destructive" : suggestion.impact === "medium" ? "default" : "secondary"}>{suggestion.impact}</Badge>
+            <h4 className="mt-2 font-medium text-foreground">{suggestion.title}</h4>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{suggestion.detail}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AnalysisSheet({ analysis, onOpenChange }: { analysis: OptimizeAnalysis | null; onOpenChange: (open: boolean) => void }) {
   const own = analysis?.ownContentSnapshot || analysis?.own_content_snapshot;
   const competitors = analysis?.competitorSnapshots || analysis?.competitor_snapshots || [];
@@ -600,4 +881,22 @@ function metricClicks(page: OptimizePage) {
   if (!latest) return "No data";
   const delta = baseline ? latest.clicks - baseline.clicks : 0;
   return baseline ? `${latest.clicks} (${delta > 0 ? "+" : ""}${delta})` : String(latest.clicks);
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(value >= 0.1 ? 1 : 2)}%`;
+}
+
+function formatDelta(page: OptimizePageInsight) {
+  const clickDelta = page.delta.clicks;
+  const posDelta = page.delta.position;
+  return `${clickDelta > 0 ? "+" : ""}${clickDelta} clicks · ${posDelta > 0 ? "+" : ""}${posDelta.toFixed(1)} pos.`;
+}
+
+function formatDateTime(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : "None yet";
+}
+
+function humanOpportunity(value: string) {
+  return value.replace(/_/g, " ");
 }

@@ -1,6 +1,14 @@
 import { Hono } from "hono";
 import { getUserId } from "../middleware/auth.js";
-import { analyzeOptimizePage, listOptimizeAnalyses, listOptimizePages, markOptimized } from "../services/optimize.js";
+import {
+  analyzeOptimizePage,
+  getOptimizeSummary,
+  getPageInsightDetail,
+  listOptimizeAnalyses,
+  listOptimizePages,
+  listPageInsights,
+  markOptimized,
+} from "../services/optimize.js";
 import { hasSiteAccess } from "../services/search-console.js";
 
 export const optimizeRoutes = new Hono();
@@ -11,6 +19,29 @@ optimizeRoutes.get("/pages", async (c) => {
   const status = String(c.req.query("status") || "all");
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
   return c.json({ pages: await listOptimizePages(userId, siteId, status) });
+});
+
+optimizeRoutes.get("/summary", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  return c.json(await getOptimizeSummary(userId, siteId));
+});
+
+optimizeRoutes.get("/page-insights", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  return c.json({
+    pages: await listPageInsights(userId, siteId, c.req.query("status") || "all", c.req.query("opportunity") || "all"),
+  });
+});
+
+optimizeRoutes.get("/page-insights/:pageUrl", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  return c.json(await getPageInsightDetail(userId, siteId, decodeURIComponent(c.req.param("pageUrl"))));
 });
 
 optimizeRoutes.get("/analyses", async (c) => {
