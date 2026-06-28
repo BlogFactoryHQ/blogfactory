@@ -1300,7 +1300,7 @@ export default function Settings() {
               <SectionHeader
                 icon={LinkIcon}
                 title="Internal Linking"
-                description="Connect your sitemap for semantic internal links."
+                description="Sitemap indexing helps generated posts support each other."
                 action={
                   <Button
                     onClick={() => saveInternalLinkSettingsMutation.mutate()}

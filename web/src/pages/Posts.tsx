@@ -1,5 +1,5 @@
-import { Fragment, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { Fragment, useEffect, useState, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
@@ -102,6 +102,9 @@ const sortDraftPosts = (a: Post, b: Post) => {
   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 };
 
+const statusFromParam = (value: string | null): StatusFilter =>
+  value === "draft" || value === "published" || value === "all" ? value : "all";
+
 export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
   if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
   const total = draftTotalForPlan(post.generation_plan);
@@ -127,6 +130,7 @@ export const draftTotalForPlan = (plan: GenerationPlan | null | undefined, creat
 
 export default function Posts() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -134,7 +138,7 @@ export default function Posts() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => statusFromParam(searchParams.get("status")));
   const [sourceFilter, setSourceFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [personaFilter, setPersonaFilter] = useState("all");
@@ -330,6 +334,11 @@ export default function Posts() {
     });
   }, [filteredPosts]);
 
+  const statusCounts = useMemo(() => ({
+    draft: enrichedPosts.filter((post) => post.status === "draft").length,
+    published: enrichedPosts.filter((post) => post.status === "published").length,
+  }), [enrichedPosts]);
+
   const totalPages = Math.max(1, Math.ceil(displayRows.length / postsPerPage));
   const paginatedRows = displayRows.slice(
     (currentPage - 1) * postsPerPage,
@@ -385,6 +394,13 @@ export default function Posts() {
     setSelectAllAcrossPages(false);
   };
 
+  useEffect(() => {
+    const nextStatus = statusFromParam(searchParams.get("status"));
+    setStatusFilter((current) => current === nextStatus ? current : nextStatus);
+    setCurrentPage(1);
+    clearSelection();
+  }, [searchParams]);
+
   // Bulk action handlers
   const handleBulkDelete = () => {
     const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
@@ -428,6 +444,10 @@ export default function Posts() {
   // Reset page when filters change
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    setSearchParams(next, { replace: true });
     setCurrentPage(1);
     clearSelection();
   };
@@ -593,6 +613,19 @@ export default function Posts() {
         title="Posts"
         description="All generated content in one place."
       />
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-byword-border bg-card p-4">
+        <div>
+          <p className="text-sm font-medium">Publish drafts first, then edit articles that prove demand.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {statusCounts.draft} draft{statusCounts.draft === 1 ? "" : "s"} waiting · {statusCounts.published} published
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => handleStatusFilterChange("draft")}>
+          Drafts
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
 
       {/* Filters */}
       <PostFilters

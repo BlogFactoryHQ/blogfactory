@@ -223,7 +223,10 @@ export default function Indexing() {
               Loading submissions
             </div>
           ) : submissions.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">No indexing submissions yet.</div>
+            <div className="p-12 text-center text-muted-foreground">
+              <p>No indexing submissions yet.</p>
+              <p className="mt-2 text-sm">Connect IndexNow before publishing large batches.</p>
+            </div>
           ) : (
             <Table>
               <TableHeader>

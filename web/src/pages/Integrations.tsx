@@ -155,7 +155,7 @@ export default function Integrations() {
             <div className="p-12 text-center">
               <IconTile icon={Plug} className="mx-auto" />
               <h3 className="mt-5 font-semibold text-foreground">No integrations yet</h3>
-              <p className="mt-2 text-sm text-muted-foreground">Connect WordPress, Ghost, Wix, or Framer to publish articles from BlogFactory.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Connect WordPress, Ghost, Wix, or Framer before bulk publishing.</p>
               <Button className="mt-6" onClick={() => setProviderToConnect("wordpress")}>
                 Connect WordPress
               </Button>
