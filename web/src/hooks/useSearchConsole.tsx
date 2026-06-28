@@ -78,6 +78,14 @@ export function useSearchConsole(siteId?: string | null) {
     },
   });
 
+  const startOAuth = useMutation({
+    mutationFn: async (propertyUrl: string) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      const params = new URLSearchParams({ siteId: resolvedSiteId, propertyUrl });
+      return api.get<{ authUrl: string }>(`/search-console/oauth/start?${params}`);
+    },
+  });
+
   return {
     dashboard: dashboard.data,
     integration: dashboard.data?.integration || null,
@@ -87,5 +95,6 @@ export function useSearchConsole(siteId?: string | null) {
     testIntegration,
     deleteIntegration,
     sync,
+    startOAuth,
   };
 }

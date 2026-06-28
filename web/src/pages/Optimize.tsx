@@ -36,7 +36,7 @@ const statuses: Array<{ value: OptimizeStatus; label: string }> = [
 
 export function OptimizePanel() {
   const { activeSite } = useSites();
-  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync } = useSearchConsole();
+  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth } = useSearchConsole();
   const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
   const [status, setStatus] = useState<OptimizeStatus>("needs_attention");
   const [connectOpen, setConnectOpen] = useState(false);
@@ -249,7 +249,16 @@ export function OptimizePanel() {
       <SearchConsoleDialog
         open={connectOpen}
         integration={integration}
+        activeSiteDomain={activeSite?.domain || ""}
         onClose={() => setConnectOpen(false)}
+        onOAuth={async (propertyUrl) => {
+          try {
+            const result = await startOAuth.mutateAsync(propertyUrl);
+            window.location.assign(result.authUrl);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to start Google connection");
+          }
+        }}
         onSave={async (input) => {
           try {
             await saveIntegration.mutateAsync(input);
@@ -260,6 +269,7 @@ export function OptimizePanel() {
           }
         }}
         isSaving={saveIntegration.isPending}
+        isOAuthStarting={startOAuth.isPending}
       />
 
       <AnalyzeDialog
@@ -296,28 +306,46 @@ export default function Optimize() {
 function SearchConsoleDialog({
   open,
   integration,
+  activeSiteDomain,
   onClose,
+  onOAuth,
   onSave,
   isSaving,
+  isOAuthStarting,
 }: {
   open: boolean;
   integration: SearchConsoleIntegration | null;
+  activeSiteDomain: string;
   onClose: () => void;
+  onOAuth: (propertyUrl: string) => Promise<void>;
   onSave: (input: { id?: string; propertyUrl: string; credentials?: Record<string, string> }) => Promise<void>;
   isSaving: boolean;
+  isOAuthStarting: boolean;
 }) {
   const [propertyUrl, setPropertyUrl] = useState("");
   const [serviceAccountJson, setServiceAccountJson] = useState("");
 
   useEffect(() => {
-    if (open) setPropertyUrl(integration?.propertyUrl || "");
-  }, [integration, open]);
+    if (open) {
+      setPropertyUrl(integration?.propertyUrl || defaultSearchConsoleProperty(activeSiteDomain));
+      setServiceAccountJson("");
+    }
+  }, [activeSiteDomain, integration, open]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) onClose();
   };
 
-  const handleSubmit = async () => {
+  const handleOAuth = async () => {
+    const property = propertyUrl.trim();
+    if (!property) {
+      toast.error("Enter the Search Console property first");
+      return;
+    }
+    await onOAuth(property);
+  };
+
+  const handleManualSubmit = async () => {
     let credentials: Record<string, string> | undefined;
     if (serviceAccountJson.trim()) {
       try {
@@ -328,7 +356,7 @@ function SearchConsoleDialog({
       }
     }
     if (!integration && !credentials) {
-      toast.error("Service account JSON is required");
+      toast.error("Paste service account JSON first");
       return;
     }
     await onSave({ id: integration?.id, propertyUrl: propertyUrl || integration?.propertyUrl || "", credentials });
@@ -340,29 +368,53 @@ function SearchConsoleDialog({
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{integration ? "Manage" : "Connect"} Search Console</DialogTitle>
-          <DialogDescription>Use a service account that has access to this GSC property.</DialogDescription>
+          <DialogDescription>Connect the Google account that has access to this Search Console property.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="space-y-2">
             <Label>Property URL</Label>
             <Input value={propertyUrl} onChange={(event) => setPropertyUrl(event.target.value)} placeholder="sc-domain:example.com or https://example.com/" />
           </div>
-          {integration && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Leave credentials blank to keep the saved service account.</p>}
-          <div className="space-y-2">
-            <Label>Service account JSON</Label>
-            <Textarea value={serviceAccountJson} onChange={(event) => setServiceAccountJson(event.target.value)} className="min-h-[180px] font-mono text-xs" placeholder="{ ... }" />
+          <div className="rounded-lg border border-byword-border p-4">
+            <h3 className="font-semibold text-foreground">Google OAuth</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Approve read-only Search Console access. BlogFactory stores the refresh token encrypted.</p>
+            <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting || !propertyUrl.trim()}>
+              {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
+              Continue with Google
+            </Button>
           </div>
+          <details className="rounded-lg border border-byword-border p-4">
+            <summary className="cursor-pointer font-semibold text-foreground">Advanced: service account JSON</summary>
+            <div className="mt-4 space-y-3">
+              {integration && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Leave JSON blank to keep the saved credential.</p>}
+              <div className="space-y-2">
+                <Label>Service account JSON</Label>
+                <Textarea value={serviceAccountJson} onChange={(event) => setServiceAccountJson(event.target.value)} className="min-h-[160px] font-mono text-xs" placeholder="{ ... }" />
+              </div>
+              <Button variant="outline" onClick={handleManualSubmit} disabled={isSaving}>
+                {isSaving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                Save service account
+              </Button>
+            </div>
+          </details>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSaving}>
-            {isSaving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            Save connection
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function defaultSearchConsoleProperty(domain: string) {
+  const value = domain.trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return `sc-domain:${parsed.hostname.replace(/^www\./, "")}`;
+  } catch {
+    return `sc-domain:${value.replace(/^https?:\/\//i, "").replace(/^www\./, "").replace(/\/.*$/, "")}`;
+  }
 }
 
 function AnalyzeDialog({

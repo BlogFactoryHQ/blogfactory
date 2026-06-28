@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { type LucideIcon, ArrowRight, BarChart3, Link as LinkIcon, SearchCheck, Send } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +28,17 @@ export default function SearchGrowth() {
   const [params, setParams] = useSearchParams();
   const tab = tabs.has(params.get("tab") || "") ? params.get("tab")! : "overview";
   const setTab = (value: string) => setParams(value === "overview" ? {} : { tab: value });
+
+  useEffect(() => {
+    const result = params.get("gsc");
+    if (!result) return;
+    if (result === "connected") toast.success("Search Console connected");
+    if (result === "error") toast.error(params.get("message") || "Search Console connection failed");
+    const next = new URLSearchParams(params);
+    next.delete("gsc");
+    next.delete("message");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   return (
     <BywordPageShell className="max-w-7xl">

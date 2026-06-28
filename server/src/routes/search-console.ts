@@ -4,6 +4,8 @@ import { db } from "../db/index.js";
 import { searchConsoleIntegrations } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import {
+  completeSearchConsoleOAuth,
+  createSearchConsoleOAuthUrl,
   encryptSearchConsoleCredentials,
   getSearchConsoleDashboard,
   hasSiteAccess,
@@ -15,6 +17,42 @@ import {
 import { refreshOptimizePages } from "../services/optimize.js";
 
 export const searchConsoleRoutes = new Hono();
+
+searchConsoleRoutes.get("/oauth/start", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+
+  try {
+    const authUrl = await createSearchConsoleOAuthUrl({
+      userId,
+      siteId,
+      propertyUrl: String(c.req.query("propertyUrl") || ""),
+      requestUrl: c.req.url,
+    });
+    return c.json({ authUrl });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Failed to start Google OAuth" }, 400);
+  }
+});
+
+searchConsoleRoutes.get("/oauth/callback", async (c) => {
+  const appPath = "/search-growth?tab=optimize";
+  const error = c.req.query("error");
+  if (error) return c.redirect(`${appPath}&gsc=error&message=${encodeURIComponent(error)}`);
+
+  try {
+    await completeSearchConsoleOAuth({
+      code: String(c.req.query("code") || ""),
+      state: String(c.req.query("state") || ""),
+      requestUrl: c.req.url,
+    });
+    return c.redirect(`${appPath}&gsc=connected`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Google OAuth failed";
+    return c.redirect(`${appPath}&gsc=error&message=${encodeURIComponent(message)}`);
+  }
+});
 
 searchConsoleRoutes.get("/dashboard", async (c) => {
   const userId = getUserId(c);
