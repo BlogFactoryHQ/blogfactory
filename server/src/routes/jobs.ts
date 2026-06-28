@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { jobs, personas } from "../db/schema.js";
+import { jobs, personas, userSettings } from "../db/schema.js";
 import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
@@ -18,6 +18,7 @@ function partialTimeoutMessage(createdCount: number, totalDrafts: number) {
 export function staleTimeoutUpdateForJob(job: {
   generationPlan: unknown;
   resultPostIds: string[] | null;
+  currentStep?: string | null;
 }) {
   const plan = job.generationPlan && typeof job.generationPlan === "object"
     ? job.generationPlan as Record<string, unknown>
@@ -67,20 +68,46 @@ export function staleTimeoutUpdateForJob(job: {
     };
   }
 
+  const timeoutMessage = job.currentStep?.startsWith("generating_draft")
+    ? "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source."
+    : NO_DRAFT_TIMEOUT_MESSAGE;
   const failedDrafts = [...existingFailedDrafts];
   for (let index = 0; index < totalDrafts; index += 1) {
     if (!failedIndexes.has(index)) {
-      failedDrafts.push({ index, error: NO_DRAFT_TIMEOUT_MESSAGE });
+      failedDrafts.push({ index, error: timeoutMessage });
     }
   }
 
   return {
     status: "failed",
     currentStep: "timeout",
-    errorMessage: NO_DRAFT_TIMEOUT_MESSAGE,
+    errorMessage: timeoutMessage,
     generationPlan: { ...plan, totalDrafts, failedDrafts },
     completedAt: new Date(),
   };
+}
+
+function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
+  const imageConfig: Record<string, unknown> = {
+    imagePlacement: settings?.imagePlacement ?? "auto",
+    compressionEnabled: settings?.imageCompressionEnabled ?? true,
+  };
+  if (settings?.coverEnabled) {
+    imageConfig.cover = {
+      count: settings.coverImageCount ?? 1,
+      resolution: settings.coverResolution ?? "1K",
+      aspectRatio: settings.coverAspectRatio ?? "16:9",
+    };
+  }
+  if (settings?.inlineEnabled) {
+    imageConfig.inline = {
+      count: settings.inlineCount ?? 2,
+      resolution: settings.inlineResolution ?? "1K",
+      aspectRatio: settings.inlineAspectRatio ?? "3:2",
+    };
+  }
+  const generateImages = Boolean(settings?.coverEnabled || settings?.inlineEnabled);
+  return { generateImages, imageConfig: generateImages ? imageConfig : undefined };
 }
 
 async function markStaleRunningJobs(userId: string, jobId?: string) {
@@ -98,6 +125,7 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
       id: jobs.id,
       generationPlan: jobs.generationPlan,
       resultPostIds: jobs.resultPostIds,
+      currentStep: jobs.currentStep,
     })
     .from(jobs)
     .where(and(...staleClauses));
@@ -121,6 +149,7 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
       id: jobs.id,
       generationPlan: jobs.generationPlan,
       resultPostIds: jobs.resultPostIds,
+      currentStep: jobs.currentStep,
     })
     .from(jobs)
     .where(and(...failedClauses));
@@ -234,6 +263,12 @@ jobsRoutes.post("/:id/retry", async (c) => {
     .limit(1);
 
   if (!job) return c.json({ error: "Job not found" }, 404);
+  const [settings] = await db
+    .select()
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const imageSettings = imageConfigFromSettings(settings);
 
   // Reset job to pending status
   const [updated] = await db
@@ -257,6 +292,8 @@ jobsRoutes.post("/:id/retry", async (c) => {
     sourceValue: updated.sourceValue,
     modelId: updated.modelId,
     personaId: updated.personaId,
+    generateImages: imageSettings.generateImages,
+    imageConfig: imageSettings.imageConfig,
   }).catch((err) => console.error("[retry] Generation error:", err));
 
   return c.json(updated);
