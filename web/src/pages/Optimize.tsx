@@ -48,6 +48,7 @@ const statuses: Array<{ value: OptimizeStatus; label: string }> = [
 
 const opportunityFilters: Array<{ value: OptimizeOpportunity; label: string }> = [
   { value: "all", label: "All opportunities" },
+  { value: "growing", label: "Growing" },
   { value: "low_ctr", label: "Low CTR" },
   { value: "almost_ranking", label: "Almost ranking" },
   { value: "page_two", label: "Page two" },
@@ -630,7 +631,7 @@ function OpportunityStrip({
 }) {
   const items = opportunityFilters.filter((item) => item.value !== "all");
   return (
-    <div className="grid gap-3 md:grid-cols-5">
+    <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
       {items.map((item) => (
         <button
           key={item.value}

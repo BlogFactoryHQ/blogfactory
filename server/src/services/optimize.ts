@@ -33,6 +33,12 @@ interface Suggestion {
   detail: string;
 }
 
+interface ActionPlanItem {
+  opportunity: string;
+  title: string;
+  detail: string;
+}
+
 type Opportunity =
   | "needs_attention"
   | "growing"
@@ -146,6 +152,10 @@ export async function getOptimizeSummary(userId: string, siteId: string) {
   const insights = buildPageInsightsFromMetrics(metrics);
   const counts = opportunityCounts(insights);
   const queryCount = new Set(metrics.map((metric) => metric.query)).size;
+  const topGrowingPage = insights.find((page) => page.opportunities.includes("growing")) || null;
+  const biggestDecliningPage = insights.find((page) => page.status === "needs_attention") || null;
+  const lowCtrPage = insights.find((page) => page.opportunities.includes("low_ctr")) || null;
+  const bestQuickWin = insights.find((page) => page.opportunities.includes("almost_ranking") || page.opportunities.includes("low_ctr")) || null;
   const statusCounts = insights.reduce((items, page) => {
     items[page.status] = (items[page.status] || 0) + 1;
     return items;
@@ -161,12 +171,14 @@ export async function getOptimizeSummary(userId: string, siteId: string) {
     impressions: insights.reduce((sum, page) => sum + page.impressions, 0),
     needsAttentionCount: insights.filter((page) => page.status === "needs_attention").length,
     needs_attention_count: insights.filter((page) => page.status === "needs_attention").length,
-    topGrowingPage: insights.find((page) => page.opportunities.includes("growing")) || null,
-    top_growing_page: insights.find((page) => page.opportunities.includes("growing")) || null,
-    biggestDecliningPage: insights.find((page) => page.status === "needs_attention") || null,
-    biggest_declining_page: insights.find((page) => page.status === "needs_attention") || null,
-    bestQuickWin: insights.find((page) => page.opportunities.includes("almost_ranking") || page.opportunities.includes("low_ctr")) || null,
-    best_quick_win: insights.find((page) => page.opportunities.includes("almost_ranking") || page.opportunities.includes("low_ctr")) || null,
+    topGrowingPage,
+    top_growing_page: topGrowingPage,
+    biggestDecliningPage,
+    biggest_declining_page: biggestDecliningPage,
+    bestQuickWin,
+    best_quick_win: bestQuickWin,
+    lowCtrPage,
+    low_ctr_page: lowCtrPage,
     opportunityCounts: counts,
     opportunity_counts: counts,
     statusCounts,
@@ -187,15 +199,18 @@ export async function getPageInsightDetail(userId: string, siteId: string, pageU
   const [insight] = buildPageInsightsFromMetrics(metrics);
   const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
   const analyses = await listOptimizeAnalyses({ userId, siteId, pageUrl: normalizedPageUrl });
+  const actions = await actionPlanForPage(userId, insight);
+  const intent = queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query));
+  const daily = summarizeDaily(metrics);
   return {
     insight: insight || null,
-    dailyHistory: summarizeDaily(metrics),
-    daily_history: summarizeDaily(metrics),
+    dailyHistory: daily,
+    daily_history: daily,
     queries: summarizeQueries(metrics),
-    queryIntentSummary: queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query)),
-    query_intent_summary: queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query)),
-    actionPlan: actionPlan(insight?.opportunities || []),
-    action_plan: actionPlan(insight?.opportunities || []),
+    queryIntentSummary: intent,
+    query_intent_summary: intent,
+    actionPlan: actions,
+    action_plan: actions,
     analyses,
     internalLinkTargets: internalLinkTargets(settings?.internalLinkIndex, normalizedPageUrl),
     internal_link_targets: internalLinkTargets(settings?.internalLinkIndex, normalizedPageUrl),
@@ -541,13 +556,46 @@ function suggestedAction(opportunities: Opportunity[]) {
   return "Keep tracking performance.";
 }
 
-function actionPlan(opportunities: Opportunity[]) {
+async function actionPlanForPage(userId: string, insight?: PageInsight): Promise<ActionPlanItem[]> {
+  const fallback = actionPlan(insight?.opportunities || []);
+  if (!insight?.opportunities.length) return fallback;
+  const enhanced = await aiActionPlan(userId, insight, fallback);
+  return enhanced || fallback;
+}
+
+function actionPlan(opportunities: Opportunity[]): ActionPlanItem[] {
   const items = opportunities.map((opportunity) => ({
     opportunity,
     title: suggestedAction([opportunity]),
     detail: actionDetail(opportunity),
   }));
   return items.length ? items : [{ opportunity: "tracking", title: "Keep tracking performance.", detail: "No urgent GSC opportunity is flagged for this page." }];
+}
+
+async function aiActionPlan(userId: string, insight: PageInsight, fallback: ActionPlanItem[]) {
+  const key = await getOpenRouterKey(userId);
+  if (!key) return null;
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "openai/gpt-5-mini",
+      messages: [{
+        role: "user",
+        content: `Return JSON only: {"actionPlan":[{"opportunity":"...","title":"...","detail":"..."}]}. Keep titles under 12 words and details specific. Page insight: ${JSON.stringify({ pageUrl: insight.pageUrl, topQuery: insight.topQuery, metrics: insight.latest, delta: insight.delta, opportunities: insight.opportunities, fallback })}`,
+      }],
+    }),
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const text = data.choices?.[0]?.message?.content || "";
+  try {
+    const parsed = JSON.parse(text.replace(/^```json\s*|\s*```$/g, "")) as { actionPlan?: ActionPlanItem[] };
+    return Array.isArray(parsed.actionPlan) && parsed.actionPlan.length ? parsed.actionPlan.slice(0, 6) : null;
+  } catch {
+    return null;
+  }
 }
 
 function actionDetail(opportunity: string) {

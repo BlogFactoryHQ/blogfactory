@@ -76,6 +76,8 @@ export interface OptimizeSummary {
   biggest_declining_page: OptimizePageInsight | null;
   bestQuickWin: OptimizePageInsight | null;
   best_quick_win: OptimizePageInsight | null;
+  lowCtrPage: OptimizePageInsight | null;
+  low_ctr_page: OptimizePageInsight | null;
   opportunityCounts: Record<string, number>;
   opportunity_counts: Record<string, number>;
   statusCounts: Record<string, number>;
