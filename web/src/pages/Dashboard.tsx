@@ -113,8 +113,8 @@ export default function Dashboard() {
     {
       title: "Internal Links",
       description: internalLinksReady ? "Sitemap index is ready." : "Index your sitemap before scaling.",
-      href: "/settings",
-      action: "Article settings",
+      href: "/search-growth?tab=internal-links",
+      action: "Search Growth",
       done: internalLinksReady,
     },
     {
@@ -127,8 +127,8 @@ export default function Dashboard() {
     {
       title: "Indexing",
       description: connectedIndexing.length ? "Auto-submit can start after publishing." : "Connect IndexNow before large batches.",
-      href: "/indexing",
-      action: "Indexing",
+      href: "/search-growth?tab=indexing",
+      action: "Search Growth",
       done: connectedIndexing.length > 0,
     },
   ];
