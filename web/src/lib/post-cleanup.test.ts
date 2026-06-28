@@ -18,8 +18,9 @@ describe("post cleanup", () => {
     expect(cleanPostTitle("Natural Language Autoencoders \\| Anthropic")).toBe("Natural Language Autoencoders | Anthropic");
   });
 
-  it("removes Webrazzi as a source suffix", () => {
+  it("removes source suffixes from generated titles", () => {
     expect(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi")).toBe("Apple, MacBook ve iPad fiyatlarına zam yaptı");
     expect(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:")).toBe("Apple, MacBook ve iPad fiyatlarına zam yaptı");
+    expect(cleanPostTitle("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı - Swipeline")).toBe("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı");
   });
 });

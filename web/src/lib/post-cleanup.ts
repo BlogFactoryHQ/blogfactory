@@ -26,7 +26,7 @@ export function cleanPostTitle(title: string) {
   return title
     .replace(/\\\|/g, "|")
     .replace(/\s+\(Draft\s+\d+\)$/i, "")
-    .replace(/\s+[-|/\\–—]\s*Webrazzi\s*[:.!?]?$/i, "")
+    .replace(/\s+[-–—]\s*[\p{L}\p{N}.&+_-]{2,30}\s*[:.!?]?$/u, "")
     .replace(/\s+/g, " ")
     .trim();
 }

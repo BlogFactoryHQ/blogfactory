@@ -28,6 +28,7 @@ assert.match(
 );
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
+assert.equal(cleanPostTitle("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı - Swipeline"), "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı");
 assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 1, { index: 4, count: 5 }).map((article) => [article.variationIndex, article.variationCount]),
   [[4, 5]]
