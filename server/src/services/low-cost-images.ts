@@ -723,6 +723,19 @@ export async function resolveLowCostImages(opts: Parameters<typeof resolvePostIm
   return resolvePostImages(opts);
 }
 
+export function kickDeferredImageWorker(userId?: string, limit = 2) {
+  const count = clampInt(limit, 2, 1, 10);
+  setTimeout(() => {
+    // ponytail: best-effort local wake; cron is the durable worker on deploy.
+    (async () => {
+      for (let index = 0; index < count; index += 1) {
+        const result = await processNextDeferredImage(userId);
+        if (!result.processed) break;
+      }
+    })().catch((err) => console.warn("[images] Deferred worker kick failed:", err instanceof Error ? err.message : err));
+  }, 0);
+}
+
 async function fallbackRequestToStock(request: typeof imageGenerationRequests.$inferSelect, placement?: unknown) {
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title, content: posts.content }).from(posts).where(eq(posts.id, request.postId)).limit(1);

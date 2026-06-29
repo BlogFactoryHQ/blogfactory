@@ -4,7 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
-import { resolveLowCostImages, type ImageResolutionResult, type SourceImageCandidate } from "./low-cost-images.js";
+import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult, type SourceImageCandidate } from "./low-cost-images.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
@@ -1476,6 +1476,9 @@ export async function generateContent(opts: GenerateOpts) {
       totalCost,
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
+    if (imageResolutionResults.some((item) => (item.result?.queued || 0) > 0)) {
+      kickDeferredImageWorker(userId, 2);
+    }
 
     return { jobId, status: "completed", postIds: createdPostIds };
 
