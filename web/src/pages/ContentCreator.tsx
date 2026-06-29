@@ -505,7 +505,9 @@ export default function ContentCreator() {
   const fallbackTextModelId = textModels[0]?.id;
   const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
   const selectedTextModel = textModels.find((model) => model.id === modelId);
-  const selectedImageModelId = userSettings?.image_model || "auto/consistent-cover";
+  const selectedImageModelId = userSettings?.image_model === "auto/consistent-cover"
+    ? "openrouter/free"
+    : userSettings?.image_model || "openrouter/free";
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
   const currentMonthSpend = useMemo(() => {

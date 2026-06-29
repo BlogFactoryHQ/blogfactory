@@ -258,7 +258,7 @@ const linkDensityOptions = [
   { value: "rich", label: "Rich", count: "Up to 8-12", description: "When the article supports it" },
 ];
 
-const DEFAULT_IMAGE_MODEL = "auto/consistent-cover";
+const DEFAULT_IMAGE_MODEL = "openrouter/free";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -442,7 +442,7 @@ export default function Settings() {
         compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
       if (userSettings.image_model) {
-        setSelectedImageModel(userSettings.image_model);
+        setSelectedImageModel(userSettings.image_model === "auto/consistent-cover" ? DEFAULT_IMAGE_MODEL : userSettings.image_model);
       }
       setSourceImageAllowed(userSettings.source_image_allowed ?? false);
       setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
@@ -2000,7 +2000,7 @@ export default function Settings() {
                       <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
                         <div>
                           <Label>AI Queue</Label>
-                          <p className="text-xs text-muted-foreground">Generate queued visuals when stock is not enough.</p>
+                          <p className="text-xs text-muted-foreground">Queue AI first; use stock only when AI fails or is off.</p>
                         </div>
                         <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
                       </div>

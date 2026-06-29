@@ -6,14 +6,14 @@ function assertEqual(actual: unknown, expected: unknown, message: string) {
 
 assertEqual(
   costEffectiveImageModel({ modelId: "auto/consistent-cover", googleAiKey: "g", openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
-  "google-ai-studio/gemini-3.1-flash-image",
-  "consistent cover uses Google first"
+  "openrouter/free",
+  "legacy consistent-cover alias maps to OpenRouter free"
 );
 
 assertEqual(
   costEffectiveImageModel({ modelId: "auto/consistent-cover", googleAiKey: null, openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
-  "openai/gpt-image-2",
-  "consistent cover prefers stable paid provider before OpenRouter free"
+  "openrouter/free",
+  "legacy consistent-cover alias does not pick paid fallbacks"
 );
 
 assertEqual(

@@ -660,7 +660,7 @@ export async function resolvePostImages(opts: {
   sourceImages?: SourceImageCandidate[];
 }): Promise<ImageResolutionResult> {
   const settings = opts.settings || {};
-  const imageModel = opts.imageModel || "auto/consistent-cover";
+  const imageModel = opts.imageModel || "openrouter/free";
   const aiAllowed = settings.aiFallbackEnabled !== false;
   const compressionEnabled = settings.imageCompressionEnabled ?? true;
   const slots = buildImageSlots({ imageConfig: opts.imageConfig, content: opts.content, title: opts.title, stylePrompt: opts.stylePrompt });

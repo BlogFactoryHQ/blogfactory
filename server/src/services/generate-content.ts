@@ -123,9 +123,6 @@ export function costEffectiveImageModel(opts: {
   replicateKey: string | null;
 }) {
   if (opts.modelId === "auto/consistent-cover") {
-    if (opts.googleAiKey) return "google-ai-studio/gemini-3.1-flash-image";
-    if (opts.openAiKey) return "openai/gpt-image-2";
-    if (opts.replicateKey) return "replicate/black-forest-labs/flux-schnell";
     if (opts.openRouterKey) return "openrouter/free";
     return opts.modelId;
   }

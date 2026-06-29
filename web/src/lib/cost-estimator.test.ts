@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { estimateGenerationCost, shouldWarnForCost } from "./cost-estimator";
 
 const textModel = { id: "test/text", rawPricing: { prompt: 1, completion: 2, request: 0 } };
-const imageModel = { id: "auto/consistent-cover", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
+const imageModel = { id: "openrouter/free", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
+const paidImageModel = { id: "google-ai-studio/gemini-3.1-flash-image", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
 
 const imageConfig = {
   cover: { enabled: true, resolution: "1K" as const, aspectRatio: "16:9" as const },
@@ -25,7 +26,7 @@ describe("cost estimator", () => {
   });
 
   it("estimates programmatic batches", () => {
-    const estimate = estimateGenerationCost({ postCount: 1500, articleWordCount: 1500, textModel, imageModel, imageConfig });
+    const estimate = estimateGenerationCost({ postCount: 1500, articleWordCount: 1500, textModel, imageModel: paidImageModel, imageConfig });
     expect(estimate.postCount).toBe(1500);
     expect(estimate.coverImageCost).toBeCloseTo(60);
     expect(shouldWarnForCost({ estimate })).toBe(true);
@@ -38,7 +39,7 @@ describe("cost estimator", () => {
   });
 
   it("warns near budget", () => {
-    const estimate = estimateGenerationCost({ postCount: 1, textModel, imageModel, imageConfig });
+    const estimate = estimateGenerationCost({ postCount: 1, textModel, imageModel: paidImageModel, imageConfig });
     expect(shouldWarnForCost({ estimate, monthlyBudget: 1, currentMonthSpend: 0.79 })).toBe(true);
   });
 });
