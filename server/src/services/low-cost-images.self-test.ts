@@ -1,4 +1,4 @@
-import { chooseImageResolution, imageModelForTarget, imageTargets, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock } from "./low-cost-images.js";
+import { chooseImageResolution, imageModelForTarget, imageTargets, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, stockQuery } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -74,6 +74,18 @@ assertEqual(
   imageTargets({ inline: { count: 1, resolution: "1K", aspectRatio: "3:2" } }).length,
   1,
   "inline config without enabled flag still creates targets"
+);
+
+assertEqual(
+  stockQuery({ title: "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı", type: "cover" }),
+  "smart glasses wearable technology",
+  "smart glasses titles search wearable tech stock"
+);
+
+assertEqual(
+  stockQuery({ title: "Meta Ray-Ban smart glasses", type: "inline" }),
+  "smart glasses close up wearable device",
+  "inline stock query differs from cover"
 );
 
 console.log("low-cost-images self-check passed");
