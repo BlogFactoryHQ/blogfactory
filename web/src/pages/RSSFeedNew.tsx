@@ -126,7 +126,7 @@ export default function RSSFeedNew() {
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
-          count: userSettings.inline_count || 2,
+          count: userSettings.inline_count ?? 2,
           resolution: (userSettings.inline_resolution as Resolution) || "2K",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },

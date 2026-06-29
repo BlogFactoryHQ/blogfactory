@@ -38,6 +38,7 @@ const asNumber = (value: unknown) => {
   if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
   return undefined;
 };
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(value)));
 const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined;
 const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
 type SettingsUpdate = Record<string, any>;
@@ -278,7 +279,8 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   setOptionalText("coverResolution", "cover_resolution");
   setOptionalText("coverAspectRatio", "cover_aspect_ratio");
   setBool("inlineEnabled", "inline_enabled");
-  setNumber("inlineCount", "inline_count");
+  const inlineCount = asNumber(body.inline_count ?? body.inlineCount);
+  if (inlineCount !== undefined) update.inlineCount = clampNumber(inlineCount, 0, 10);
   setOptionalText("inlineResolution", "inline_resolution");
   setOptionalText("inlineAspectRatio", "inline_aspect_ratio");
 

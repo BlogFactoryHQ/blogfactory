@@ -4,7 +4,7 @@ import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
-import { processNextDeferredImage } from "../services/low-cost-images.js";
+import { attachImageRequestToPost, processNextDeferredImage } from "../services/low-cost-images.js";
 
 export const imagesRoutes = new Hono();
 
@@ -169,7 +169,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
 
   let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
   const [settings] = await db
-    .select({ imageCompressionEnabled: userSettings.imageCompressionEnabled })
+    .select({ imageCompressionEnabled: userSettings.imageCompressionEnabled, imagePlacement: userSettings.imagePlacement })
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1);
@@ -197,30 +197,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
     postId: request.postId || undefined,
   });
 
-  if (request.postId) {
-    if (request.type === "cover") {
-      await db.update(posts).set({ coverImageUrl: storagePath }).where(and(eq(posts.id, request.postId), eq(posts.userId, userId)));
-    } else {
-      const doneInline = await db
-        .select({
-          storagePath: imageAssets.storagePath,
-          position: imageGenerationRequests.position,
-          createdAt: imageGenerationRequests.createdAt,
-        })
-        .from(imageGenerationRequests)
-        .innerJoin(imageAssets, eq(imageGenerationRequests.importedAssetId, imageAssets.id))
-        .where(and(
-          eq(imageGenerationRequests.userId, userId),
-          eq(imageGenerationRequests.postId, request.postId),
-          eq(imageGenerationRequests.type, "inline"),
-          eq(imageGenerationRequests.status, "done")
-        ));
-      const inlineImages = [...doneInline, { storagePath, position: request.position, createdAt: request.createdAt }]
-        .sort((a, b) => (a.position ?? 9999) - (b.position ?? 9999) || Number(a.createdAt) - Number(b.createdAt))
-        .map((row) => row.storagePath);
-      await db.update(posts).set({ inlineImages }).where(and(eq(posts.id, request.postId), eq(posts.userId, userId)));
-    }
-  }
+  await attachImageRequestToPost(request, storagePath, settings?.imagePlacement, userId);
 
   const [updated] = await db
     .update(imageGenerationRequests)

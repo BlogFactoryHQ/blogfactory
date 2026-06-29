@@ -5,7 +5,7 @@ import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
-const STALE_RUNNING_MS = 30 * 60 * 1000;
+const STALE_RUNNING_MS = 10 * 60 * 1000;
 const NO_DRAFT_TIMEOUT_MESSAGE =
   "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source.";
 

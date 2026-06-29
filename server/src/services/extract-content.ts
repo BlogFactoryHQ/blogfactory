@@ -43,6 +43,7 @@ async function extractYoutube(url: string): Promise<{ content: string; title?: s
 
   // Fetch the video page to extract captions
   const pageResp = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
   });
   const html = await pageResp.text();
@@ -55,7 +56,7 @@ async function extractYoutube(url: string): Promise<{ content: string; title?: s
   const captionsMatch = html.match(/"captionTracks":\[{"baseUrl":"([^"]+)"/);
   if (captionsMatch) {
     const captionsUrl = captionsMatch[1].replace(/\\u0026/g, "&");
-    const capsResp = await fetch(captionsUrl);
+    const capsResp = await fetch(captionsUrl, { signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS) });
     const capsXml = await capsResp.text();
 
     // Parse caption XML
@@ -90,6 +91,7 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_AI_KEY}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(AI_EXTRACT_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
@@ -118,6 +120,7 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
   if (OPENROUTER_API_KEY) {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(AI_EXTRACT_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",

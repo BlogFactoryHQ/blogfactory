@@ -402,7 +402,7 @@ export default function Settings() {
     imageConfig.cover.resolution !== ((userSettings.cover_resolution as Resolution) || "1K") ||
     imageConfig.cover.aspectRatio !== ((userSettings.cover_aspect_ratio as AspectRatio) || "16:9") ||
     imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
-    imageConfig.inline.count !== (userSettings.inline_count || 2) ||
+    imageConfig.inline.count !== (userSettings.inline_count ?? 2) ||
     imageConfig.inline.resolution !== ((userSettings.inline_resolution as Resolution) || "Web") ||
     imageConfig.inline.aspectRatio !== ((userSettings.inline_aspect_ratio as AspectRatio) || "3:2")
   ) ? "dirty" : "clean";
@@ -432,7 +432,7 @@ export default function Settings() {
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
-          count: userSettings.inline_count || 2,
+          count: userSettings.inline_count ?? 2,
           resolution: (userSettings.inline_resolution as Resolution) || "Web",
           aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },

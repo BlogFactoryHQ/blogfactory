@@ -21,7 +21,7 @@ import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, Chec
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { DraftProgressList } from "@/components/content/DraftProgressList";
+import { GenerationProgress, type DraftProgress, type GenerationStep, type SourceType } from "@/components/content/GenerationProgress";
 import {
   formatCompactCurrency,
   formatCompactNumber,
@@ -280,6 +280,35 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   }
 
   return { label: step.replace(/_/g, " "), percent: 50, steps };
+};
+
+const sourceTypeForProgress = (sourceType: string): SourceType => {
+  if (["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf"].includes(sourceType)) return sourceType as SourceType;
+  return "url";
+};
+
+const generationStepForJob = (job: Job): GenerationStep => {
+  if (job.status === "completed") return "complete";
+  if (job.status === "failed") return "error";
+  const step = job.current_step || "";
+  if (!step || step === "queued" || step === "pending" || step === "starting" || step.startsWith("fetching")) return "extracting";
+  if (step.startsWith("generating_images") || step.startsWith("resolving_images")) return "images";
+  return "generating";
+};
+
+const draftProgressForJob = (job: Job): DraftProgress | null => {
+  const total = Number(job.generation_plan?.totalDrafts || job.generation_plan?.variationCount || 0);
+  if (!Number.isFinite(total) || total <= 1) return null;
+  const step = job.current_step || "";
+  const match = step.match(/_(\d+)_of_(\d+)$/);
+  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  const current = match ? Number(match[1]) : draftOnlyMatch ? Number(draftOnlyMatch[1]) : Math.min((job.result_post_ids?.length || 0) + 1, total);
+  return {
+    current,
+    total,
+    completed: job.result_post_ids?.length || 0,
+    failedDrafts: failedDraftsFor(job),
+  };
 };
 
 export default function Jobs() {
@@ -618,32 +647,16 @@ export default function Jobs() {
               </SheetHeader>
 
               {/* Live Progress for running jobs */}
-              {(selectedJob.status === "running" || selectedJob.status === "pending") && (() => {
-                const progress = parseStepProgress(selectedJob.current_step, selectedJob.result_post_ids, selectedJob.generation_plan);
-                return (
-                  <div className="p-4 rounded-lg border border-status-running/30 bg-[hsl(var(--status-running)/0.05)] mb-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-[hsl(var(--status-running))]">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="font-medium text-sm">In Progress</span>
-                      </div>
-                      <span className="text-xs font-mono text-muted-foreground">{progress.percent}%</span>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="h-2 rounded-full bg-muted mb-3 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-status-running transition-all duration-700 ease-in-out"
-                        style={{ width: `${progress.percent}%` }}
-                      />
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{progress.label}</p>
-                    {/* Step list */}
-                    {progress.steps.length > 0 && (
-                      <DraftProgressList steps={progress.steps} className="mt-3" />
-                    )}
-                  </div>
-                );
-              })()}
+              {(selectedJob.status === "running" || selectedJob.status === "pending") && (
+                <div className="mb-6">
+                  <GenerationProgress
+                    currentStep={generationStepForJob(selectedJob)}
+                    sourceType={sourceTypeForProgress(selectedJob.source_type)}
+                    error={selectedJob.error_message || selectedJob.generation_error || ""}
+                    draftProgress={draftProgressForJob(selectedJob)}
+                  />
+                </div>
+              )}
 
               {/* Result or Error */}
               {(selectedJob.status === "completed" || draftStatsFor(selectedJob).partial) && (() => {

@@ -18,6 +18,11 @@ export function imageFigureMarkdown(url: string, altText?: string | null) {
   return `![${alt}](${url})`;
 }
 
+export function replaceInlineImagePath(markdown: string, from?: string | null, to?: string | null) {
+  if (!from || !to || from === to || !markdown.includes(from)) return markdown;
+  return markdown.split(from).join(to);
+}
+
 function imageBlocks(images: PlacementImage[]) {
   return images.map((image) => imageFigureMarkdown(image.url, image.altText)).join("\n\n");
 }

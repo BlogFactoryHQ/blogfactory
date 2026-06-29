@@ -4,8 +4,8 @@ import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
-import { resolveLowCostImages, type SourceImageCandidate } from "./low-cost-images.js";
-import { assertOpenRouterModelAvailable, getOpenRouterModels } from "./openrouter-models.js";
+import { resolveLowCostImages, type ImageResolutionResult, type SourceImageCandidate } from "./low-cost-images.js";
+import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
@@ -78,20 +78,29 @@ export type SeoPackage = {
   keyPoints?: string[];
   faqs: Array<{ question: string; answer: string; sourceQuery?: string }>;
 };
-type SeoPackageRun = {
-  content: string;
-  modelId: string;
-  status: "success" | "failed";
-  webSearch: boolean;
-  faqQueryCount: number;
-  cost: number;
-  usage?: { prompt: number; completion: number; total: number };
-  responseData?: Record<string, unknown>;
-  error?: string;
-};
+function summarizeImageResolution(result: ImageResolutionResult) {
+  return {
+    coverPath: result.coverPath,
+    inlinePaths: result.inlinePaths,
+    queued: result.queued,
+    failed: result.failed,
+    results: result.results.map((item) => ({
+      type: item.slot.type,
+      position: item.slot.position,
+      status: item.status,
+      storagePath: item.storagePath,
+      provider: item.provider,
+      queuedRequestId: item.queuedRequestId,
+      query: item.query,
+      error: item.error,
+    })),
+  };
+}
+
 const AI_REQUEST_TIMEOUT_MS = 35_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
+const RSS_FETCH_TIMEOUT_MS = 15_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
 const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
 const SEO_META_TITLE_LIMIT = 60;
@@ -808,41 +817,14 @@ async function repairShortArticle(opts: {
   };
 }
 
-async function chooseSeoModel(openRouterKey: string) {
-  try {
-    const models = await getOpenRouterModels(openRouterKey, "text") as Array<{ id: string; pricing: string }>;
-    return models.find((model) => model.pricing === "free" || model.pricing === "low")?.id || null;
-  } catch {
-    return null;
-  }
-}
-
-function jsonRecord(value: string) {
-  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const jsonText = fenced || value.match(/\{[\s\S]*\}/)?.[0] || value;
-  const parsed = JSON.parse(jsonText) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("SEO package was not a JSON object");
-  return parsed as Record<string, unknown>;
-}
-
 function cleanSeoValue(value: unknown, maxChars = 220) {
   return truncateAtWord(String(value || "").replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim(), maxChars);
-}
-
-function sourceArray(value: unknown) {
-  return Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n|;/) : [];
 }
 
 function shortAnswer(value: unknown) {
   const text = cleanSeoValue(value, 420);
   const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) || [];
   return sentences.slice(0, 3).join(" ");
-}
-
-function titleWithKeyword(value: unknown, keyword: string) {
-  const cleaned = cleanSeoValue(value, 80) || keyword;
-  if (!keyword || normalizeTopic(cleaned).includes(normalizeTopic(keyword))) return cleanSeoMetaTitle(cleaned, keyword);
-  return cleanSeoMetaTitle(`${keyword}: ${cleaned}`, keyword);
 }
 
 function stripDanglingSeoEnding(value: string) {
@@ -870,37 +852,6 @@ function cleanSeoMetaDescription(value: unknown, fallbackText: string) {
   const raw = cleanSeoValue(value, 260) || cleanSeoValue(fallbackText, 260);
   const clipped = stripDanglingSeoEnding(truncateAtWord(raw, SEO_META_DESCRIPTION_LIMIT));
   return clipped || truncateAtWord(cleanSeoValue(fallbackText, 260), SEO_META_DESCRIPTION_LIMIT);
-}
-
-function normalizeSeoPackage(value: string, topic: string): SeoPackage {
-  const record = jsonRecord(value);
-  const keyword = cleanSeoValue(record.primaryKeyword || record.primary_keyword || topic, 80);
-  const keyPoints = sourceArray(record.keyPoints ?? record.key_points)
-    .map((item) => cleanSeoValue(item, 260))
-    .filter(Boolean)
-    .slice(0, 6);
-  const faqs = sourceArray(record.faqs)
-    .map((item) => {
-      if (typeof item === "string") return { question: cleanSeoValue(item, 180), answer: "" };
-      if (!item || typeof item !== "object") return { question: "", answer: "" };
-      const faq = item as Record<string, unknown>;
-      return {
-        question: cleanSeoValue(faq.question, 180),
-        answer: shortAnswer(faq.answer),
-        sourceQuery: cleanSeoValue(faq.sourceQuery ?? faq.source_query ?? faq.query, 180),
-      };
-    })
-    .filter((item) => item.question && item.answer)
-    .slice(0, 7);
-  const slug = slugify(cleanSeoValue(record.slug || keyword || topic)).split("-").slice(0, 5).join("-") || "article";
-  const metaTitle = titleWithKeyword(record.metaTitle ?? record.meta_title, keyword);
-  const metaDescription = cleanSeoMetaDescription(record.metaDescription ?? record.meta_description, keyword);
-
-  if (!slug || !metaTitle || !metaDescription || faqs.length < 3) {
-    throw new Error("SEO package missed required fields");
-  }
-
-  return { slug, metaTitle, metaDescription, keyPoints, faqs };
 }
 
 function stripSeoPackageSections(content: string) {
@@ -955,93 +906,6 @@ export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic:
     article,
     faq,
   ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-async function generateSeoPackage(opts: {
-  content: string;
-  topic: string;
-  sourceType: string;
-  sourceValue: string;
-  draftModelId: string;
-  openRouterKey: string;
-  settings?: GenerationSettings;
-}): Promise<SeoPackageRun> {
-  const modelId = await chooseSeoModel(opts.openRouterKey);
-  const startedAt = Date.now();
-  try {
-    if (!modelId) throw new Error("No low-cost SEO packaging model available");
-    const articleText = truncatePromptText(plainArticleText(opts.content), 5000);
-    const language = isTurkishContent(opts.content, opts.settings) ? "Turkish" : "the article language";
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
-      headers: {
-        Authorization: `Bearer ${opts.openRouterKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: "system",
-            content: "You are a search-backed SEO editor. Return only valid JSON.",
-          },
-          {
-            role: "user",
-            content: [
-              `Create SEO packaging in ${language} for this blog draft.`,
-              `Primary topic/keyword: ${opts.topic}`,
-              `Source type: ${opts.sourceType}`,
-              `Source value: ${truncatePromptText(opts.sourceValue, 500)}`,
-              "Create Google People Also Ask / real user-query style FAQ ideas from the article and topic. Do not browse.",
-              "Rules: slug max 5 words; metaTitle 45-60 chars, includes the primary keyword, and never ends mid-phrase; metaDescription 120-145 chars with at least two long-tail keywords and a call to action; 3-7 FAQs with concise 1-3 sentence answers. Each FAQ targets a long-tail keyword not already used as a heading.",
-              'Return JSON exactly like {"slug":"...","metaTitle":"...","metaDescription":"...","faqs":[{"question":"...","answer":"...","sourceQuery":"..."}]}.',
-              `Article draft:\n${articleText}`,
-            ].join("\n\n"),
-          },
-        ],
-        max_tokens: 1400,
-        plugins: [],
-      }),
-    });
-
-    if (!resp.ok) throw new Error(openRouterErrorMessage(await resp.text(), resp.status, modelId));
-
-    const data = await resp.json() as any;
-    const raw = data.choices?.[0]?.message?.content || "";
-    const seo = normalizeSeoPackage(raw, opts.topic);
-    const usage = data.usage;
-    const totals = {
-      prompt: Number(usage?.prompt_tokens || 0),
-      completion: Number(usage?.completion_tokens || 0),
-      total: Number(usage?.total_tokens || 0),
-    };
-    const openRouterUsage = await getOpenRouterCost(opts.openRouterKey, data);
-    return {
-      content: applySeoPackage(opts.content, seo, { topic: opts.topic, settings: opts.settings }),
-      modelId,
-      status: "success",
-      webSearch: false,
-      faqQueryCount: seo.faqs.filter((item) => item.sourceQuery || item.question).length,
-      cost: openRouterUsage.cost,
-      usage: totals,
-      responseData: {
-        id: data.id,
-        generation: openRouterUsage.stats,
-        latencyMs: Date.now() - startedAt,
-      },
-    };
-  } catch (err) {
-    return {
-      content: opts.content,
-      modelId: modelId || "skipped",
-      status: "failed",
-      webSearch: false,
-      faqQueryCount: 0,
-      cost: 0,
-      error: err instanceof Error ? err.message : "SEO packaging failed",
-    };
-  }
 }
 
 function parseArticlePlan(value: string) {
@@ -1339,6 +1203,7 @@ export async function generateContent(opts: GenerateOpts) {
     const seoQaResults: Array<{ postId: string; title: string; qa: ReturnType<typeof evaluateSeoQa> }> = [];
     const contractResults: Array<{ postId: string; title: string; contract: ReturnType<typeof buildGenerationContractMetadata> }> = [];
     const seoPackagingResults: Array<{ postId: string; title: string; modelId: string; status: string; webSearch: boolean; faqQueryCount: number; error?: string }> = [];
+    const imageResolutionResults: Array<{ postId: string; title: string; result?: ReturnType<typeof summarizeImageResolution>; error?: string }> = [];
     const failedDrafts: Array<{ index: number; error: string }> = [];
     let totalCost = 0;
     let totalTokens = 0;
@@ -1450,22 +1315,6 @@ export async function generateContent(opts: GenerateOpts) {
           }
         }
         const genLatency = Date.now() - genStart;
-        let seoPackage: SeoPackageRun | null = null;
-
-        if (isBlogDraftSource(opts.sourceType)) {
-          await db.update(jobs).set({ currentStep: `packaging_seo_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
-          const h1 = genContent.match(/^#\s+(.+)$/m)?.[1]?.trim();
-          seoPackage = await generateSeoPackage({
-            content: genContent,
-            topic: isArticleSource(opts.sourceType) ? opts.sourceValue : h1 || article.title || opts.sourceValue,
-            sourceType: opts.sourceType,
-            sourceValue: opts.sourceValue,
-            draftModelId: modelId,
-            openRouterKey,
-            settings: promptSettings,
-          });
-          genContent = seoPackage.content;
-        }
 
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
@@ -1474,8 +1323,8 @@ export async function generateContent(opts: GenerateOpts) {
 
         // Log generation
         const cost = requestCost;
-        totalCost += cost + (seoPackage?.cost || 0);
-        totalTokens += usageTotals.total + (seoPackage?.usage?.total || 0);
+        totalCost += cost;
+        totalTokens += usageTotals.total;
 
         const [post] = await db.insert(posts).values({
           userId,
@@ -1494,17 +1343,6 @@ export async function generateContent(opts: GenerateOpts) {
 
         const contractMetadata = buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired);
         contractResults.push({ postId: post.id, title: postTitle, contract: contractMetadata });
-        if (seoPackage) {
-          seoPackagingResults.push({
-            postId: post.id,
-            title: postTitle,
-            modelId: seoPackage.modelId,
-            status: seoPackage.status,
-            webSearch: seoPackage.webSearch,
-            faqQueryCount: seoPackage.faqQueryCount,
-            error: seoPackage.error,
-          });
-        }
 
         if (isArticleSource(opts.sourceType)) {
           seoQaResults.push({
@@ -1530,24 +1368,6 @@ export async function generateContent(opts: GenerateOpts) {
           responseData,
         });
 
-        if (seoPackage?.status === "success" && seoPackage.usage) {
-          await db.insert(generationLogs).values({
-            userId,
-            postId: post.id,
-            usageType: "text",
-            modelId: seoPackage.modelId,
-            provider: seoPackage.modelId.split("/")[0],
-            status: "success",
-            promptTokens: seoPackage.usage.prompt || undefined,
-            completionTokens: seoPackage.usage.completion || undefined,
-            totalTokens: seoPackage.usage.total || undefined,
-            cost: seoPackage.cost,
-            latencyMs: Number(seoPackage.responseData?.latencyMs) || undefined,
-            sessionId: jobId,
-            responseData: seoPackage.responseData,
-          });
-        }
-
         createdPostIds.push(post.id);
         await db.update(jobs).set({
           resultPostIds: createdPostIds,
@@ -1556,33 +1376,50 @@ export async function generateContent(opts: GenerateOpts) {
             contract: contractMetadata,
             contracts: contractResults,
             seoPackaging: seoPackagingResults,
+            imageResolution: imageResolutionResults,
           },
         }).where(eq(jobs.id, jobId));
 
         // Resolve images after the draft exists. Paid AI is queued, never run inline by default.
         if (opts.generateImages && opts.imageConfig) {
-          await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+          try {
+            await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
 
-          const imageResults = await resolveLowCostImages({
-            content: genContent,
-            title: postTitle,
-            userId,
-            postId: post.id,
-            jobId: jobId!,
-            imageConfig: opts.imageConfig,
-            imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
-            stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
-            settings: {
-              sourceImageAllowed: promptSettings?.sourceImageAllowed,
-              aiFallbackEnabled: promptSettings?.aiFallbackEnabled,
-              maxAiImagesPerDay: promptSettings?.maxAiImagesPerDay,
-              minMinutesBetweenAiImages: promptSettings?.minMinutesBetweenAiImages,
-              imageCompressionEnabled: opts.imageConfig?.compressionEnabled ?? promptSettings?.imageCompressionEnabled ?? true,
+            const imageResults = await resolveLowCostImages({
+              content: genContent,
+              title: postTitle,
+              userId,
+              postId: post.id,
+              jobId: jobId!,
+              imageConfig: opts.imageConfig,
+              imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
+              stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+              settings: {
+                sourceImageAllowed: promptSettings?.sourceImageAllowed,
+                aiFallbackEnabled: promptSettings?.aiFallbackEnabled,
+                maxAiImagesPerDay: promptSettings?.maxAiImagesPerDay,
+                minMinutesBetweenAiImages: promptSettings?.minMinutesBetweenAiImages,
+                imageCompressionEnabled: opts.imageConfig?.compressionEnabled ?? promptSettings?.imageCompressionEnabled ?? true,
+              },
+              sourceImages: (article as any).sourceImages as SourceImageCandidate[] | undefined,
+            });
+
+            imageResolutionResults.push({ postId: post.id, title: postTitle, result: summarizeImageResolution(imageResults) });
+            totalCost += imageResults.cost;
+          } catch (imageErr: any) {
+            const imageError = imageErr?.message || "Image resolution failed";
+            console.warn(`[images] Resolution failed for draft ${i + 1}:`, imageError);
+            imageResolutionResults.push({ postId: post.id, title: postTitle, error: imageError });
+          }
+          await db.update(jobs).set({
+            generationPlan: {
+              ...generationPlan,
+              contract: contractMetadata,
+              contracts: contractResults,
+              seoPackaging: seoPackagingResults,
+              imageResolution: imageResolutionResults,
             },
-            sourceImages: (article as any).sourceImages as SourceImageCandidate[] | undefined,
-          });
-
-          totalCost += imageResults.cost;
+          }).where(eq(jobs.id, jobId));
         }
 
       } catch (draftErr: any) {
@@ -1591,7 +1428,7 @@ export async function generateContent(opts: GenerateOpts) {
         failedDrafts.push({ index: i, error: lastGenerationError });
         await db.update(jobs).set({
           generationError: lastGenerationError,
-          generationPlan: { ...generationPlan, failedDrafts, seoPackaging: seoPackagingResults },
+          generationPlan: { ...generationPlan, failedDrafts, seoPackaging: seoPackagingResults, imageResolution: imageResolutionResults },
         }).where(eq(jobs.id, jobId));
       }
     }
@@ -1622,6 +1459,7 @@ export async function generateContent(opts: GenerateOpts) {
         contracts: contractResults,
         failedDrafts,
         seoPackaging: seoPackagingResults,
+        imageResolution: imageResolutionResults,
         seoQa: seoQaResults,
       },
       tokenCost: totalTokens,
@@ -1644,7 +1482,7 @@ export async function generateContent(opts: GenerateOpts) {
 
 async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: number) {
   try {
-    const resp = await fetch(feedUrl);
+    const resp = await fetch(feedUrl, { signal: AbortSignal.timeout(RSS_FETCH_TIMEOUT_MS) });
     const text = await resp.text();
 
     // Simple RSS/Atom parsing

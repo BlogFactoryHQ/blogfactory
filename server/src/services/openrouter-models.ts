@@ -1,5 +1,6 @@
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const CACHE_TTL = 60 * 60 * 1000;
+const MODEL_FETCH_TIMEOUT_MS = 10_000;
 
 export const OPENROUTER_MODEL_UNAVAILABLE_MESSAGE =
   "Selected model is no longer available on OpenRouter. Pick a live model in settings/persona/feed.";
@@ -121,7 +122,10 @@ export async function getOpenRouterModels(apiKey: string, kind: ModelKind, refre
   url.searchParams.set("output_modalities", kind);
   url.searchParams.set("sort", kind === "text" ? "pricing-low-to-high" : "most-popular");
 
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+  const resp = await fetch(url, {
+    signal: AbortSignal.timeout(MODEL_FETCH_TIMEOUT_MS),
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
   if (!resp.ok) throw new Error(`OpenRouter model refresh failed (${resp.status})`);
 
   const models = catalogFromOpenRouterPayload(await resp.json(), kind);

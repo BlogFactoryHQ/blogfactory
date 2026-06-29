@@ -1,4 +1,4 @@
-import { chooseImageResolution, imageModelForTarget, imageTargets, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, stockQuery } from "./low-cost-images.js";
+import { aiDailyLimitReached, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -36,14 +36,26 @@ assertEqual(
 
 assertEqual(
   shouldQueueAiBeforeStock("cover", true),
-  true,
-  "cover queues selected AI before stock"
+  false,
+  "cover tries stock/source before AI queue"
 );
 
 assertEqual(
   shouldQueueAiBeforeStock("inline", true),
+  false,
+  "inline tries stock/source before AI queue"
+);
+
+assertEqual(
+  shouldQueueAiUpgrade("cover", true),
   true,
-  "inline queues free AI before stock"
+  "cover gets an async AI upgrade after immediate stock/source"
+);
+
+assertEqual(
+  shouldQueueAiUpgrade("inline", true),
+  false,
+  "inline stock/source success does not queue AI"
 );
 
 assertEqual(
@@ -54,8 +66,8 @@ assertEqual(
 
 assertEqual(
   shouldAttachStockWhileAiQueued("inline"),
-  false,
-  "inline avoids duplicate stock placeholders while AI is queued"
+  true,
+  "inline gets an immediate stock placeholder while AI is queued"
 );
 
 assertEqual(
@@ -77,6 +89,22 @@ assertEqual(
 );
 
 assertEqual(
+  imageTargets({ inline: { count: 0, resolution: "Web", aspectRatio: "3:2" } }).length,
+  0,
+  "inline count 0 creates no inline slots"
+);
+
+assertEqual(
+  buildImageSlots({
+    imageConfig: { cover: { resolution: "1K", aspectRatio: "16:9" }, inline: { count: 2, resolution: "Web", aspectRatio: "3:2" } },
+    content: "Intro\n\n## First\n\nBody",
+    title: "Test Article",
+  }).length,
+  3,
+  "slot builder creates cover and inline slots"
+);
+
+assertEqual(
   stockQuery({ title: "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı", type: "cover" }),
   "smart glasses wearable technology",
   "smart glasses titles search wearable tech stock"
@@ -87,5 +115,30 @@ assertEqual(
   "smart glasses close up wearable device",
   "inline stock query differs from cover"
 );
+
+assertEqual(
+  stockQueries({ title: "Cyera raises 600 million for data security", type: "inline" }).includes("cybersecurity data protection"),
+  true,
+  "stock query fallback includes category query"
+);
+
+const sourceCandidates = [{ url: "cover.webp" }, { url: "inline.webp" }];
+assertEqual(
+  sourceCandidateForSlot({ type: "inline", position: 0 }, sourceCandidates, new Set(["cover.webp"]), true)?.url,
+  "inline.webp",
+  "inline source selection skips the cover source image"
+);
+
+assertEqual(stockOrientation("16:9", "pexels"), "landscape", "wide Pexels image uses landscape");
+assertEqual(stockOrientation("9:16", "pexels"), "portrait", "tall Pexels image uses portrait");
+assertEqual(stockOrientation("1:1", "pexels"), "square", "square Pexels image uses square");
+assertEqual(stockOrientation("1:1", "pixabay"), "", "square Pixabay image omits unsupported orientation");
+
+assertEqual(aiDailyLimitReached(100, 0), false, "AI/day 0 means no daily cap");
+assertEqual(aiDailyLimitReached(30, 30), true, "AI/day positive cap is enforced");
+assertEqual(countsTowardAiDailyLimit("ai-deferred"), true, "AI-deferred completions count toward AI/day");
+assertEqual(countsTowardAiDailyLimit("stock-fallback"), false, "stock fallback does not count toward AI/day");
+assertEqual(nextAiAvailableAt(new Date(Date.now() - 60_000), 5) instanceof Date, true, "recent AI completion gets a future availability time");
+assertEqual(nextAiAvailableAt("2000-01-01T00:00:00Z", 5), null, "old AI completion does not delay the queue");
 
 console.log("low-cost-images self-check passed");
