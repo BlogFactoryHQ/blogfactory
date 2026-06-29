@@ -50,7 +50,7 @@ AI-assisted content operations for generating, managing, scheduling, and publish
 
 ```bash
 # 1. Clone and install dependencies
-git clone https://github.com/Ladresss/blogfactory.git
+git clone https://github.com/BoraGkc/blogfactory.git
 cd blogfactory
 npm install
 
@@ -114,7 +114,7 @@ OpenRouter, Google Gemini, and publishing integration credentials are stored per
 ## Deploying to Vercel
 
 1. Push this repository to GitHub.
-2. In [Vercel](https://vercel.com), create a new project from `Ladresss/blogfactory`.
+2. In [Vercel](https://vercel.com), create a new project from `BoraGkc/blogfactory`.
 3. Leave the root directory as `./`.
 4. Add the required environment variables from `.env.example`.
 5. Deploy.
