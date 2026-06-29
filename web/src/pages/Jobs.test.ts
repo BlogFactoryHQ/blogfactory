@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateJobRows, jobGroupKey } from "./Jobs";
+import { aggregateJobRows, jobGroupKey, parseStepProgress } from "./Jobs";
 
 const baseJob = {
   id: "job-1",
@@ -52,5 +52,14 @@ describe("job batch grouping", () => {
     expect(rows[0].current_step).toBe("generating_draft_2_of_3");
     expect(rows[0].result_post_ids).toEqual(["post-1"]);
     expect(rows[0].generation_plan.failedDrafts).toEqual([{ index: 2, error: "Model timed out" }]);
+  });
+});
+
+describe("job step progress", () => {
+  it("shows image resolution as the active step after a draft exists", () => {
+    const progress = parseStepProgress("resolving_images_for_draft_1", ["post-1"], { totalDrafts: 1 });
+
+    expect(progress.label).toBe("Finding images for draft 1 of 1");
+    expect(progress.steps[0]).toMatchObject({ label: "Draft 1 (finding images)", active: true });
   });
 });
