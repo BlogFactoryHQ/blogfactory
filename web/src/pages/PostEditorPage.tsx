@@ -47,6 +47,17 @@ interface Post {
   created_at: string;
   cover_image_url?: string | null;
   inline_images?: string[] | null;
+  image_assets?: Array<{
+    storage_path: string;
+    type: string | null;
+    provider: string | null;
+    model_id: string | null;
+    source_kind: string | null;
+    source_url: string | null;
+    credit: string | null;
+    license_label: string | null;
+    attribution_url: string | null;
+  }>;
   personas?: { name: string } | null;
 }
 
@@ -361,6 +372,7 @@ export default function PostEditorPage() {
               <GeneratedImagesPanel
                 coverImageUrl={coverImageUrl}
                 inlineImages={inlineImages}
+                imageAssets={post.image_assets || []}
                 onSetCoverImage={handleSetCoverImage}
                 onRemoveCoverImage={handleRemoveCoverImage}
                 onInsertInlineImage={handleInsertInlineImage}

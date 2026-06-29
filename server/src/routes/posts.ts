@@ -216,9 +216,28 @@ postsRoutes.get("/:id", async (c) => {
 
   if (!post) return c.json({ error: "Post not found" }, 404);
   const { persona_name, campaign_name, ...result } = post;
+  const attachedPaths = [result.cover_image_url, ...(normalizeInlineImages(result.inline_images, result.cover_image_url) || [])]
+    .filter((path): path is string => Boolean(path));
+  const attachedAssets = attachedPaths.length
+    ? await db
+      .select({
+        storage_path: imageAssets.storagePath,
+        type: imageAssets.type,
+        provider: imageAssets.provider,
+        model_id: imageAssets.modelId,
+        source_kind: imageAssets.sourceKind,
+        source_url: imageAssets.sourceUrl,
+        credit: imageAssets.credit,
+        license_label: imageAssets.licenseLabel,
+        attribution_url: imageAssets.attributionUrl,
+      })
+      .from(imageAssets)
+      .where(and(eq(imageAssets.userId, userId), inArray(imageAssets.storagePath, attachedPaths)))
+    : [];
   return c.json({
     ...result,
     inline_images: normalizeInlineImages(result.inline_images, result.cover_image_url),
+    image_assets: attachedAssets,
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,
   });

@@ -740,6 +740,11 @@ async function fallbackRequestToStock(request: typeof imageGenerationRequests.$i
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title, content: posts.content }).from(posts).where(eq(posts.id, request.postId)).limit(1);
   if (!post) return null;
+  const existingAssets = await db
+    .select({ sourceUrl: imageAssets.sourceUrl })
+    .from(imageAssets)
+    .where(and(eq(imageAssets.userId, request.userId), eq(imageAssets.postId, request.postId)));
+  const usedSourceUrls = new Set(existingAssets.map((asset) => asset.sourceUrl).filter((url): url is string => Boolean(url)));
   const slot = imageSlotFromRequest(request, post.title);
   const result = await tryStockImage({
     slot,
@@ -749,6 +754,7 @@ async function fallbackRequestToStock(request: typeof imageGenerationRequests.$i
     postId: request.postId,
     jobId: request.jobId,
     compressionEnabled: true,
+    usedSourceUrls,
   });
   if (!result?.storagePath) return null;
   await attachPostImage(request.postId, slot, result.storagePath, placement);

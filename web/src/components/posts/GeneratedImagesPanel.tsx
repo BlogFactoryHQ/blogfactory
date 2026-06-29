@@ -41,11 +41,23 @@ interface GeneratedImage {
   resolution?: string;
   aspectRatio?: string;
   model?: string;
+  provider?: string | null;
+  sourceKind?: string | null;
+  licenseLabel?: string | null;
+}
+
+interface ImageAssetMetadata {
+  storage_path: string;
+  provider?: string | null;
+  model_id?: string | null;
+  source_kind?: string | null;
+  license_label?: string | null;
 }
 
 interface GeneratedImagesPanelProps {
   coverImageUrl?: string | null;
   inlineImages?: string[] | null;
+  imageAssets?: ImageAssetMetadata[];
   onSetCoverImage?: (url: string) => void;
   onRemoveCoverImage?: () => void;
   onInsertInlineImage?: (url: string) => void;
@@ -63,6 +75,7 @@ interface GeneratedImagesPanelProps {
 export function GeneratedImagesPanel({
   coverImageUrl,
   inlineImages,
+  imageAssets = [],
   onSetCoverImage,
   onRemoveCoverImage,
   onInsertInlineImage,
@@ -77,35 +90,9 @@ export function GeneratedImagesPanel({
 
   const signedCoverUrl = useSignedUrl(coverImageUrl);
   const signedInlineUrls = useSignedUrls(visibleInlineImages.map((image) => image.url));
+  const assetByPath = new Map(imageAssets.map((asset) => [asset.storage_path, asset]));
 
-  const allImages: GeneratedImage[] = [];
-  
-  if (coverImageUrl && signedCoverUrl) {
-    allImages.push({
-      url: signedCoverUrl,
-      type: "cover",
-      resolution: imageMetadata?.coverResolution || "2K",
-      aspectRatio: imageMetadata?.coverAspectRatio || "16:9",
-      model: imageMetadata?.model,
-    });
-  }
-  
-  if (visibleInlineImages.length > 0) {
-    visibleInlineImages.forEach(({ url }, idx) => {
-      const signedUrl = signedInlineUrls[idx];
-      if (signedUrl) {
-        allImages.push({
-          url: signedUrl,
-          type: "inline",
-          resolution: imageMetadata?.inlineResolution || "2K",
-          aspectRatio: imageMetadata?.inlineAspectRatio || "3:2",
-          model: imageMetadata?.model,
-        });
-      }
-    });
-  }
-
-  if (allImages.length === 0 && !coverImageUrl && visibleInlineImages.length === 0) {
+  if (!coverImageUrl && visibleInlineImages.length === 0) {
     return null;
   }
 
@@ -169,7 +156,10 @@ export function GeneratedImagesPanel({
                     type: "cover",
                     resolution: imageMetadata?.coverResolution || "2K",
                     aspectRatio: imageMetadata?.coverAspectRatio || "16:9",
-                    model: imageMetadata?.model,
+                    model: assetByPath.get(coverImageUrl)?.model_id || imageMetadata?.model,
+                    provider: assetByPath.get(coverImageUrl)?.provider,
+                    sourceKind: assetByPath.get(coverImageUrl)?.source_kind,
+                    licenseLabel: assetByPath.get(coverImageUrl)?.license_label,
                   }}
                   onDownload={() => handleDownload(coverImageUrl, "cover-image.png")}
                   onRemove={onRemoveCoverImage}
@@ -199,7 +189,10 @@ export function GeneratedImagesPanel({
                           type: "inline",
                           resolution: imageMetadata?.inlineResolution || "2K",
                           aspectRatio: imageMetadata?.inlineAspectRatio || "3:2",
-                          model: imageMetadata?.model,
+                          model: assetByPath.get(originalUrl)?.model_id || imageMetadata?.model,
+                          provider: assetByPath.get(originalUrl)?.provider,
+                          sourceKind: assetByPath.get(originalUrl)?.source_kind,
+                          licenseLabel: assetByPath.get(originalUrl)?.license_label,
                         }}
                         index={index + 1}
                         onDownload={() => handleDownload(originalUrl, `inline-image-${index + 1}.png`)}
@@ -229,6 +222,24 @@ interface ImageCardProps {
   onSetAsCover?: () => void;
 }
 
+function providerName(provider?: string | null) {
+  if (!provider) return "";
+  if (provider === "google-ai-studio") return "Google";
+  if (provider === "openrouter-image") return "OpenRouter";
+  if (provider === "openai-image") return "OpenAI";
+  return provider.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function sourceLabel(image: GeneratedImage) {
+  const provider = image.provider || image.model || "";
+  if (image.sourceKind === "stock" || ["pexels", "pixabay", "openverse"].includes(provider)) {
+    return `Stock${provider ? ` · ${providerName(provider)}` : ""}`;
+  }
+  if (image.sourceKind === "source" || provider === "source-image") return "Source image";
+  if (provider) return `AI · ${providerName(provider)}`;
+  return "Image";
+}
+
 function ImageCard({
   image,
   index,
@@ -241,6 +252,7 @@ function ImageCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [fileSize, setFileSize] = useState<string | null>(null);
+  const label = sourceLabel(image);
 
   useEffect(() => {
     // Fetch file metadata from the image URL
@@ -404,6 +416,10 @@ function ImageCard({
           Cover
         </div>
       )}
+
+      <div className="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">
+        {label}
+      </div>
     </div>
   );
 }
