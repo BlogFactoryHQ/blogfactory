@@ -38,22 +38,37 @@ const providerDetails: Record<IndexingProvider, {
   badge: string;
   icon: typeof SearchCheck;
   fields: Array<{ key: string; label: string; placeholder: string; type?: string; multiline?: boolean }>;
+  helpUrl: string;
+  setupSteps: string[];
 }> = {
   indexnow: {
     name: "IndexNow",
     description: "Submit article URLs to Bing and Yandex using one hosted key file.",
     badge: "Bing + Yandex",
     icon: SearchCheck,
+    helpUrl: "https://www.indexnow.org/documentation",
+    setupSteps: [
+      "Generate a key here.",
+      "Create a text file named {key}.txt on the site root.",
+      "Put only the key inside that file, then save this connection.",
+    ],
     fields: [
-      { key: "key", label: "IndexNow key", placeholder: "8-128 character key", type: "password" },
+      { key: "key", label: "IndexNow key", placeholder: "8-128 character key" },
       { key: "keyLocation", label: "Key file URL", placeholder: "https://example.com/your-key.txt" },
     ],
   },
   google: {
     name: "Google",
-    description: "Submit only Google-eligible JobPosting or BroadcastEvent pages.",
+    description: "Submit eligible JobPosting or BroadcastEvent pages with the Google Indexing API.",
     badge: "Eligible only",
     icon: KeyRound,
+    helpUrl: "https://developers.google.com/search/apis/indexing-api/v3/prereqs",
+    setupSteps: [
+      "Search Console OAuth is read-only performance access; it does not publish URLs.",
+      "Enable the Google Indexing API in Google Cloud.",
+      "Create a service account JSON key.",
+      "Add the service account email as a Search Console owner, then paste the JSON here.",
+    ],
     fields: [
       { key: "serviceAccountJson", label: "Service account JSON", placeholder: "{ ... }", multiline: true },
     ],
@@ -64,7 +79,7 @@ const providers: IndexingProvider[] = ["indexnow", "google"];
 
 export function IndexingPanel() {
   const { activeSite } = useSites();
-  const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls } = useIndexing();
+  const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls, startGoogleOAuth } = useIndexing();
   const [providerToConnect, setProviderToConnect] = useState<IndexingProvider | null>(null);
   const [editing, setEditing] = useState<IndexingIntegration | null>(null);
   const [bulkUrls, setBulkUrls] = useState("");
@@ -153,12 +168,16 @@ export function IndexingPanel() {
 
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                     {integration ? (
-                      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <label className="flex items-start gap-2 text-sm text-muted-foreground">
                         <Switch
+                          className="mt-0.5"
                           checked={integration.autoSubmit}
                           onCheckedChange={(checked) => saveIntegration.mutate({ id: integration.id, provider, autoSubmit: checked })}
                         />
-                        Auto-submit on publish
+                        <span>
+                          Auto-submit on publish
+                          <span className="block text-xs">Off still keeps this provider available for Bulk Submit.</span>
+                        </span>
                       </label>
                     ) : <span className="text-sm text-muted-foreground">Not connected</span>}
 
@@ -256,6 +275,7 @@ export function IndexingPanel() {
       <IndexingSetupDialog
         provider={providerToConnect}
         integration={editing}
+        siteDomain={activeSite?.domain || ""}
         onClose={() => {
           setProviderToConnect(null);
           setEditing(null);
@@ -273,6 +293,15 @@ export function IndexingPanel() {
           }
         }}
         isSaving={saveIntegration.isPending}
+        onGoogleOAuth={async (input) => {
+          try {
+            const result = await startGoogleOAuth.mutateAsync(input);
+            window.location.href = result.authUrl;
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to start Google OAuth");
+          }
+        }}
+        isGoogleOAuthStarting={startGoogleOAuth.isPending}
       />
     </>
   );
@@ -293,15 +322,21 @@ export default function Indexing() {
 function IndexingSetupDialog({
   provider,
   integration,
+  siteDomain,
   onClose,
   onSave,
   isSaving,
+  onGoogleOAuth,
+  isGoogleOAuthStarting,
 }: {
   provider: IndexingProvider | null;
   integration: IndexingIntegration | null;
+  siteDomain: string;
   onClose: () => void;
   onSave: (input: { id?: string; provider: IndexingProvider; displayName: string; autoSubmit: boolean; credentials?: Record<string, string> }) => Promise<IndexingIntegration>;
   isSaving: boolean;
+  onGoogleOAuth: (input: { displayName: string; autoSubmit: boolean }) => Promise<void>;
+  isGoogleOAuthStarting: boolean;
 }) {
   const activeProvider = provider || integration?.provider || null;
   const details = activeProvider ? providerDetails[activeProvider] : null;
@@ -321,6 +356,15 @@ function IndexingSetupDialog({
   }, [details, integration]);
 
   const setCredential = (key: string, value: string) => setCredentials((current) => ({ ...current, [key]: value }));
+
+  const generateIndexNowKey = () => {
+    const key = randomHex(16);
+    setCredentials((current) => ({
+      ...current,
+      key,
+      keyLocation: current.keyLocation || indexNowKeyLocation(siteDomain, key),
+    }));
+  };
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -351,6 +395,11 @@ function IndexingSetupDialog({
     setCredentials({});
   };
 
+  const handleGoogleOAuth = () => {
+    if (!details) return;
+    onGoogleOAuth({ displayName: displayName || details.name, autoSubmit });
+  };
+
   if (!activeProvider || !details) return null;
 
   return (
@@ -366,7 +415,10 @@ function IndexingSetupDialog({
             <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder={details.name} />
           </div>
           <label className="flex items-center justify-between gap-3 rounded-md border border-byword-border p-3 text-sm">
-            Auto-submit on live publish
+            <span>
+              Auto-submit on live publish
+              <span className="block text-xs text-muted-foreground">Turn off to submit manually from Bulk Submit.</span>
+            </span>
             <Switch checked={autoSubmit} onCheckedChange={setAutoSubmit} />
           </label>
           {integration && (
@@ -374,7 +426,55 @@ function IndexingSetupDialog({
               Credentials are encrypted and cannot be shown again. Leave credential fields blank to keep the saved values.
             </p>
           )}
-          <div className="grid gap-4">
+          <div className="rounded-lg border border-byword-border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold text-foreground">Setup</h3>
+              <Button variant="link" size="sm" className="h-auto p-0" asChild>
+                <a href={details.helpUrl} target="_blank" rel="noreferrer">
+                  Provider guide <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            </div>
+            <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+              {details.setupSteps.map((step) => (
+                <li key={step}>{formatSetupStep(step, credentials.key)}</li>
+              ))}
+            </ol>
+            {activeProvider === "indexnow" && (
+              <Button type="button" variant="outline" size="sm" className="mt-4" onClick={generateIndexNowKey}>
+                Generate key
+              </Button>
+            )}
+            {activeProvider === "google" && (
+              <Button type="button" className="mt-4 w-full" onClick={handleGoogleOAuth} disabled={isGoogleOAuthStarting}>
+                {isGoogleOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
+                Continue with Google
+              </Button>
+            )}
+          </div>
+          {activeProvider === "google" ? (
+            <details className="rounded-lg border border-byword-border p-4">
+              <summary className="cursor-pointer font-semibold text-foreground">Advanced: service account JSON</summary>
+              <div className="mt-4 grid gap-4">
+                {details.fields.map((field) => (
+                  <div key={field.key} className="space-y-2">
+                    <Label>{field.label}</Label>
+                    <Textarea
+                      value={credentials[field.key] || ""}
+                      onChange={(event) => setCredential(field.key, event.target.value)}
+                      placeholder={field.placeholder}
+                      className="min-h-[180px] font-mono text-xs"
+                    />
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={handleSubmit} disabled={isSaving}>
+                  {isSaving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                  Save JSON fallback
+                </Button>
+              </div>
+            </details>
+          ) : (
+            <div className="grid gap-4">
             {details.fields.map((field) => (
               <div key={field.key} className="space-y-2">
                 <Label>{field.label}</Label>
@@ -395,16 +495,17 @@ function IndexingSetupDialog({
                 )}
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSaving}>
+          {(activeProvider !== "google" || integration) && <Button onClick={handleSubmit} disabled={isSaving}>
             {isSaving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            Save connection
-          </Button>
+            {activeProvider === "google" ? "Save settings" : "Save connection"}
+          </Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -420,6 +521,20 @@ function normalizeCredentials(provider: IndexingProvider, credentials: Record<st
     }
   }
   return credentials;
+}
+
+function randomHex(byteLength: number) {
+  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function indexNowKeyLocation(domain: string, key: string) {
+  const host = comparableHost(domain);
+  return host ? `https://${host}/${key}.txt` : "";
+}
+
+function formatSetupStep(step: string, key?: string) {
+  return step.replace("{key}", key || "your-key");
 }
 
 function normalizeUrlsForSubmit(urls: string[], domain: string) {

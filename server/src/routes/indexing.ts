@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { indexingIntegrations, sites } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import {
+  createGoogleIndexingOAuthUrl,
   encryptIndexingCredentials,
   getIndexingDashboard,
   type IndexingProvider,
@@ -20,6 +21,25 @@ indexingRoutes.get("/dashboard", async (c) => {
   const siteId = String(c.req.query("siteId") || "");
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
   return c.json(await getIndexingDashboard(userId, siteId));
+});
+
+indexingRoutes.get("/oauth/start", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+
+  try {
+    const authUrl = await createGoogleIndexingOAuthUrl({
+      userId,
+      siteId,
+      requestUrl: c.req.url,
+      displayName: c.req.query("displayName") || c.req.query("display_name") || "Google",
+      autoSubmit: c.req.query("autoSubmit") !== "false" && c.req.query("auto_submit") !== "false",
+    });
+    return c.json({ authUrl });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Failed to start Google OAuth" }, 400);
+  }
 });
 
 indexingRoutes.post("/integrations", async (c) => {

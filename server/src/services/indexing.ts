@@ -1,8 +1,12 @@
-import { importPKCS8, SignJWT } from "jose";
+import { importPKCS8, jwtVerify, SignJWT } from "jose";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { indexingIntegrations, indexingSubmissions, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
+
+const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
+const GOOGLE_INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
+const OAUTH_STATE_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
 
 export type IndexingProvider = "indexnow" | "google";
 export type SubmissionSource = "manual" | "publish";
@@ -18,9 +22,11 @@ interface IndexNowCredentials {
 }
 
 interface GoogleCredentials {
-  client_email: string;
-  private_key: string;
+  type?: "service_account" | "oauth";
+  client_email?: string;
+  private_key?: string;
   token_uri?: string;
+  refresh_token?: string;
 }
 
 export function isIndexingProvider(value: string): value is IndexingProvider {
@@ -147,6 +153,87 @@ export async function testIndexingIntegration(row: IntegrationRow) {
   return testGoogle(credentials as GoogleCredentials);
 }
 
+export async function createGoogleIndexingOAuthUrl(opts: { userId: string; siteId: string; requestUrl: string; displayName?: string; autoSubmit?: boolean }) {
+  const config = googleOAuthConfig(opts.requestUrl);
+  const state = await new SignJWT({
+    purpose: "indexing",
+    userId: opts.userId,
+    siteId: opts.siteId,
+    displayName: opts.displayName || "Google",
+    autoSubmit: opts.autoSubmit ?? true,
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(OAUTH_STATE_SECRET);
+
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", GOOGLE_INDEXING_SCOPE);
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("include_granted_scopes", "true");
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
+export async function isGoogleIndexingOAuthState(state: string) {
+  try {
+    const { payload } = await jwtVerify(state, OAUTH_STATE_SECRET);
+    return payload.purpose === "indexing";
+  } catch {
+    return false;
+  }
+}
+
+export async function completeGoogleIndexingOAuth(opts: { code: string; state: string; requestUrl: string }) {
+  const config = googleOAuthConfig(opts.requestUrl);
+  const { payload } = await jwtVerify(opts.state, OAUTH_STATE_SECRET);
+  if (payload.purpose !== "indexing") throw new Error("Invalid Google Indexing OAuth state");
+  const userId = String(payload.userId || "");
+  const siteId = String(payload.siteId || "");
+  if (!userId || !siteId) throw new Error("Invalid Google Indexing OAuth state");
+
+  const token = await exchangeOAuthCode(opts.code, config);
+  if (!token.refresh_token) throw new Error("Google did not return a refresh token. Try again and approve offline access.");
+  const credentials = {
+    type: "oauth" as const,
+    refresh_token: token.refresh_token,
+    token_uri: GOOGLE_TOKEN_URI,
+  };
+  const encrypted = encryptSecret(JSON.stringify(credentials));
+
+  const [existing] = await db
+    .select()
+    .from(indexingIntegrations)
+    .where(and(eq(indexingIntegrations.userId, userId), eq(indexingIntegrations.siteId, siteId), eq(indexingIntegrations.provider, "google")))
+    .limit(1);
+
+  const values = {
+    displayName: String(payload.displayName || "Google"),
+    status: "connected",
+    autoSubmit: payload.autoSubmit !== false,
+    credentialsEncrypted: encrypted,
+    credentialHint: "Google OAuth",
+    lastTestedAt: new Date(),
+    lastTestResult: "Google Indexing OAuth connected",
+    updatedAt: new Date(),
+  };
+
+  if (existing) {
+    const [updated] = await db.update(indexingIntegrations).set(values).where(eq(indexingIntegrations.id, existing.id)).returning();
+    return serializeIndexingIntegration(updated);
+  }
+
+  const [created] = await db
+    .insert(indexingIntegrations)
+    .values({ userId, siteId, provider: "google", config: {}, ...values })
+    .returning();
+  return serializeIndexingIntegration(created);
+}
+
 export async function submitPublishedUrl(userId: string, siteId: string, url: string) {
   return submitUrlsForSite(userId, siteId, [url], "publish", true);
 }
@@ -248,10 +335,20 @@ function validateCredentials(provider: IndexingProvider, input: unknown) {
   }
 
   const credentials = {
+    type: "service_account" as const,
     client_email: String(record.client_email || "").trim(),
     private_key: String(record.private_key || "").replace(/\\n/g, "\n").trim(),
-    token_uri: String(record.token_uri || "https://oauth2.googleapis.com/token").trim(),
+    token_uri: String(record.token_uri || GOOGLE_TOKEN_URI).trim(),
   };
+  if (record.type === "oauth") {
+    const oauthCredentials = {
+      type: "oauth" as const,
+      refresh_token: String(record.refresh_token || "").trim(),
+      token_uri: String(record.token_uri || GOOGLE_TOKEN_URI).trim(),
+    };
+    if (!oauthCredentials.refresh_token) throw new Error("Google OAuth credentials must include refresh_token");
+    return oauthCredentials;
+  }
   if (!credentials.client_email || !credentials.private_key.includes("PRIVATE KEY")) {
     throw new Error("Google service account JSON must include client_email and private_key");
   }
@@ -260,7 +357,8 @@ function validateCredentials(provider: IndexingProvider, input: unknown) {
 
 function credentialHint(provider: IndexingProvider, credentials: IndexNowCredentials | GoogleCredentials) {
   if (provider === "indexnow") return (credentials as IndexNowCredentials).key.slice(-8);
-  return (credentials as GoogleCredentials).client_email;
+  if ((credentials as GoogleCredentials).type === "oauth") return "Google OAuth";
+  return (credentials as GoogleCredentials).client_email || "Google";
 }
 
 async function getUserSite(userId: string, siteId: string) {
@@ -282,9 +380,13 @@ async function testIndexNow(credentials: IndexNowCredentials) {
 }
 
 async function testGoogle(credentials: GoogleCredentials) {
+  if (credentials.type === "oauth") {
+    await googleAccessToken(credentials);
+    return { success: true, message: "Google Indexing OAuth connected" };
+  }
   await new SignJWT({ ok: true })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(credentials.client_email)
+    .setIssuer(credentials.client_email || "")
     .setIssuedAt()
     .setExpirationTime("5m")
     .sign(await googlePrivateKey(credentials));
@@ -465,11 +567,13 @@ async function isGoogleIndexingEligibleUrl(url: string) {
 }
 
 async function googleAccessToken(credentials: GoogleCredentials) {
-  const tokenUri = credentials.token_uri || "https://oauth2.googleapis.com/token";
-  const assertion = await new SignJWT({ scope: "https://www.googleapis.com/auth/indexing" })
+  if (credentials.type === "oauth") return refreshOAuthAccessToken(credentials);
+
+  const tokenUri = credentials.token_uri || GOOGLE_TOKEN_URI;
+  const assertion = await new SignJWT({ scope: GOOGLE_INDEXING_SCOPE })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(credentials.client_email)
-    .setSubject(credentials.client_email)
+    .setIssuer(credentials.client_email || "")
+    .setSubject(credentials.client_email || "")
     .setAudience(tokenUri)
     .setIssuedAt()
     .setExpirationTime("1h")
@@ -489,6 +593,61 @@ async function googleAccessToken(credentials: GoogleCredentials) {
   return data.access_token;
 }
 
+async function refreshOAuthAccessToken(credentials: GoogleCredentials) {
+  const response = await fetch(credentials.token_uri || GOOGLE_TOKEN_URI, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: googleClientId(),
+      client_secret: googleClientSecret(),
+      grant_type: "refresh_token",
+      refresh_token: credentials.refresh_token || "",
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const data = await response.json() as { access_token?: string; error_description?: string; error?: string };
+  if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || "Google token refresh failed");
+  return data.access_token;
+}
+
+async function exchangeOAuthCode(code: string, config: { clientId: string; clientSecret: string; redirectUri: string }) {
+  const response = await fetch(GOOGLE_TOKEN_URI, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      redirect_uri: config.redirectUri,
+      grant_type: "authorization_code",
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const data = await response.json() as { access_token?: string; refresh_token?: string; error_description?: string; error?: string };
+  if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || "Google OAuth token exchange failed");
+  return { access_token: data.access_token, refresh_token: data.refresh_token };
+}
+
+function googleOAuthConfig(requestUrl: string) {
+  return {
+    clientId: googleClientId(),
+    clientSecret: googleClientSecret(),
+    redirectUri: process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI || new URL("/api/search-console/oauth/callback", requestUrl).toString(),
+  };
+}
+
+function googleClientId() {
+  const value = process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_ID;
+  if (!value) throw new Error("GOOGLE_SEARCH_CONSOLE_CLIENT_ID is not configured");
+  return value;
+}
+
+function googleClientSecret() {
+  const value = process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET;
+  if (!value) throw new Error("GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET is not configured");
+  return value;
+}
+
 async function publishGoogleUrl(token: string, url: string) {
   const response = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
     method: "POST",
@@ -500,7 +659,7 @@ async function publishGoogleUrl(token: string, url: string) {
 }
 
 async function googlePrivateKey(credentials: GoogleCredentials) {
-  return importPKCS8(credentials.private_key.replace(/\\n/g, "\n"), "RS256");
+  return importPKCS8((credentials.private_key || "").replace(/\\n/g, "\n"), "RS256");
 }
 
 async function googleQuotaUsed(integrationId: string) {

@@ -40,6 +40,7 @@ const providerDetails: Record<IntegrationProvider, {
   description: string;
   badge: string;
   icon: typeof Plug;
+  guide: string[];
   fields: Array<{ key: string; label: string; placeholder: string; type?: string }>;
 }> = {
   wordpress: {
@@ -47,6 +48,11 @@ const providerDetails: Record<IntegrationProvider, {
     description: "Publish directly to posts and pages with tags, categories, images, and SEO metadata.",
     badge: "CMS",
     icon: Globe2,
+    guide: [
+      "Open WordPress admin for the site you want to publish to.",
+      "Go to Users > Profile and create an Application Password named BlogFactory.",
+      "Paste the site URL, your WordPress username, and the generated application password here.",
+    ],
     fields: [
       { key: "url", label: "WordPress URL", placeholder: "https://example.com" },
       { key: "username", label: "Username", placeholder: "editor@example.com" },
@@ -58,6 +64,11 @@ const providerDetails: Record<IntegrationProvider, {
     description: "Create Ghost posts or pages with tags, excerpt, SEO fields, and clean HTML formatting.",
     badge: "CMS",
     icon: CircleDashed,
+    guide: [
+      "Open Ghost Admin for the publication you want to publish to.",
+      "Go to Settings > Integrations and add a custom integration named BlogFactory.",
+      "Paste the API URL as the Ghost Admin URL and the Admin API key as the key.",
+    ],
     fields: [
       { key: "url", label: "Ghost Admin URL", placeholder: "https://example.ghost.io" },
       { key: "adminApiKey", label: "Admin API key", placeholder: "key_id:secret", type: "password" },
@@ -68,6 +79,11 @@ const providerDetails: Record<IntegrationProvider, {
     description: "Create Wix blog drafts and optionally publish live after explicit confirmation.",
     badge: "CMS",
     icon: ExternalLink,
+    guide: [
+      "Open the Wix API Keys Manager and create a key for the target site with Blog and Media access.",
+      "Copy the site ID from the Wix dashboard URL after /dashboard/.",
+      "Paste the API key and site ID here; add a member ID only when drafts should use a specific author.",
+    ],
     fields: [
       { key: "apiKey", label: "Wix API key", placeholder: "Wix API key", type: "password" },
       { key: "siteId", label: "Wix site ID", placeholder: "site-id" },
@@ -79,6 +95,11 @@ const providerDetails: Record<IntegrationProvider, {
     description: "Write generated articles into a Framer CMS collection as draft CMS items.",
     badge: "CMS",
     icon: Plug,
+    guide: [
+      "Open the Framer project and copy the project URL from the browser address bar.",
+      "In Site Settings > General, create an API key for BlogFactory.",
+      "Paste the project URL, API key, and the CMS collection ID or exact collection name.",
+    ],
     fields: [
       { key: "projectUrl", label: "Framer project URL", placeholder: "https://framer.com/projects/Website--..." },
       { key: "apiKey", label: "Framer API key", placeholder: "ap...", type: "password" },
@@ -337,7 +358,7 @@ function IntegrationSetupDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{integration ? "Manage" : "Connect"} {details.name}</DialogTitle>
           <DialogDescription>{details.description}</DialogDescription>
@@ -348,6 +369,14 @@ function IntegrationSetupDialog({
             <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder={details.name} />
           </div>
           <Separator />
+          <div className="rounded-md border border-byword-border bg-muted/40 px-4 py-3">
+            <p className="text-sm font-semibold text-foreground">How to get these details</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+              {details.guide.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
           {integration && (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
               Credentials are encrypted and cannot be shown again. Leave credential fields blank to keep the saved values.

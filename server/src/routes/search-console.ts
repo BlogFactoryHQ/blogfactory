@@ -16,6 +16,7 @@ import {
   testSearchConsoleIntegration,
 } from "../services/search-console.js";
 import { refreshOptimizePages } from "../services/optimize.js";
+import { completeGoogleIndexingOAuth, isGoogleIndexingOAuthState } from "../services/indexing.js";
 
 export const searchConsoleRoutes = new Hono();
 
@@ -38,20 +39,24 @@ searchConsoleRoutes.get("/oauth/start", async (c) => {
 });
 
 searchConsoleRoutes.get("/oauth/callback", async (c) => {
-  const appPath = "/search-growth?tab=optimize";
+  const state = String(c.req.query("state") || "");
+  const isIndexing = await isGoogleIndexingOAuthState(state);
+  const appPath = isIndexing ? "/search-growth?tab=indexing" : "/search-growth?tab=optimize";
   const error = c.req.query("error");
-  if (error) return c.redirect(`${appPath}&gsc=error&message=${encodeURIComponent(error)}`);
+  const resultKey = isIndexing ? "indexing" : "gsc";
+  if (error) return c.redirect(`${appPath}&${resultKey}=error&message=${encodeURIComponent(error)}`);
 
   try {
-    await completeSearchConsoleOAuth({
-      code: String(c.req.query("code") || ""),
-      state: String(c.req.query("state") || ""),
-      requestUrl: c.req.url,
-    });
-    return c.redirect(`${appPath}&gsc=connected`);
+    const input = { code: String(c.req.query("code") || ""), state, requestUrl: c.req.url };
+    if (isIndexing) {
+      await completeGoogleIndexingOAuth(input);
+    } else {
+      await completeSearchConsoleOAuth(input);
+    }
+    return c.redirect(`${appPath}&${resultKey}=connected`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Google OAuth failed";
-    return c.redirect(`${appPath}&gsc=error&message=${encodeURIComponent(message)}`);
+    return c.redirect(`${appPath}&${resultKey}=error&message=${encodeURIComponent(message)}`);
   }
 });
 

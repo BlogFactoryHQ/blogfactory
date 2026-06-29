@@ -1319,6 +1319,7 @@ export async function generateContent(opts: GenerateOpts) {
       skippedSportsNews: sportsSkipped,
       articleType: isArticleSource(opts.sourceType) ? articleType(opts.articleType) : undefined,
       contract: buildGenerationContractMetadata("", promptSettings, effectiveOpts),
+      imagesEnabled: Boolean(opts.generateImages && opts.imageConfig),
     };
 
     // Set generation plan
