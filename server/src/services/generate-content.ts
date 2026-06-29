@@ -38,6 +38,7 @@ interface GenerateOpts {
   articleWordCount?: number | string;
   includeTableOfContents?: boolean;
   enableResearch?: boolean;
+  internalLinkDensity?: string;
   jobId?: string; // for retry
   schedulerUserId?: string;
   campaignId?: string | null;
@@ -378,6 +379,12 @@ function internalLinkTarget(settings?: GenerationSettings): [number, number] | n
   if (!settingBool(settings, "enableInternalLinks", "enable_internal_links")) return null;
   const density = String(settingValue(settings, "internalLinkDensity", "internal_link_density") || "balanced");
   return INTERNAL_LINK_TARGETS[density] || INTERNAL_LINK_TARGETS.balanced;
+}
+
+export function applyGenerationOverrides(settings: GenerationSettings | undefined, opts: Partial<GenerateOpts> = {}) {
+  const density = typeof opts.internalLinkDensity === "string" ? opts.internalLinkDensity : "";
+  if (!density || !INTERNAL_LINK_TARGETS[density]) return settings;
+  return { ...(settings || {}), internalLinkDensity: density, internal_link_density: density };
 }
 
 export function resolveGenerationContract(settings?: GenerationSettings, opts: Partial<GenerateOpts> = {}) {
@@ -1186,7 +1193,7 @@ export async function generateContent(opts: GenerateOpts) {
         return { jobId, status: "failed", error: "Budget exceeded" };
       }
     }
-    const promptSettings = (opts.settingsSnapshot || settings) as GenerationSettings | undefined;
+    const promptSettings = applyGenerationOverrides((opts.settingsSnapshot || settings) as GenerationSettings | undefined, opts);
     const effectiveOpts = applyArticleDefaults(opts, promptSettings);
     const generationContract = resolveGenerationContract(promptSettings, effectiveOpts);
 

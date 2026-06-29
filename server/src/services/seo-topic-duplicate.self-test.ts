@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { anchorGeneratedTitleToSource, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
+import { anchorGeneratedTitleToSource, applyGenerationOverrides, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
 import { cleanPostTitle } from "./post-cleanup.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
@@ -39,6 +39,10 @@ const wordContract = resolveGenerationContract({ articleWordCount: 1500 });
 assert.equal(wordContract.targetWords, 1500);
 assert.equal(wordContract.minWords, 1200);
 assert.equal(wordContract.maxWords, 1800);
+assert.deepEqual(resolveGenerationContract(applyGenerationOverrides({
+  enableInternalLinks: true,
+  internalLinkDensity: "balanced",
+}, { internalLinkDensity: "minimal" })).internalLinkTarget, [1, 2]);
 const shortContract = buildGenerationContractMetadata(
   Array.from({ length: 800 }, (_, index) => `word${index}`).join(" "),
   { articleWordCount: 1500 }

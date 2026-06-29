@@ -128,6 +128,7 @@ interface ArticlePlanResponse {
 type CreationMode = "article" | "campaign" | "programmatic";
 type CampaignMode = "keyword" | "title" | "title_outline";
 type ArticleType = "auto" | "how_to" | "list" | "what_is" | "pillar" | "alternatives" | "best_of" | "comparison" | "newsjacking";
+type InternalLinkDensity = "minimal" | "light" | "balanced" | "rich";
 
 const ARTICLE_TYPE_OPTIONS: Array<{ value: ArticleType; label: string; description: string }> = [
   { value: "auto", label: "Auto", description: "Pick the best structure from the brief." },
@@ -140,6 +141,20 @@ const ARTICLE_TYPE_OPTIONS: Array<{ value: ArticleType; label: string; descripti
   { value: "comparison", label: "Comparison", description: "One product versus another." },
   { value: "newsjacking", label: "Newsjacking", description: "Timely article tied to a news event." },
 ];
+
+const LINK_DENSITY_OPTIONS: Array<{ value: InternalLinkDensity; label: string; shortLabel: string }> = [
+  { value: "minimal", label: "Up to 1-2 relevant links", shortLabel: "1-2" },
+  { value: "light", label: "Up to 3-4 relevant links", shortLabel: "3-4" },
+  { value: "balanced", label: "Up to 5-7 relevant links", shortLabel: "5-7" },
+  { value: "rich", label: "Up to 8-12 relevant links", shortLabel: "8-12" },
+];
+const LINK_DENSITY_LABELS = Object.fromEntries(
+  LINK_DENSITY_OPTIONS.map((option) => [option.value, option.label])
+) as Record<InternalLinkDensity, string>;
+
+function isInternalLinkDensity(value: unknown): value is InternalLinkDensity {
+  return LINK_DENSITY_OPTIONS.some((option) => option.value === value);
+}
 
 interface Campaign {
   id: string;
@@ -229,6 +244,9 @@ function GenerationBrief({
   estimate,
   imagePlan,
   linkState,
+  linksEnabled,
+  linkDensity,
+  onLinkDensityChange,
   topicFit,
   blockers,
 }: {
@@ -239,6 +257,9 @@ function GenerationBrief({
   estimate: CostEstimate;
   imagePlan: string;
   linkState: string;
+  linksEnabled: boolean;
+  linkDensity: InternalLinkDensity;
+  onLinkDensityChange: (density: InternalLinkDensity) => void;
   topicFit: TopicFitResult;
   blockers: string[];
 }) {
@@ -270,6 +291,33 @@ function GenerationBrief({
             <p className="mt-1 truncate text-sm font-medium text-foreground">{item.value}</p>
           </div>
         ))}
+      </div>
+      <div className={cn("mt-3 rounded-md border px-3 py-2", linksEnabled ? semanticToneClass("success") : semanticToneClass("neutral"))}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">Link density</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{linksEnabled ? "Applies to this generation" : "Internal links off"}</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {LINK_DENSITY_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                disabled={!linksEnabled}
+                onClick={() => onLinkDensityChange(option.value)}
+                className={cn(
+                  "rounded-md border px-2.5 py-1 text-xs font-semibold transition-calm disabled:cursor-not-allowed disabled:opacity-45",
+                  linksEnabled && linkDensity === option.value
+                    ? "border-green-500 bg-green-600 text-white"
+                    : "border-byword-border bg-card text-foreground hover:border-green-300"
+                )}
+                title={option.label}
+              >
+                {option.shortLabel}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {blockers.length > 0 && (
         <div className="mt-3 grid gap-2">
@@ -317,6 +365,7 @@ export default function ContentCreator() {
   const [modelId, setModelId] = useState("anthropic/claude-3.5-sonnet");
   const [variations, setVariations] = useState<1 | 3 | 5>(1);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
+  const [internalLinkDensity, setInternalLinkDensity] = useState<InternalLinkDensity>("balanced");
   const [showConcurrentDialog, setShowConcurrentDialog] = useState(false);
   const [campaignName, setCampaignName] = useState("");
   const [campaignMode, setCampaignMode] = useState<CampaignMode>("keyword");
@@ -378,6 +427,9 @@ export default function ContentCreator() {
         imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
         compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
+      setInternalLinkDensity(
+        isInternalLinkDensity(userSettings.internal_link_density) ? userSettings.internal_link_density : "balanced"
+      );
     }
   }, [userSettings]);
 
@@ -455,7 +507,6 @@ export default function ContentCreator() {
   const selectedTextModel = textModels.find((model) => model.id === modelId);
   const selectedImageModelId = userSettings?.image_model || "auto/consistent-cover";
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
-  const imageStylePrompt = userSettings?.image_style_prompt?.trim() || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.";
   const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
   const currentMonthSpend = useMemo(() => {
     const month = new Date().toISOString().slice(0, 7);
@@ -465,22 +516,6 @@ export default function ContentCreator() {
   }, [usageLogs]);
   const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
   const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? 0) || null;
-  const imagePlacement = imageConfig.imagePlacement || "auto";
-  const placementLabels: Record<string, string> = {
-    auto: "Auto placement",
-    featured_only: "Featured only",
-    after_intro: "After introduction",
-    between_sections: "Between sections",
-  };
-  const linkDensityLabels: Record<string, string> = {
-    minimal: "Up to 1-2 relevant links",
-    light: "Up to 3-4 relevant links",
-    balanced: "Up to 5-7 relevant links",
-    rich: "Up to 8-12 relevant links",
-  };
-  const formatOutputs = (outputs?: string[]) => outputs?.length ? `Outputs: ${outputs.join(" + ")}` : "";
-  const formatWebSearch = (cost?: number) => cost ? `Web search: $${cost.toFixed(3)}/use` : "";
-
   const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
     if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
       return preferredModelId;
@@ -645,12 +680,9 @@ export default function ContentCreator() {
     openRouterRemaining,
   });
   const selectedArticleType = ARTICLE_TYPE_OPTIONS.find((option) => option.value === articleType) || ARTICLE_TYPE_OPTIONS[0];
-  const contractWordTarget = Number(articleWordCount) || userSettings?.article_word_count || 0;
-  const contractWordLabel = contractWordTarget > 0
-    ? `${Math.round(contractWordTarget * 0.8).toLocaleString()}-${Math.round(contractWordTarget * 1.2).toLocaleString()} words`
-    : "Smart length";
-  const contractLinkLabel = userSettings?.enable_internal_links
-    ? linkDensityLabels[userSettings.internal_link_density || "balanced"] || "Up to 5-7 relevant links"
+  const internalLinksEnabled = Boolean(userSettings?.enable_internal_links);
+  const contractLinkLabel = internalLinksEnabled
+    ? LINK_DENSITY_LABELS[internalLinkDensity]
     : "Off";
   const articleTopicFit = useMemo(
     () => analyzeTopicFit(sourceType === "article_title" ? articleTitle : articleKeyword),
@@ -709,6 +741,7 @@ export default function ContentCreator() {
       articleWordCount: isArticleSource && articleWordCount ? Number(articleWordCount) : undefined,
       includeTableOfContents: isArticleSource && articleIncludeToc ? true : undefined,
       enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
+      internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
       generateImages: imagesEnabled,
       imageConfig: imagesEnabled ? {
         imagePlacement: imageConfig.imagePlacement || "auto",
@@ -851,6 +884,7 @@ export default function ContentCreator() {
         personaId: personaId || null,
         modelId,
         customInstructions: campaignCustomInstructions,
+        internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? imageConfig : null,
       });
@@ -1274,8 +1308,8 @@ export default function ContentCreator() {
         <BywordCard>
           <SectionHeader
             icon={SlidersHorizontal}
-            title="Generation settings"
-            description="Select the voice, model, image defaults, and draft count."
+            title="Generation controls"
+            description="Voice, model, images, links, and draft count."
           />
           <div className="space-y-7 p-6">
             <div className="grid gap-4 md:grid-cols-2">
@@ -1313,67 +1347,20 @@ export default function ContentCreator() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Persona prompt</p>
-                <p className="mt-1 line-clamp-2 text-sm">{selectedPersona?.system_prompt || "Select a persona to preview its prompt."}</p>
-              </div>
-              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Text model</p>
-                <p className="mt-1 truncate text-sm font-medium">{selectedTextModel?.name || modelId}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{selectedTextModel?.costInfo || "Loading live pricing..."}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{formatOutputs(selectedTextModel?.modalities?.output)} {formatWebSearch(selectedTextModel?.rawPricing.webSearch)}</p>
-              </div>
-              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image model</p>
-                <p className="mt-1 truncate text-sm font-medium">{selectedImageModel?.name || selectedImageModelId}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{selectedImageModel?.costInfo || "Loading image pricing..."}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{formatOutputs(selectedImageModel?.modalities?.output)} {formatWebSearch(selectedImageModel?.rawPricing.webSearch)}</p>
-              </div>
-              <div className="rounded-lg border border-byword-border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image style prompt</p>
-                <p className="mt-1 line-clamp-2 text-sm">{imageStylePrompt}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {placementLabels[imagePlacement]} · Compression {imageConfig.compressionEnabled ?? true ? "on" : "off"}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Cover uses selected model · Inline tries free AI, then stock
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4 text-byword-blue" />
-                <p className="font-semibold">Output contract</p>
-              </div>
-              <div className="grid gap-2 text-sm md:grid-cols-3">
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Length</p>
-                  <p className="mt-1 font-medium">{contractWordLabel}</p>
-                </div>
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">FAQ</p>
-                  <p className="mt-1 font-medium">3-5 questions</p>
-                </div>
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Internal links</p>
-                  <p className="mt-1 font-medium">{contractLinkLabel}</p>
-                </div>
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Language</p>
-                  <p className="mt-1 font-medium">{userSettings?.article_language || "Default"}</p>
-                </div>
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Research</p>
-                  <p className="mt-1 font-medium">{userSettings?.enable_research ? "On" : "Off"}</p>
-                </div>
-                <div className="rounded-md border border-byword-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Images</p>
-                  <p className="mt-1 font-medium">{imageConfig.cover.enabled || imageConfig.inline.enabled ? "On" : "Off"}</p>
-                </div>
-              </div>
-            </div>
+            <GenerationBrief
+              title="Generation brief"
+              source={getSourceLabel()}
+              persona={selectedPersona?.name || ""}
+              model={selectedTextModel?.name || modelId}
+              estimate={articleCostEstimate}
+              imagePlan={imagePlanLabel}
+              linkState={contractLinkLabel}
+              linksEnabled={internalLinksEnabled}
+              linkDensity={internalLinkDensity}
+              onLinkDensityChange={setInternalLinkDensity}
+              topicFit={articleTopicFit}
+              blockers={articleBriefBlockers}
+            />
 
             <SplitImageGenerationSettings
               config={imageConfig}
@@ -1412,18 +1399,6 @@ export default function ContentCreator() {
             </div>
 
             <ActiveJobsPanel jobs={activeJobs} onDismiss={dismissJob} />
-
-            <GenerationBrief
-              title="Generation brief"
-              source={getSourceLabel()}
-              persona={selectedPersona?.name || ""}
-              model={selectedTextModel?.name || modelId}
-              estimate={articleCostEstimate}
-              imagePlan={imagePlanLabel}
-              linkState={contractLinkLabel}
-              topicFit={articleTopicFit}
-              blockers={articleBriefBlockers}
-            />
 
             <CostEstimateCard estimate={articleCostEstimate} />
 
@@ -1466,9 +1441,10 @@ export default function ContentCreator() {
             ) : (
               <div className="grid gap-3">
                 {recentPosts.map((post) => (
-                  <div
+                  <Link
                     key={post.id}
-                    className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40"
+                    to={`/posts/${post.id}/edit`}
+                    className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
                   >
                     <IconTile icon={FileTextIcon} />
                     <div className="min-w-0 flex-1">
@@ -1482,7 +1458,7 @@ export default function ContentCreator() {
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                     </span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -1612,6 +1588,9 @@ export default function ContentCreator() {
                 estimate={campaignCostEstimate}
                 imagePlan={imagePlanLabel}
                 linkState={contractLinkLabel}
+                linksEnabled={internalLinksEnabled}
+                linkDensity={internalLinkDensity}
+                onLinkDensityChange={setInternalLinkDensity}
                 topicFit={campaignTopicFit}
                 blockers={campaignBriefBlockers}
               />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
@@ -666,7 +667,11 @@ export default function Jobs() {
                       </span>
                     </div>
                     {jobPosts.map((post) => (
-                      <div key={post.id} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border mb-1.5 last:mb-0">
+                      <Link
+                        key={post.id}
+                        to={`/posts/${post.id}/edit`}
+                        className="mb-1.5 flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-calm last:mb-0 hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
+                      >
                         <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
                           <FileText className="h-4 w-4 text-muted-foreground" />
                         </div>
@@ -676,7 +681,7 @@ export default function Jobs() {
                             {post.status} • {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                           </p>
                         </div>
-                      </div>
+                      </Link>
                     ))}
                     {seoQa.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border space-y-3">

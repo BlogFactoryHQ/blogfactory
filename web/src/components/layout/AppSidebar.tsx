@@ -21,6 +21,7 @@ import {
   Plus,
   Check,
   Newspaper,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,6 +46,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 const primaryNavigation = [
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Create Content", href: "/content-creator", icon: PenTool },
   { name: "News", href: "/news", icon: Newspaper },
   { name: "My Content", href: "/posts", icon: FileText },

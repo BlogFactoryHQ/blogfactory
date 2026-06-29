@@ -35,11 +35,13 @@ const snapshotKeys = [
   "imageModel",
   "imageStylePrompt",
 ] as const;
+const internalLinkDensities = new Set(["minimal", "light", "balanced", "rich"]);
 
 async function buildSettingsSnapshot(userId: string, body: any) {
   const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
   const snapshot: Record<string, unknown> = {};
   for (const key of snapshotKeys) snapshot[key] = settings?.[key] ?? null;
+  if (internalLinkDensities.has(body.internalLinkDensity)) snapshot.internalLinkDensity = body.internalLinkDensity;
   snapshot.customInstructions = typeof body.customInstructions === "string" ? body.customInstructions.trim() : "";
   snapshot.generateImages = Boolean(body.generateImages);
   snapshot.imageConfig = body.imageConfig || null;
