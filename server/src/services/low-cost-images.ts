@@ -68,16 +68,16 @@ export function chooseImageResolution(input: ResolvePriorityInput) {
   return "none";
 }
 
-export function shouldQueueAiBeforeStock(_type: ImageTargetType, _aiAllowed: boolean) {
+export function shouldQueueAiBeforeStock(_type: ImageTargetType, aiAllowed: boolean) {
+  return aiAllowed;
+}
+
+export function shouldQueueAiUpgrade(_type: ImageTargetType, _aiAllowed: boolean) {
   return false;
 }
 
-export function shouldQueueAiUpgrade(type: ImageTargetType, aiAllowed: boolean) {
-  return type === "cover" && aiAllowed;
-}
-
-export function shouldAttachStockWhileAiQueued(type: ImageTargetType) {
-  return type === "cover" || type === "inline";
+export function shouldAttachStockWhileAiQueued(_type: ImageTargetType) {
+  return false;
 }
 
 export function imageModelForTarget(selectedModel: string, type: ImageTargetType) {
@@ -674,6 +674,14 @@ export async function resolvePostImages(opts: {
 
   for (const slot of slots) {
     try {
+      if (shouldQueueAiBeforeStock(slot.type, aiAllowed)) {
+        const queuedRequest = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type), slot });
+        if (queuedRequest.created) queued += 1;
+        results.push({ slot, status: "queued", queuedRequestId: queuedRequest.id || undefined, provider: "ai-deferred" });
+        console.info("[images] queued", { jobId: opts.jobId, type: slot.type, position: slot.position, requestId: queuedRequest.id });
+        continue;
+      }
+
       const immediate = await trySourceImage({ ...opts, slot, settings, usedSourceUrls, coverEnabled, compressionEnabled })
         || await tryStockImage({ ...opts, slot, compressionEnabled, usedSourceUrls });
       if (immediate?.storagePath) {

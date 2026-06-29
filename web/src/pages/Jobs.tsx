@@ -237,7 +237,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
   const isImageStep = step.startsWith("generating_images") || step.startsWith("resolving_images");
   if (step.startsWith("resolving_images") && generationPlan?.imagesEnabled) {
-    steps.push({ label: "Find stock/source images or queue AI images", done: false, active: true });
+    steps.push({ label: "Queue AI images or find stock/source fallback", done: false, active: true });
   }
 
   for (let i = 0; i < effectiveTotal; i++) {

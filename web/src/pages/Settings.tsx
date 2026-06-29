@@ -1929,7 +1929,7 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { id: "consistent", title: "Recommended", text: "Cover uses the cover model below. Inline images use the low-cost queue.", badge: "Stable" },
+                      { id: "consistent", title: "Recommended", text: "Cover uses the cover AI model and style. Inline uses OpenRouter free AI, then stock.", badge: "Stable" },
                       { id: "cheap", title: "Lowest Cost", text: "Use the cheapest available AI first, then stock if needed.", badge: "$" },
                       { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
                     ].map((strategy) => (
@@ -1954,7 +1954,7 @@ export default function Settings() {
                   </div>
 
                   <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {imageStrategy === "consistent" && "Current: covers attach stock/source first, then queue an AI upgrade with the cover model below. Inline images stay on the free/stock path."}
+                    {imageStrategy === "consistent" && "Current: cover queues the cover AI model with your style prompt. Inline queues OpenRouter free AI first, then stock fallback."}
                     {imageStrategy === "cheap" && "Current: images queue on the cheapest available provider, with stock fallback."}
                     {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
                   </div>

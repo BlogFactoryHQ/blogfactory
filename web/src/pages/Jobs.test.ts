@@ -69,7 +69,7 @@ describe("job progress steps", () => {
     const progress = parseStepProgress("resolving_images_for_draft_1", [], { totalDrafts: 1, imagesEnabled: true });
 
     expect(progress.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "Find stock/source images or queue AI images", active: true }),
+      expect.objectContaining({ label: "Queue AI images or find stock/source fallback", active: true }),
       expect.objectContaining({ label: "Draft 1 (images)", active: true }),
     ]));
   });

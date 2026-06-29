@@ -36,38 +36,38 @@ assertEqual(
 
 assertEqual(
   shouldQueueAiBeforeStock("cover", true),
-  false,
-  "cover tries stock/source before AI queue"
+  true,
+  "cover queues selected AI before stock"
 );
 
 assertEqual(
   shouldQueueAiBeforeStock("inline", true),
-  false,
-  "inline tries stock/source before AI queue"
+  true,
+  "inline queues free AI before stock"
 );
 
 assertEqual(
   shouldQueueAiUpgrade("cover", true),
-  true,
-  "cover gets an async AI upgrade after immediate stock/source"
+  false,
+  "cover no longer queues an upgrade after stock because AI is first"
 );
 
 assertEqual(
   shouldQueueAiUpgrade("inline", true),
   false,
-  "inline stock/source success does not queue AI"
+  "inline does not queue a second AI upgrade"
 );
 
 assertEqual(
   shouldAttachStockWhileAiQueued("cover"),
-  true,
-  "cover gets an immediate stock placeholder while AI is queued"
+  false,
+  "cover does not attach stock while AI is queued"
 );
 
 assertEqual(
   shouldAttachStockWhileAiQueued("inline"),
-  true,
-  "inline gets an immediate stock placeholder while AI is queued"
+  false,
+  "inline does not attach stock while AI is queued"
 );
 
 assertEqual(
