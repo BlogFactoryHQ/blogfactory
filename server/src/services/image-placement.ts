@@ -23,6 +23,20 @@ export function replaceInlineImagePath(markdown: string, from?: string | null, t
   return markdown.split(from).join(to);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function removeInlineImagePath(markdown: string, path?: string | null) {
+  if (!path || !markdown.includes(path)) return markdown;
+  const imageOnlyBlock = new RegExp(`^!\\[[^\\]\\n]*\\]\\(${escapeRegExp(path)}\\)$`);
+  return markdown
+    .split(/\n{2,}/)
+    .filter((block) => !imageOnlyBlock.test(block.trim()))
+    .join("\n\n")
+    .trim();
+}
+
 function imageBlocks(images: PlacementImage[]) {
   return images.map((image) => imageFigureMarkdown(image.url, image.altText)).join("\n\n");
 }

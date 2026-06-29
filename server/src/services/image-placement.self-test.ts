@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { placeInlineImages, replaceInlineImagePath } from "./image-placement.js";
+import { placeInlineImages, removeInlineImagePath, replaceInlineImagePath } from "./image-placement.js";
 
 const markdown = [
   "# Title",
@@ -23,5 +23,7 @@ assert.equal(placeInlineImages(markdown, [{ url: "one.webp", altText: "One" }], 
 assert.equal(placeInlineImages(`${markdown}\n\n![One](one.webp)`, [{ url: "one.webp", altText: "One" }], "auto").match(/one\.webp/g)?.length, 1);
 assert.equal(replaceInlineImagePath(`${markdown}\n\n![Old](old.webp)`, "old.webp", "new.webp").match(/new\.webp/g)?.length, 1);
 assert.equal(replaceInlineImagePath(`${markdown}\n\n![Old](old.webp)`, "old.webp", "old.webp").match(/old\.webp/g)?.length, 1);
+assert.equal(removeInlineImagePath(`${markdown}\n\n![Old](old.webp)`, "old.webp").includes("old.webp"), false);
+assert.equal(removeInlineImagePath(markdown, "missing.webp"), markdown);
 
 console.log("image-placement self-check passed");

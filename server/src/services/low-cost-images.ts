@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db/schema.js";
 import { getPexelsKey, getPixabayKey } from "./api-keys.js";
 import { saveImageBuffer } from "./image-storage.js";
-import { normalizeImagePlacement, placeInlineImages, replaceInlineImagePath } from "./image-placement.js";
+import { normalizeImagePlacement, placeInlineImages, removeInlineImagePath, replaceInlineImagePath } from "./image-placement.js";
 
 export type ImageTargetType = "cover" | "inline";
 const AI_DEFERRED_PROVIDER = "ai-deferred";
@@ -87,9 +87,16 @@ export function imageModelForTarget(selectedModel: string, type: ImageTargetType
 async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null, position?: number | null, userId?: string) {
   const conditions = [eq(posts.id, postId)];
   if (userId) conditions.push(eq(posts.userId, userId));
-  const [post] = await db.select({ content: posts.content, inlineImages: posts.inlineImages }).from(posts).where(and(...conditions)).limit(1);
+  const [post] = await db.select({ content: posts.content, coverImageUrl: posts.coverImageUrl, inlineImages: posts.inlineImages }).from(posts).where(and(...conditions)).limit(1);
   if (!post) return;
   const inlineImages = [...(post.inlineImages || [])];
+  if (path === post.coverImageUrl) {
+    await db.update(posts).set({
+      inlineImages: inlineImages.filter((image) => image !== path),
+      content: removeInlineImagePath(post.content || "", path),
+    }).where(and(...conditions));
+    return;
+  }
   const alreadyTracked = inlineImages.includes(path);
   const existing = typeof position === "number" && position >= 0 ? inlineImages[position] : null;
   if (existing) inlineImages[position!] = path;
@@ -110,7 +117,12 @@ async function attachPostImage(postId: string, slot: ImageSlot, path: string, pl
   const conditions = [eq(posts.id, postId)];
   if (userId) conditions.push(eq(posts.userId, userId));
   if (slot.type === "cover") {
-    await db.update(posts).set({ coverImageUrl: path }).where(and(...conditions));
+    const [post] = await db.select({ content: posts.content, inlineImages: posts.inlineImages }).from(posts).where(and(...conditions)).limit(1);
+    await db.update(posts).set({
+      coverImageUrl: path,
+      inlineImages: (post?.inlineImages || []).filter((image) => image !== path),
+      content: removeInlineImagePath(post?.content || "", path),
+    }).where(and(...conditions));
   } else {
     await attachInlineImage(postId, path, placement, slot.altText, slot.position, userId);
   }
@@ -137,7 +149,7 @@ function clampInt(value: number | null | undefined, fallback: number, min: numbe
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
-type SavedImage = { storagePath: string; assetId?: string };
+type SavedImage = { storagePath: string; assetId?: string; sourceUrl?: string };
 
 function aspectRatioNumber(value: string) {
   const [width, height] = value.split(":").map(Number);
@@ -301,13 +313,13 @@ async function saveExternalImage(opts: {
     jobId: opts.jobId,
     postId: opts.postId,
   });
-  return { storagePath, assetId: asset?.id };
+  return { storagePath, assetId: asset?.id, sourceUrl: opts.sourceUrl || opts.imageUrl };
 }
 
-async function searchPexels(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean }) {
+async function searchPexels(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean; usedSourceUrls?: Set<string> }) {
   const key = await getPexelsKey(opts.userId);
   if (!key) return null;
-  const params = new URLSearchParams({ query: opts.query, per_page: "1" });
+  const params = new URLSearchParams({ query: opts.query, per_page: "3" });
   const orientation = stockOrientation(opts.aspectRatio, "pexels");
   if (orientation) params.set("orientation", orientation);
   const resp = await fetch(`https://api.pexels.com/v1/search?${params.toString()}`, {
@@ -316,31 +328,34 @@ async function searchPexels(opts: { userId: string; query: string; prompt: strin
   });
   if (!resp.ok) return null;
   const data = await resp.json() as any;
-  const photo = data.photos?.[0];
-  const url = photo?.src?.large2x || photo?.src?.large || photo?.src?.original;
-  if (!url) return null;
-  return saveExternalImage({
-    imageUrl: url,
-    userId: opts.userId,
-    postId: opts.postId,
-    jobId: opts.jobId,
-    type: opts.type,
-    position: opts.position,
-    prompt: opts.prompt,
-    altText: opts.altText,
-    provider: "pexels",
-    aspectRatio: opts.aspectRatio,
-    resolution: opts.resolution,
-    sourceUrl: photo.url,
-    credit: photo.photographer,
-    licenseLabel: "Pexels License",
-    attributionUrl: photo.photographer_url || photo.url,
-    sourceKind: "stock",
-    compressionEnabled: opts.compressionEnabled,
-  });
+  for (const photo of data.photos || []) {
+    const url = photo?.src?.large2x || photo?.src?.large || photo?.src?.original;
+    const sourceUrl = photo?.url || url;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    return saveExternalImage({
+      imageUrl: url,
+      userId: opts.userId,
+      postId: opts.postId,
+      jobId: opts.jobId,
+      type: opts.type,
+      position: opts.position,
+      prompt: opts.prompt,
+      altText: opts.altText,
+      provider: "pexels",
+      aspectRatio: opts.aspectRatio,
+      resolution: opts.resolution,
+      sourceUrl,
+      credit: photo.photographer,
+      licenseLabel: "Pexels License",
+      attributionUrl: photo.photographer_url || sourceUrl,
+      sourceKind: "stock",
+      compressionEnabled: opts.compressionEnabled,
+    });
+  }
+  return null;
 }
 
-async function searchPixabay(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean }) {
+async function searchPixabay(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean; usedSourceUrls?: Set<string> }) {
   const key = await getPixabayKey(opts.userId);
   if (!key) return null;
   const params = new URLSearchParams({ key, q: opts.query, image_type: "photo", per_page: "3", safesearch: "true" });
@@ -351,60 +366,66 @@ async function searchPixabay(opts: { userId: string; query: string; prompt: stri
   });
   if (!resp.ok) return null;
   const data = await resp.json() as any;
-  const photo = data.hits?.[0];
-  const url = photo?.largeImageURL || photo?.webformatURL;
-  if (!url) return null;
-  return saveExternalImage({
-    imageUrl: url,
-    userId: opts.userId,
-    postId: opts.postId,
-    jobId: opts.jobId,
-    type: opts.type,
-    position: opts.position,
-    prompt: opts.prompt,
-    altText: opts.altText,
-    provider: "pixabay",
-    aspectRatio: opts.aspectRatio,
-    resolution: opts.resolution,
-    sourceUrl: photo.pageURL,
-    credit: photo.user,
-    licenseLabel: "Pixabay Content License",
-    attributionUrl: photo.pageURL,
-    sourceKind: "stock",
-    compressionEnabled: opts.compressionEnabled,
-  });
+  for (const photo of data.hits || []) {
+    const url = photo?.largeImageURL || photo?.webformatURL;
+    const sourceUrl = photo?.pageURL || url;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    return saveExternalImage({
+      imageUrl: url,
+      userId: opts.userId,
+      postId: opts.postId,
+      jobId: opts.jobId,
+      type: opts.type,
+      position: opts.position,
+      prompt: opts.prompt,
+      altText: opts.altText,
+      provider: "pixabay",
+      aspectRatio: opts.aspectRatio,
+      resolution: opts.resolution,
+      sourceUrl,
+      credit: photo.user,
+      licenseLabel: "Pixabay Content License",
+      attributionUrl: sourceUrl,
+      sourceKind: "stock",
+      compressionEnabled: opts.compressionEnabled,
+    });
+  }
+  return null;
 }
 
-async function searchOpenverse(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean }) {
-  const resp = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(opts.query)}&page_size=1&license_type=commercial`, {
+async function searchOpenverse(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean; usedSourceUrls?: Set<string> }) {
+  const resp = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(opts.query)}&page_size=3&license_type=commercial`, {
     headers: { "User-Agent": "BlogFactory/1.0" },
     signal: AbortSignal.timeout(12_000),
   });
   if (!resp.ok) return null;
   const data = await resp.json() as any;
-  const photo = data.results?.[0];
-  const url = photo?.url || photo?.thumbnail;
-  if (!url) return null;
-  const license = [photo.license, photo.license_version].filter(Boolean).join(" ").toUpperCase();
-  return saveExternalImage({
-    imageUrl: url,
-    userId: opts.userId,
-    postId: opts.postId,
-    jobId: opts.jobId,
-    type: opts.type,
-    position: opts.position,
-    prompt: opts.prompt,
-    altText: opts.altText,
-    provider: "openverse",
-    aspectRatio: opts.aspectRatio,
-    resolution: opts.resolution,
-    sourceUrl: photo.foreign_landing_url || photo.url,
-    credit: photo.creator,
-    licenseLabel: license ? `Openverse ${license}` : "Openverse license",
-    attributionUrl: photo.foreign_landing_url || photo.url,
-    sourceKind: "stock",
-    compressionEnabled: opts.compressionEnabled,
-  });
+  for (const photo of data.results || []) {
+    const url = photo?.url || photo?.thumbnail;
+    const sourceUrl = photo?.foreign_landing_url || photo?.url || url;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    const license = [photo.license, photo.license_version].filter(Boolean).join(" ").toUpperCase();
+    return saveExternalImage({
+      imageUrl: url,
+      userId: opts.userId,
+      postId: opts.postId,
+      jobId: opts.jobId,
+      type: opts.type,
+      position: opts.position,
+      prompt: opts.prompt,
+      altText: opts.altText,
+      provider: "openverse",
+      aspectRatio: opts.aspectRatio,
+      resolution: opts.resolution,
+      sourceUrl,
+      credit: photo.creator,
+      licenseLabel: license ? `Openverse ${license}` : "Openverse license",
+      attributionUrl: sourceUrl,
+      sourceKind: "stock",
+      compressionEnabled: opts.compressionEnabled,
+    });
+  }
+  return null;
 }
 
 function sourceCandidateAllowed(candidate: SourceImageCandidate, settings: LowCostImageSettings) {
@@ -571,6 +592,7 @@ async function tryStockImage(opts: {
   postId: string;
   jobId: string;
   compressionEnabled: boolean;
+  usedSourceUrls?: Set<string>;
 }): Promise<ImageSlotResult | null> {
   for (const query of stockQueries({ title: opts.title, content: opts.content, type: opts.slot.type })) {
     const providers: Array<[string, () => Promise<SavedImage | null>]> = [
@@ -580,7 +602,10 @@ async function tryStockImage(opts: {
     ];
     for (const [provider, search] of providers) {
       const storagePath = await tryStockSearch(search);
-      if (storagePath) return { slot: opts.slot, status: "attached", storagePath: storagePath.storagePath, assetId: storagePath.assetId, provider, query };
+      if (storagePath) {
+        if (storagePath.sourceUrl) opts.usedSourceUrls?.add(storagePath.sourceUrl);
+        return { slot: opts.slot, status: "attached", storagePath: storagePath.storagePath, assetId: storagePath.assetId, provider, query };
+      }
     }
   }
   return null;
@@ -629,7 +654,7 @@ export async function resolvePostImages(opts: {
   for (const slot of slots) {
     try {
       const immediate = await trySourceImage({ ...opts, slot, settings, usedSourceUrls, coverEnabled, compressionEnabled })
-        || await tryStockImage({ ...opts, slot, compressionEnabled });
+        || await tryStockImage({ ...opts, slot, compressionEnabled, usedSourceUrls });
       if (immediate?.storagePath) {
         await attachPostImage(opts.postId, slot, immediate.storagePath, opts.imageConfig?.imagePlacement);
         if (slot.type === "cover") coverPath ||= immediate.storagePath;

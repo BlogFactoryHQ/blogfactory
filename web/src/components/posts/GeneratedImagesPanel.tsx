@@ -71,9 +71,12 @@ export function GeneratedImagesPanel({
   className,
 }: GeneratedImagesPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const visibleInlineImages = (inlineImages || []).filter((url, index, urls) =>
+    url && url !== coverImageUrl && urls.indexOf(url) === index
+  ).map((url) => ({ url, originalIndex: inlineImages?.indexOf(url) ?? 0 }));
 
   const signedCoverUrl = useSignedUrl(coverImageUrl);
-  const signedInlineUrls = useSignedUrls(inlineImages);
+  const signedInlineUrls = useSignedUrls(visibleInlineImages.map((image) => image.url));
 
   const allImages: GeneratedImage[] = [];
   
@@ -87,8 +90,8 @@ export function GeneratedImagesPanel({
     });
   }
   
-  if (inlineImages && inlineImages.length > 0) {
-    inlineImages.forEach((url, idx) => {
+  if (visibleInlineImages.length > 0) {
+    visibleInlineImages.forEach(({ url }, idx) => {
       const signedUrl = signedInlineUrls[idx];
       if (signedUrl) {
         allImages.push({
@@ -102,12 +105,12 @@ export function GeneratedImagesPanel({
     });
   }
 
-  if (allImages.length === 0 && !coverImageUrl && (!inlineImages || inlineImages.length === 0)) {
+  if (allImages.length === 0 && !coverImageUrl && visibleInlineImages.length === 0) {
     return null;
   }
 
   const coverCount = coverImageUrl ? 1 : 0;
-  const inlineCount = inlineImages?.length || 0;
+  const inlineCount = visibleInlineImages.length;
 
   const handleDownload = async (urlOrPath: string, filename: string) => {
     try {
@@ -176,7 +179,7 @@ export function GeneratedImagesPanel({
             )}
 
             {/* Inline Images Section */}
-            {inlineImages && inlineImages.length > 0 && (
+            {visibleInlineImages.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <ImagePlus className="h-3.5 w-3.5 text-primary" />
@@ -185,7 +188,7 @@ export function GeneratedImagesPanel({
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {inlineImages.map((originalUrl, index) => {
+                  {visibleInlineImages.map(({ url: originalUrl, originalIndex }, index) => {
                     const signedUrl = signedInlineUrls[index];
                     if (!signedUrl) return null;
                     return (
@@ -201,7 +204,7 @@ export function GeneratedImagesPanel({
                         index={index + 1}
                         onDownload={() => handleDownload(originalUrl, `inline-image-${index + 1}.png`)}
                         onInsert={onInsertInlineImage ? () => onInsertInlineImage(originalUrl) : undefined}
-                        onRemove={onRemoveInlineImage ? () => onRemoveInlineImage(index) : undefined}
+                        onRemove={onRemoveInlineImage ? () => onRemoveInlineImage(originalIndex) : undefined}
                         onSetAsCover={onSetCoverImage && !coverImageUrl ? () => onSetCoverImage(originalUrl) : undefined}
                       />
                     );
