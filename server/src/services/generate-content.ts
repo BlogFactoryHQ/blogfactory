@@ -124,6 +124,16 @@ export function costEffectiveImageModel(opts: {
   return opts.modelId;
 }
 
+async function validateImageModelForRequest(openRouterKey: string | null, modelId: string, type: string) {
+  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
+  if (type === "cover" && modelId === "openrouter/free") {
+    throw new Error("Cover images require a selected OpenRouter image model; openrouter/free is inline-only");
+  }
+  if (modelId !== "openrouter/free") {
+    await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
+  }
+}
+
 function truncatePromptText(value: string, maxChars = 1200) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxChars) return cleaned;
@@ -1392,7 +1402,7 @@ export async function generateContent(opts: GenerateOpts) {
               postId: post.id,
               jobId: jobId!,
               imageConfig: opts.imageConfig,
-              imageModel: costEffectiveImageModel({ modelId: promptSettings?.imageModel || settings?.imageModel || "openrouter/free", openRouterKey: null }),
+              imageModel: promptSettings?.imageModel || settings?.imageModel || "openrouter/free",
               inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
               stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
               settings: {
@@ -1709,10 +1719,10 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
     .limit(1);
 
   const openRouterKey = await getOpenRouterKey(request.userId);
-  const modelId = costEffectiveImageModel({
-    modelId: request.modelId,
-    openRouterKey,
-  });
+  const modelId = request.type === "inline"
+    ? costEffectiveImageModel({ modelId: request.modelId, openRouterKey })
+    : request.modelId;
+  await validateImageModelForRequest(openRouterKey, modelId, request.type);
 
   const result = await generateSingleImage(
     request.prompt,
@@ -1854,6 +1864,7 @@ async function generateSingleImage(
     altText,
     modelId,
     provider: "openrouter-image",
+    sourceKind: "ai",
     aspectRatio,
     resolution,
     position,

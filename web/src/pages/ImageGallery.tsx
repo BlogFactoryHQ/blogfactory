@@ -44,6 +44,7 @@ function providerUrl(provider: string) {
 
 function requestLabel(request: ImageGenerationRequest) {
   if (request.provider === "ai-deferred") return "AI";
+  if (request.provider === "stock-fallback") return "Stock fallback";
   return request.provider.replace("-", " ");
 }
 
@@ -88,12 +89,25 @@ function ImageRequestCard({
             <Badge variant={request.status === "processing" ? "default" : "secondary"} className="text-[10px] capitalize">
               {request.status}
             </Badge>
+            {request.fallback_policy && (
+              <Badge variant="outline" className="text-[10px]">
+                fallback: {request.fallback_policy}
+              </Badge>
+            )}
+            {request.completed_via && (
+              <Badge variant="secondary" className="text-[10px]">
+                via {request.completed_via}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {requestLabel(request)}
             {request.model_id ? ` · ${request.model_id}` : ""}
             {request.retry_count ? ` · retry ${request.retry_count}` : ""}
           </p>
+          {request.last_error && (
+            <p className="mt-1 line-clamp-2 text-xs text-destructive">{request.last_error}</p>
+          )}
           {request.prompt && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{request.prompt}</p>}
           {isAiQueue && request.model_id && (
             waiting && <p className="mt-1 text-xs text-muted-foreground">Retry after {nextRun.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>

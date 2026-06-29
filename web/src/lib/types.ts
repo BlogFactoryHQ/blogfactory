@@ -173,6 +173,9 @@ export interface ImageGenerationRequest {
   license_label?: string | null;
   attribution_url?: string | null;
   imported_asset_id: string | null;
+  fallback_policy?: string | null;
+  last_error?: string | null;
+  completed_via?: string | null;
   created_at: string;
   updated_at: string;
   post_title?: string | null;

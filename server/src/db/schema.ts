@@ -264,6 +264,9 @@ export const imageGenerationRequests = pgTable("image_generation_requests", {
   licenseLabel: text("license_label"),
   attributionUrl: text("attribution_url"),
   importedAssetId: uuid("imported_asset_id").references(() => imageAssets.id, { onDelete: "set null" }),
+  fallbackPolicy: text("fallback_policy"),
+  lastError: text("last_error"),
+  completedVia: text("completed_via"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

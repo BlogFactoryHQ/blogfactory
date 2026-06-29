@@ -262,7 +262,14 @@ const linkDensityOptions = [
 
 const DEFAULT_IMAGE_MODEL = "openrouter/free";
 
-function normalizeImageModelId(modelId?: string | null) {
+function normalizeCoverImageModelId(modelId?: string | null) {
+  const value = modelId?.trim();
+  if (!value) return DEFAULT_IMAGE_MODEL;
+  if (value === "auto/consistent-cover" || value === "auto/cost-effective") return DEFAULT_IMAGE_MODEL;
+  return value;
+}
+
+function normalizeInlineImageModelId(modelId?: string | null) {
   if (
     !modelId
     || modelId === "auto/consistent-cover"
@@ -361,13 +368,19 @@ export default function Settings() {
     () => imageModels.filter(modelMatchesFilters),
     [imageModels, modelMatchesFilters]
   );
-
+  const coverImageModels = useMemo(
+    () => imageModels.filter((model) => model.id !== DEFAULT_IMAGE_MODEL),
+    [imageModels]
+  );
   const filteredTextModels = useMemo(
     () => textModels.filter(modelMatchesFilters),
     [textModels, modelMatchesFilters]
   );
   const selectedImageModelUnavailable = Boolean(
-    selectedImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedImageModel)
+    selectedImageModel && (
+      selectedImageModel === DEFAULT_IMAGE_MODEL
+      || (imageModels.length > 0 && !coverImageModels.some((model) => model.id === selectedImageModel))
+    )
   );
   const selectedInlineImageModelUnavailable = Boolean(
     selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
@@ -389,8 +402,8 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
-  const savedCoverImageModel = normalizeImageModelId(userSettings?.image_model);
-  const savedInlineImageModel = normalizeImageModelId(
+  const savedCoverImageModel = normalizeCoverImageModelId(userSettings?.image_model);
+  const savedInlineImageModel = normalizeInlineImageModelId(
     userSettings?.inline_image_model
     || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
   );
@@ -466,9 +479,9 @@ export default function Settings() {
         imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
         compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
-      setSelectedImageModel(normalizeImageModelId(userSettings.image_model));
+      setSelectedImageModel(normalizeCoverImageModelId(userSettings.image_model));
       setSelectedInlineImageModel(
-        normalizeImageModelId(userSettings.inline_image_model
+        normalizeInlineImageModelId(userSettings.inline_image_model
           || (userSettings.image_advanced_options?.inlineImageModel as string | undefined)
         )
       );
@@ -881,13 +894,12 @@ export default function Settings() {
   const applyImageStrategy = (strategy: "consistent" | "stock") => {
     setSourceImageAllowed(false);
     if (strategy === "consistent") {
-      setSelectedImageModel(DEFAULT_IMAGE_MODEL);
+      setSelectedImageModel(coverImageModels[0]?.id || selectedImageModel);
       setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
     } else {
-      setSelectedImageModel(DEFAULT_IMAGE_MODEL);
       setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(false);
       setMaxAiImagesPerDay(0);
@@ -1894,7 +1906,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       onClick={() => saveImageCostSettingsMutation.mutate()}
-                      disabled={saveImageCostSettingsMutation.isPending || selectedImageModelUnavailable || selectedInlineImageModelUnavailable}
+                      disabled={saveImageCostSettingsMutation.isPending || (aiFallbackEnabled && selectedImageModelUnavailable) || selectedInlineImageModelUnavailable}
                     >
                       {unsavedBadge(imageStrategyDirty)}
                       {saveImageCostSettingsMutation.isPending ? (
@@ -1961,7 +1973,7 @@ export default function Settings() {
                                 <span className="text-destructive">Unavailable: {selectedImageModel}</span>
                               </SelectItem>
                             )}
-                            {imageModels.map((model) => (
+                            {coverImageModels.map((model) => (
                               <SelectItem key={model.id} value={model.id}>
                                 <div className="flex items-center gap-2">
                                   <span>{model.name}</span>

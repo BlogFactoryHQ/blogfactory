@@ -63,6 +63,14 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
   );
   const sourceUrl = image.attribution_url || image.source_url;
   const sourceName = image.provider === "pixabay" ? "Pixabay" : image.provider || "Source";
+  const stockProviders = new Set(["pixabay", "pexels", "openverse", "stock-fallback"]);
+  const isStock = image.source_kind === "stock" || stockProviders.has(image.provider || "");
+  const isAi = image.source_kind === "ai" || image.provider === "openrouter-image";
+  const sourceKindLabel = isAi
+    ? `AI · ${image.model_id || image.provider || "model"}`
+    : isStock
+      ? `Stock · ${sourceName}`
+      : `${image.source_kind || "Source"} · ${sourceName}`;
 
   return (
     <Dialog open={!!image} onOpenChange={(open) => !open && onClose()}>
@@ -120,6 +128,10 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
                 <Badge variant="secondary" className="text-xs">{image.model_id}</Badge>
               </div>
             )}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              {isAi ? <Sparkles className="h-4 w-4 shrink-0" /> : <Cpu className="h-4 w-4 shrink-0" />}
+              <Badge variant={isAi ? "default" : "secondary"} className="text-xs">{sourceKindLabel}</Badge>
+            </div>
             {image.cost != null && image.cost > 0 && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <DollarSign className="h-4 w-4 shrink-0" />

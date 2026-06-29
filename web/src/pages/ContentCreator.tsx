@@ -78,7 +78,14 @@ import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/l
 
 const DEFAULT_IMAGE_MODEL = "openrouter/free";
 
-function normalizeImageModelId(modelId?: string | null) {
+function normalizeCoverImageModelId(modelId?: string | null) {
+  const value = modelId?.trim();
+  if (!value) return DEFAULT_IMAGE_MODEL;
+  if (value === "auto/consistent-cover" || value === "auto/cost-effective") return DEFAULT_IMAGE_MODEL;
+  return value;
+}
+
+function normalizeInlineImageModelId(modelId?: string | null) {
   if (
     !modelId
     || modelId === "auto/consistent-cover"
@@ -523,8 +530,8 @@ export default function ContentCreator() {
   const fallbackTextModelId = textModels[0]?.id;
   const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
   const selectedTextModel = textModels.find((model) => model.id === modelId);
-  const selectedImageModelId = normalizeImageModelId(userSettings?.image_model);
-  const selectedInlineImageModelId = normalizeImageModelId(
+  const selectedImageModelId = normalizeCoverImageModelId(userSettings?.image_model);
+  const selectedInlineImageModelId = normalizeInlineImageModelId(
     userSettings?.inline_image_model
     || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
   );

@@ -42,6 +42,9 @@ function serializeRequest(row: any) {
     license_label: row.licenseLabel,
     attribution_url: row.attributionUrl,
     imported_asset_id: row.importedAssetId,
+    fallback_policy: row.fallbackPolicy,
+    last_error: row.lastError,
+    completed_via: row.completedVia,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
     post_title: row.postTitle,
@@ -116,6 +119,9 @@ imagesRoutes.get("/requests", async (c) => {
       licenseLabel: imageGenerationRequests.licenseLabel,
       attributionUrl: imageGenerationRequests.attributionUrl,
       importedAssetId: imageGenerationRequests.importedAssetId,
+      fallbackPolicy: imageGenerationRequests.fallbackPolicy,
+      lastError: imageGenerationRequests.lastError,
+      completedVia: imageGenerationRequests.completedVia,
       createdAt: imageGenerationRequests.createdAt,
       updatedAt: imageGenerationRequests.updatedAt,
       postTitle: posts.title,
@@ -201,7 +207,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
 
   const [updated] = await db
     .update(imageGenerationRequests)
-    .set({ status: "done", importedAssetId: asset.id, updatedAt: new Date() })
+    .set({ status: "done", importedAssetId: asset.id, completedVia: "manual", lastError: null, updatedAt: new Date() })
     .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
     .returning();
 

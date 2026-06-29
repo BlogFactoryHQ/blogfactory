@@ -1,4 +1,4 @@
-import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldFallbackRequestToStock, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery, stockSourceKey } from "./low-cost-images.js";
+import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, fallbackPolicyForSlot, imageModelForTarget, imageTargets, nextAiAvailableAt, requestAllowsStockFallback, shouldAttachStockWhileAiQueued, shouldFallbackRequestToStock, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery, stockSourceKey } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -154,6 +154,10 @@ assertEqual(countsTowardAiDailyLimit("stock-fallback"), false, "stock fallback d
 
 assertEqual(shouldFallbackRequestToStock("cover"), false, "cover AI failure does not fall back to stock");
 assertEqual(shouldFallbackRequestToStock("inline"), true, "inline AI failure can fall back to stock");
+assertEqual(fallbackPolicyForSlot("cover"), "none", "cover requests store no stock fallback policy");
+assertEqual(fallbackPolicyForSlot("inline"), "stock", "inline requests store stock fallback policy");
+assertEqual(requestAllowsStockFallback({ type: "cover", fallbackPolicy: "none" } as any), false, "cover request policy blocks stock fallback");
+assertEqual(requestAllowsStockFallback({ type: "inline", fallbackPolicy: "stock" } as any), true, "inline request policy allows stock fallback");
 assertEqual(nextAiAvailableAt(new Date(Date.now() - 60_000), 5) instanceof Date, true, "recent AI completion gets a future availability time");
 assertEqual(nextAiAvailableAt("2000-01-01T00:00:00Z", 5), null, "old AI completion does not delay the queue");
 

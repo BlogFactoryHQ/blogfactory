@@ -43,7 +43,7 @@ const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined
 const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
 type SettingsUpdate = Record<string, any>;
 
-function normalizeImageModelId(modelId: string | undefined) {
+function normalizeInlineImageModelId(modelId: string | undefined) {
   const value = modelId?.trim();
   if (!value) return value;
   if (
@@ -63,7 +63,7 @@ function normalizeImageAdvancedOptions(value: unknown) {
   const options = value as Record<string, unknown>;
   const inlineModel = asOptionalText(options.inlineImageModel ?? options.inline_image_model);
   if (inlineModel === undefined) return options;
-  return { ...options, inlineImageModel: normalizeImageModelId(inlineModel) };
+  return { ...options, inlineImageModel: normalizeInlineImageModelId(inlineModel) };
 }
 
 function firstTextFromGemini(data: unknown) {
@@ -147,7 +147,7 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     ? settings.imageAdvancedOptions as Record<string, unknown>
     : {};
   const inlineImageModel = typeof imageAdvancedOptions.inlineImageModel === "string"
-    ? normalizeImageModelId(imageAdvancedOptions.inlineImageModel)
+    ? normalizeInlineImageModelId(imageAdvancedOptions.inlineImageModel)
     : "openrouter/free";
 
   return {
@@ -156,8 +156,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     userId: settings.userId,
     active_site_id: settings.activeSiteId,
     activeSiteId: settings.activeSiteId,
-    image_model: normalizeImageModelId(settings.imageModel || undefined),
-    imageModel: normalizeImageModelId(settings.imageModel || undefined),
+    image_model: settings.imageModel,
+    imageModel: settings.imageModel,
     inline_image_model: inlineImageModel,
     inlineImageModel,
     image_style_prompt: settings.imageStylePrompt,
@@ -293,7 +293,7 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   };
 
   const imageModel = asOptionalText(body.image_model ?? body.imageModel);
-  if (imageModel !== undefined) update.imageModel = normalizeImageModelId(imageModel);
+  if (imageModel !== undefined) update.imageModel = imageModel.trim();
   setText("imageStylePrompt", "image_style_prompt");
   const imagePlacement = body.image_placement ?? body.imagePlacement;
   if (imagePlacement !== undefined) {
@@ -315,7 +315,7 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       && !Array.isArray(update.imageAdvancedOptions)
       ? update.imageAdvancedOptions as Record<string, unknown>
       : {};
-    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeImageModelId(inlineImageModel) } as never;
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeInlineImageModelId(inlineImageModel) } as never;
   }
   setBool("coverEnabled", "cover_enabled");
   setNumber("coverImageCount", "cover_image_count");
@@ -813,7 +813,7 @@ settingsRoutes.put("/", async (c) => {
       && !Array.isArray(existing.imageAdvancedOptions)
       ? existing.imageAdvancedOptions as Record<string, unknown>
       : {};
-    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeImageModelId(directInlineImageModel) } as never;
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeInlineImageModelId(directInlineImageModel) } as never;
   }
 
   // Upsert: insert or update on conflict

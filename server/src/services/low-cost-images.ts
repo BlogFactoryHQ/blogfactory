@@ -60,6 +60,8 @@ export interface ImageResolutionResult {
   results: ImageSlotResult[];
 }
 
+type ImageFallbackPolicy = "none" | "stock";
+
 export function chooseImageResolution(input: ResolvePriorityInput) {
   if (input.existingAsset) return "existing";
   if (input.stockAsset) return "stock";
@@ -539,6 +541,9 @@ async function queueFallback(opts: {
       resolution: opts.slot.resolution,
       retryCount: 0,
       availableAt: new Date(),
+      fallbackPolicy: fallbackPolicyForSlot(opts.slot.type),
+      lastError: null,
+      completedVia: null,
       updatedAt: new Date(),
     }).where(eq(imageGenerationRequests.id, existing.id));
     return { id: existing.id, created: false };
@@ -559,6 +564,7 @@ async function queueFallback(opts: {
     position: opts.slot.position,
     aspectRatio: opts.slot.aspectRatio,
     resolution: opts.slot.resolution,
+    fallbackPolicy: fallbackPolicyForSlot(opts.slot.type),
     status: "queued",
   }).returning({ id: imageGenerationRequests.id });
   return { id: request?.id || null, created: true };
@@ -650,6 +656,14 @@ export function countsTowardAiDailyLimit(provider: string) {
 
 export function shouldFallbackRequestToStock(type: string) {
   return type !== "cover";
+}
+
+export function fallbackPolicyForSlot(type: string): ImageFallbackPolicy {
+  return type === "cover" ? "none" : "stock";
+}
+
+export function requestAllowsStockFallback(request: Pick<typeof imageGenerationRequests.$inferSelect, "type" | "fallbackPolicy">) {
+  return (request.fallbackPolicy || fallbackPolicyForSlot(request.type)) === "stock";
 }
 
 export function nextAiAvailableAt(latestDoneAt: Date | string | null | undefined, minMinutes: number) {
@@ -748,7 +762,7 @@ export function kickDeferredImageWorker(userId?: string, limit = 2) {
 }
 
 async function fallbackRequestToStock(request: typeof imageGenerationRequests.$inferSelect, placement?: unknown) {
-  if (!shouldFallbackRequestToStock(request.type)) return null;
+  if (!requestAllowsStockFallback(request)) return null;
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title, content: posts.content }).from(posts).where(eq(posts.id, request.postId)).limit(1);
   if (!post) return null;
@@ -815,6 +829,9 @@ async function claimNextDeferredImageRequest(userId?: string) {
       image_generation_requests.license_label as "licenseLabel",
       image_generation_requests.attribution_url as "attributionUrl",
       image_generation_requests.imported_asset_id as "importedAssetId",
+      image_generation_requests.fallback_policy as "fallbackPolicy",
+      image_generation_requests.last_error as "lastError",
+      image_generation_requests.completed_via as "completedVia",
       image_generation_requests.created_at as "createdAt",
       image_generation_requests.updated_at as "updatedAt"
   `);
@@ -882,16 +899,18 @@ export async function processNextDeferredImage(userId?: string) {
     if (!result?.storagePath) throw new Error("Provider did not return an image");
 
     await attachPostImage(request.postId, imageSlotFromRequest(request), result.storagePath, settings?.imagePlacement);
-    await db.update(imageGenerationRequests).set({ status: "done", updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
+    await db.update(imageGenerationRequests).set({ status: "done", completedVia: "ai", lastError: null, updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
     return { processed: true, storagePath: result.storagePath };
   } catch (err: any) {
     const retryCount = (request.retryCount || 0) + 1;
-    if (retryCount === 1 && shouldFallbackRequestToStock(request.type)) {
+    if (retryCount >= 2 && requestAllowsStockFallback(request)) {
       const stockResult = await fallbackRequestToStock(request, settings?.imagePlacement);
       if (stockResult) {
         await db.update(imageGenerationRequests).set({
           provider: "stock-fallback",
           status: "done",
+          completedVia: "stock",
+          lastError: err?.message || "Image generation failed",
           importedAssetId: stockResult.assetId || request.importedAssetId || null,
           retryCount,
           updatedAt: new Date(),
@@ -902,6 +921,7 @@ export async function processNextDeferredImage(userId?: string) {
     if (retryCount >= 3) {
       await db.update(imageGenerationRequests).set({
         status: "failed",
+        lastError: err?.message || "Image generation failed",
         retryCount,
         updatedAt: new Date(),
       }).where(eq(imageGenerationRequests.id, request.id));
@@ -911,6 +931,7 @@ export async function processNextDeferredImage(userId?: string) {
     await db.update(imageGenerationRequests).set({
       status: "queued",
       retryCount,
+      lastError: err?.message || "Image generation failed",
       availableAt: new Date(Date.now() + backoffMinutes * 60_000),
       updatedAt: new Date(),
     }).where(eq(imageGenerationRequests.id, request.id));
