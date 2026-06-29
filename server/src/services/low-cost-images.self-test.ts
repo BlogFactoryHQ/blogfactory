@@ -1,4 +1,4 @@
-import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldFallbackRequestToStock, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
+import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldFallbackRequestToStock, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery, stockSourceKey } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -145,6 +145,7 @@ assertEqual(stockOrientation("16:9", "pexels"), "landscape", "wide Pexels image 
 assertEqual(stockOrientation("9:16", "pexels"), "portrait", "tall Pexels image uses portrait");
 assertEqual(stockOrientation("1:1", "pexels"), "square", "square Pexels image uses square");
 assertEqual(stockOrientation("1:1", "pixabay"), "", "square Pixabay image omits unsupported orientation");
+assertEqual(stockSourceKey("pixabay", "https://pixabay.com/photos/example/", "51581"), "pixabay:https://pixabay.com/photos/example", "stock source keys normalize trailing slash");
 
 assertEqual(aiDailyLimitReached(100, 0), false, "AI/day 0 means no daily cap");
 assertEqual(aiDailyLimitReached(30, 30), true, "AI/day positive cap is enforced");

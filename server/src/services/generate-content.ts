@@ -1782,8 +1782,19 @@ async function generateSingleImage(
   });
 
   if (!resp.ok) {
-    console.error(`[image] OpenRouter error: ${resp.status}`);
-    return null;
+    const errorText = await resp.text().catch(() => "");
+    await db.insert(generationLogs).values({
+      userId,
+      postId,
+      usageType: "image",
+      modelId,
+      provider: "openrouter-image",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      sessionId: jobId,
+      responseData: { status: resp.status, error: errorText.slice(0, 1000) },
+    });
+    throw new Error(`OpenRouter image failed (${resp.status})`);
   }
 
   const data = await resp.json() as any;

@@ -149,7 +149,7 @@ function clampInt(value: number | null | undefined, fallback: number, min: numbe
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
-type SavedImage = { storagePath: string; assetId?: string; sourceUrl?: string };
+type SavedImage = { storagePath: string; assetId?: string; sourceUrl?: string; sourceKey?: string };
 
 function aspectRatioNumber(value: string) {
   const [width, height] = value.split(":").map(Number);
@@ -161,6 +161,12 @@ export function stockOrientation(aspectRatio: string, provider: "pexels" | "pixa
   if (ratio > 1.2) return provider === "pexels" ? "landscape" : "horizontal";
   if (ratio < 0.8) return provider === "pexels" ? "portrait" : "vertical";
   return provider === "pexels" ? "square" : "";
+}
+
+export function stockSourceKey(provider: string, sourceUrl?: string | null, credit?: string | null) {
+  if (sourceUrl) return `${provider}:${sourceUrl.replace(/\/$/, "")}`;
+  if (credit) return `${provider}:credit:${credit}`;
+  return "";
 }
 
 function plainText(value: string, maxChars = 700) {
@@ -314,7 +320,8 @@ async function saveExternalImage(opts: {
     jobId: opts.jobId,
     postId: opts.postId,
   });
-  return { storagePath, assetId: asset?.id, sourceUrl: opts.sourceUrl || opts.imageUrl };
+  const sourceUrl = opts.sourceUrl || opts.imageUrl;
+  return { storagePath, assetId: asset?.id, sourceUrl, sourceKey: stockSourceKey(opts.provider, sourceUrl, opts.credit) };
 }
 
 async function searchPexels(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean; usedSourceUrls?: Set<string> }) {
@@ -332,7 +339,7 @@ async function searchPexels(opts: { userId: string; query: string; prompt: strin
   for (const photo of data.photos || []) {
     const url = photo?.src?.large2x || photo?.src?.large || photo?.src?.original;
     const sourceUrl = photo?.url || url;
-    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(stockSourceKey("pexels", sourceUrl, photo.photographer)))) continue;
     return saveExternalImage({
       imageUrl: url,
       userId: opts.userId,
@@ -370,7 +377,7 @@ async function searchPixabay(opts: { userId: string; query: string; prompt: stri
   for (const photo of data.hits || []) {
     const url = photo?.largeImageURL || photo?.webformatURL;
     const sourceUrl = photo?.pageURL || url;
-    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(stockSourceKey("pixabay", sourceUrl, photo.user)))) continue;
     return saveExternalImage({
       imageUrl: url,
       userId: opts.userId,
@@ -404,7 +411,7 @@ async function searchOpenverse(opts: { userId: string; query: string; prompt: st
   for (const photo of data.results || []) {
     const url = photo?.url || photo?.thumbnail;
     const sourceUrl = photo?.foreign_landing_url || photo?.url || url;
-    if (!url || (sourceUrl && opts.usedSourceUrls?.has(sourceUrl))) continue;
+    if (!url || (sourceUrl && opts.usedSourceUrls?.has(stockSourceKey("openverse", sourceUrl, photo.creator)))) continue;
     const license = [photo.license, photo.license_version].filter(Boolean).join(" ").toUpperCase();
     return saveExternalImage({
       imageUrl: url,
@@ -624,7 +631,7 @@ async function tryStockImage(opts: {
     for (const [provider, search] of providers) {
       const storagePath = await tryStockSearch(search);
       if (storagePath) {
-        if (storagePath.sourceUrl) opts.usedSourceUrls?.add(storagePath.sourceUrl);
+        if (storagePath.sourceKey) opts.usedSourceUrls?.add(storagePath.sourceKey);
         return { slot: opts.slot, status: "attached", storagePath: storagePath.storagePath, assetId: storagePath.assetId, provider, query };
       }
     }
@@ -741,14 +748,15 @@ export function kickDeferredImageWorker(userId?: string, limit = 2) {
 }
 
 async function fallbackRequestToStock(request: typeof imageGenerationRequests.$inferSelect, placement?: unknown) {
+  if (!shouldFallbackRequestToStock(request.type)) return null;
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title, content: posts.content }).from(posts).where(eq(posts.id, request.postId)).limit(1);
   if (!post) return null;
   const existingAssets = await db
-    .select({ sourceUrl: imageAssets.sourceUrl })
+    .select({ provider: imageAssets.provider, sourceUrl: imageAssets.sourceUrl, credit: imageAssets.credit })
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, request.userId), eq(imageAssets.postId, request.postId)));
-  const usedSourceUrls = new Set(existingAssets.map((asset) => asset.sourceUrl).filter((url): url is string => Boolean(url)));
+  const usedSourceUrls = new Set(existingAssets.map((asset) => stockSourceKey(asset.provider || "stock", asset.sourceUrl, asset.credit)).filter(Boolean));
   const slot = imageSlotFromRequest(request, post.title);
   const result = await tryStockImage({
     slot,
@@ -888,7 +896,7 @@ export async function processNextDeferredImage(userId?: string) {
           retryCount,
           updatedAt: new Date(),
         }).where(eq(imageGenerationRequests.id, request.id));
-        return { processed: true, storagePath: stockResult.storagePath, fallback: "stock" };
+        return { processed: true, storagePath: stockResult.storagePath, fallback: "stock", error: err?.message || "Image generation failed" };
       }
     }
     if (retryCount >= 3) {

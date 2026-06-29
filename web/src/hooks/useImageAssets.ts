@@ -128,7 +128,7 @@ export function useProcessImageQueue() {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
-      if (result.processed) toast.success(result.fallback ? "Stock image attached" : "Image generated");
+      if (result.processed) toast.success(result.fallback ? "Stock image attached" : "Image generated", result.error ? { description: result.error } : undefined);
       else toast.info(result.reason || result.error || "No queued image ready yet");
     },
     onError: (err: unknown) => {
