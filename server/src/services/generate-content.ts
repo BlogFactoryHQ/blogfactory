@@ -382,7 +382,7 @@ function imageAdvancedOptions(settings?: GenerationSettings) {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function inlineImageModel(settings?: GenerationSettings) {
+export function inlineImageModel(settings?: GenerationSettings) {
   const value = settingValue(settings, "inlineImageModel", "inline_image_model")
     || imageAdvancedOptions(settings).inlineImageModel
     || imageAdvancedOptions(settings).inline_image_model;
