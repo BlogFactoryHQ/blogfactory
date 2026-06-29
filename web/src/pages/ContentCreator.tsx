@@ -72,6 +72,7 @@ import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 import { ProgrammaticPanel } from "@/pages/Programmatic";
+import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 
 interface ContentUserSettings {
   image_model?: string | null;
@@ -214,6 +215,70 @@ function TopicFitNote({ result }: { result: TopicFitResult }) {
     <div className={cn("rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground", toneClass)}>
       <p className="font-semibold">{result.title}</p>
       <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
+    </div>
+  );
+}
+
+function GenerationBrief({
+  title,
+  source,
+  persona,
+  model,
+  estimate,
+  imagePlan,
+  linkState,
+  topicFit,
+  blockers,
+}: {
+  title: string;
+  source: string;
+  persona: string;
+  model: string;
+  estimate: CostEstimate;
+  imagePlan: string;
+  linkState: string;
+  topicFit: TopicFitResult;
+  blockers: string[];
+}) {
+  const statusTone: SemanticTone = blockers.length ? "risk" : topicFit.tone === "good" ? "success" : topicFit.tone === "context" ? "opportunity" : "performance";
+  const items = [
+    { label: "Source", value: source || "Missing", tone: source ? "performance" as SemanticTone : "risk" as SemanticTone },
+    { label: "Voice", value: persona || "No persona", tone: persona ? "success" as SemanticTone : "risk" as SemanticTone },
+    { label: "Model", value: model || "No model", tone: model ? "neutral" as SemanticTone : "risk" as SemanticTone },
+    { label: "Cost", value: formatCompactCurrency(estimate.totalExpected), tone: "opportunity" as SemanticTone },
+    { label: "Images", value: imagePlan, tone: imagePlan === "Off" ? "neutral" as SemanticTone : "performance" as SemanticTone },
+    { label: "Links", value: linkState, tone: linkState === "Off" ? "neutral" as SemanticTone : "success" as SemanticTone },
+  ];
+
+  return (
+    <div className="rounded-lg border border-byword-border bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{topicFit.title}</p>
+        </div>
+        <span className={cn("rounded-md border px-2.5 py-1 text-xs font-semibold", semanticToneClass(statusTone))}>
+          {blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "Ready"}
+        </span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => (
+          <div key={item.label} className={cn("rounded-md border px-3 py-2", semanticToneClass(item.tone))}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{item.label}</p>
+            <p className="mt-1 truncate text-sm font-medium text-foreground">{item.value}</p>
+          </div>
+        ))}
+      </div>
+      {blockers.length > 0 && (
+        <div className="mt-3 grid gap-2">
+          {blockers.map((blocker) => (
+            <p key={blocker} className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {blocker}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -602,6 +667,19 @@ export default function ContentCreator() {
       default: return "Source";
     }
   };
+  const imagePlanLabel = imageConfig.cover.enabled || imageConfig.inline.enabled
+    ? `${imageConfig.cover.enabled ? "Cover" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline` : "No inline"}`
+    : "Off";
+  const articleBriefBlockers = [
+    !personaId ? "Select a voice persona." : "",
+    !getSourceValue().trim() ? "Add source content." : "",
+    selectedModelUnavailable ? "Pick a live OpenRouter model." : "",
+    shouldWarnForCost(costWarningInput(articleCostEstimate)) ? "Projected cost needs confirmation." : "",
+  ].filter(Boolean);
+  const campaignBriefBlockers = [
+    campaignBlocker,
+    shouldWarnForCost(costWarningInput(campaignCostEstimate)) ? "Projected campaign cost needs confirmation." : "",
+  ].filter(Boolean);
 
   const executeGeneration = async () => {
     const sourceValue = getSourceValue();
@@ -1325,6 +1403,18 @@ export default function ContentCreator() {
 
             <ActiveJobsPanel jobs={activeJobs} onDismiss={dismissJob} />
 
+            <GenerationBrief
+              title="Generation brief"
+              source={getSourceLabel()}
+              persona={selectedPersona?.name || ""}
+              model={selectedTextModel?.name || modelId}
+              estimate={articleCostEstimate}
+              imagePlan={imagePlanLabel}
+              linkState={contractLinkLabel}
+              topicFit={articleTopicFit}
+              blockers={articleBriefBlockers}
+            />
+
             <CostEstimateCard estimate={articleCostEstimate} />
 
             <Button
@@ -1503,6 +1593,18 @@ export default function ContentCreator() {
               />
 
               <CostEstimateCard estimate={campaignCostEstimate} />
+
+              <GenerationBrief
+                title="Campaign brief"
+                source={`${campaignItemCount} ${campaignMode.replace(/_/g, " ")} item${campaignItemCount === 1 ? "" : "s"}`}
+                persona={selectedPersona?.name || "Default"}
+                model={selectedTextModel?.name || modelId}
+                estimate={campaignCostEstimate}
+                imagePlan={imagePlanLabel}
+                linkState={contractLinkLabel}
+                topicFit={campaignTopicFit}
+                blockers={campaignBriefBlockers}
+              />
 
               <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm">
                 <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />

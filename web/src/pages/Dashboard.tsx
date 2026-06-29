@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatCompactCurrency, formatCompactNumber, safePercent, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 
 interface DashboardStats {
   totalPosts: number;
@@ -66,34 +67,6 @@ export default function Dashboard() {
       return api.get<any[]>("/scheduler/logs?limit=5");
     },
   });
-
-  const stats = [
-    {
-      title: "Posts",
-      value: postCount,
-      icon: FileText,
-      href: "/posts",
-    },
-    {
-      title: "Active Feeds",
-      value: activeFeedCount,
-      icon: Rss,
-      href: "/rss-feeds",
-    },
-    {
-      title: "Jobs",
-      value: totalJobCount,
-      icon: ListTodo,
-      href: "/jobs",
-    },
-    {
-      title: "Published",
-      value: publishedCount,
-      detail: draftCount ? `${draftCount} drafts` : undefined,
-      icon: CheckCircle,
-      href: "/posts?status=published",
-    },
-  ];
 
   const jobStatusSummary = {
     completed: recentJobs.filter((job: any) => job.status === "completed").length,
@@ -143,28 +116,15 @@ export default function Dashboard() {
         description="Overview of your content pipeline."
       />
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
-        {stats.map((stat, i) => (
-          <Link key={stat.title} to={stat.href}>
-            <div
-              className="group calm-card p-5 hover:border-foreground/15 transition-calm cursor-pointer"
-              style={{ animationDelay: `${i * 50}ms` }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{stat.title}</span>
-                <stat.icon className="h-3.5 w-3.5 text-muted-foreground/60" strokeWidth={1.5} />
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-semibold tracking-tight">{stat.value}</span>
-                {stat.detail && (
-                  <span className="text-sm text-muted-foreground">{stat.detail}</span>
-                )}
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      <PipelinePulse
+        postCount={postCount}
+        draftCount={draftCount}
+        publishedCount={publishedCount}
+        activeFeedCount={activeFeedCount}
+        totalJobCount={totalJobCount}
+        monthCost={dashStats?.monthCost ?? 0}
+        searchReady={connectedIndexing.length > 0 && internalLinksReady ? publishedCount : 0}
+      />
 
       <div className="calm-card mb-10 p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -186,12 +146,23 @@ export default function Dashboard() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {scaleChecklist.map((item) => {
             const Icon = item.done ? CheckCircle : item.warn ? AlertCircle : Clock;
+            const isNext = item.title === nextScaleItem.title && !item.done;
             return (
-              <Link key={item.title} to={item.href} className="group rounded-lg border border-border p-4 transition-calm hover:border-foreground/15 hover:bg-muted/30">
+              <Link
+                key={item.title}
+                to={item.href}
+                className={cn(
+                  "group rounded-lg border p-4 transition-calm hover:border-foreground/15 hover:bg-muted/30",
+                  isNext ? "border-amber-200 bg-amber-50/60" : "border-border"
+                )}
+              >
                 <div className="flex items-start gap-3">
                   <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", item.done ? "text-status-success" : item.warn ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground")} />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{item.title}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">{item.title}</p>
+                      {isNext && <Badge variant="outline" className="border-amber-300 bg-card text-[10px] text-amber-700">Next best</Badge>}
+                    </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
                     <span className="mt-3 inline-flex items-center text-xs font-medium text-muted-foreground group-hover:text-foreground">
                       {item.action}
@@ -372,6 +343,90 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PipelinePulse({
+  postCount,
+  draftCount,
+  publishedCount,
+  activeFeedCount,
+  totalJobCount,
+  monthCost,
+  searchReady,
+}: {
+  postCount: number;
+  draftCount: number;
+  publishedCount: number;
+  activeFeedCount: number;
+  totalJobCount: number;
+  monthCost: number;
+  searchReady: number;
+}) {
+  const metrics = [
+    { label: "Posts", value: formatCompactNumber(postCount), icon: FileText, tone: "performance" as SemanticTone, href: "/posts" },
+    { label: "Drafts", value: formatCompactNumber(draftCount), icon: PenTool, tone: draftCount ? "opportunity" as SemanticTone : "success" as SemanticTone, href: "/posts?status=draft" },
+    { label: "Published", value: formatCompactNumber(publishedCount), icon: CheckCircle, tone: "success" as SemanticTone, href: "/posts?status=published" },
+    { label: "Active feeds", value: formatCompactNumber(activeFeedCount), icon: Rss, tone: activeFeedCount ? "performance" as SemanticTone : "neutral" as SemanticTone, href: "/rss-feeds" },
+    { label: "Jobs", value: formatCompactNumber(totalJobCount), icon: ListTodo, tone: totalJobCount ? "neutral" as SemanticTone : "opportunity" as SemanticTone, href: "/jobs" },
+    { label: "Month spend", value: formatCompactCurrency(monthCost), icon: Timer, tone: "neutral" as SemanticTone, href: "/usage" },
+  ];
+  const steps = [
+    { label: "Created", value: postCount, tone: "performance" as SemanticTone },
+    { label: "Draft", value: draftCount, tone: "opportunity" as SemanticTone },
+    { label: "Published", value: publishedCount, tone: "success" as SemanticTone },
+    { label: "Indexed / Ready", value: searchReady, tone: searchReady ? "success" as SemanticTone : "neutral" as SemanticTone },
+  ];
+  const max = Math.max(postCount, 1);
+
+  return (
+    <div className="calm-card mb-10 p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Content pipeline pulse</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Top-level publishing health before the operational tables.</p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link to="/content-creator">
+            Create content
+            <ArrowRight className="ml-1.5 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {metrics.map((metric) => (
+          <Link key={metric.label} to={metric.href} className={cn("rounded-md border p-4 transition-calm hover:border-foreground/15", semanticToneClass(metric.tone))}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
+              <metric.icon className="h-4 w-4 opacity-70" />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">{metric.value}</p>
+          </Link>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        {steps.map((step) => (
+          <div key={step.label} className="rounded-md border border-byword-border bg-muted/20 p-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-medium">{step.label}</span>
+              <span>{formatCompactNumber(step.value)}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  step.tone === "performance" && "bg-byword-blue",
+                  step.tone === "opportunity" && "bg-amber-500",
+                  step.tone === "success" && "bg-green-500",
+                  step.tone === "neutral" && "bg-muted-foreground/40"
+                )}
+                style={{ width: `${Math.max(8, safePercent(step.value, max))}%` }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

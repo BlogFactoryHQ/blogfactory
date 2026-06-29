@@ -33,6 +33,9 @@ import {
   Pause,
   Play,
   Trash2,
+  BarChart3,
+  CalendarClock,
+  ArrowRight,
 } from "lucide-react";
 import { PLATFORMS } from "@/lib/mock-data";
 import { toast } from "sonner";
@@ -57,6 +60,14 @@ import {
   type Resolution,
   type AspectRatio,
 } from "@/components/content/ImageGenerationSettings";
+import { cn } from "@/lib/utils";
+import {
+  formatCompactNumber,
+  safePercent,
+  semanticToneClass,
+  topBuckets,
+  type SemanticTone,
+} from "@/lib/search-insights";
 
 interface Feed {
   id: string;
@@ -404,8 +415,24 @@ export default function RSSFeeds() {
       case "weekly":
         return addWeeks(lastRun, 1);
       default:
-        return addDays(lastRun, 1);
+      return addDays(lastRun, 1);
     }
+  };
+
+  const dueNowFeeds = feeds.filter((feed) => {
+    const nextRun = getNextRun(feed);
+    return Boolean(nextRun && isPast(nextRun));
+  });
+  const sourceHealth = {
+    active: feeds.filter((feed) => feed.is_active).length,
+    paused: feeds.filter((feed) => !feed.is_active).length,
+    dueNow: dueNowFeeds,
+    schedulerErrors: Number(lastSchedulerRun?.feeds_errored || 0),
+    totalGenerated: feeds.reduce((sum, feed) => sum + (Number(feed.total_articles) || 0), 0),
+    platformBuckets: topBuckets(feeds, (feed) => getPlatformLabel(feed.platform), {
+      limit: 5,
+      getValue: (feed) => Number(feed.total_articles) || 1,
+    }),
   };
 
   return (
@@ -448,6 +475,20 @@ export default function RSSFeeds() {
           )}
         </div>
       )}
+
+      <SourceHealthInsights
+        totalSources={feeds.length}
+        activeCount={sourceHealth.active}
+        pausedCount={sourceHealth.paused}
+        dueNowCount={sourceHealth.dueNow.length}
+        schedulerErrors={sourceHealth.schedulerErrors}
+        postsGenerated={sourceHealth.totalGenerated}
+        platformBuckets={sourceHealth.platformBuckets}
+        onRunDueNow={() => sourceHealth.dueNow[0] && handleRunNow(sourceHealth.dueNow[0])}
+        onShowPaused={() => setFilter("paused")}
+        onShowActive={() => setFilter("active")}
+        running={Boolean(runningFeedId)}
+      />
 
       {/* Filters */}
       <div className="flex items-center gap-4 mb-6">
@@ -770,6 +811,154 @@ export default function RSSFeeds() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function SourceHealthInsights({
+  totalSources,
+  activeCount,
+  pausedCount,
+  dueNowCount,
+  schedulerErrors,
+  postsGenerated,
+  platformBuckets,
+  onRunDueNow,
+  onShowPaused,
+  onShowActive,
+  running,
+}: {
+  totalSources: number;
+  activeCount: number;
+  pausedCount: number;
+  dueNowCount: number;
+  schedulerErrors: number;
+  postsGenerated: number;
+  platformBuckets: Array<{ label: string; value: number }>;
+  onRunDueNow: () => void;
+  onShowPaused: () => void;
+  onShowActive: () => void;
+  running: boolean;
+}) {
+  const metrics = [
+    { label: "Active", value: activeCount, tone: activeCount ? "success" as SemanticTone : "opportunity" as SemanticTone, icon: CheckCircle },
+    { label: "Paused", value: pausedCount, tone: pausedCount ? "opportunity" as SemanticTone : "success" as SemanticTone, icon: Pause },
+    { label: "Due now", value: dueNowCount, tone: dueNowCount ? "performance" as SemanticTone : "neutral" as SemanticTone, icon: CalendarClock },
+    { label: "Scheduler errors", value: schedulerErrors, tone: schedulerErrors ? "risk" as SemanticTone : "success" as SemanticTone, icon: AlertCircle },
+    { label: "Posts generated", value: postsGenerated, tone: "performance" as SemanticTone, icon: FileText },
+  ];
+
+  return (
+    <div className="mb-6 rounded-lg border border-byword-border bg-card p-4 shadow-[0_12px_40px_rgba(22,82,125,0.04)]">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Source health</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Which sources are alive, due, and contributing posts.</p>
+        </div>
+        <Badge variant="outline">{formatCompactNumber(totalSources)} total sources</Badge>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {metrics.map((metric) => (
+          <div key={metric.label} className={cn("rounded-md border p-4", semanticToneClass(metric.tone))}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
+              <metric.icon className="h-4 w-4 opacity-70" />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">{formatCompactNumber(metric.value)}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-byword-blue" />
+            <p className="text-sm font-semibold">Contribution by platform</p>
+          </div>
+          <div className="space-y-2">
+            {platformBuckets.length ? platformBuckets.map((bucket) => (
+              <div key={bucket.label}>
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                  <span className="truncate text-muted-foreground">{bucket.label}</span>
+                  <span className="font-medium">{formatCompactNumber(bucket.value)}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-byword-blue" style={{ width: `${Math.max(8, safePercent(bucket.value, Math.max(postsGenerated, totalSources)))}%` }} />
+                </div>
+              </div>
+            )) : (
+              <p className="text-xs text-muted-foreground">No source contribution yet.</p>
+            )}
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <SourceLane
+            title="Due now"
+            value={formatCompactNumber(dueNowCount)}
+            detail={dueNowCount ? "Run the next due source now or let the scheduler pick it up." : "No active source is due."}
+            tone={dueNowCount ? "performance" : "success"}
+            action={running ? "Running..." : "Run first due"}
+            disabled={!dueNowCount || running}
+            icon={Play}
+            onClick={onRunDueNow}
+          />
+          <SourceLane
+            title="Paused sources"
+            value={formatCompactNumber(pausedCount)}
+            detail={pausedCount ? "Paused sources are no longer feeding the content pipeline." : "All sources are active."}
+            tone={pausedCount ? "opportunity" : "success"}
+            action="Show paused"
+            disabled={!pausedCount}
+            icon={Pause}
+            onClick={onShowPaused}
+          />
+          <SourceLane
+            title="Scheduler errors"
+            value={formatCompactNumber(schedulerErrors)}
+            detail={schedulerErrors ? "Open active sources and check credentials or feed URLs." : "Latest scheduler run is clean."}
+            tone={schedulerErrors ? "risk" : "success"}
+            action={schedulerErrors ? "Show active" : "View sources"}
+            disabled={false}
+            icon={schedulerErrors ? AlertCircle : ArrowRight}
+            onClick={onShowActive}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SourceLane({
+  title,
+  value,
+  detail,
+  tone,
+  action,
+  disabled,
+  icon: Icon,
+  onClick,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  tone: SemanticTone;
+  action: string;
+  disabled?: boolean;
+  icon: typeof Rss;
+  onClick: () => void;
+}) {
+  return (
+    <div className={cn("rounded-lg border p-3", semanticToneClass(tone))}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{title}</p>
+          <p className="mt-1 text-xs opacity-75">{detail}</p>
+        </div>
+        <p className="text-xl font-semibold text-foreground">{value}</p>
+      </div>
+      <Button size="sm" variant="outline" className="mt-3 h-8 w-full bg-card" onClick={onClick} disabled={disabled}>
+        <Icon className="mr-1.5 h-3.5 w-3.5" />
+        {action}
+      </Button>
     </div>
   );
 }

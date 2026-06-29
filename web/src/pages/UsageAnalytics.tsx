@@ -27,13 +27,23 @@ import {
   BarChart3,
   TrendingUp,
   Image,
+  AlertTriangle,
 } from "lucide-react";
 import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
-import { UsageCostChart } from "@/components/usage/UsageCostChart";
 import { UsageTokenChart } from "@/components/usage/UsageTokenChart";
 import { ModelBreakdownTable } from "@/components/usage/ModelBreakdownTable";
 import { BudgetCard } from "@/components/usage/BudgetCard";
-import { startOfMonth, format } from "date-fns";
+import { startOfMonth, format, parseISO } from "date-fns";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import { cn } from "@/lib/utils";
+import {
+  formatCompactCurrency,
+  formatCompactNumber,
+  formatDuration,
+  safePercent,
+  semanticToneClass,
+  type SemanticTone,
+} from "@/lib/search-insights";
 
 export default function UsageAnalytics() {
   const [days, setDays] = useState(30);
@@ -59,32 +69,114 @@ export default function UsageAnalytics() {
   const recentCalls = costs?.recentCalls || [];
   const imageSummary = costs?.imageSummary;
 
-  const statCards = [
+  const dailyCostBreakdown = useMemo(() => {
+    const byDate = new Map<string, { text: number; image: number }>();
+    logs.forEach((log) => {
+      const date = usageDayKey(log.created_at);
+      if (!date) return;
+      const existing = byDate.get(date) || { text: 0, image: 0 };
+      const usageType = log.usage_type || (log.provider?.includes("image") ? "image" : "text");
+      if (usageType === "image") existing.image += Number(log.cost) || 0;
+      else existing.text += Number(log.cost) || 0;
+      byDate.set(date, existing);
+    });
+
+    return dailyUsage.map((day) => {
+      const fromLogs = byDate.get(day.date);
+      const textCost = day.text_cost ?? fromLogs?.text ?? Math.max(0, day.cost - (day.image_cost ?? fromLogs?.image ?? 0));
+      const imageCost = day.image_cost ?? fromLogs?.image ?? Math.max(0, day.cost - textCost);
+      return {
+        date: day.date,
+        textCost,
+        imageCost,
+        total: textCost + imageCost,
+      };
+    });
+  }, [dailyUsage, logs]);
+
+  const openRouterCapacity = openRouterRemaining > 0 ? currentMonthSpend + openRouterRemaining : 0;
+  const openRouterUsedPercent = safePercent(currentMonthSpend, openRouterCapacity);
+
+  const pulseMetrics = [
     {
       title: "Total Cost",
-      value: formatCurrency(summary.totalCost),
+      value: formatCompactCurrency(summary.totalCost),
       icon: DollarSign,
       description: `Last ${days} days`,
+      tone: "performance" as SemanticTone,
     },
     {
       title: "Text Cost",
-      value: formatCurrency(summary.textCost),
+      value: formatCompactCurrency(summary.textCost),
       icon: Hash,
-      description: `${formatNumber(summary.totalTokens)} tokens`,
+      description: `${formatCompactNumber(summary.totalTokens)} tokens`,
+      tone: "performance" as SemanticTone,
     },
     {
       title: "Image Cost",
-      value: formatCurrency(summary.imageCost),
+      value: formatCompactCurrency(summary.imageCost),
       icon: Image,
       description: imageSummary ? `${imageSummary.ai} AI · ${imageSummary.stock} stock` : "Generated images",
+      tone: summary.imageCost > summary.textCost ? "opportunity" as SemanticTone : "neutral" as SemanticTone,
     },
     {
       title: "Avg / Post",
-      value: summary.avgCostPerPost ? formatCurrency(summary.avgCostPerPost) : "—",
+      value: summary.avgCostPerPost ? formatCompactCurrency(summary.avgCostPerPost) : "—",
       icon: Clock,
       description: `${summary.postCount || 0} attributed posts`,
+      tone: "neutral" as SemanticTone,
+    },
+    {
+      title: "Failed Calls",
+      value: formatCompactNumber(summary.failedCalls),
+      icon: AlertTriangle,
+      description: `${formatCompactNumber(summary.totalRequests)} requests`,
+      tone: summary.failedCalls > 0 ? "risk" as SemanticTone : "success" as SemanticTone,
+    },
+    {
+      title: "Credits Left",
+      value: openRouterRemaining ? formatCompactCurrency(openRouterRemaining) : "—",
+      icon: Zap,
+      description: openRouterRemaining ? "OpenRouter balance" : "Not reported",
+      tone: openRouterRemaining > 0 ? "success" as SemanticTone : "neutral" as SemanticTone,
     },
   ];
+
+  const costDrivers = useMemo(() => {
+    const expensive = modelBreakdown[0];
+    const slow = [...modelBreakdown].filter((row) => row.avg_latency).sort((a, b) => b.avg_latency - a.avg_latency)[0];
+    const imageShare = safePercent(summary.imageCost, summary.totalCost);
+    return [
+      {
+        title: "Expensive models",
+        value: expensive ? formatCompactCurrency(expensive.total_cost) : "—",
+        label: expensive?.model_id?.split("/").pop() || "No model spend yet",
+        detail: expensive ? `${formatCompactNumber(expensive.requests)} calls` : "Generate content to build the ranking.",
+        tone: expensive?.total_cost ? "opportunity" as SemanticTone : "neutral" as SemanticTone,
+      },
+      {
+        title: "High latency",
+        value: slow ? formatDuration(slow.avg_latency) : "—",
+        label: slow?.model_id?.split("/").pop() || "No latency signal yet",
+        detail: slow ? "Slowest model by average response time." : "Latency appears after provider calls.",
+        tone: slow?.avg_latency && slow.avg_latency > 15_000 ? "risk" as SemanticTone : "neutral" as SemanticTone,
+      },
+      {
+        title: "Image spend",
+        value: `${Math.round(imageShare)}%`,
+        label: imageSummary ? `${imageSummary.cover} cover · ${imageSummary.inline} inline` : "Images not used yet",
+        detail: `${formatCompactCurrency(summary.imageCost)} of total spend.`,
+        tone: imageShare > 35 ? "opportunity" as SemanticTone : "success" as SemanticTone,
+      },
+      {
+        title: "Failed / retried calls",
+        value: formatCompactNumber(summary.failedCalls + (imageSummary?.retries || 0)),
+        label: summary.failedCalls ? "Provider calls need review" : "Stable generation",
+        detail: imageSummary ? `${imageSummary.retries} image retries` : "No image retry data.",
+        tone: summary.failedCalls || imageSummary?.failed ? "risk" as SemanticTone : "success" as SemanticTone,
+      },
+    ];
+  }, [imageSummary, modelBreakdown, summary.failedCalls, summary.imageCost, summary.totalCost]);
 
   return (
     <div className="p-8 max-w-7xl">
@@ -111,24 +203,72 @@ export default function UsageAnalytics() {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {statCards.map((stat) => (
-              <Card key={stat.title}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-                      <p className="text-2xl font-bold">{stat.value}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
-                    </div>
-                    <div className="h-10 w-10 rounded-lg bg-accent flex items-center justify-center">
-                      <stat.icon className="h-5 w-5 text-accent-foreground" />
-                    </div>
+          <div className="mb-8 rounded-lg border border-byword-border bg-card p-4 shadow-[0_12px_40px_rgba(22,82,125,0.04)]">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">Spend pulse</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Cost, reliability, and remaining credits for the selected window.</p>
+              </div>
+              <div className="min-w-[220px] rounded-md border border-byword-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Month-to-date</span>
+                  <span>{openRouterCapacity ? `${Math.round(openRouterUsedPercent)}% of visible credits` : "Budget tracked below"}</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-byword-blue" style={{ width: `${openRouterUsedPercent}%` }} />
+                </div>
+                <p className="mt-2 text-xs font-medium">{formatCompactCurrency(currentMonthSpend)} spent this month</p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              {pulseMetrics.map((stat) => (
+                <div key={stat.title} className={cn("rounded-md border p-4", semanticToneClass(stat.tone))}>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{stat.title}</p>
+                    <stat.icon className="h-4 w-4 opacity-70" />
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <p className="text-2xl font-semibold tracking-tight text-foreground">{stat.value}</p>
+                  <p className="mt-1 text-xs opacity-75">{stat.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-8 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-byword-blue" />
+                  Daily cost stack
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SpendStackChart data={dailyCostBreakdown} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-amber-600" />
+                  Cost drivers
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                {costDrivers.map((driver) => (
+                  <div key={driver.title} className={cn("rounded-lg border p-3", semanticToneClass(driver.tone))}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{driver.title}</p>
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">{driver.label}</p>
+                      </div>
+                      <p className="shrink-0 text-lg font-semibold text-foreground">{driver.value}</p>
+                    </div>
+                    <p className="mt-2 text-xs opacity-75">{driver.detail}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
 
           <div className="grid gap-4 mb-8 lg:grid-cols-3">
@@ -173,31 +313,13 @@ export default function UsageAnalytics() {
             </Card>
           </div>
 
-          {/* Charts */}
-          <Tabs defaultValue="cost" className="mb-8">
+          <Tabs defaultValue="tokens" className="mb-8">
             <TabsList>
-              <TabsTrigger value="cost" className="gap-1.5">
-                <TrendingUp className="h-4 w-4" />
-                Cost Over Time
-              </TabsTrigger>
               <TabsTrigger value="tokens" className="gap-1.5">
                 <Zap className="h-4 w-4" />
                 Tokens Over Time
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="cost" className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    Daily Cost
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <UsageCostChart data={dailyUsage} />
-                </CardContent>
-              </Card>
-            </TabsContent>
             <TabsContent value="tokens" className="mt-4">
               <Card>
                 <CardHeader>
@@ -275,6 +397,56 @@ export default function UsageAnalytics() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SpendStackChart({ data }: { data: Array<{ date: string; textCost: number; imageCost: number; total: number }> }) {
+  if (!data.length) {
+    return (
+      <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+        No usage data for this period.
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[300px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 20, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis
+            dataKey="date"
+            tickFormatter={(val) => format(parseISO(val), "MMM d")}
+            className="text-xs fill-muted-foreground"
+            tick={{ fontSize: 11 }}
+          />
+          <YAxis
+            tickFormatter={(val) => `$${Number(val).toFixed(2)}`}
+            className="text-xs fill-muted-foreground"
+            tick={{ fontSize: 11 }}
+          />
+          <ChartTooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "0.5rem",
+              fontSize: "0.75rem",
+            }}
+            labelFormatter={(val) => format(parseISO(val as string), "MMM d, yyyy")}
+            formatter={(value: number, name: string) => [
+              formatCompactCurrency(value),
+              name === "textCost" ? "Text cost" : "Image cost",
+            ]}
+          />
+          <Bar dataKey="textCost" stackId="cost" fill="#1481c0" radius={[0, 0, 3, 3]} />
+          <Bar dataKey="imageCost" stackId="cost" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#1481c0]" /> Text</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#f59e0b]" /> Images</span>
+      </div>
     </div>
   );
 }

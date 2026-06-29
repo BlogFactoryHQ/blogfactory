@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -15,11 +16,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw } from "lucide-react";
+import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { DraftProgressList } from "@/components/content/DraftProgressList";
+import {
+  formatCompactCurrency,
+  formatCompactNumber,
+  formatDuration,
+  semanticToneClass,
+  type SemanticTone,
+} from "@/lib/search-insights";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -288,6 +296,34 @@ export default function Jobs() {
     return matchesSearch && matchesFilter;
   });
 
+  const reliabilityInsights = useMemo(() => {
+    const partialJobs = jobRows.filter((job) => draftStatsFor(job).partial);
+    const failedOrPartial = jobRows.filter((job) => job.status === "failed" || draftStatsFor(job).partial);
+    const totalCost = jobRows.reduce((sum, job) => sum + (Number(job.total_cost) || 0), 0);
+    const expensiveJobs = [...jobRows]
+      .filter((job) => Number(job.total_cost) > 0)
+      .sort((a, b) => Number(b.total_cost) - Number(a.total_cost))
+      .slice(0, 3);
+    const slowJobs = [...jobRows]
+      .map((job) => ({
+        job,
+        duration: job.completed_at
+          ? new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()
+          : 0,
+      }))
+      .filter((row) => row.duration > 0)
+      .sort((a, b) => b.duration - a.duration)
+      .slice(0, 3);
+
+    return {
+      partialJobs,
+      failedOrPartial,
+      totalCost,
+      expensiveJobs,
+      slowJobs,
+    };
+  }, [jobRows]);
+
   const copyPrompt = () => {
     toast.success("Full prompt copied to clipboard.");
   };
@@ -400,6 +436,26 @@ export default function Jobs() {
       <PageHeader
         title="Job Queue"
         description={`Monitoring generation pipeline. ${statusCounts.running} active job${statusCounts.running !== 1 ? "s" : ""} running.`}
+      />
+
+      <JobReliabilityInsights
+        statusCounts={statusCounts}
+        totalCost={reliabilityInsights.totalCost}
+        partialCount={reliabilityInsights.partialJobs.length}
+        expensiveJobs={reliabilityInsights.expensiveJobs}
+        slowJobs={reliabilityInsights.slowJobs}
+        retryableJob={reliabilityInsights.failedOrPartial[0]}
+        runningJobs={jobRows.filter((job) => job.status === "running" || job.status === "pending")}
+        onFilter={setFilter}
+        onSelectJob={setSelectedJob}
+        onRetry={(job) => {
+          const failedDrafts = failedDraftsFor(job);
+          const jobIds = failedJobIdsFor(job);
+          retryDraftsMutation.mutate(jobIds.length ? { jobIds } : { jobId: job.id, indices: failedDrafts.map((fd) => fd.index) });
+        }}
+        onStop={(jobsToStop) => stopJobMutation.mutate(jobsToStop.flatMap(activeJobIdsFor))}
+        retrying={retryDraftsMutation.isPending}
+        stopping={stopJobMutation.isPending}
       />
 
       {/* Filters */}
@@ -864,4 +920,161 @@ export default function Jobs() {
       </Sheet>
     </div>
   );
+}
+
+function JobReliabilityInsights({
+  statusCounts,
+  totalCost,
+  partialCount,
+  expensiveJobs,
+  slowJobs,
+  retryableJob,
+  runningJobs,
+  onFilter,
+  onSelectJob,
+  onRetry,
+  onStop,
+  retrying,
+  stopping,
+}: {
+  statusCounts: Record<StatusFilter, number>;
+  totalCost: number;
+  partialCount: number;
+  expensiveJobs: Job[];
+  slowJobs: Array<{ job: Job; duration: number }>;
+  retryableJob?: Job;
+  runningJobs: Job[];
+  onFilter: (filter: StatusFilter) => void;
+  onSelectJob: (job: Job) => void;
+  onRetry: (job: Job) => void;
+  onStop: (jobs: Job[]) => void;
+  retrying: boolean;
+  stopping: boolean;
+}) {
+  const metrics = [
+    { label: "Running", value: statusCounts.running, tone: statusCounts.running ? "performance" as SemanticTone : "neutral" as SemanticTone, icon: Loader2 },
+    { label: "Completed", value: statusCounts.completed, tone: "success" as SemanticTone, icon: CheckCircle },
+    { label: "Failed", value: statusCounts.failed, tone: statusCounts.failed ? "risk" as SemanticTone : "success" as SemanticTone, icon: AlertCircle },
+    { label: "Partial batches", value: partialCount, tone: partialCount ? "opportunity" as SemanticTone : "success" as SemanticTone, icon: BarChart3 },
+    { label: "Total cost", value: totalCost, tone: "neutral" as SemanticTone, icon: DollarSign, currency: true },
+  ];
+  const slowest = slowJobs[0];
+  const priciest = expensiveJobs[0];
+
+  return (
+    <div className="mb-6 rounded-lg border border-byword-border bg-card p-4 shadow-[0_12px_40px_rgba(22,82,125,0.04)]">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Generation reliability</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Queue health, recovery work, and the jobs that cost or waited the most.</p>
+        </div>
+        <Badge variant="outline">{formatCompactNumber(statusCounts.all)} total jobs</Badge>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {metrics.map((metric) => (
+          <button
+            key={metric.label}
+            type="button"
+            onClick={() => {
+              if (metric.label === "Failed" || metric.label === "Partial batches") onFilter("failed");
+              else if (metric.label === "Running") onFilter("running");
+              else if (metric.label === "Completed") onFilter("completed");
+              else onFilter("all");
+            }}
+            className={cn("rounded-md border p-4 text-left transition-calm hover:border-foreground/15", semanticToneClass(metric.tone))}
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
+              <metric.icon className={cn("h-4 w-4 opacity-70", metric.label === "Running" && statusCounts.running > 0 && "animate-spin")} />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
+              {metric.currency ? formatCompactCurrency(metric.value) : formatCompactNumber(metric.value)}
+            </p>
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <ReliabilityLane
+          title="Failed drafts"
+          value={retryableJob ? retryableJob.id.slice(0, 8) : "Clear"}
+          detail={retryableJob ? (failedDraftsFor(retryableJob)[0]?.error || retryableJob.error_message || "Review and retry the failed generation.") : "No failed jobs need action."}
+          tone={retryableJob ? "risk" : "success"}
+          action={retrying ? "Retrying..." : "Retry first failure"}
+          disabled={!retryableJob || retrying}
+          icon={RefreshCw}
+          onClick={() => retryableJob && onRetry(retryableJob)}
+          onSecondary={retryableJob ? () => onSelectJob(retryableJob) : undefined}
+        />
+        <ReliabilityLane
+          title="Expensive jobs"
+          value={priciest ? formatCompactCurrency(Number(priciest.total_cost) || 0) : "—"}
+          detail={priciest ? `${formatModelNameForInsight(priciest.model_id)} · ${priciest.source_type.replace(/_/g, " ")}` : "Cost data appears after completed calls."}
+          tone={priciest ? "opportunity" : "neutral"}
+          action="Open job"
+          disabled={!priciest}
+          icon={DollarSign}
+          onClick={() => priciest && onSelectJob(priciest)}
+        />
+        <ReliabilityLane
+          title="Slow jobs"
+          value={slowest ? formatDuration(slowest.duration) : "—"}
+          detail={slowest ? `${formatModelNameForInsight(slowest.job.model_id)} completed ${formatDuration(slowest.duration)} after start.` : "No completed duration signal yet."}
+          tone={slowest && slowest.duration > 120_000 ? "opportunity" : "neutral"}
+          action={runningJobs.length ? (stopping ? "Stopping..." : "Stop active jobs") : "Open slowest"}
+          disabled={runningJobs.length ? stopping : !slowest}
+          icon={runningJobs.length ? StopCircle : Timer}
+          onClick={() => runningJobs.length ? onStop(runningJobs) : slowest && onSelectJob(slowest.job)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReliabilityLane({
+  title,
+  value,
+  detail,
+  tone,
+  action,
+  disabled,
+  icon: Icon,
+  onClick,
+  onSecondary,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  tone: SemanticTone;
+  action: string;
+  disabled?: boolean;
+  icon: typeof FileText;
+  onClick: () => void;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div className={cn("rounded-lg border p-3", semanticToneClass(tone))}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{title}</p>
+          <p className="mt-1 line-clamp-2 text-xs opacity-75">{detail}</p>
+        </div>
+        <p className="shrink-0 text-lg font-semibold text-foreground">{value}</p>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" variant="outline" className="h-8 flex-1 bg-card" onClick={onClick} disabled={disabled}>
+          <Icon className="mr-1.5 h-3.5 w-3.5" />
+          {action}
+        </Button>
+        {onSecondary && (
+          <Button size="sm" variant="ghost" className="h-8 bg-card/60" onClick={onSecondary}>
+            Details
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatModelNameForInsight(modelId: string) {
+  return modelId.split("/").pop() || modelId || "Unknown model";
 }
