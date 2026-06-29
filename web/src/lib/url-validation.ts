@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+export function normalizeHttpUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+export function stripHttpProtocol(input: string): string {
+  return input.trim().replace(/^https?:\/\/(?=.)/i, "");
+}
+
 // Private IP ranges that should be blocked to prevent SSRF
 const PRIVATE_IP_PATTERNS = [
   /^127\./,                          // 127.0.0.0/8 (localhost)
@@ -45,7 +55,7 @@ export function validateSourceUrl(url: string): { valid: boolean; error?: string
   // Basic URL format validation
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(url);
+    parsedUrl = new URL(normalizeHttpUrl(url));
   } catch {
     return { valid: false, error: "Invalid URL format" };
   }

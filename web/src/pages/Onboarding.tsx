@@ -13,7 +13,9 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { cn } from "@/lib/utils";
+import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSites, type Site } from "@/hooks/useSites";
 import { BywordCard, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
@@ -79,7 +81,7 @@ export default function Onboarding() {
     }
 
     try {
-      const site = await createSite({ url: siteUrl.trim() });
+      const site = await createSite({ url: normalizeHttpUrl(siteUrl) });
       setCreatedSite(site);
       toast.success("Workspace ready");
     } catch (err: unknown) {
@@ -137,16 +139,20 @@ export default function Onboarding() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground" htmlFor="site-url">Connect your first site</label>
-                  <div className="relative">
-                    <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="site-url"
-                      value={siteUrl}
-                      onChange={(event) => setSiteUrl(event.target.value)}
-                      className="h-12 pl-11 text-base"
-                      placeholder="ortakalan.io"
-                    />
-                  </div>
+                  <InputAffordance
+                    id="site-url"
+                    type="text"
+                    inputMode="url"
+                    prefix="https://"
+                    icon={Globe2}
+                    value={siteUrl}
+                    onChange={(event) => setSiteUrl(stripHttpProtocol(event.target.value))}
+                    className="h-12 text-base"
+                    placeholder="ortakalan.io"
+                    help="Paste a homepage URL or type the domain. We will find the sitemap automatically."
+                    onClear={() => setSiteUrl("")}
+                    clearLabel="Clear site URL"
+                  />
                 </div>
 
                 <Button className="h-12 w-full" type="submit" disabled={isCreating || !siteUrl.trim()}>

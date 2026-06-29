@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -35,6 +36,7 @@ import { FREQUENCIES } from "@/lib/mock-data";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { format } from "date-fns";
+import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -105,7 +107,7 @@ export function FeedEditorDialog({
   // Sync local state when dialog opens with a feed
   useEffect(() => {
     if (isOpen && feed) {
-      setEditedFeed({ ...feed });
+      setEditedFeed({ ...feed, source_url: stripHttpProtocol(feed.source_url) });
       setImageConfig(defaultImageConfig ?? DEFAULT_SPLIT_CONFIG);
     } else if (!isOpen) {
       setEditedFeed(null);
@@ -117,12 +119,12 @@ export function FeedEditorDialog({
 
   const handleSave = () => {
     if (selectedModelUnavailable) return;
-    onSave(editedFeed);
+    onSave({ ...editedFeed, source_url: normalizeHttpUrl(editedFeed.source_url) });
   };
 
   const handleRunNow = () => {
     if (selectedModelUnavailable) return;
-    onRunNow(editedFeed, imageConfig);
+    onRunNow({ ...editedFeed, source_url: normalizeHttpUrl(editedFeed.source_url) }, imageConfig);
   };
 
   return (
@@ -162,18 +164,21 @@ export function FeedEditorDialog({
 
                 <div className="space-y-2">
                   <Label htmlFor="sourceUrl">Source URL</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="sourceUrl"
-                      value={editedFeed.source_url}
-                      onChange={(e) =>
-                        setEditedFeed({ ...editedFeed, source_url: e.target.value })
-                      }
-                      className="pl-9"
-                      placeholder="https://example.com/feed.xml"
-                    />
-                  </div>
+                  <InputAffordance
+                    id="sourceUrl"
+                    type="text"
+                    inputMode="url"
+                    prefix="https://"
+                    icon={LinkIcon}
+                    value={editedFeed.source_url}
+                    onChange={(e) =>
+                      setEditedFeed({ ...editedFeed, source_url: stripHttpProtocol(e.target.value) })
+                    }
+                    placeholder="example.com/feed.xml"
+                    help="Paste the feed URL. BlogFactory adds HTTPS when you omit it."
+                    onClear={() => setEditedFeed({ ...editedFeed, source_url: "" })}
+                    clearLabel="Clear source URL"
+                  />
                 </div>
               </div>
 

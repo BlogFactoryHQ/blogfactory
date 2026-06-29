@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,6 +45,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { SourceType } from "@/components/content/GenerationProgress";
@@ -538,11 +540,11 @@ export default function ContentCreator() {
       case "article_title":
         return articleTitle;
       case "url":
-        return sourceUrl;
+        return normalizeHttpUrl(sourceUrl);
       case "raw_text":
         return rawText;
       case "youtube":
-        return youtubeUrl;
+        return normalizeHttpUrl(youtubeUrl);
       case "pdf":
         return pdfPath;
       default:
@@ -1166,15 +1168,19 @@ export default function ContentCreator() {
 
               <TabsContent value="url" className="space-y-2">
                 <Label>Source URL</Label>
-                <div className="relative">
-                  <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="https://example.com/article-source"
-                    value={sourceUrl}
-                    onChange={(e) => setSourceUrl(e.target.value)}
-                    className="h-11 pl-9"
-                  />
-                </div>
+                <InputAffordance
+                  type="text"
+                  inputMode="url"
+                  prefix="https://"
+                  icon={LinkIcon}
+                  placeholder="example.com/article-source"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(stripHttpProtocol(e.target.value))}
+                  className="h-11"
+                  help="Paste the source URL. BlogFactory adds HTTPS when you omit it."
+                  onClear={() => setSourceUrl("")}
+                  clearLabel="Clear source URL"
+                />
                 <p className="text-xs text-muted-foreground">
                   Provide a direct link to the source article or blog post.
                 </p>
@@ -1244,15 +1250,19 @@ export default function ContentCreator() {
 
               <TabsContent value="youtube" className="space-y-2">
                 <Label>YouTube URL</Label>
-                <div className="relative">
-                  <Youtube className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    className="h-11 pl-9"
-                  />
-                </div>
+                <InputAffordance
+                  type="text"
+                  inputMode="url"
+                  prefix="https://"
+                  icon={Youtube}
+                  placeholder="www.youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(stripHttpProtocol(e.target.value))}
+                  className="h-11"
+                  help="Paste a YouTube URL. BlogFactory adds HTTPS when you omit it."
+                  onClear={() => setYoutubeUrl("")}
+                  clearLabel="Clear YouTube URL"
+                />
                 <p className="text-xs text-muted-foreground">
                   Paste a YouTube video URL to generate content from its transcript.
                 </p>
