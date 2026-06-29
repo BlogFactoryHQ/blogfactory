@@ -258,6 +258,8 @@ const linkDensityOptions = [
   { value: "rich", label: "Rich", count: "Up to 8-12", description: "When the article supports it" },
 ];
 
+const DEFAULT_IMAGE_MODEL = "auto/consistent-cover";
+
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -266,7 +268,7 @@ export default function Settings() {
     "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays."
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
-  const [selectedImageModel, setSelectedImageModel] = useState("auto/consistent-cover");
+  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL);
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -390,7 +392,7 @@ export default function Settings() {
   ) ? "dirty" : "clean";
 
   const imageStrategyDirty: DirtyState = userSettings && (
-    selectedImageModel !== (userSettings.image_model || "openai/gpt-image-2") ||
+    selectedImageModel !== (userSettings.image_model || DEFAULT_IMAGE_MODEL) ||
     sourceImageAllowed !== (userSettings.source_image_allowed ?? false) ||
     aiFallbackEnabled !== (userSettings.ai_fallback_enabled ?? true) ||
     maxAiImagesPerDay !== (userSettings.max_ai_images_per_day ?? 30) ||
@@ -850,7 +852,7 @@ export default function Settings() {
   const applyImageStrategy = (strategy: "consistent" | "cheap" | "stock") => {
     setSourceImageAllowed(false);
     if (strategy === "consistent") {
-      setSelectedImageModel("auto/consistent-cover");
+      setSelectedImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
@@ -860,7 +862,7 @@ export default function Settings() {
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
     } else {
-      setSelectedImageModel("auto/consistent-cover");
+      setSelectedImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(false);
       setMaxAiImagesPerDay(0);
       setMinMinutesBetweenAiImages(5);
@@ -1927,7 +1929,7 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { id: "consistent", title: "Recommended", text: "Cover uses your selected model. Inline images use the low-cost queue.", badge: "Stable" },
+                      { id: "consistent", title: "Recommended", text: "Cover uses the cover model below. Inline images use the low-cost queue.", badge: "Stable" },
                       { id: "cheap", title: "Lowest Cost", text: "Use the cheapest available AI first, then stock if needed.", badge: "$" },
                       { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
                     ].map((strategy) => (
@@ -1952,7 +1954,7 @@ export default function Settings() {
                   </div>
 
                   <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {imageStrategy === "consistent" && "Current: covers queue on the selected model; inline images queue on the free/stock path."}
+                    {imageStrategy === "consistent" && "Current: covers attach stock/source first, then queue an AI upgrade with the cover model below. Inline images stay on the free/stock path."}
                     {imageStrategy === "cheap" && "Current: images queue on the cheapest available provider, with stock fallback."}
                     {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
                   </div>
@@ -1970,7 +1972,7 @@ export default function Settings() {
                   {showAdvancedImageStrategy && (
                     <div className="grid gap-5 rounded-lg border border-byword-border p-4 lg:grid-cols-2">
                       <div className="space-y-2">
-                        <Label>Model</Label>
+                        <Label>Cover AI Model</Label>
                         <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
                           <SelectTrigger>
                             <SelectValue />

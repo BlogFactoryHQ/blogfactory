@@ -184,8 +184,8 @@ export function SplitImageGenerationSettings({
     }
   }, [config, constraints, onConfigChange]);
 
-  // Show honest planning labels. The backend queues covers through the selected model,
-  // while inline images try free AI first and fall back to stock.
+  // Show honest planning labels. Images attach stock/source first; covers can queue
+  // an AI upgrade, while inline images queue AI only if stock/source fails.
   const imagesEnabled = config.cover.enabled || config.inline.enabled;
   const modelImagePrice = selectedImageModel?.rawPricing.image || 0;
   const isAutoModel = Boolean(imageModelId?.startsWith("auto/"));
@@ -205,7 +205,7 @@ export function SplitImageGenerationSettings({
     ? "$0"
     : !aiFallbackEnabled
     ? "Stock"
-    : "Free AI/stock";
+    : "Stock/AI fallback";
   const totalCostLabel = !imagesEnabled
     ? "$0"
     : !aiFallbackEnabled
