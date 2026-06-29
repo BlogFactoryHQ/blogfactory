@@ -101,8 +101,24 @@ export function buildImageAltText(opts: {
   return `${opts.type === "cover" ? "Featured image" : "Article image"} for ${opts.title}${detail}`.slice(0, 180);
 }
 
-function stockQuery(title: string) {
-  return title
+function normalizedQueryText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+export function stockQuery(opts: { title: string; content?: string; type?: ImageTargetType }) {
+  const haystack = normalizedQueryText(`${opts.title} ${opts.content || ""}`);
+  if (/ray[\s-]?ban|smart glasses|meta glasses|akilli gozluk|akıllı gözlük|gozluk|gözlük|eyewear/.test(haystack)) {
+    return opts.type === "inline"
+      ? "smart glasses close up wearable device"
+      : "smart glasses wearable technology";
+  }
+  if (/artificial intelligence|\bai\b|yapay zeka/.test(haystack)) {
+    return "artificial intelligence technology";
+  }
+  return opts.title
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -169,18 +185,6 @@ async function saveExternalImage(opts: {
     postId: opts.postId,
   });
   return storagePath;
-}
-
-async function findCachedAsset(userId: string, prompt: string, sourceKind?: string) {
-  const conditions = [eq(imageAssets.userId, userId), eq(imageAssets.prompt, prompt)];
-  if (sourceKind) conditions.push(eq(imageAssets.sourceKind, sourceKind));
-  const [asset] = await db
-    .select()
-    .from(imageAssets)
-    .where(and(...conditions))
-    .orderBy(desc(imageAssets.createdAt))
-    .limit(1);
-  return asset || null;
 }
 
 async function searchPexels(opts: { userId: string; query: string; prompt: string; altText: string; postId: string; jobId: string; type: ImageTargetType; position: number; aspectRatio: string; resolution: string; compressionEnabled: boolean }) {
@@ -383,8 +387,7 @@ export async function resolveLowCostImages(opts: {
     const prompt = buildImagePrompt({ content: opts.content, title: opts.title, type: target.type, index: target.position, stylePrompt: opts.stylePrompt });
     const altText = buildImageAltText({ content: opts.content, title: opts.title, type: target.type, index: target.position });
 
-    const cached = await findCachedAsset(opts.userId, prompt);
-    let path = cached?.storagePath || null;
+    let path: string | null = null;
     if (!path && shouldQueueAiBeforeStock(target.type, aiAllowed)) {
       await queueFallback({ ...opts, ...target, imageModel: imageModelForTarget(imageModel, target.type), prompt, altText });
       queued += 1;
@@ -392,14 +395,10 @@ export async function resolveLowCostImages(opts: {
     }
 
     if (!path) {
-      const cachedStock = await findCachedAsset(opts.userId, prompt, "stock");
-      path = cachedStock?.storagePath || null;
-      if (!path) {
-        const query = stockQuery(opts.title);
-        path = await tryStockSearch(() => searchPixabay({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
-          || await tryStockSearch(() => searchPexels({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
-          || await tryStockSearch(() => searchOpenverse({ ...opts, ...target, query, prompt, altText, compressionEnabled }));
-      }
+      const query = stockQuery({ title: opts.title, content: opts.content, type: target.type });
+      path = await tryStockSearch(() => searchPixabay({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
+        || await tryStockSearch(() => searchPexels({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
+        || await tryStockSearch(() => searchOpenverse({ ...opts, ...target, query, prompt, altText, compressionEnabled }));
     }
 
     if (!path) {
@@ -445,7 +444,7 @@ async function fallbackRequestToStock(request: typeof imageGenerationRequests.$i
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title }).from(posts).where(eq(posts.id, request.postId)).limit(1);
   if (!post) return null;
-  const query = stockQuery(post.title);
+  const query = stockQuery({ title: post.title, type: request.type as ImageTargetType });
   const path = await searchPixabay({
     userId: request.userId,
     postId: request.postId,
