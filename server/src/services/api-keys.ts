@@ -39,6 +39,16 @@ export function decryptSecret(value: string): string {
   ]).toString("utf8");
 }
 
+function decryptStoredSecret(value?: string | null): string | null {
+  if (!value) return null;
+  try {
+    return decryptSecret(value);
+  } catch {
+    console.warn("[api-keys] Stored API key could not be decrypted; re-save it.");
+    return null;
+  }
+}
+
 function last4(value: string): string {
   return value.slice(-4);
 }
@@ -186,7 +196,7 @@ export async function getOpenRouterKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
 
 export async function getGoogleAiKey(userId: string): Promise<string | null> {
@@ -195,7 +205,7 @@ export async function getGoogleAiKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
 
 export async function getOpenAiKey(userId: string): Promise<string | null> {
@@ -204,7 +214,7 @@ export async function getOpenAiKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
 
 export async function getReplicateKey(userId: string): Promise<string | null> {
@@ -213,7 +223,7 @@ export async function getReplicateKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
 
 export async function getPexelsKey(userId: string): Promise<string | null> {
@@ -222,7 +232,7 @@ export async function getPexelsKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
 
 export async function getPixabayKey(userId: string): Promise<string | null> {
@@ -231,5 +241,5 @@ export async function getPixabayKey(userId: string): Promise<string | null> {
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
-  return row?.key ? decryptSecret(row.key) : null;
+  return decryptStoredSecret(row?.key);
 }
