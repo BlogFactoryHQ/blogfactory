@@ -4,7 +4,16 @@ import { db } from "../db/index.js";
 import { sites, userSettings } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { deleteApiKey, getApiKeyMetadata, getGoogleAiKey, getOpenAiKey, getOpenRouterKey, setApiKey, type Provider } from "../services/api-keys.js";
+import {
+  deleteApiKey,
+  getApiKeyMetadata,
+  getGoogleAiKey,
+  getOpenAiKey,
+  getOpenRouterKey,
+  getReplicateKey,
+  setApiKey,
+  type Provider,
+} from "../services/api-keys.js";
 import {
   buildInternalLinkIndex,
   canRefreshInternalLinks,
@@ -17,7 +26,9 @@ import { chunkKnowledgeContent } from "../services/knowledge.js";
 
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate", "pexels", "pixabay"]);
+const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
 const IMAGE_PLACEMENTS = new Set(["auto", "featured_only", "after_intro", "between_sections"]);
+type TestableProvider = "openrouter" | "google" | "openai" | "replicate";
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -344,6 +355,48 @@ settingsRoutes.delete("/api-keys", async (c) => {
 function comparableSitemap(value: string | null | undefined) {
   return (value || "").trim().replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
 }
+
+settingsRoutes.post("/api-keys/test", async (c) => {
+  const userId = getUserId(c);
+  const { provider } = await c.req.json();
+
+  if (!TESTABLE_API_KEY_PROVIDERS.has(provider)) {
+    return c.json({ error: "Invalid provider" }, 400);
+  }
+
+  const testableProvider = provider as TestableProvider;
+  const apiKey =
+    testableProvider === "openrouter" ? await getOpenRouterKey(userId) :
+    testableProvider === "google" ? await getGoogleAiKey(userId) :
+    testableProvider === "openai" ? await getOpenAiKey(userId) :
+    await getReplicateKey(userId);
+
+  if (!apiKey) return c.json({ error: "No saved API key for this provider" }, 400);
+
+  const tests: Record<TestableProvider, () => Promise<Response>> = {
+    openrouter: () => fetch("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+    google: () => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`),
+    openai: () => fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+    replicate: () => fetch("https://api.replicate.com/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+  };
+
+  try {
+    const resp = await tests[testableProvider]();
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      return c.json({ ok: false, error: text || `Provider returned ${resp.status}` }, 400);
+    }
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ ok: false, error: err instanceof Error ? err.message : "Provider test failed" }, 400);
+  }
+});
 
 async function runInternalLinkIndexing({
   userId,

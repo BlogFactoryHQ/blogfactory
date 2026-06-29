@@ -42,6 +42,7 @@ import {
   ListChecks,
   Megaphone,
   Gauge,
+  Check,
   CheckCircle2,
   Database,
   Clock,
@@ -89,6 +90,13 @@ interface ApiKeyMetadata {
   hasPixabayKey: boolean;
   pixabayKeyLast4: string | null;
   updatedAt: string | null;
+}
+
+type ApiKeyProvider = "openrouter" | "google" | "openai" | "replicate";
+
+interface ApiKeyTestResult {
+  ok: boolean;
+  error?: string;
 }
 
 interface UserSettings {
@@ -176,6 +184,7 @@ interface InternalLinkIndexingState {
 }
 
 type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
+type DirtyState = "clean" | "dirty";
 
 const priceBadgeClass = (pricing: ModelPriceFilter) => {
   if (pricing === "free") return "bg-primary/10 text-primary";
@@ -197,6 +206,18 @@ const formatContextLength = (contextLength: number | null) => {
   if (contextLength >= 1_000) return `${Math.round(contextLength / 1_000)}K context`;
   return `${contextLength.toLocaleString()} context`;
 };
+
+const formatSavedAt = (value?: string | null) => {
+  if (!value) return "Never saved";
+  return `Saved ${new Date(value).toLocaleDateString()}`;
+};
+
+const unsavedBadge = (state: DirtyState) =>
+  state === "dirty" ? (
+    <span className="mr-2 rounded-full border border-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+      Unsaved
+    </span>
+  ) : null;
 
 const articleLengthOptions = [
   { label: "Short", words: 500, icon: FileText },
@@ -257,6 +278,7 @@ export default function Settings() {
   const [maxAiImagesPerDay, setMaxAiImagesPerDay] = useState(30);
   const [minMinutesBetweenAiImages, setMinMinutesBetweenAiImages] = useState(5);
   const [showAdvancedImageStrategy, setShowAdvancedImageStrategy] = useState(false);
+  const [testingProvider, setTestingProvider] = useState<ApiKeyProvider | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
@@ -346,6 +368,55 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
+
+  const basicsDirty: DirtyState = userSettings && (
+    articleWordCount !== (userSettings.article_word_count ?? 1500) ||
+    articleLanguage !== (userSettings.article_language || "US English")
+  ) ? "dirty" : "clean";
+
+  const advancedDirty: DirtyState = userSettings && (
+    includeTableOfContents !== (userSettings.include_table_of_contents ?? false) ||
+    enableResearch !== (userSettings.enable_research ?? false) ||
+    articleVoice !== (userSettings.article_voice || "Natural")
+  ) ? "dirty" : "clean";
+
+  const internalDirty: DirtyState = userSettings && (
+    enableInternalLinks !== (userSettings.enable_internal_links ?? false) ||
+    internalLinkMode !== (userSettings.internal_link_mode || "all") ||
+    internalLinkDensity !== (userSettings.internal_link_density || "balanced") ||
+    internalLinkIncludePatterns !== ((userSettings.internal_link_include_patterns || []).join(", ")) ||
+    internalLinkExcludePatterns !== ((userSettings.internal_link_exclude_patterns || []).join(", ")) ||
+    JSON.stringify(internalLinkRules) !== JSON.stringify(userSettings.internal_link_rules || [])
+  ) ? "dirty" : "clean";
+
+  const imageStrategyDirty: DirtyState = userSettings && (
+    selectedImageModel !== (userSettings.image_model || "openai/gpt-image-2") ||
+    sourceImageAllowed !== (userSettings.source_image_allowed ?? false) ||
+    aiFallbackEnabled !== (userSettings.ai_fallback_enabled ?? true) ||
+    maxAiImagesPerDay !== (userSettings.max_ai_images_per_day ?? 30) ||
+    minMinutesBetweenAiImages !== (userSettings.min_minutes_between_ai_images ?? 5)
+  ) ? "dirty" : "clean";
+  const imagePromptDirty: DirtyState = userSettings && imageStylePrompt !== (userSettings.image_style_prompt || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.") ? "dirty" : "clean";
+  const imageDefaultsDirty: DirtyState = userSettings && (
+    imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
+    imageConfig.cover.resolution !== ((userSettings.cover_resolution as Resolution) || "1K") ||
+    imageConfig.cover.aspectRatio !== ((userSettings.cover_aspect_ratio as AspectRatio) || "16:9") ||
+    imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
+    imageConfig.inline.count !== (userSettings.inline_count || 2) ||
+    imageConfig.inline.resolution !== ((userSettings.inline_resolution as Resolution) || "Web") ||
+    imageConfig.inline.aspectRatio !== ((userSettings.inline_aspect_ratio as AspectRatio) || "3:2")
+  ) ? "dirty" : "clean";
+
+  const brandDirty: DirtyState = userSettings && (
+    brandCompanyName !== (userSettings.brand_company_name || "") ||
+    brandDescription !== (userSettings.brand_description || "") ||
+    brandTargetAudience !== (userSettings.brand_target_audience || "") ||
+    brandMentions !== (userSettings.brand_mentions || "moderate") ||
+    knowledgeBaseEnabled !== (userSettings.knowledge_base_enabled ?? false) ||
+    JSON.stringify(brandValueProps) !== JSON.stringify(userSettings.brand_value_props || []) ||
+    JSON.stringify(brandCtas) !== JSON.stringify(userSettings.brand_ctas || []) ||
+    JSON.stringify(knowledgeDocuments) !== JSON.stringify(userSettings.knowledge_documents || [])
+  ) ? "dirty" : "clean";
 
   // Update local state when settings load
   useEffect(() => {
@@ -591,6 +662,14 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const testApiKeyMutation = useMutation({
+    mutationFn: (provider: ApiKeyProvider) => api.post<ApiKeyTestResult>("/settings/api-keys/test", { provider }),
+    onMutate: (provider) => setTestingProvider(provider),
+    onSuccess: () => toast.success("Provider key works"),
+    onError: (err: Error) => toast.error(err.message || "Provider key failed"),
+    onSettled: () => setTestingProvider(null),
+  });
+
   const refreshModelsMutation = useMutation({
     mutationFn: async () => {
       const [images, texts] = await Promise.all([
@@ -754,9 +833,11 @@ export default function Settings() {
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
-    { id: "models", title: "Models", description: "Live pricing, filters", icon: Zap },
+    { id: "models", title: "Model Pricing", description: "Live prices, filters", icon: Zap },
     { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
-    { id: "advanced", title: "Advanced", description: "SEO, research, output", icon: SlidersHorizontal },
+    { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
+    { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
+    { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
   ];
 
   const imageStrategy =
@@ -825,6 +906,7 @@ export default function Settings() {
                     onClick={() => saveArticleSettingsMutation.mutate()}
                     disabled={saveArticleSettingsMutation.isPending}
                   >
+                    {unsavedBadge(basicsDirty)}
                     {saveArticleSettingsMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -959,6 +1041,7 @@ export default function Settings() {
                     onChange={(e) => setOpenrouterKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -976,6 +1059,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("openrouter")}
+                      disabled={!apiKeys?.hasOpenrouterKey || testingProvider === "openrouter"}
+                    >
+                      {testingProvider === "openrouter" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -995,6 +1087,7 @@ export default function Settings() {
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1012,6 +1105,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("google")}
+                      disabled={!apiKeys?.hasGoogleAiKey || testingProvider === "google"}
+                    >
+                      {testingProvider === "google" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -1031,6 +1133,7 @@ export default function Settings() {
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1048,6 +1151,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("openai")}
+                      disabled={!apiKeys?.hasOpenaiKey || testingProvider === "openai"}
+                    >
+                      {testingProvider === "openai" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -1067,6 +1179,7 @@ export default function Settings() {
                     onChange={(e) => setReplicateKey(e.target.value)}
                     autoComplete="off"
                   />
+                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1084,6 +1197,15 @@ export default function Settings() {
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testApiKeyMutation.mutate("replicate")}
+                      disabled={!apiKeys?.hasReplicateKey || testingProvider === "replicate"}
+                    >
+                      {testingProvider === "replicate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Test
                     </Button>
                   </div>
                 </div>
@@ -1169,8 +1291,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={Zap}
-                title="Available Models & Pricing"
-                description="Live OpenRouter metadata. The app caches this list and refreshes it only when you ask."
+                title="Model Pricing"
+                description="Live price browser only. Choose the article model on Create Content."
                 action={
                   <Button
                     variant="outline"
@@ -1303,6 +1425,81 @@ export default function Settings() {
             </BywordCard>
           )}
 
+          {activeSection === "voice" && (
+            <div className="space-y-6">
+              <BywordCard>
+                <SectionHeader
+                  icon={MessageSquare}
+                  title="Voice & Style"
+                  description="Choose how generated articles should sound."
+                  action={
+                    <Button
+                      onClick={() => saveArticleSettingsMutation.mutate()}
+                      disabled={saveArticleSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(advancedDirty)}
+                      {saveArticleSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  }
+                />
+                <div className="space-y-8 p-6">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {voiceOptions.map((option) => (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() => setArticleVoice(option.label)}
+                        className={cn(
+                          "rounded-lg border p-5 text-left transition-calm",
+                          articleVoice === option.label
+                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                            : "border-byword-border bg-card hover:border-byword-blue/40"
+                        )}
+                      >
+                        <IconTile icon={option.icon} className={articleVoice === option.label ? "bg-byword-blue text-white" : ""} />
+                        <p className="mt-4 font-semibold">{option.label}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{option.sub}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-byword-border p-5">
+                    <div className="mb-4 flex items-center gap-3">
+                      <IconTile icon={FileText} />
+                      <div>
+                        <h3 className="font-semibold">Image Style Prompt</h3>
+                        <p className="text-sm text-muted-foreground">Also used when BlogFactory generates article images.</p>
+                      </div>
+                    </div>
+                    <Textarea
+                      value={imageStylePrompt}
+                      onChange={(event) => setImageStylePrompt(event.target.value)}
+                      className="min-h-[110px] resize-none"
+                    />
+                    <Button
+                      className="mt-4"
+                      variant="outline"
+                      onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
+                      disabled={saveStyleMutation.isPending || settingsLoading}
+                    >
+                      {unsavedBadge(imagePromptDirty)}
+                      {saveStyleMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save Style
+                    </Button>
+                  </div>
+                </div>
+              </BywordCard>
+            </div>
+          )}
+
           {activeSection === "internal" && (
             <BywordCard>
               <SectionHeader
@@ -1342,17 +1539,27 @@ export default function Settings() {
                 title="Internal Linking"
                 description="Sitemap indexing helps generated posts support each other."
                 action={
-                  <Button
-                    onClick={() => saveInternalLinkSettingsMutation.mutate()}
-                    disabled={saveInternalLinkSettingsMutation.isPending || isIndexingInternalLinks}
-                  >
-                    {saveInternalLinkSettingsMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="internal-links-enabled" className="text-sm text-muted-foreground">Enabled</Label>
+                    <Switch
+                      id="internal-links-enabled"
+                      checked={enableInternalLinks}
+                      onCheckedChange={setEnableInternalLinks}
+                      disabled={!internalLinkIndex}
+                    />
+                    <Button
+                      onClick={() => saveInternalLinkSettingsMutation.mutate()}
+                      disabled={saveInternalLinkSettingsMutation.isPending || isIndexingInternalLinks}
+                    >
+                      {unsavedBadge(internalDirty)}
+                      {saveInternalLinkSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
                 }
               />
               <div className="divide-y divide-byword-border">
@@ -1503,7 +1710,7 @@ export default function Settings() {
                       <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
                         <Database className="h-5 w-5 text-muted-foreground" />
                         <span className="text-2xl font-semibold">{internalLinkIndex?.vectorCount || internalLinkIndexingState?.embeddedPages || 0}</span>
-                        <span className="text-sm text-muted-foreground">Vectors</span>
+                        <span className="text-sm text-muted-foreground">Link candidates</span>
                       </div>
                       <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
                         <Clock className="h-5 w-5 text-muted-foreground" />
@@ -1707,6 +1914,7 @@ export default function Settings() {
                       onClick={() => saveImageCostSettingsMutation.mutate()}
                       disabled={saveImageCostSettingsMutation.isPending || selectedImageModelUnavailable}
                     >
+                      {unsavedBadge(imageStrategyDirty)}
                       {saveImageCostSettingsMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
@@ -1833,6 +2041,9 @@ export default function Settings() {
                     imageModelId={selectedImageModel}
                     aiFallbackEnabled={aiFallbackEnabled}
                   />
+                  {imageDefaultsDirty === "dirty" && (
+                    <Badge variant="outline" className="mt-4 border-amber-300 text-amber-700">Unsaved defaults</Badge>
+                  )}
                   {saveDefaultsMutation.isPending && (
                     <div className="mt-4 flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1866,6 +2077,7 @@ export default function Settings() {
                     onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
                     disabled={saveStyleMutation.isPending || settingsLoading}
                   >
+                    {unsavedBadge(imagePromptDirty)}
                     {saveStyleMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -1878,27 +2090,343 @@ export default function Settings() {
             </div>
           )}
 
+          {activeSection === "brand" && (
+            <div className="space-y-6">
+              <BywordCard>
+                <SectionHeader
+                icon={Building2}
+                title="Brand Profile"
+                description="Your brand identity for article integration."
+                action={
+                  <Button
+                    onClick={() => saveBrandSettingsMutation.mutate()}
+                    disabled={saveBrandSettingsMutation.isPending}
+                  >
+                    {unsavedBadge(brandDirty)}
+                    {saveBrandSettingsMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                }
+              />
+                <div className="divide-y divide-byword-border">
+                  <div className="grid gap-4 p-6 md:grid-cols-[1fr_420px]">
+                    <div>
+                      <Label htmlFor="brand-company" className="text-base font-semibold">Company Name</Label>
+                      <p className="mt-1 text-sm text-muted-foreground">Your brand or company name.</p>
+                    </div>
+                    <Input
+                      id="brand-company"
+                      value={brandCompanyName}
+                      onChange={(event) => setBrandCompanyName(event.target.value)}
+                      placeholder="e.g. Acme Financial"
+                      className="h-12"
+                    />
+                  </div>
+
+                  <div className="space-y-4 p-6">
+                    <div>
+                      <Label htmlFor="brand-description" className="text-base font-semibold">What We Do</Label>
+                      <p className="mt-1 text-sm text-muted-foreground">Brief description of your products or services.</p>
+                    </div>
+                    <Textarea
+                      id="brand-description"
+                      value={brandDescription}
+                      onChange={(event) => setBrandDescription(event.target.value)}
+                      placeholder="e.g. We provide financial planning services for founders and growing teams."
+                      className="min-h-[120px] resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-4 p-6">
+                    <div>
+                      <h3 className="text-base font-semibold">Unique Value Propositions</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Key differentiators to weave into articles, max 5.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newValueProp}
+                        onChange={(event) => setNewValueProp(event.target.value)}
+                        placeholder="Add value prop..."
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addValueProp();
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" onClick={addValueProp}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add
+                      </Button>
+                    </div>
+                    {brandValueProps.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {brandValueProps.map((prop) => (
+                          <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-byword-border bg-byword-blue-soft px-3 py-1 text-sm text-byword-blue">
+                            {prop}
+                            <button
+                              type="button"
+                              onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))}
+                              aria-label={`Remove ${prop}`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 p-6 md:grid-cols-[1fr_420px]">
+                    <div>
+                      <Label htmlFor="brand-audience" className="text-base font-semibold">Target Audience</Label>
+                      <p className="mt-1 text-sm text-muted-foreground">Who your products or services are for.</p>
+                    </div>
+                    <Input
+                      id="brand-audience"
+                      value={brandTargetAudience}
+                      onChange={(event) => setBrandTargetAudience(event.target.value)}
+                      placeholder="e.g. Seed-stage founders, editors, content teams"
+                      className="h-12"
+                    />
+                  </div>
+
+                  <div className="space-y-4 p-6">
+                    <div>
+                      <h3 className="text-base font-semibold">Brand Mentions</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">How prominently to integrate your brand into articles.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {brandMentionOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setBrandMentions(option.value)}
+                          className={cn(
+                            "rounded-lg border p-5 text-center transition-calm",
+                            brandMentions === option.value
+                              ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                              : "border-byword-border bg-card hover:border-byword-blue/40"
+                          )}
+                        >
+                          <IconTile icon={option.icon} className="mx-auto" />
+                          <p className="mt-3 font-semibold">{option.label}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </BywordCard>
+
+              <BywordCard>
+                <SectionHeader
+                icon={FileText}
+                title="Knowledge Base"
+                description="Reference saved content during article generation for more accurate, on-brand content."
+                action={
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={knowledgeBaseEnabled}
+                      onCheckedChange={setKnowledgeBaseEnabled}
+                      aria-label="Use knowledge documents"
+                    />
+                    <Button
+                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      disabled={saveBrandSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(brandDirty)}
+                      {saveBrandSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                }
+              />
+                <div className="space-y-5 p-6">
+                  <div className="grid gap-3 md:grid-cols-[280px_1fr]">
+                    <Input
+                      value={knowledgeTitle}
+                      onChange={(event) => setKnowledgeTitle(event.target.value)}
+                      placeholder="Document title"
+                    />
+                    <Textarea
+                      value={knowledgeContent}
+                      onChange={(event) => setKnowledgeContent(event.target.value)}
+                      placeholder="Paste notes, product facts, FAQs, or brand context..."
+                      className="min-h-[110px] resize-none"
+                    />
+                  </div>
+                  <Button type="button" variant="outline" onClick={addKnowledgeDocument}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Add Knowledge
+                  </Button>
+                  {knowledgeDocuments.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
+                      <IconTile icon={FileText} className="mx-auto" />
+                      <p className="mt-4 font-semibold">No documents yet</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Add your first document to give BlogFactory context about your brand and products.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {knowledgeDocuments.map((document) => (
+                        <div key={document.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
+                          <IconTile icon={FileText} />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold">{document.title}</p>
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </BywordCard>
+
+              <BywordCard>
+                <SectionHeader
+                icon={Target}
+                title="Call to Action"
+                description="Promotional content included in your articles."
+                action={
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={addCta}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add
+                    </Button>
+                    <Button
+                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      disabled={saveBrandSettingsMutation.isPending}
+                    >
+                      {unsavedBadge(brandDirty)}
+                      {saveBrandSettingsMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                }
+              />
+                <div className="space-y-5 p-6">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
+                    <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
+                    <Input value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" />
+                  </div>
+                  {brandCtas.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-byword-border p-10 text-center">
+                      <IconTile icon={Target} className="mx-auto" />
+                      <p className="mt-4 font-semibold">No CTAs yet</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Articles will not include promotional content until you add a CTA.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {brandCtas.map((cta) => (
+                        <div key={cta.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
+                          <IconTile icon={Target} />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold">{cta.label}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">{cta.description}</p>
+                            {cta.url && <p className="mt-1 text-xs text-byword-blue">{cta.url}</p>}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </BywordCard>
+            </div>
+          )}
+
           {activeSection === "advanced" && (
             <BywordCard>
               <SectionHeader
                 icon={SlidersHorizontal}
-                title="Advanced"
-                description="Future controls for generation limits, compliance, and workspace safety."
+                title="Advanced Defaults"
+                description="Article instructions saved into the generation prompt."
+                action={
+                  <Button
+                    onClick={() => saveArticleSettingsMutation.mutate()}
+                    disabled={saveArticleSettingsMutation.isPending}
+                  >
+                    {unsavedBadge(advancedDirty)}
+                    {saveArticleSettingsMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                }
               />
-              <div className="grid gap-4 p-6 md:grid-cols-2">
-                <div className="rounded-lg border border-byword-border p-5">
-                  <IconTile icon={ShieldCheck} />
-                  <h3 className="mt-4 text-sm font-semibold">Private beta access</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Account approval and admin review stay enforced before users can access product routes.
-                  </p>
+              <div className="divide-y divide-byword-border">
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={Globe2} />
+                    <div>
+                      <h3 className="text-base font-semibold">Research Context</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Ask the writer to add useful context and explain claims clearly.</p>
+                    </div>
+                  </div>
+                  <Switch checked={enableResearch} onCheckedChange={setEnableResearch} aria-label="Enable research context" />
                 </div>
-                <div className="rounded-lg border border-byword-border p-5">
-                  <IconTile icon={Zap} />
-                  <h3 className="mt-4 text-sm font-semibold">Provider usage</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Generation uses each approved user's own encrypted OpenRouter and Google Gemini keys.
-                  </p>
+
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={ListChecks} />
+                    <div>
+                      <h3 className="text-base font-semibold">Table of Contents</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Include a concise table of contents near the beginning.</p>
+                    </div>
+                  </div>
+                  <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} aria-label="Include table of contents" />
+                </div>
+
+                <div className="grid gap-4 p-6 md:grid-cols-[1fr_320px]">
+                  <div className="flex items-start gap-4">
+                    <IconTile icon={MessageSquare} />
+                    <div>
+                      <h3 className="text-base font-semibold">Default Voice</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Fallback voice used when no persona overrides it.</p>
+                    </div>
+                  </div>
+                  <Select value={articleVoice} onValueChange={setArticleVoice}>
+                    <SelectTrigger className="h-12">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {voiceOptions.map((voice) => (
+                        <SelectItem key={voice.label} value={voice.label}>
+                          {voice.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </BywordCard>
