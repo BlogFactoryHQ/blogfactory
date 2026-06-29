@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
  * Constructs the direct storage URL for a given path.
  * No signed URLs needed — backend serves files directly.
  */
-function resolveImagePath(urlOrPath: string | null | undefined): string | null {
+export function resolveImagePath(urlOrPath: string | null | undefined): string | null {
   if (!urlOrPath) return null;
 
   // Already a full URL — use as-is

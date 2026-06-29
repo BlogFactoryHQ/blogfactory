@@ -50,6 +50,20 @@ interface Post {
   personas?: { name: string } | null;
 }
 
+function placeMissingInlineImages(markdown: string, images: string[]) {
+  const missingImages = images.filter((image) => image && !markdown.includes(image));
+  if (!missingImages.length) return markdown;
+  const imageBlock = missingImages.map((image, index) => `![Article image ${index + 1}](${image})`).join("\n\n");
+  const blocks = markdown.split(/\n{2,}/);
+  const index = blocks.findIndex((block) => {
+    const trimmed = block.trim();
+    return trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("![");
+  });
+  if (index < 0) return `${markdown}\n\n${imageBlock}`.trim();
+  blocks.splice(index + 1, 0, imageBlock);
+  return blocks.join("\n\n");
+}
+
 export default function PostEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -108,7 +122,7 @@ export default function PostEditorPage() {
   useEffect(() => {
     if (post && !initialized) {
       setTitle(cleanPostTitle(post.title));
-      setContent(cleanGeneratedPostContent(post.content));
+      setContent(placeMissingInlineImages(cleanGeneratedPostContent(post.content), post.inline_images || []));
       setStatus(post.status);
       setCoverImageUrl(post.cover_image_url || null);
       setInlineImages(post.inline_images || []);

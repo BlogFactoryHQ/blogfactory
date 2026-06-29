@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db/schema.js";
 import { getPexelsKey, getPixabayKey } from "./api-keys.js";
 import { saveImageBuffer } from "./image-storage.js";
+import { normalizeImagePlacement, placeInlineImages, type PlacementImage } from "./image-placement.js";
 
 export type ImageTargetType = "cover" | "inline";
 
@@ -46,6 +47,16 @@ export function shouldAttachStockWhileAiQueued(type: ImageTargetType) {
 
 export function imageModelForTarget(selectedModel: string, type: ImageTargetType) {
   return type === "inline" ? "openrouter/free" : selectedModel;
+}
+
+async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null) {
+  const [post] = await db.select({ content: posts.content, inlineImages: posts.inlineImages }).from(posts).where(eq(posts.id, postId)).limit(1);
+  if (!post) return;
+  const inlineImages = Array.from(new Set([...(post.inlineImages || []), path]));
+  await db.update(posts).set({
+    inlineImages,
+    content: placeInlineImages(post.content || "", [{ url: path, altText }], normalizeImagePlacement(placement)),
+  }).where(eq(posts.id, postId));
 }
 
 function clampInt(value: number | null | undefined, fallback: number, min: number, max: number) {
@@ -381,6 +392,7 @@ export async function resolveLowCostImages(opts: {
   const targets = imageTargets(opts.imageConfig);
   let coverPath: string | null = null;
   const inlinePaths: string[] = [];
+  const inlinePlacements: PlacementImage[] = [];
   let queued = 0;
 
   for (const target of targets) {
@@ -428,19 +440,25 @@ export async function resolveLowCostImages(opts: {
 
     if (path) {
       if (target.type === "cover" && !coverPath) coverPath = path;
-      if (target.type === "inline") inlinePaths.push(path);
+      if (target.type === "inline") {
+        inlinePaths.push(path);
+        inlinePlacements.push({ url: path, altText });
+      }
     }
   }
 
   const update: Partial<typeof posts.$inferInsert> = {};
   if (coverPath) update.coverImageUrl = coverPath;
-  if (inlinePaths.length) update.inlineImages = inlinePaths;
+  if (inlinePaths.length) {
+    update.inlineImages = inlinePaths;
+    update.content = placeInlineImages(opts.content, inlinePlacements, normalizeImagePlacement(opts.imageConfig?.imagePlacement));
+  }
   if (Object.keys(update).length) await db.update(posts).set(update).where(eq(posts.id, opts.postId));
 
   return { coverPath, inlinePaths, queued, cost: 0 };
 }
 
-async function fallbackRequestToStock(request: typeof imageGenerationRequests.$inferSelect) {
+async function fallbackRequestToStock(request: typeof imageGenerationRequests.$inferSelect, placement?: unknown) {
   if (!request.postId || !request.jobId) return null;
   const [post] = await db.select({ title: posts.title }).from(posts).where(eq(posts.id, request.postId)).limit(1);
   if (!post) return null;
@@ -486,8 +504,7 @@ async function fallbackRequestToStock(request: typeof imageGenerationRequests.$i
   if (request.type === "cover") {
     await db.update(posts).set({ coverImageUrl: path }).where(eq(posts.id, request.postId));
   } else {
-    const [fullPost] = await db.select({ inlineImages: posts.inlineImages }).from(posts).where(eq(posts.id, request.postId)).limit(1);
-    await db.update(posts).set({ inlineImages: [...(fullPost?.inlineImages || []), path] }).where(eq(posts.id, request.postId));
+    await attachInlineImage(request.postId, path, placement, request.altText);
   }
   return path;
 }
@@ -560,7 +577,7 @@ export async function processNextDeferredImage(userId?: string) {
       if (request.type === "cover") {
         await db.update(posts).set({ coverImageUrl: result.storagePath }).where(eq(posts.id, request.postId));
       } else {
-        await db.update(posts).set({ inlineImages: [...(post.inlineImages || []), result.storagePath] }).where(eq(posts.id, request.postId));
+        await attachInlineImage(request.postId, result.storagePath, settings?.imagePlacement, request.altText);
       }
     }
     await db.update(imageGenerationRequests).set({ status: "done", updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
@@ -568,7 +585,7 @@ export async function processNextDeferredImage(userId?: string) {
   } catch (err: any) {
     const retryCount = (request.retryCount || 0) + 1;
     if (retryCount >= 3) {
-      const stockPath = await fallbackRequestToStock(request);
+      const stockPath = await fallbackRequestToStock(request, settings?.imagePlacement);
       await db.update(imageGenerationRequests).set({
         status: stockPath ? "done" : "failed",
         retryCount,

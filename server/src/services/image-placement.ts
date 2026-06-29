@@ -56,8 +56,9 @@ function insertBetweenSections(markdown: string, images: PlacementImage[]) {
 }
 
 export function placeInlineImages(markdown: string, images: PlacementImage[], placement: ImagePlacement) {
-  if (!images.length || placement === "featured_only") return markdown;
-  if (placement === "after_intro") return insertAfterIntro(markdown, images);
-  if (placement === "between_sections") return insertBetweenSections(markdown, images);
-  return images.length <= 1 ? markdown : insertBetweenSections(markdown, images);
+  const missingImages = images.filter((image) => !markdown.includes(image.url));
+  if (!missingImages.length || placement === "featured_only") return markdown;
+  if (placement === "between_sections") return insertBetweenSections(markdown, missingImages);
+  if (placement === "auto" && missingImages.length > 1) return insertBetweenSections(markdown, missingImages);
+  return insertAfterIntro(markdown, missingImages);
 }

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cleanGeneratedPostContent } from "@/lib/post-cleanup";
+import { resolveImagePath } from "@/hooks/useSignedUrl";
 
 interface MarkdownEditorProps {
   value: string;
@@ -540,6 +541,11 @@ export function MarkdownEditor({
                   skipHtml={true}
                   disallowedElements={['script', 'iframe', 'object', 'embed', 'form', 'input', 'button']}
                   unwrapDisallowed={true}
+                  components={{
+                    img: ({ src, alt }) => (
+                      <img src={resolveImagePath(src) || src || ""} alt={alt || ""} />
+                    ),
+                  }}
                 >
                   {value}
                 </ReactMarkdown>
