@@ -182,6 +182,8 @@ export interface UserSettings {
   id?: string;
   user_id?: string;
   image_model: string | null;
+  inline_image_model?: string | null;
+  image_advanced_options?: Record<string, unknown> | null;
   image_style_prompt: string | null;
   image_placement: string | null;
   image_compression_enabled: boolean | null;
@@ -189,7 +191,6 @@ export interface UserSettings {
   ai_fallback_enabled: boolean | null;
   max_ai_images_per_day: number | null;
   min_minutes_between_ai_images: number | null;
-  image_advanced_options: any;
   cover_enabled: boolean | null;
   cover_image_count: number | null;
   cover_resolution: string | null;

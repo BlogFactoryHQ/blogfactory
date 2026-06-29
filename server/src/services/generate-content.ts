@@ -377,6 +377,18 @@ function settingNumber(settings: GenerationSettings | undefined, camel: string, 
   return Number.isFinite(number) ? number : undefined;
 }
 
+function imageAdvancedOptions(settings?: GenerationSettings) {
+  const value = settingValue(settings, "imageAdvancedOptions", "image_advanced_options");
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function inlineImageModel(settings?: GenerationSettings) {
+  const value = settingValue(settings, "inlineImageModel", "inline_image_model")
+    || imageAdvancedOptions(settings).inlineImageModel
+    || imageAdvancedOptions(settings).inline_image_model;
+  return typeof value === "string" && value.trim() ? value.trim() : "openrouter/free";
+}
+
 function isBlogDraftSource(sourceType: string) {
   return BLOG_DRAFT_SOURCE_TYPES.has(sourceType);
 }
@@ -1390,6 +1402,7 @@ export async function generateContent(opts: GenerateOpts) {
               jobId: jobId!,
               imageConfig: opts.imageConfig,
               imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
+              inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
               stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
               settings: {
                 sourceImageAllowed: promptSettings?.sourceImageAllowed,

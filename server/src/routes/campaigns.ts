@@ -33,6 +33,7 @@ const snapshotKeys = [
   "knowledgeBaseEnabled",
   "knowledgeDocuments",
   "imageModel",
+  "imageAdvancedOptions",
   "imageStylePrompt",
 ] as const;
 const internalLinkDensities = new Set(["minimal", "light", "balanced", "rich"]);

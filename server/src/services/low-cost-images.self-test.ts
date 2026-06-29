@@ -79,7 +79,13 @@ assertEqual(
 assertEqual(
   imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline"),
   "openrouter/free",
-  "inline uses free OpenRouter first"
+  "inline defaults to OpenRouter free"
+);
+
+assertEqual(
+  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline", "openai/gpt-image-1-mini"),
+  "openai/gpt-image-1-mini",
+  "inline can use its own selected model"
 );
 
 assertEqual(

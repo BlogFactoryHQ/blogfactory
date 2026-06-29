@@ -118,6 +118,14 @@ async function extractKnowledgePdf(file: File, userId: string) {
 
 function serializeSettings(settings: typeof userSettings.$inferSelect | undefined) {
   if (!settings) return {};
+  const imageAdvancedOptions = settings.imageAdvancedOptions
+    && typeof settings.imageAdvancedOptions === "object"
+    && !Array.isArray(settings.imageAdvancedOptions)
+    ? settings.imageAdvancedOptions as Record<string, unknown>
+    : {};
+  const inlineImageModel = typeof imageAdvancedOptions.inlineImageModel === "string"
+    ? imageAdvancedOptions.inlineImageModel
+    : "openrouter/free";
 
   return {
     id: settings.id,
@@ -127,6 +135,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     activeSiteId: settings.activeSiteId,
     image_model: settings.imageModel,
     imageModel: settings.imageModel,
+    inline_image_model: inlineImageModel,
+    inlineImageModel,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
     image_placement: settings.imagePlacement || "auto",
@@ -273,6 +283,15 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   setNumber("minMinutesBetweenAiImages", "min_minutes_between_ai_images");
   if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
     update.imageAdvancedOptions = (body.image_advanced_options ?? body.imageAdvancedOptions) as never;
+  }
+  const inlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
+  if (inlineImageModel !== undefined) {
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel } as never;
   }
   setBool("coverEnabled", "cover_enabled");
   setNumber("coverImageCount", "cover_image_count");
@@ -752,6 +771,25 @@ settingsRoutes.put("/", async (c) => {
 
   if (Object.keys(update).length < 1) {
     return c.json({ error: "No supported settings fields provided" }, 400);
+  }
+
+  const directInlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
+  if (
+    directInlineImageModel !== undefined
+    && body.image_advanced_options === undefined
+    && body.imageAdvancedOptions === undefined
+  ) {
+    const [existing] = await db
+      .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    const imageAdvancedOptions = existing?.imageAdvancedOptions
+      && typeof existing.imageAdvancedOptions === "object"
+      && !Array.isArray(existing.imageAdvancedOptions)
+      ? existing.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: directInlineImageModel } as never;
   }
 
   // Upsert: insert or update on conflict

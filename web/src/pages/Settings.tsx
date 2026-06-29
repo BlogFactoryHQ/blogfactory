@@ -102,6 +102,8 @@ interface ApiKeyTestResult {
 interface UserSettings {
   image_style_prompt?: string | null;
   image_model?: string | null;
+  inline_image_model?: string | null;
+  image_advanced_options?: Record<string, unknown> | null;
   image_placement?: string | null;
   image_compression_enabled?: boolean | null;
   source_image_allowed?: boolean | null;
@@ -269,6 +271,7 @@ export default function Settings() {
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL);
+  const [selectedInlineImageModel, setSelectedInlineImageModel] = useState(DEFAULT_IMAGE_MODEL);
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -353,6 +356,9 @@ export default function Settings() {
   const selectedImageModelUnavailable = Boolean(
     selectedImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedImageModel)
   );
+  const selectedInlineImageModelUnavailable = Boolean(
+    selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
+  );
 
   // Fetch user settings
   const { data: userSettings, isLoading: settingsLoading } = useQuery({
@@ -370,6 +376,12 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
+  const savedCoverImageModel = userSettings?.image_model === "auto/consistent-cover"
+    ? DEFAULT_IMAGE_MODEL
+    : userSettings?.image_model || DEFAULT_IMAGE_MODEL;
+  const savedInlineImageModel = userSettings?.inline_image_model
+    || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
+    || DEFAULT_IMAGE_MODEL;
 
   const basicsDirty: DirtyState = userSettings && (
     articleWordCount !== (userSettings.article_word_count ?? 1500) ||
@@ -392,7 +404,8 @@ export default function Settings() {
   ) ? "dirty" : "clean";
 
   const imageStrategyDirty: DirtyState = userSettings && (
-    selectedImageModel !== (userSettings.image_model || DEFAULT_IMAGE_MODEL) ||
+    selectedImageModel !== savedCoverImageModel ||
+    selectedInlineImageModel !== savedInlineImageModel ||
     sourceImageAllowed !== (userSettings.source_image_allowed ?? false) ||
     aiFallbackEnabled !== (userSettings.ai_fallback_enabled ?? true) ||
     maxAiImagesPerDay !== (userSettings.max_ai_images_per_day ?? 30) ||
@@ -444,6 +457,11 @@ export default function Settings() {
       if (userSettings.image_model) {
         setSelectedImageModel(userSettings.image_model === "auto/consistent-cover" ? DEFAULT_IMAGE_MODEL : userSettings.image_model);
       }
+      setSelectedInlineImageModel(
+        userSettings.inline_image_model
+          || (userSettings.image_advanced_options?.inlineImageModel as string | undefined)
+          || DEFAULT_IMAGE_MODEL
+      );
       setSourceImageAllowed(userSettings.source_image_allowed ?? false);
       setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
       setMaxAiImagesPerDay(userSettings.max_ai_images_per_day ?? 30);
@@ -622,6 +640,10 @@ export default function Settings() {
     mutationFn: async () => {
       await api.put("/settings", {
         image_model: selectedImageModel,
+        image_advanced_options: {
+          ...(userSettings?.image_advanced_options || {}),
+          inlineImageModel: selectedInlineImageModel,
+        },
         source_image_allowed: sourceImageAllowed,
         ai_fallback_enabled: aiFallbackEnabled,
         max_ai_images_per_day: maxAiImagesPerDay,
@@ -853,16 +875,19 @@ export default function Settings() {
     setSourceImageAllowed(false);
     if (strategy === "consistent") {
       setSelectedImageModel(DEFAULT_IMAGE_MODEL);
+      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
     } else if (strategy === "cheap") {
       setSelectedImageModel("auto/cost-effective");
+      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
     } else {
       setSelectedImageModel(DEFAULT_IMAGE_MODEL);
+      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(false);
       setMaxAiImagesPerDay(0);
       setMinMinutesBetweenAiImages(5);
@@ -1929,7 +1954,7 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { id: "consistent", title: "Recommended", text: "Cover uses the cover AI model and style. Inline uses OpenRouter free AI, then stock.", badge: "Stable" },
+                      { id: "consistent", title: "Recommended", text: "Cover and inline each use their selected AI model. Inline falls back to stock.", badge: "Stable" },
                       { id: "cheap", title: "Lowest Cost", text: "Use the cheapest available AI first, then stock if needed.", badge: "$" },
                       { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
                     ].map((strategy) => (
@@ -1954,7 +1979,7 @@ export default function Settings() {
                   </div>
 
                   <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {imageStrategy === "consistent" && "Current: cover queues the cover AI model with your style prompt. Inline queues OpenRouter free AI first, then stock fallback."}
+                    {imageStrategy === "consistent" && "Current: cover queues the cover AI model with your style prompt. Inline queues the inline AI model, then stock fallback."}
                     {imageStrategy === "cheap" && "Current: images queue on the cheapest available provider, with stock fallback."}
                     {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
                   </div>
@@ -1981,6 +2006,32 @@ export default function Settings() {
                             {selectedImageModelUnavailable && (
                               <SelectItem value={selectedImageModel}>
                                 <span className="text-destructive">Unavailable: {selectedImageModel}</span>
+                              </SelectItem>
+                            )}
+                            {imageModels.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                <div className="flex items-center gap-2">
+                                  <span>{model.name}</span>
+                                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
+                                    {priceBadgeText(model.pricing)}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Inline AI Model</Label>
+                        <Select value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedInlineImageModelUnavailable && (
+                              <SelectItem value={selectedInlineImageModel}>
+                                <span className="text-destructive">Unavailable: {selectedInlineImageModel}</span>
                               </SelectItem>
                             )}
                             {imageModels.map((model) => (

@@ -39,6 +39,7 @@ export function estimateGenerationCost(input: {
   articleWordCount?: number | null;
   textModel?: PricedModel | null;
   imageModel?: PricedModel | null;
+  inlineImageModel?: PricedModel | null;
   imageConfig: SplitImageConfig;
   averageTokensPerPost?: number | null;
   aiFallbackEnabled?: boolean | null;
@@ -59,16 +60,17 @@ export function estimateGenerationCost(input: {
 
   const aiImages = input.aiFallbackEnabled !== false;
   const imagePrice = input.imageModel?.rawPricing.image || 0;
+  const inlineImagePrice = input.inlineImageModel?.rawPricing.image || 0;
   const autoCoverHigh = input.imageModel?.id.startsWith("auto/") ? 0.04 : imagePrice;
   const coverPerPost = input.imageConfig.cover.enabled && aiImages ? imagePrice : 0;
   const coverHighPerPost = input.imageConfig.cover.enabled && aiImages ? Math.max(imagePrice, autoCoverHigh) : 0;
-  const inlinePerPost = 0;
+  const inlinePerPost = input.imageConfig.inline.enabled && aiImages ? inlineImagePrice * input.imageConfig.inline.count : 0;
 
   const assumptions = [
     avgTokens > 0 ? "Text estimate uses recent average tokens per post." : "Text estimate uses article word count heuristic.",
     input.imageConfig.cover.enabled && aiImages ? "Cover uses the selected image model." : "Cover AI is off or stock-only.",
     input.imageConfig.inline.enabled && input.imageConfig.inline.count > 0 && aiImages
-      ? "Inline images try free OpenRouter first, then stock."
+      ? "Inline images use the selected inline image model, then stock fallback."
       : "Inline AI spend is off or no inline images are selected.",
   ];
 

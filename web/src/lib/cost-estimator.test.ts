@@ -33,9 +33,14 @@ describe("cost estimator", () => {
   });
 
   it("keeps free inline routing at zero expected image spend", () => {
-    const estimate = estimateGenerationCost({ postCount: 10, textModel, imageModel, imageConfig });
+    const estimate = estimateGenerationCost({ postCount: 10, textModel, imageModel, inlineImageModel: imageModel, imageConfig });
     expect(estimate.inlineImageCost).toBe(0);
-    expect(estimate.assumptions.join(" ")).toContain("free OpenRouter");
+    expect(estimate.assumptions.join(" ")).toContain("selected inline image model");
+  });
+
+  it("counts paid inline image spend", () => {
+    const estimate = estimateGenerationCost({ postCount: 2, textModel, imageModel, inlineImageModel: paidImageModel, imageConfig });
+    expect(estimate.inlineImageCost).toBeCloseTo(0.16);
   });
 
   it("warns near budget", () => {

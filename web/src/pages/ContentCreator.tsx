@@ -78,6 +78,8 @@ import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/l
 
 interface ContentUserSettings {
   image_model?: string | null;
+  inline_image_model?: string | null;
+  image_advanced_options?: Record<string, unknown> | null;
   image_style_prompt?: string | null;
   image_placement?: string | null;
   image_compression_enabled?: boolean | null;
@@ -508,7 +510,11 @@ export default function ContentCreator() {
   const selectedImageModelId = userSettings?.image_model === "auto/consistent-cover"
     ? "openrouter/free"
     : userSettings?.image_model || "openrouter/free";
+  const selectedInlineImageModelId = userSettings?.inline_image_model
+    || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
+    || "openrouter/free";
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
+  const selectedInlineImageModel = imageModels.find((model) => model.id === selectedInlineImageModelId);
   const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
   const currentMonthSpend = useMemo(() => {
     const month = new Date().toISOString().slice(0, 7);
@@ -664,17 +670,19 @@ export default function ContentCreator() {
     articleWordCount: effectiveWordCount,
     textModel: selectedTextModel,
     imageModel: selectedImageModel,
+    inlineImageModel: selectedInlineImageModel,
     imageConfig,
     aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
+  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
   const campaignCostEstimate = useMemo(() => estimateGenerationCost({
     postCount: Math.max(1, campaignItemCount),
     articleWordCount: userSettings?.article_word_count || 1500,
     textModel: selectedTextModel,
     imageModel: selectedImageModel,
+    inlineImageModel: selectedInlineImageModel,
     imageConfig,
     aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
+  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
   const costWarningInput = (estimate: CostEstimate) => ({
     estimate,
     monthlyBudget: userSettings?.monthly_budget,

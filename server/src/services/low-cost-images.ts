@@ -80,8 +80,8 @@ export function shouldAttachStockWhileAiQueued(_type: ImageTargetType) {
   return false;
 }
 
-export function imageModelForTarget(selectedModel: string, type: ImageTargetType) {
-  return type === "inline" ? "openrouter/free" : selectedModel;
+export function imageModelForTarget(selectedModel: string, type: ImageTargetType, inlineModel = "openrouter/free") {
+  return type === "inline" ? inlineModel : selectedModel;
 }
 
 async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null, position?: number | null, userId?: string) {
@@ -655,12 +655,14 @@ export async function resolvePostImages(opts: {
   jobId: string;
   imageConfig: any;
   imageModel?: string | null;
+  inlineImageModel?: string | null;
   stylePrompt?: string | null;
   settings?: LowCostImageSettings | null;
   sourceImages?: SourceImageCandidate[];
 }): Promise<ImageResolutionResult> {
   const settings = opts.settings || {};
   const imageModel = opts.imageModel || "openrouter/free";
+  const inlineImageModel = opts.inlineImageModel || "openrouter/free";
   const aiAllowed = settings.aiFallbackEnabled !== false;
   const compressionEnabled = settings.imageCompressionEnabled ?? true;
   const slots = buildImageSlots({ imageConfig: opts.imageConfig, content: opts.content, title: opts.title, stylePrompt: opts.stylePrompt });
@@ -675,7 +677,7 @@ export async function resolvePostImages(opts: {
   for (const slot of slots) {
     try {
       if (shouldQueueAiBeforeStock(slot.type, aiAllowed)) {
-        const queuedRequest = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type), slot });
+        const queuedRequest = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type, inlineImageModel), slot });
         if (queuedRequest.created) queued += 1;
         results.push({ slot, status: "queued", queuedRequestId: queuedRequest.id || undefined, provider: "ai-deferred" });
         console.info("[images] queued", { jobId: opts.jobId, type: slot.type, position: slot.position, requestId: queuedRequest.id });
@@ -689,7 +691,7 @@ export async function resolvePostImages(opts: {
         if (slot.type === "cover") coverPath ||= immediate.storagePath;
         else inlinePaths[slot.position] = immediate.storagePath;
         if (shouldQueueAiUpgrade(slot.type, aiAllowed)) {
-          const upgrade = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type), slot });
+          const upgrade = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type, inlineImageModel), slot });
           if (upgrade.created) queued += 1;
           immediate.upgradeQueuedRequestId = upgrade.id || undefined;
         }
@@ -698,7 +700,7 @@ export async function resolvePostImages(opts: {
         continue;
       }
       if (aiAllowed) {
-        const queuedRequest = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type), slot });
+        const queuedRequest = await queueFallback({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type, inlineImageModel), slot });
         if (queuedRequest.created) queued += 1;
         results.push({ slot, status: "queued", queuedRequestId: queuedRequest.id || undefined, provider: "ai-deferred" });
         console.info("[images] queued", { jobId: opts.jobId, type: slot.type, position: slot.position, requestId: queuedRequest.id });
