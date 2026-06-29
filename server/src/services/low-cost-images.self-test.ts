@@ -1,4 +1,4 @@
-import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
+import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldFallbackRequestToStock, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -150,6 +150,9 @@ assertEqual(aiDailyLimitReached(100, 0), false, "AI/day 0 means no daily cap");
 assertEqual(aiDailyLimitReached(30, 30), true, "AI/day positive cap is enforced");
 assertEqual(countsTowardAiDailyLimit("ai-deferred"), true, "AI-deferred completions count toward AI/day");
 assertEqual(countsTowardAiDailyLimit("stock-fallback"), false, "stock fallback does not count toward AI/day");
+
+assertEqual(shouldFallbackRequestToStock("cover"), false, "cover AI failure does not fall back to stock");
+assertEqual(shouldFallbackRequestToStock("inline"), true, "inline AI failure can fall back to stock");
 assertEqual(nextAiAvailableAt(new Date(Date.now() - 60_000), 5) instanceof Date, true, "recent AI completion gets a future availability time");
 assertEqual(nextAiAvailableAt("2000-01-01T00:00:00Z", 5), null, "old AI completion does not delay the queue");
 

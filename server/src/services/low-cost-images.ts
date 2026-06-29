@@ -641,6 +641,10 @@ export function countsTowardAiDailyLimit(provider: string) {
   return provider === AI_DEFERRED_PROVIDER;
 }
 
+export function shouldFallbackRequestToStock(type: string) {
+  return type !== "cover";
+}
+
 export function nextAiAvailableAt(latestDoneAt: Date | string | null | undefined, minMinutes: number) {
   if (!latestDoneAt || minMinutes <= 0) return null;
   const next = new Date(new Date(latestDoneAt).getTime() + minMinutes * 60_000);
@@ -874,7 +878,7 @@ export async function processNextDeferredImage(userId?: string) {
     return { processed: true, storagePath: result.storagePath };
   } catch (err: any) {
     const retryCount = (request.retryCount || 0) + 1;
-    if (retryCount === 1) {
+    if (retryCount === 1 && shouldFallbackRequestToStock(request.type)) {
       const stockResult = await fallbackRequestToStock(request, settings?.imagePlacement);
       if (stockResult) {
         await db.update(imageGenerationRequests).set({
