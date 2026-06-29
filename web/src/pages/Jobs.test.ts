@@ -73,4 +73,11 @@ describe("job progress steps", () => {
       expect.objectContaining({ label: "Draft 1 (images)", active: true }),
     ]));
   });
+
+  it("shows image resolution as the active step after a draft exists", () => {
+    const progress = parseStepProgress("resolving_images_for_draft_1", ["post-1"], { totalDrafts: 1 });
+
+    expect(progress.label).toBe("Finding images for draft 1 of 1");
+    expect(progress.steps[0]).toMatchObject({ label: "Draft 1 (finding images)", active: true });
+  });
 });

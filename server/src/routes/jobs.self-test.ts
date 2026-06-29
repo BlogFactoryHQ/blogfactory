@@ -35,6 +35,16 @@ assert.equal(failed.currentStep, "timeout");
 assert.equal(plan(failed).failedDrafts?.length, 3);
 assert.match(failed.errorMessage, /before creating any drafts/);
 
+const failedDuringModelCall = staleTimeoutUpdateForJob({
+  generationPlan: { totalDrafts: 1 },
+  resultPostIds: [],
+  currentStep: "generating_draft_1_of_1",
+});
+
+assert.equal(failedDuringModelCall.status, "failed");
+assert.match(failedDuringModelCall.errorMessage, /Text model did not return/);
+assert.match(plan(failedDuringModelCall).failedDrafts?.[0]?.error || "", /Text model did not return/);
+
 const completed = staleTimeoutUpdateForJob({
   generationPlan: { totalDrafts: 2 },
   resultPostIds: ["post-1", "post-2"],

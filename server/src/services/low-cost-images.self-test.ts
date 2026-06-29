@@ -1,4 +1,4 @@
-import { chooseImageResolution, imageModelForTarget, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock } from "./low-cost-images.js";
+import { chooseImageResolution, imageModelForTarget, imageTargets, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -68,6 +68,12 @@ assertEqual(
   imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline"),
   "openrouter/free",
   "inline uses free OpenRouter first"
+);
+
+assertEqual(
+  imageTargets({ inline: { count: 1, resolution: "1K", aspectRatio: "3:2" } }).length,
+  1,
+  "inline config without enabled flag still creates targets"
 );
 
 console.log("low-cost-images self-check passed");

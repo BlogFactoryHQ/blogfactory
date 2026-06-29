@@ -296,7 +296,7 @@ function sourceCandidateAllowed(candidate: SourceImageCandidate, settings: LowCo
   return /creative commons|public domain|cc0|pexels|pixabay|unsplash/i.test(license);
 }
 
-function imageTargets(imageConfig: any) {
+export function imageTargets(imageConfig: any) {
   const targets: Array<{ type: ImageTargetType; position: number; aspectRatio: string; resolution: string }> = [];
   if (imageConfig?.cover && imageConfig.cover.enabled !== false) {
     targets.push({
@@ -306,7 +306,7 @@ function imageTargets(imageConfig: any) {
       resolution: imageConfig.cover?.resolution || "1K",
     });
   }
-  if (imageConfig?.inline?.enabled) {
+  if (imageConfig?.inline && imageConfig.inline.enabled !== false) {
     const count = imageConfig.inline?.count || 2;
     for (let i = 0; i < count; i++) {
       targets.push({
@@ -318,6 +318,15 @@ function imageTargets(imageConfig: any) {
     }
   }
   return targets;
+}
+
+async function tryStockSearch(search: () => Promise<string | null>) {
+  try {
+    return await search();
+  } catch (err) {
+    console.warn("[images] Stock provider failed:", err);
+    return null;
+  }
 }
 
 async function queueFallback(opts: {
@@ -387,9 +396,9 @@ export async function resolveLowCostImages(opts: {
       path = cachedStock?.storagePath || null;
       if (!path) {
         const query = stockQuery(opts.title);
-        path = await searchPixabay({ ...opts, ...target, query, prompt, altText, compressionEnabled })
-          || await searchPexels({ ...opts, ...target, query, prompt, altText, compressionEnabled })
-          || await searchOpenverse({ ...opts, ...target, query, prompt, altText, compressionEnabled });
+        path = await tryStockSearch(() => searchPixabay({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
+          || await tryStockSearch(() => searchPexels({ ...opts, ...target, query, prompt, altText, compressionEnabled }))
+          || await tryStockSearch(() => searchOpenverse({ ...opts, ...target, query, prompt, altText, compressionEnabled }));
       }
     }
 

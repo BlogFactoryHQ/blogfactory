@@ -223,8 +223,8 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   const totalMatch = step?.match(/_of_(\d+)$/);
   const total = totalMatch ? parseInt(totalMatch[1]) : (generationPlan?.totalDrafts || 0);
   const currentMatch = step?.match(/_(\d+)_of_/);
-  const imageResolveMatch = step?.match(/resolving_images_for_draft_(\d+)/);
-  const current = currentMatch ? parseInt(currentMatch[1]) : imageResolveMatch ? parseInt(imageResolveMatch[1]) : 0;
+  const draftOnlyMatch = step?.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  const current = currentMatch ? parseInt(currentMatch[1]) : draftOnlyMatch ? parseInt(draftOnlyMatch[1]) : Math.min(postsCompleted + 1, total || 1);
 
   if (!step || step === "pending") {
     return { label: "Initializing...", percent: 5, steps };
@@ -234,7 +234,8 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   }
 
   const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
-  if (imageResolveMatch && generationPlan?.imagesEnabled) {
+  const isImageStep = step.startsWith("generating_images") || step.startsWith("resolving_images");
+  if (step.startsWith("resolving_images") && generationPlan?.imagesEnabled) {
     steps.push({ label: "Find stock/source images or queue AI images", done: false, active: true });
   }
 
@@ -245,19 +246,20 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
 
     if (failed) {
       steps.push({ label: `Draft ${draftNum}`, done: false, active: false, failed: true, error: failedInfo?.error });
-    } else if (i < postsCompleted + failedDrafts.filter(f => f.index < i).length) {
-      const completedBefore = postsCompleted - failedDrafts.filter(f => f.index > i).length;
-      steps.push({ label: `Draft ${draftNum}`, done: completedBefore > 0 || i < postsCompleted, active: false });
     } else if (draftNum === current) {
-      const isImages = step.startsWith("generating_images") || Boolean(imageResolveMatch);
       const isGen = step.startsWith("generating_post");
+      const isDraftGen = step.startsWith("generating_draft");
+      const isRepair = step.startsWith("repairing_length");
       const isFailed = step.startsWith("failed_post");
       steps.push({
-        label: `Draft ${draftNum}${isImages ? " (images)" : isGen ? " (writing)" : isFailed ? " (failed)" : ""}`,
+        label: `Draft ${draftNum}${isImageStep ? (generationPlan?.imagesEnabled ? " (images)" : " (finding images)") : isGen || isDraftGen || isRepair ? " (writing)" : isFailed ? " (failed)" : ""}`,
         done: false,
         active: !isFailed,
         failed: isFailed,
       });
+    } else if (i < postsCompleted + failedDrafts.filter(f => f.index < i).length) {
+      const completedBefore = postsCompleted - failedDrafts.filter(f => f.index > i).length;
+      steps.push({ label: `Draft ${draftNum}`, done: completedBefore > 0 || i < postsCompleted, active: false });
     } else {
       steps.push({ label: `Draft ${draftNum}`, done: false, active: false });
     }
@@ -267,9 +269,13 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
     const perPost = 90 / effectiveTotal;
     let pct = 10;
     pct += (postsCompleted + failedDrafts.length) * perPost;
-    if (step.startsWith("generating_post")) pct += perPost * 0.3;
-    if (step.startsWith("generating_images") || imageResolveMatch) pct += perPost * 0.7;
-    return { label: current ? `Draft ${current} of ${effectiveTotal}` : step.replace(/_/g, " "), percent: Math.min(Math.round(pct), 99), steps };
+    if (step.startsWith("generating_draft") || step.startsWith("generating_post") || step.startsWith("repairing_length")) pct += perPost * 0.3;
+    if (isImageStep) pct += perPost * 0.7;
+    return {
+      label: isImageStep ? `Finding images for draft ${current} of ${effectiveTotal}` : `Draft ${current} of ${effectiveTotal}`,
+      percent: Math.min(Math.round(pct), 99),
+      steps,
+    };
   }
 
   return { label: step.replace(/_/g, " "), percent: 50, steps };
