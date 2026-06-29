@@ -218,6 +218,7 @@ postsRoutes.get("/:id", async (c) => {
   const { persona_name, campaign_name, ...result } = post;
   return c.json({
     ...result,
+    inline_images: normalizeInlineImages(result.inline_images, result.cover_image_url),
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,
   });
@@ -226,6 +227,12 @@ postsRoutes.get("/:id", async (c) => {
 function parseList(value: unknown) {
   if (typeof value !== "string") return undefined;
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeInlineImages(value: unknown, coverImageUrl?: string | null) {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((image): image is string => typeof image === "string" && image !== coverImageUrl)))
+    : [];
 }
 
 function extractMarkdownTitle(content: string) {
@@ -273,7 +280,7 @@ postsRoutes.put("/:id", async (c) => {
   const coverImageUrl = body.cover_image_url ?? body.coverImageUrl;
   const inlineImages = body.inline_images ?? body.inlineImages;
   if (typeof coverImageUrl === "string" || coverImageUrl === null) update.coverImageUrl = coverImageUrl;
-  if (Array.isArray(inlineImages)) update.inlineImages = inlineImages.filter((value): value is string => typeof value === "string");
+  if (Array.isArray(inlineImages)) update.inlineImages = normalizeInlineImages(inlineImages, update.coverImageUrl);
   if (!Object.keys(update).length) return c.json({ error: "No valid fields to update" }, 400);
 
   const [updated] = await db
