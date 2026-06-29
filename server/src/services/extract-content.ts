@@ -2,6 +2,8 @@ import { getObject } from "./s3-client.js";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GOOGLE_AI_KEY = process.env.GOOGLE_AI_KEY;
+const URL_FETCH_TIMEOUT_MS = 15_000;
+const AI_EXTRACT_TIMEOUT_MS = 35_000;
 
 interface ExtractOpts {
   userId: string;
@@ -143,12 +145,21 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
 }
 
 async function extractUrl(url: string, model?: string): Promise<{ content: string; title?: string; metadata?: any }> {
-  const resp = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+  } catch (err: any) {
+    if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+      throw new Error("Source URL timed out while fetching content. Try a shorter source or paste the article text directly.");
+    }
+    throw err;
+  }
 
   if (!resp.ok) throw new Error(`Failed to fetch URL: ${resp.status}`);
   const html = await resp.text();
@@ -167,26 +178,34 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
 
   // Fallback to AI extraction if content is too short
   if (OPENROUTER_API_KEY) {
-    const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: model || "google/gemini-2.5-flash",
-        messages: [{
-          role: "user",
-          content: `Extract the main article content from this webpage HTML. Return clean text in markdown format:\n\n${html.substring(0, 15000)}`,
-        }],
-        max_tokens: 4096,
-      }),
-    });
+    try {
+      const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(AI_EXTRACT_TIMEOUT_MS),
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: model || "google/gemini-2.5-flash",
+          messages: [{
+            role: "user",
+            content: `Extract the main article content from this webpage HTML. Return clean text in markdown format:\n\n${html.substring(0, 15000)}`,
+          }],
+          max_tokens: 4096,
+        }),
+      });
 
-    if (aiResp.ok) {
-      const aiData = await aiResp.json() as any;
-      const aiContent = aiData.choices?.[0]?.message?.content || content;
-      return { content: aiContent, title, metadata: { type: "url", method: "ai-extraction", sourceImages } };
+      if (aiResp.ok) {
+        const aiData = await aiResp.json() as any;
+        const aiContent = aiData.choices?.[0]?.message?.content || content;
+        return { content: aiContent, title, metadata: { type: "url", method: "ai-extraction", sourceImages } };
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+        throw new Error("Source URL extraction timed out. Try pasting the article text directly.");
+      }
+      throw err;
     }
   }
 

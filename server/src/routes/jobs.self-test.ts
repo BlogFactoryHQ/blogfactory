@@ -33,7 +33,7 @@ const failed = staleTimeoutUpdateForJob({
 assert.equal(failed.status, "failed");
 assert.equal(failed.currentStep, "timeout");
 assert.equal(plan(failed).failedDrafts?.length, 3);
-assert.match(failed.errorMessage, /before creating any drafts/);
+assert.match(failed.errorMessage, /Text model did not return/);
 
 const failedDuringModelCall = staleTimeoutUpdateForJob({
   generationPlan: { totalDrafts: 1 },

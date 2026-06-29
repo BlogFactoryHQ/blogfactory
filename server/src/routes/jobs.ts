@@ -5,9 +5,9 @@ import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 
 export const jobsRoutes = new Hono();
-const STALE_RUNNING_MS = 10 * 60 * 1000;
+const STALE_RUNNING_MS = 30 * 60 * 1000;
 const NO_DRAFT_TIMEOUT_MESSAGE =
-  "Generation timed out before creating any drafts. Try again with a faster model, fewer variations, or a shorter source.";
+  "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source.";
 
 type FailedDraft = { index: number; error: string };
 
@@ -68,9 +68,7 @@ export function staleTimeoutUpdateForJob(job: {
     };
   }
 
-  const timeoutMessage = job.currentStep?.startsWith("generating_draft")
-    ? "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source."
-    : NO_DRAFT_TIMEOUT_MESSAGE;
+  const timeoutMessage = NO_DRAFT_TIMEOUT_MESSAGE;
   const failedDrafts = [...existingFailedDrafts];
   for (let index = 0; index < totalDrafts; index += 1) {
     if (!failedIndexes.has(index)) {
