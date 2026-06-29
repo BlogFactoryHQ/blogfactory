@@ -36,6 +36,48 @@ export interface SearchAnalyticsMetric {
   position: number;
 }
 
+export interface MetricDelta {
+  value: number;
+  baseline: number | null;
+  delta: number | null;
+  deltaPercent: number | null;
+}
+
+export type InsightKind = "risk" | "ctr" | "lift" | "improved" | "watch";
+
+export interface InsightRow {
+  label: string;
+  pageUrl?: string;
+  query?: string;
+  value: number;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  deltaClicks: number | null;
+  deltaPosition: number | null;
+  kind: InsightKind;
+}
+
+export interface OpportunityBubble {
+  label: string;
+  value: number;
+  kind: "risk" | "ctr" | "lift" | "improved";
+  size: "sm" | "md" | "lg";
+}
+
+interface MetricSummary {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+interface SearchConsoleInsightInput {
+  integration?: ReturnType<typeof serializeSearchConsoleIntegration> | null;
+  metrics: SearchAnalyticsMetric[];
+}
+
 export function normalizeSearchConsoleProperty(input: string) {
   const value = String(input || "").trim();
   if (!value) throw new Error("Search Console property is required");
@@ -128,6 +170,98 @@ export async function getSearchConsoleDashboard(userId: string, siteId: string) 
   return {
     integration: integration ? serializeSearchConsoleIntegration(integration) : null,
     stats: { pageCount, queryCount, clicks, impressions },
+  };
+}
+
+export async function getSearchConsoleInsights(userId: string, siteId: string) {
+  const [integration] = await db
+    .select()
+    .from(searchConsoleIntegrations)
+    .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
+    .limit(1);
+
+  const metrics = await db
+    .select()
+    .from(searchConsoleMetrics)
+    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+
+  return buildSearchConsoleInsights({
+    integration: integration ? serializeSearchConsoleIntegration(integration) : null,
+    metrics: metrics.map((metric) => ({
+      date: metric.date,
+      pageUrl: metric.pageUrl,
+      query: metric.query,
+      clicks: metric.clicks,
+      impressions: metric.impressions,
+      ctr: metric.ctr,
+      position: metric.position,
+    })),
+  });
+}
+
+export function buildSearchConsoleInsights({ integration = null, metrics }: SearchConsoleInsightInput) {
+  if (!metrics.length) {
+    return {
+      integration,
+      range: { latestStart: "", latestEnd: "", baselineStart: null, baselineEnd: null },
+      totals: emptyTotals(),
+      daily: [],
+      opportunityBubbles: buildOpportunityBubbles(0, 0, 0, 0),
+      actionRows: { protectTraffic: [], liftCtr: [], strikingDistance: [] },
+      topPages: [],
+      topQueries: [],
+      segments: { needsAttention: 0, ctrOpportunities: 0, strikingDistance: 0, improved: 0 },
+    };
+  }
+
+  const latestEnd = metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
+  const latestStart = shiftDate(latestEnd, -13);
+  const baselineEnd = shiftDate(latestStart, -1);
+  const baselineStart = shiftDate(baselineEnd, -13);
+  const latestRows = metrics.filter((metric) => metric.date >= latestStart && metric.date <= latestEnd);
+  const baselineRows = metrics.filter((metric) => metric.date >= baselineStart && metric.date <= baselineEnd);
+  const latest = summarizeSearchMetrics(latestRows);
+  const baseline = baselineRows.length ? summarizeSearchMetrics(baselineRows) : null;
+  const minImpressions = Math.max(25, Math.round(latest.impressions * 0.005));
+  const grouped = groupMetrics(metrics, (metric) => `${metric.pageUrl}\n${metric.query}`);
+  const classified = [...grouped.values()].map((rows) => classifyInsightRows(rows, latestStart, latestEnd, baselineStart, baselineEnd, latest.ctr, minImpressions));
+  const needsAttention = classified.filter((row) => row.kind === "risk");
+  const ctrOpportunities = classified.filter((row) => row.kind === "ctr");
+  const strikingDistance = classified.filter((row) => row.kind === "lift");
+  const improved = classified.filter((row) => row.kind === "improved");
+  const lostClicks = needsAttention.reduce((sum, row) => sum + Math.max(0, -(row.deltaClicks || 0)), 0);
+  const ctrUpside = ctrOpportunities.reduce((sum, row) => sum + Math.max(0, Math.round((latest.ctr - row.ctr) * row.impressions)), 0);
+  const strikingImpressions = strikingDistance.reduce((sum, row) => sum + row.impressions, 0);
+  const improvedClicks = improved.reduce((sum, row) => sum + Math.max(0, row.deltaClicks || 0), 0);
+
+  return {
+    integration,
+    range: { latestStart, latestEnd, baselineStart: baselineRows.length ? baselineStart : null, baselineEnd: baselineRows.length ? baselineEnd : null },
+    totals: {
+      clicks: metricDelta(latest.clicks, baseline?.clicks ?? null),
+      impressions: metricDelta(latest.impressions, baseline?.impressions ?? null),
+      ctr: metricDelta(latest.ctr, baseline?.ctr ?? null),
+      position: metricDelta(latest.position, baseline?.position ?? null),
+      pageCount: new Set(latestRows.map((metric) => metric.pageUrl)).size,
+      queryCount: new Set(latestRows.map((metric) => metric.query)).size,
+    },
+    daily: [...groupMetrics(latestRows, (metric) => metric.date).entries()]
+      .map(([date, rows]) => ({ date, ...summarizeSearchMetrics(rows) }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    opportunityBubbles: buildOpportunityBubbles(lostClicks, ctrUpside, strikingImpressions, improvedClicks),
+    actionRows: {
+      protectTraffic: rankActionRows(needsAttention),
+      liftCtr: rankActionRows(ctrOpportunities),
+      strikingDistance: rankActionRows(strikingDistance),
+    },
+    topPages: groupInsightRows(metrics, latestStart, latestEnd, baselineStart, baselineEnd, latest.ctr, minImpressions, (metric) => metric.pageUrl),
+    topQueries: groupInsightRows(metrics, latestStart, latestEnd, baselineStart, baselineEnd, latest.ctr, minImpressions, (metric) => metric.query),
+    segments: {
+      needsAttention: needsAttention.length,
+      ctrOpportunities: ctrOpportunities.length,
+      strikingDistance: strikingDistance.length,
+      improved: improved.length,
+    },
   };
 }
 
@@ -348,6 +482,142 @@ function validateCredentials(input: unknown): GoogleCredentials {
   return validateServiceAccountCredentials(record);
 }
 
+function emptyTotals() {
+  return {
+    clicks: metricDelta(0, null),
+    impressions: metricDelta(0, null),
+    ctr: metricDelta(0, null),
+    position: metricDelta(0, null),
+    pageCount: 0,
+    queryCount: 0,
+  };
+}
+
+function summarizeSearchMetrics(rows: SearchAnalyticsMetric[]): MetricSummary {
+  const clicks = rows.reduce((sum, row) => sum + row.clicks, 0);
+  const impressions = rows.reduce((sum, row) => sum + row.impressions, 0);
+  const position = impressions
+    ? rows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions
+    : rows.length
+      ? rows.reduce((sum, row) => sum + row.position, 0) / rows.length
+      : 0;
+  return {
+    clicks,
+    impressions,
+    ctr: impressions ? clicks / impressions : 0,
+    position: Number(position.toFixed(2)),
+  };
+}
+
+function metricDelta(value: number, baseline: number | null): MetricDelta {
+  if (baseline === null) return { value: roundMetric(value), baseline: null, delta: null, deltaPercent: null };
+  const delta = value - baseline;
+  return {
+    value: roundMetric(value),
+    baseline: roundMetric(baseline),
+    delta: roundMetric(delta),
+    deltaPercent: baseline ? Number((delta / baseline).toFixed(4)) : null,
+  };
+}
+
+function roundMetric(value: number) {
+  return Number(value.toFixed(4));
+}
+
+function groupMetrics<T extends SearchAnalyticsMetric>(rows: T[], keyFor: (row: T) => string) {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  return groups;
+}
+
+function rankActionRows(rows: InsightRow[]) {
+  return [...rows]
+    .sort((a, b) => Math.abs(b.deltaClicks || 0) - Math.abs(a.deltaClicks || 0) || b.impressions - a.impressions)
+    .slice(0, 3);
+}
+
+function groupInsightRows(
+  rows: SearchAnalyticsMetric[],
+  latestStart: string,
+  latestEnd: string,
+  baselineStart: string,
+  baselineEnd: string,
+  siteCtr: number,
+  minImpressions: number,
+  keyFor: (row: SearchAnalyticsMetric) => string,
+) {
+  return [...groupMetrics(rows, keyFor).entries()]
+    .map(([label, groupRows]) => ({ ...classifyInsightRows(groupRows, latestStart, latestEnd, baselineStart, baselineEnd, siteCtr, minImpressions), label }))
+    .filter((row) => row.impressions > 0)
+    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+    .slice(0, 8);
+}
+
+function classifyInsightRows(
+  rows: SearchAnalyticsMetric[],
+  latestStart: string,
+  latestEnd: string,
+  baselineStart: string,
+  baselineEnd: string,
+  siteCtr: number,
+  minImpressions: number,
+): InsightRow {
+  const latest = summarizeSearchMetrics(rows.filter((row) => row.date >= latestStart && row.date <= latestEnd));
+  const baselineRows = rows.filter((row) => row.date >= baselineStart && row.date <= baselineEnd);
+  const baseline = baselineRows.length ? summarizeSearchMetrics(baselineRows) : null;
+  const deltaClicks = baseline ? latest.clicks - baseline.clicks : null;
+  const deltaPosition = baseline ? Number((latest.position - baseline.position).toFixed(2)) : null;
+  const clickDrop = baseline && baseline.clicks > 0 ? (baseline.clicks - latest.clicks) / baseline.clicks : 0;
+  const clickGain = baseline && baseline.clicks > 0 ? (latest.clicks - baseline.clicks) / baseline.clicks : latest.clicks > 0 ? 1 : 0;
+  const enoughData = Math.max(latest.impressions, baseline?.impressions || 0) >= minImpressions;
+  const kind: InsightKind = enoughData && baseline && (clickDrop >= 0.2 || (deltaPosition || 0) >= 3)
+    ? "risk"
+    : enoughData && baseline && (clickGain >= 0.2 || (deltaPosition || 0) <= -3)
+      ? "improved"
+      : enoughData && latest.impressions >= minImpressions && latest.position >= 4 && latest.position <= 15
+        ? "lift"
+        : enoughData && siteCtr > 0 && latest.ctr < siteCtr * 0.75
+          ? "ctr"
+          : "watch";
+
+  return {
+    label: rows[0]?.query || rows[0]?.pageUrl || "",
+    pageUrl: rows[0]?.pageUrl,
+    query: rows[0]?.query,
+    value: latest.clicks,
+    clicks: latest.clicks,
+    impressions: latest.impressions,
+    ctr: latest.ctr,
+    position: latest.position,
+    deltaClicks,
+    deltaPosition,
+    kind,
+  };
+}
+
+function buildOpportunityBubbles(lostClicks: number, ctrUpside: number, strikingImpressions: number, improvedClicks: number): OpportunityBubble[] {
+  const values = [lostClicks, ctrUpside, strikingImpressions, improvedClicks];
+  const max = Math.max(...values, 1);
+  return [
+    { label: "Traffic at risk", value: lostClicks, kind: "risk", size: bubbleSize(lostClicks, max) },
+    { label: "CTR upside", value: ctrUpside, kind: "ctr", size: bubbleSize(ctrUpside, max) },
+    { label: "Striking distance", value: strikingImpressions, kind: "lift", size: bubbleSize(strikingImpressions, max) },
+    { label: "Improved clicks", value: improvedClicks, kind: "improved", size: bubbleSize(improvedClicks, max) },
+  ];
+}
+
+function bubbleSize(value: number, max: number): "sm" | "md" | "lg" {
+  const ratio = max ? value / max : 0;
+  if (ratio >= 0.66) return "lg";
+  if (ratio >= 0.25) return "md";
+  return "sm";
+}
+
 function validateServiceAccountCredentials(input: unknown): ServiceAccountCredentials {
   const value = typeof input === "string" ? parseJson(input) : input;
   if (!value || typeof value !== "object") throw new Error("Service account JSON is required");
@@ -478,6 +748,12 @@ function daysAgo(days: number) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - days);
   return date;
+}
+
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoDate(date);
 }
 
 function isoDate(date: Date) {

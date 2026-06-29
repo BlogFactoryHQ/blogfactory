@@ -24,6 +24,69 @@ interface DashboardResponse {
   stats: { pageCount: number; queryCount: number; clicks: number; impressions: number };
 }
 
+export interface MetricDelta {
+  value: number;
+  baseline: number | null;
+  delta: number | null;
+  deltaPercent: number | null;
+}
+
+export type InsightKind = "risk" | "ctr" | "lift" | "improved" | "watch";
+
+export interface SearchInsightRow {
+  label: string;
+  pageUrl?: string;
+  query?: string;
+  value: number;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  deltaClicks: number | null;
+  deltaPosition: number | null;
+  kind: InsightKind;
+}
+
+export interface SearchOpportunityBubble {
+  label: string;
+  value: number;
+  kind: "risk" | "ctr" | "lift" | "improved";
+  size: "sm" | "md" | "lg";
+}
+
+export interface SearchConsoleInsights {
+  integration: SearchConsoleIntegration | null;
+  range: {
+    latestStart: string;
+    latestEnd: string;
+    baselineStart: string | null;
+    baselineEnd: string | null;
+  };
+  totals: {
+    clicks: MetricDelta;
+    impressions: MetricDelta;
+    ctr: MetricDelta;
+    position: MetricDelta;
+    pageCount: number;
+    queryCount: number;
+  };
+  daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  opportunityBubbles: SearchOpportunityBubble[];
+  actionRows: {
+    protectTraffic: SearchInsightRow[];
+    liftCtr: SearchInsightRow[];
+    strikingDistance: SearchInsightRow[];
+  };
+  topPages: SearchInsightRow[];
+  topQueries: SearchInsightRow[];
+  segments: {
+    needsAttention: number;
+    ctrOpportunities: number;
+    strikingDistance: number;
+    improved: number;
+  };
+}
+
 interface SaveInput {
   id?: string;
   propertyUrl: string;
@@ -76,6 +139,7 @@ export function useSearchConsole(siteId?: string | null) {
     },
     onSuccess: () => {
       invalidate();
+      queryClient.invalidateQueries({ queryKey: ["search-console-insights", resolvedSiteId] });
       queryClient.invalidateQueries({ queryKey: ["optimize-pages", resolvedSiteId] });
     },
   });
@@ -99,4 +163,20 @@ export function useSearchConsole(siteId?: string | null) {
     sync,
     startOAuth,
   };
+}
+
+export function useSearchConsoleInsights(siteId?: string | null) {
+  const { activeSiteId } = useSites();
+  const resolvedSiteId = siteId || activeSiteId;
+
+  return useQuery({
+    queryKey: ["search-console-insights", resolvedSiteId],
+    queryFn: async () => {
+      const params = resolvedSiteId ? `?siteId=${encodeURIComponent(resolvedSiteId)}` : "";
+      return api.get<SearchConsoleInsights>(`/search-console/insights${params}`);
+    },
+    enabled: !!resolvedSiteId,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+  });
 }

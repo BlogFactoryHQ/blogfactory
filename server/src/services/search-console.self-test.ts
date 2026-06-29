@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createSearchConsoleOAuthUrl, mapSearchAnalyticsRows, normalizeSearchConsoleProperty } from "./search-console.js";
+import { buildSearchConsoleInsights, createSearchConsoleOAuthUrl, mapSearchAnalyticsRows, normalizeSearchConsoleProperty } from "./search-console.js";
 
 assert.equal(normalizeSearchConsoleProperty("sc-domain:WWW.Example.com"), "sc-domain:example.com");
 assert.equal(normalizeSearchConsoleProperty("example.com"), "https://example.com/");
@@ -12,6 +12,36 @@ assert.deepEqual(mapSearchAnalyticsRows([
 ]), [
   { date: "2026-06-01", pageUrl: "https://example.com/a", query: "crm", clicks: 1, impressions: 10, ctr: 0.1, position: 12.5 },
 ]);
+
+const emptyInsights = buildSearchConsoleInsights({ metrics: [] });
+assert.equal(emptyInsights.totals.clicks.value, 0);
+assert.equal(emptyInsights.daily.length, 0);
+
+const insights = buildSearchConsoleInsights({
+  metrics: [
+    { date: "2026-05-25", pageUrl: "https://example.com/risk", query: "risk query", clicks: 50, impressions: 500, ctr: 0.1, position: 4 },
+    { date: "2026-06-14", pageUrl: "https://example.com/risk", query: "risk query", clicks: 20, impressions: 500, ctr: 0.04, position: 8 },
+    { date: "2026-05-25", pageUrl: "https://example.com/gain", query: "gain query", clicks: 10, impressions: 1000, ctr: 0.01, position: 20 },
+    { date: "2026-06-14", pageUrl: "https://example.com/gain", query: "gain query", clicks: 20, impressions: 1000, ctr: 0.02, position: 20 },
+    { date: "2026-06-14", pageUrl: "https://example.com/ctr", query: "ctr query", clicks: 5, impressions: 1000, ctr: 0.005, position: 20 },
+    { date: "2026-06-14", pageUrl: "https://example.com/lift", query: "lift query", clicks: 30, impressions: 800, ctr: 0.0375, position: 8 },
+  ],
+});
+assert.equal(insights.range.latestStart, "2026-06-01");
+assert.equal(insights.range.baselineStart, "2026-05-18");
+assert.equal(insights.totals.clicks.value, 75);
+assert.equal(insights.totals.clicks.delta, 15);
+assert.equal(insights.totals.ctr.value, 0.0227);
+assert.equal(insights.totals.position.value, 15.27);
+assert.equal(insights.segments.needsAttention, 1);
+assert.equal(insights.segments.ctrOpportunities, 1);
+assert.equal(insights.segments.strikingDistance, 1);
+assert.equal(insights.segments.improved, 1);
+assert.equal(insights.actionRows.protectTraffic[0].query, "risk query");
+assert.equal(insights.actionRows.liftCtr[0].query, "ctr query");
+assert.equal(insights.actionRows.strikingDistance[0].query, "lift query");
+assert.equal(insights.topQueries.find((row) => row.label === "ctr query")?.kind, "ctr");
+assert.equal(insights.topQueries.find((row) => row.label === "risk query")?.kind, "risk");
 
 process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_ID = "client-id";
 process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET = "client-secret";

@@ -8,6 +8,7 @@ import {
   createSearchConsoleOAuthUrl,
   encryptSearchConsoleCredentials,
   getSearchConsoleDashboard,
+  getSearchConsoleInsights,
   hasSiteAccess,
   normalizeSearchConsoleProperty,
   serializeSearchConsoleIntegration,
@@ -59,6 +60,13 @@ searchConsoleRoutes.get("/dashboard", async (c) => {
   const siteId = String(c.req.query("siteId") || "");
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
   return c.json(await getSearchConsoleDashboard(userId, siteId));
+});
+
+searchConsoleRoutes.get("/insights", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  return c.json(await getSearchConsoleInsights(userId, siteId));
 });
 
 searchConsoleRoutes.post("/integrations", async (c) => {
