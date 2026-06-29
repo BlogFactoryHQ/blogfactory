@@ -1,4 +1,4 @@
-import { aiDailyLimitReached, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
+import { aiDailyLimitReached, buildImagePrompt, buildImageSlots, chooseImageResolution, countsTowardAiDailyLimit, imageModelForTarget, imageTargets, nextAiAvailableAt, shouldAttachStockWhileAiQueued, shouldQueueAiBeforeStock, shouldQueueAiUpgrade, sourceCandidateForSlot, stockOrientation, stockQueries, stockQuery } from "./low-cost-images.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -102,6 +102,12 @@ assertEqual(
   }).length,
   3,
   "slot builder creates cover and inline slots"
+);
+
+assertEqual(
+  buildImagePrompt({ content: "Article context", title: "Test", type: "cover", stylePrompt: "hand drawn only" }).startsWith("Mandatory visual style: hand drawn only"),
+  true,
+  "style prompt is first and mandatory"
 );
 
 assertEqual(

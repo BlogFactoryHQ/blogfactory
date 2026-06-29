@@ -193,9 +193,10 @@ export function buildImagePrompt(opts: {
     : `Create an inline blog image for "${opts.title}"${section ? `, focused on the section "${section}"` : ""}.`;
   const context = plainText(opts.content);
   return [
+    `Mandatory visual style: ${style}`,
     subject,
     context ? `Article context: ${context}` : "",
-    `Style direction: ${style}`,
+    "Use the article context only for subject matter; do not override the mandatory visual style.",
     "Avoid text, logos, UI screenshots, watermarks, and unreadable typography unless explicitly requested in the style direction.",
   ].filter(Boolean).join("\n\n");
 }
@@ -505,7 +506,12 @@ async function queueFallback(opts: {
   slot: ImageSlot;
 }) {
   const [existing] = await db
-    .select({ id: imageGenerationRequests.id })
+    .select({
+      id: imageGenerationRequests.id,
+      status: imageGenerationRequests.status,
+      prompt: imageGenerationRequests.prompt,
+      modelId: imageGenerationRequests.modelId,
+    })
     .from(imageGenerationRequests)
     .where(and(
       eq(imageGenerationRequests.userId, opts.userId),
@@ -517,7 +523,22 @@ async function queueFallback(opts: {
     ))
     .orderBy(desc(imageGenerationRequests.createdAt))
     .limit(1);
-  if (existing) return { id: existing.id, created: false };
+  if (existing?.status === "queued") {
+    await db.update(imageGenerationRequests).set({
+      modelId: opts.imageModel,
+      prompt: opts.slot.prompt,
+      altText: opts.slot.altText,
+      aspectRatio: opts.slot.aspectRatio,
+      resolution: opts.slot.resolution,
+      retryCount: 0,
+      availableAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(imageGenerationRequests.id, existing.id));
+    return { id: existing.id, created: false };
+  }
+  if (existing?.status === "processing" || (existing && existing.prompt === opts.slot.prompt && existing.modelId === opts.imageModel)) {
+    return { id: existing.id, created: false };
+  }
 
   const [request] = await db.insert(imageGenerationRequests).values({
     userId: opts.userId,
