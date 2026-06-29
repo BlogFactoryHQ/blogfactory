@@ -2,7 +2,7 @@ import { db } from "../db/index.js";
 import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
-import { getGoogleAiKey, getOpenAiKey, getOpenRouterKey, getReplicateKey } from "./api-keys.js";
+import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult, type SourceImageCandidate } from "./low-cost-images.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
@@ -117,20 +117,10 @@ const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
 
 export function costEffectiveImageModel(opts: {
   modelId: string;
-  googleAiKey: string | null;
   openRouterKey: string | null;
-  openAiKey: string | null;
-  replicateKey: string | null;
 }) {
-  if (opts.modelId === "auto/consistent-cover") {
-    if (opts.openRouterKey) return "openrouter/free";
-    return opts.modelId;
-  }
-  if (opts.modelId !== "auto/cost-effective") return opts.modelId;
-  if (opts.googleAiKey) return "google-ai-studio/gemini-3.1-flash-image";
-  if (opts.openRouterKey) return "openrouter/free";
-  if (opts.replicateKey) return "replicate/black-forest-labs/flux-schnell";
-  if (opts.openAiKey) return "openai/gpt-image-2";
+  if (!opts.modelId || opts.modelId === "auto/consistent-cover" || opts.modelId === "auto/cost-effective") return "openrouter/free";
+  if (opts.modelId.startsWith("google-ai-studio/") || opts.modelId.startsWith("google/") || opts.modelId.startsWith("replicate/")) return "openrouter/free";
   return opts.modelId;
 }
 
@@ -386,7 +376,8 @@ export function inlineImageModel(settings?: GenerationSettings) {
   const value = settingValue(settings, "inlineImageModel", "inline_image_model")
     || imageAdvancedOptions(settings).inlineImageModel
     || imageAdvancedOptions(settings).inline_image_model;
-  return typeof value === "string" && value.trim() ? value.trim() : "openrouter/free";
+  const modelId = typeof value === "string" && value.trim() ? value.trim() : "openrouter/free";
+  return costEffectiveImageModel({ modelId, openRouterKey: null });
 }
 
 function isBlogDraftSource(sourceType: string) {
@@ -1401,7 +1392,7 @@ export async function generateContent(opts: GenerateOpts) {
               postId: post.id,
               jobId: jobId!,
               imageConfig: opts.imageConfig,
-              imageModel: promptSettings?.imageModel || settings?.imageModel || undefined,
+              imageModel: costEffectiveImageModel({ modelId: promptSettings?.imageModel || settings?.imageModel || "openrouter/free", openRouterKey: null }),
               inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
               stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
               settings: {
@@ -1718,15 +1709,9 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
     .limit(1);
 
   const openRouterKey = await getOpenRouterKey(request.userId);
-  const googleAiKey = await getGoogleAiKey(request.userId);
-  const openAiKey = await getOpenAiKey(request.userId);
-  const replicateKey = await getReplicateKey(request.userId);
   const modelId = costEffectiveImageModel({
     modelId: request.modelId,
-    googleAiKey,
     openRouterKey,
-    openAiKey,
-    replicateKey,
   });
 
   const result = await generateSingleImage(
@@ -1741,10 +1726,7 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
     request.position || 0,
     request.postId || null,
     settings?.imageCompressionEnabled ?? true,
-    openRouterKey || "",
-    googleAiKey,
-    openAiKey,
-    replicateKey
+    openRouterKey || ""
   );
 
   if (result?.storagePath && request.postId) {
@@ -1776,26 +1758,9 @@ async function generateSingleImage(
   position: number,
   postId: string | null,
   compressionEnabled: boolean,
-  openRouterKey: string,
-  googleAiKey: string | null,
-  openAiKey: string | null,
-  replicateKey: string | null
+  openRouterKey: string
 ): Promise<{ storagePath: string | null; cost: number } | null> {
-  // Use Google AI Studio for google-ai-studio models
-  if (modelId.startsWith("google-ai-studio/")) {
-    if (!googleAiKey) {
-      throw new Error("Add your Google Gemini API key in Settings before using Google AI Studio image models");
-    }
-    return generateWithGoogleAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, googleAiKey);
-  }
-  if (modelId.startsWith("openai/")) {
-    if (!openAiKey) throw new Error("Add your OpenAI API key in Settings before using OpenAI image models");
-    return generateWithOpenAI(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, openAiKey);
-  }
-  if (modelId.startsWith("replicate/")) {
-    if (!replicateKey) throw new Error("Add your Replicate API token in Settings before using Replicate image models");
-    return generateWithReplicate(prompt, altText, modelId, resolution, aspectRatio, userId, jobId, type, position, postId, compressionEnabled, replicateKey);
-  }
+  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
 
   const startedAt = Date.now();
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -1887,261 +1852,4 @@ async function generateSingleImage(
   });
 
   return { storagePath, cost: openRouterUsage.cost };
-}
-
-function openAiSize(aspectRatio: string) {
-  if (["2:3", "3:4", "4:5", "9:16"].includes(aspectRatio)) return "1024x1536";
-  if (["3:2", "4:3", "5:4", "16:9", "21:9"].includes(aspectRatio)) return "1536x1024";
-  return "1024x1024";
-}
-
-async function saveProviderImageBuffer(
-  imageBuffer: Buffer<ArrayBufferLike>,
-  opts: {
-    userId: string;
-    jobId: string;
-    type: string;
-    position: number;
-    prompt: string;
-    altText: string;
-    modelId: string;
-    provider: string;
-    aspectRatio: string;
-    resolution: string;
-    compressionEnabled: boolean;
-    postId?: string | null;
-    cost?: number;
-  }
-) {
-  try {
-    const sharp = (await import("sharp")).default;
-    imageBuffer = await sharp(imageBuffer).webp({ quality: opts.compressionEnabled ? 85 : 100 }).toBuffer();
-  } catch {}
-
-  const { storagePath } = await saveImageBuffer(imageBuffer, opts.userId, {
-    type: opts.type,
-    prompt: opts.prompt,
-    altText: opts.altText,
-    modelId: opts.modelId,
-    provider: opts.provider,
-    aspectRatio: opts.aspectRatio,
-    resolution: opts.resolution,
-    position: opts.position,
-    cost: opts.cost || 0,
-    jobId: opts.jobId,
-    postId: opts.postId || undefined,
-  });
-
-  return { storagePath, cost: 0 };
-}
-
-async function generateWithOpenAI(
-  prompt: string,
-  altText: string,
-  modelId: string,
-  resolution: string,
-  aspectRatio: string,
-  userId: string,
-  jobId: string,
-  type: string,
-  position: number,
-  postId: string | null,
-  compressionEnabled: boolean,
-  openAiKey: string
-): Promise<{ storagePath: string; cost: number } | null> {
-  const startedAt = Date.now();
-  const model = modelId.replace("openai/", "");
-  const resp = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${openAiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      prompt,
-      n: 1,
-      size: openAiSize(aspectRatio),
-    }),
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => "");
-    console.error(`[image] OpenAI error: ${resp.status} ${errText}`);
-    return null;
-  }
-
-  const data = await resp.json() as any;
-  const item = data.data?.[0];
-  let imageBuffer: Buffer<ArrayBufferLike> | null = item?.b64_json ? Buffer.from(item.b64_json, "base64") : null;
-  if (!imageBuffer && item?.url) {
-    const imgResp = await fetch(item.url, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
-    if (imgResp.ok) imageBuffer = Buffer.from(await imgResp.arrayBuffer());
-  }
-
-  await db.insert(generationLogs).values({
-    userId,
-    postId,
-    usageType: "image",
-    modelId,
-    provider: "openai-image",
-    status: imageBuffer ? "success" : "failed",
-    latencyMs: Date.now() - startedAt,
-    sessionId: jobId,
-    responseData: { created: data.created, usage: data.usage },
-  });
-
-  if (!imageBuffer) return null;
-  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, postId, prompt, altText, modelId, provider: "openai-image", aspectRatio, resolution, compressionEnabled });
-}
-
-function replicateAspectRatio(aspectRatio: string) {
-  return ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"].includes(aspectRatio) ? aspectRatio : "1:1";
-}
-
-async function generateWithReplicate(
-  prompt: string,
-  altText: string,
-  modelId: string,
-  resolution: string,
-  aspectRatio: string,
-  userId: string,
-  jobId: string,
-  type: string,
-  position: number,
-  postId: string | null,
-  compressionEnabled: boolean,
-  replicateKey: string
-): Promise<{ storagePath: string; cost: number } | null> {
-  const startedAt = Date.now();
-  const [, owner, model] = modelId.split("/");
-  if (!owner || !model) throw new Error("Invalid Replicate model id");
-
-  const createResp = await fetch(`https://api.replicate.com/v1/models/${owner}/${model}/predictions`, {
-    method: "POST",
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${replicateKey}`,
-      "Content-Type": "application/json",
-      Prefer: "wait=10",
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        aspect_ratio: replicateAspectRatio(aspectRatio),
-        output_format: "webp",
-      },
-    }),
-  });
-
-  if (!createResp.ok) {
-    const errText = await createResp.text().catch(() => "");
-    console.error(`[image] Replicate error: ${createResp.status} ${errText}`);
-    return null;
-  }
-
-  let prediction = await createResp.json() as any;
-  const deadline = Date.now() + 60_000;
-  while (prediction.status !== "succeeded" && prediction.status !== "failed" && prediction.status !== "canceled" && prediction.urls?.get && Date.now() < deadline) {
-    await sleep(1500);
-    const pollResp = await fetch(prediction.urls.get, {
-      signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
-      headers: { Authorization: `Bearer ${replicateKey}` },
-    });
-    if (!pollResp.ok) break;
-    prediction = await pollResp.json() as any;
-  }
-
-  const output = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-  const imageUrl = typeof output === "string" ? output : output?.url;
-  let imageBuffer: Buffer<ArrayBufferLike> | null = null;
-  if (prediction.status === "succeeded" && imageUrl) {
-    const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
-    if (imgResp.ok) imageBuffer = Buffer.from(await imgResp.arrayBuffer());
-  }
-
-  await db.insert(generationLogs).values({
-    userId,
-    postId,
-    usageType: "image",
-    modelId,
-    provider: "replicate-image",
-    status: imageBuffer ? "success" : "failed",
-    latencyMs: Date.now() - startedAt,
-    sessionId: jobId,
-    responseData: { id: prediction.id, status: prediction.status, metrics: prediction.metrics },
-  });
-
-  if (!imageBuffer) return null;
-  return saveProviderImageBuffer(imageBuffer, { userId, jobId, type, position, postId, prompt, altText, modelId, provider: "replicate-image", aspectRatio, resolution, compressionEnabled });
-}
-
-async function generateWithGoogleAI(
-  prompt: string,
-  altText: string,
-  modelId: string,
-  resolution: string,
-  aspectRatio: string,
-  userId: string,
-  jobId: string,
-  type: string,
-  position: number,
-  postId: string | null,
-  compressionEnabled: boolean,
-  googleAiKey: string
-): Promise<{ storagePath: string; cost: number } | null> {
-  const geminiModel = modelId.replace("google-ai-studio/", "");
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${googleAiKey}`, {
-    method: "POST",
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-    }),
-  });
-
-  if (!resp.ok) return null;
-
-  const data = await resp.json() as any;
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith("image/"));
-
-  if (!imagePart) return null;
-
-  let imageBuffer = Buffer.from(imagePart.inlineData.data, "base64");
-
-  try {
-    const sharp = (await import("sharp")).default;
-    imageBuffer = (await sharp(imageBuffer).webp({ quality: compressionEnabled ? 85 : 100 }).toBuffer()) as any;
-  } catch {}
-
-  await db.insert(generationLogs).values({
-    userId,
-    postId,
-    usageType: "image",
-    modelId,
-    provider: "google-ai-studio",
-    status: "success",
-    cost: 0.04,
-    sessionId: jobId,
-    responseData: { usage: data.usage },
-  });
-
-  const { storagePath } = await saveImageBuffer(imageBuffer, userId, {
-    type,
-    prompt,
-    altText,
-    modelId,
-    provider: "google-ai-studio",
-    aspectRatio,
-    resolution,
-    position,
-    cost: 0.04,
-    jobId,
-    postId: postId || undefined,
-  });
-
-  return { storagePath, cost: 0.04 };
 }

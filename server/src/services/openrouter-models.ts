@@ -60,10 +60,10 @@ function formatTokenCost(input: number, output: number): string {
   return `${formatMoney(input)} in / ${formatMoney(output)} out per 1M tokens`;
 }
 
-function openRouterImageConstraints(modelId: string) {
+function openRouterImageConstraints(_modelId: string) {
   const aspectRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
   return {
-    resolutions: modelId === "google/gemini-3.1-flash-image-preview" ? ["Web", "1K", "2K", "4K"] : ["1K", "2K", "4K"],
+    resolutions: ["1K", "2K", "4K"],
     aspectRatios,
     maxDimensionPx: 4096,
   };
@@ -111,6 +111,7 @@ export function catalogFromOpenRouterPayload(data: any, kind: ModelKind) {
   return (data.data || [])
     .filter((model: any) => model.architecture?.output_modalities?.includes(kind))
     .filter((model: any) => kind !== "text" || BLOG_TEXT_MODEL_IDS.has(model.id))
+    .filter((model: any) => kind !== "image" || !String(model.id || "").startsWith("google/"))
     .map((model: any) => normalizeOpenRouterModel(model, kind));
 }
 

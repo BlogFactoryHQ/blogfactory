@@ -262,6 +262,20 @@ const linkDensityOptions = [
 
 const DEFAULT_IMAGE_MODEL = "openrouter/free";
 
+function normalizeImageModelId(modelId?: string | null) {
+  if (
+    !modelId
+    || modelId === "auto/consistent-cover"
+    || modelId === "auto/cost-effective"
+    || modelId.startsWith("google-ai-studio/")
+    || modelId.startsWith("google/")
+    || modelId.startsWith("replicate/")
+  ) {
+    return DEFAULT_IMAGE_MODEL;
+  }
+  return modelId;
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -275,7 +289,6 @@ export default function Settings() {
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
-  const [replicateKey, setReplicateKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
   const [sourceImageAllowed, setSourceImageAllowed] = useState(false);
@@ -376,12 +389,11 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
-  const savedCoverImageModel = userSettings?.image_model === "auto/consistent-cover"
-    ? DEFAULT_IMAGE_MODEL
-    : userSettings?.image_model || DEFAULT_IMAGE_MODEL;
-  const savedInlineImageModel = userSettings?.inline_image_model
+  const savedCoverImageModel = normalizeImageModelId(userSettings?.image_model);
+  const savedInlineImageModel = normalizeImageModelId(
+    userSettings?.inline_image_model
     || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
-    || DEFAULT_IMAGE_MODEL;
+  );
 
   const basicsDirty: DirtyState = userSettings && (
     articleWordCount !== (userSettings.article_word_count ?? 1500) ||
@@ -454,13 +466,11 @@ export default function Settings() {
         imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
         compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
-      if (userSettings.image_model) {
-        setSelectedImageModel(userSettings.image_model === "auto/consistent-cover" ? DEFAULT_IMAGE_MODEL : userSettings.image_model);
-      }
+      setSelectedImageModel(normalizeImageModelId(userSettings.image_model));
       setSelectedInlineImageModel(
-        userSettings.inline_image_model
+        normalizeImageModelId(userSettings.inline_image_model
           || (userSettings.image_advanced_options?.inlineImageModel as string | undefined)
-          || DEFAULT_IMAGE_MODEL
+        )
       );
       setSourceImageAllowed(userSettings.source_image_allowed ?? false);
       setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
@@ -667,7 +677,6 @@ export default function Settings() {
       if (variables.provider === "openrouter") setOpenrouterKey("");
       if (variables.provider === "google") setGoogleKey("");
       if (variables.provider === "openai") setOpenaiKey("");
-      if (variables.provider === "replicate") setReplicateKey("");
       if (variables.provider === "pexels") setPexelsKey("");
       if (variables.provider === "pixabay") setPixabayKey("");
       toast.success("API key saved");
@@ -867,20 +876,12 @@ export default function Settings() {
   const imageStrategy =
     !aiFallbackEnabled
       ? "stock"
-      : selectedImageModel === "auto/cost-effective"
-      ? "cheap"
       : "consistent";
 
-  const applyImageStrategy = (strategy: "consistent" | "cheap" | "stock") => {
+  const applyImageStrategy = (strategy: "consistent" | "stock") => {
     setSourceImageAllowed(false);
     if (strategy === "consistent") {
       setSelectedImageModel(DEFAULT_IMAGE_MODEL);
-      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
-      setAiFallbackEnabled(true);
-      setMaxAiImagesPerDay(30);
-      setMinMinutesBetweenAiImages(5);
-    } else if (strategy === "cheap") {
-      setSelectedImageModel("auto/cost-effective");
       setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
@@ -1101,7 +1102,7 @@ export default function Settings() {
 
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="google-key">Google Gemini Image</Label>
+                    <Label htmlFor="google-key">Google Gemini PDF/Knowledge</Label>
                     <Badge variant={apiKeys?.hasGoogleAiKey ? "default" : "secondary"}>
                       {apiKeys?.hasGoogleAiKey ? `Saved ****${apiKeys.googleKeyLast4}` : "Missing"}
                     </Badge>
@@ -1109,12 +1110,12 @@ export default function Settings() {
                   <Input
                     id="google-key"
                     type="password"
-                    placeholder="Google AI Studio API key"
+                    placeholder="Google Gemini API key"
                     value={googleKey}
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">Optional for PDF knowledge imports. Images use OpenRouter. {formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1147,7 +1148,7 @@ export default function Settings() {
 
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="openai-key">OpenAI Images</Label>
+                    <Label htmlFor="openai-key">OpenAI Embeddings</Label>
                     <Badge variant={apiKeys?.hasOpenaiKey ? "default" : "secondary"}>
                       {apiKeys?.hasOpenaiKey ? `Saved ****${apiKeys.openaiKeyLast4}` : "Missing"}
                     </Badge>
@@ -1160,7 +1161,7 @@ export default function Settings() {
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">Optional for semantic internal linking. Images use OpenRouter. {formatSavedAt(apiKeys?.updatedAt)}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1186,52 +1187,6 @@ export default function Settings() {
                       disabled={!apiKeys?.hasOpenaiKey || testingProvider === "openai"}
                     >
                       {testingProvider === "openai" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                      Test
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="replicate-key">Replicate</Label>
-                    <Badge variant={apiKeys?.hasReplicateKey ? "default" : "secondary"}>
-                      {apiKeys?.hasReplicateKey ? `Saved ****${apiKeys.replicateKeyLast4}` : "Missing"}
-                    </Badge>
-                  </div>
-                  <Input
-                    id="replicate-key"
-                    type="password"
-                    placeholder="Replicate API token"
-                    value={replicateKey}
-                    onChange={(e) => setReplicateKey(e.target.value)}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => saveApiKeyMutation.mutate({ provider: "replicate", apiKey: replicateKey })}
-                      disabled={!replicateKey || saveApiKeyMutation.isPending}
-                    >
-                      <Save className="mr-2 h-4 w-4" />
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("replicate")}
-                      disabled={!apiKeys?.hasReplicateKey || deleteApiKeyMutation.isPending}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => testApiKeyMutation.mutate("replicate")}
-                      disabled={!apiKeys?.hasReplicateKey || testingProvider === "replicate"}
-                    >
-                      {testingProvider === "replicate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                       Test
                     </Button>
                   </div>
@@ -1939,7 +1894,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       onClick={() => saveImageCostSettingsMutation.mutate()}
-                      disabled={saveImageCostSettingsMutation.isPending || selectedImageModelUnavailable}
+                      disabled={saveImageCostSettingsMutation.isPending || selectedImageModelUnavailable || selectedInlineImageModelUnavailable}
                     >
                       {unsavedBadge(imageStrategyDirty)}
                       {saveImageCostSettingsMutation.isPending ? (
@@ -1952,16 +1907,15 @@ export default function Settings() {
                   }
                 />
                 <div className="space-y-5 p-6">
-                  <div className="grid gap-3 md:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {[
                       { id: "consistent", title: "Recommended", text: "Cover uses only the selected AI model. Inline uses AI, then stock.", badge: "Stable" },
-                      { id: "cheap", title: "Lowest Cost", text: "Use the cheapest available AI first, then stock if needed.", badge: "$" },
                       { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
                     ].map((strategy) => (
                       <button
                         key={strategy.id}
                         type="button"
-                        onClick={() => applyImageStrategy(strategy.id as "consistent" | "cheap" | "stock")}
+                        onClick={() => applyImageStrategy(strategy.id as "consistent" | "stock")}
                         className={cn(
                           "rounded-lg border p-4 text-left transition-calm",
                           imageStrategy === strategy.id
@@ -1980,7 +1934,6 @@ export default function Settings() {
 
                   <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
                     {imageStrategy === "consistent" && "Current: cover queues only the cover AI model with your style prompt. Inline queues the inline AI model, then stock fallback."}
-                    {imageStrategy === "cheap" && "Current: images queue on the cheapest available provider, with stock fallback."}
                     {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
                   </div>
 

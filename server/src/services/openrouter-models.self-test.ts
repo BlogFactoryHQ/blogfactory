@@ -5,6 +5,7 @@ const payload = {
   data: [
     { id: "openai/gpt-4o-mini", architecture: { output_modalities: ["text"] }, pricing: { prompt: "0", completion: "0" } },
     { id: "live/image", architecture: { output_modalities: ["image"] }, pricing: { prompt: "0", completion: "0" } },
+    { id: "google/gemini-image", architecture: { output_modalities: ["image"] }, pricing: { prompt: "0", completion: "0" } },
   ],
 };
 

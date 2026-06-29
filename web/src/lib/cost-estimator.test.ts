@@ -3,7 +3,7 @@ import { estimateGenerationCost, shouldWarnForCost } from "./cost-estimator";
 
 const textModel = { id: "test/text", rawPricing: { prompt: 1, completion: 2, request: 0 } };
 const imageModel = { id: "openrouter/free", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
-const paidImageModel = { id: "google-ai-studio/gemini-3.1-flash-image", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
+const paidImageModel = { id: "openai/gpt-image-1", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
 
 const imageConfig = {
   cover: { enabled: true, resolution: "1K" as const, aspectRatio: "16:9" as const },

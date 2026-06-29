@@ -9,7 +9,7 @@ export interface LiveImageModel {
   pricing: "free" | "low" | "medium" | "high";
   costInfo: string;
   description: string;
-  apiProvider: "openrouter" | "google-ai-studio" | "manual" | "openai" | "replicate" | "auto";
+  apiProvider: "openrouter" | "manual";
   isFree: boolean;
   limits: string | null;
   constraints: ImageModelConstraints | null;

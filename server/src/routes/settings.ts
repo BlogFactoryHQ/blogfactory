@@ -43,6 +43,29 @@ const asJsonArray = (value: unknown) => Array.isArray(value) ? value : undefined
 const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
 type SettingsUpdate = Record<string, any>;
 
+function normalizeImageModelId(modelId: string | undefined) {
+  const value = modelId?.trim();
+  if (!value) return value;
+  if (
+    value === "auto/consistent-cover"
+    || value === "auto/cost-effective"
+    || value.startsWith("google-ai-studio/")
+    || value.startsWith("google/")
+    || value.startsWith("replicate/")
+  ) {
+    return "openrouter/free";
+  }
+  return value;
+}
+
+function normalizeImageAdvancedOptions(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const options = value as Record<string, unknown>;
+  const inlineModel = asOptionalText(options.inlineImageModel ?? options.inline_image_model);
+  if (inlineModel === undefined) return options;
+  return { ...options, inlineImageModel: normalizeImageModelId(inlineModel) };
+}
+
 function firstTextFromGemini(data: unknown) {
   const record = data as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   return record.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() || "";
@@ -124,7 +147,7 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     ? settings.imageAdvancedOptions as Record<string, unknown>
     : {};
   const inlineImageModel = typeof imageAdvancedOptions.inlineImageModel === "string"
-    ? imageAdvancedOptions.inlineImageModel
+    ? normalizeImageModelId(imageAdvancedOptions.inlineImageModel)
     : "openrouter/free";
 
   return {
@@ -133,8 +156,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     userId: settings.userId,
     active_site_id: settings.activeSiteId,
     activeSiteId: settings.activeSiteId,
-    image_model: settings.imageModel,
-    imageModel: settings.imageModel,
+    image_model: normalizeImageModelId(settings.imageModel || undefined),
+    imageModel: normalizeImageModelId(settings.imageModel || undefined),
     inline_image_model: inlineImageModel,
     inlineImageModel,
     image_style_prompt: settings.imageStylePrompt,
@@ -151,8 +174,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     maxAiImagesPerDay: settings.maxAiImagesPerDay ?? 30,
     min_minutes_between_ai_images: settings.minMinutesBetweenAiImages ?? 5,
     minMinutesBetweenAiImages: settings.minMinutesBetweenAiImages ?? 5,
-    image_advanced_options: settings.imageAdvancedOptions,
-    imageAdvancedOptions: settings.imageAdvancedOptions,
+    image_advanced_options: normalizeImageAdvancedOptions(settings.imageAdvancedOptions),
+    imageAdvancedOptions: normalizeImageAdvancedOptions(settings.imageAdvancedOptions),
     cover_enabled: settings.coverEnabled,
     coverEnabled: settings.coverEnabled,
     cover_image_count: settings.coverImageCount,
@@ -269,7 +292,8 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
     if (value !== undefined) update[camel] = value;
   };
 
-  setOptionalText("imageModel", "image_model");
+  const imageModel = asOptionalText(body.image_model ?? body.imageModel);
+  if (imageModel !== undefined) update.imageModel = normalizeImageModelId(imageModel);
   setText("imageStylePrompt", "image_style_prompt");
   const imagePlacement = body.image_placement ?? body.imagePlacement;
   if (imagePlacement !== undefined) {
@@ -282,7 +306,7 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   setNumber("maxAiImagesPerDay", "max_ai_images_per_day");
   setNumber("minMinutesBetweenAiImages", "min_minutes_between_ai_images");
   if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
-    update.imageAdvancedOptions = (body.image_advanced_options ?? body.imageAdvancedOptions) as never;
+    update.imageAdvancedOptions = normalizeImageAdvancedOptions(body.image_advanced_options ?? body.imageAdvancedOptions) as never;
   }
   const inlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
   if (inlineImageModel !== undefined) {
@@ -291,7 +315,7 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       && !Array.isArray(update.imageAdvancedOptions)
       ? update.imageAdvancedOptions as Record<string, unknown>
       : {};
-    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel } as never;
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeImageModelId(inlineImageModel) } as never;
   }
   setBool("coverEnabled", "cover_enabled");
   setNumber("coverImageCount", "cover_image_count");
@@ -789,7 +813,7 @@ settingsRoutes.put("/", async (c) => {
       && !Array.isArray(existing.imageAdvancedOptions)
       ? existing.imageAdvancedOptions as Record<string, unknown>
       : {};
-    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: directInlineImageModel } as never;
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeImageModelId(directInlineImageModel) } as never;
   }
 
   // Upsert: insert or update on conflict

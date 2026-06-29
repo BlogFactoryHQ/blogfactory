@@ -5,27 +5,45 @@ function assertEqual(actual: unknown, expected: unknown, message: string) {
 }
 
 assertEqual(
-  costEffectiveImageModel({ modelId: "auto/consistent-cover", googleAiKey: "g", openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
+  costEffectiveImageModel({ modelId: "auto/consistent-cover", openRouterKey: "o" }),
   "openrouter/free",
   "legacy consistent-cover alias maps to OpenRouter free"
 );
 
 assertEqual(
-  costEffectiveImageModel({ modelId: "auto/consistent-cover", googleAiKey: null, openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
+  costEffectiveImageModel({ modelId: "auto/consistent-cover", openRouterKey: "o" }),
   "openrouter/free",
   "legacy consistent-cover alias does not pick paid fallbacks"
 );
 
 assertEqual(
-  costEffectiveImageModel({ modelId: "auto/cost-effective", googleAiKey: null, openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
+  costEffectiveImageModel({ modelId: "auto/cost-effective", openRouterKey: "o" }),
   "openrouter/free",
   "cheapest available uses OpenRouter free before paid fallbacks"
 );
 
 assertEqual(
-  costEffectiveImageModel({ modelId: "openai/gpt-image-2", googleAiKey: "g", openRouterKey: "o", openAiKey: "a", replicateKey: "r" }),
+  costEffectiveImageModel({ modelId: "google-ai-studio/gemini-3.1-flash-image", openRouterKey: "o" }),
+  "openrouter/free",
+  "legacy Google image provider maps to OpenRouter free"
+);
+
+assertEqual(
+  costEffectiveImageModel({ modelId: "google/gemini-3.1-flash-image-preview", openRouterKey: "o" }),
+  "openrouter/free",
+  "Google-branded OpenRouter image models are hidden from image generation"
+);
+
+assertEqual(
+  costEffectiveImageModel({ modelId: "replicate/black-forest-labs/flux-schnell", openRouterKey: "o" }),
+  "openrouter/free",
+  "legacy Replicate image provider maps to OpenRouter free"
+);
+
+assertEqual(
+  costEffectiveImageModel({ modelId: "openai/gpt-image-2", openRouterKey: "o" }),
   "openai/gpt-image-2",
-  "Explicit model is preserved"
+  "Explicit OpenRouter model id is preserved"
 );
 
 assertEqual(
@@ -36,8 +54,8 @@ assertEqual(
 
 assertEqual(
   inlineImageModel({ image_advanced_options: { inline_image_model: "replicate/black-forest-labs/flux-schnell" } }),
-  "replicate/black-forest-labs/flux-schnell",
-  "inline model loads from snake-case advanced settings"
+  "openrouter/free",
+  "legacy direct inline providers normalize to OpenRouter free"
 );
 
 assertEqual(

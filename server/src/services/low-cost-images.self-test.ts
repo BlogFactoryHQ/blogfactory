@@ -71,19 +71,19 @@ assertEqual(
 );
 
 assertEqual(
-  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "cover"),
-  "google-ai-studio/gemini-3.1-flash-image",
+  imageModelForTarget("openai/gpt-image-1", "cover"),
+  "openai/gpt-image-1",
   "cover uses selected model"
 );
 
 assertEqual(
-  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline"),
+  imageModelForTarget("openai/gpt-image-1", "inline"),
   "openrouter/free",
   "inline defaults to OpenRouter free"
 );
 
 assertEqual(
-  imageModelForTarget("google-ai-studio/gemini-3.1-flash-image", "inline", "openai/gpt-image-1-mini"),
+  imageModelForTarget("openai/gpt-image-1", "inline", "openai/gpt-image-1-mini"),
   "openai/gpt-image-1-mini",
   "inline can use its own selected model"
 );

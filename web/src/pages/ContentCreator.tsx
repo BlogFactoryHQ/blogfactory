@@ -76,6 +76,22 @@ import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/
 import { ProgrammaticPanel } from "@/pages/Programmatic";
 import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 
+const DEFAULT_IMAGE_MODEL = "openrouter/free";
+
+function normalizeImageModelId(modelId?: string | null) {
+  if (
+    !modelId
+    || modelId === "auto/consistent-cover"
+    || modelId === "auto/cost-effective"
+    || modelId.startsWith("google-ai-studio/")
+    || modelId.startsWith("google/")
+    || modelId.startsWith("replicate/")
+  ) {
+    return DEFAULT_IMAGE_MODEL;
+  }
+  return modelId;
+}
+
 interface ContentUserSettings {
   image_model?: string | null;
   inline_image_model?: string | null;
@@ -507,12 +523,11 @@ export default function ContentCreator() {
   const fallbackTextModelId = textModels[0]?.id;
   const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
   const selectedTextModel = textModels.find((model) => model.id === modelId);
-  const selectedImageModelId = userSettings?.image_model === "auto/consistent-cover"
-    ? "openrouter/free"
-    : userSettings?.image_model || "openrouter/free";
-  const selectedInlineImageModelId = userSettings?.inline_image_model
+  const selectedImageModelId = normalizeImageModelId(userSettings?.image_model);
+  const selectedInlineImageModelId = normalizeImageModelId(
+    userSettings?.inline_image_model
     || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
-    || "openrouter/free";
+  );
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const selectedInlineImageModel = imageModels.find((model) => model.id === selectedInlineImageModelId);
   const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
