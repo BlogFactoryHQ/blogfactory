@@ -57,7 +57,9 @@ This article explains the source in practical terms.
   topic: "Source Rewrite",
   settings: { articleLanguage: "US English" },
 });
-assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 0);
+assert.equal(buildGenerationContractMetadata(urlFaqRepair).faqCount, 3);
+assert.match(urlFaqRepair, /## FAQs/);
+assert.match(urlFaqRepair, /### Why does Source Rewrite matter\?/);
 
 const structuredUrlDraft = enforceGeneratedArticleContracts(`# Mythos Preview
 
@@ -99,7 +101,6 @@ const balancedContract = buildGenerationContractMetadata(balancedLinks, balanced
 assert.equal(balancedContract.internalLinkCount, 0);
 assert.doesNotMatch(balancedLinks, /Related Reading|İlgili Okumalar/);
 assert.doesNotMatch(urlFaqRepair, /Source Rewrite neden önemli/);
-assert.doesNotMatch(urlFaqRepair, /### Why does this topic matter\?/);
 
 const ruleLinked = enforceGeneratedArticleContracts(`# Demo Guide
 
@@ -227,12 +228,12 @@ Yapay Zeka ile Dijital Pazarlama Rehberi yazısında da benzer bir yaklaşım va
 });
 
 assert.match(repaired, /\[Yapay Zeka ile Dijital Pazarlama Rehberi]\(https:\/\/example\.com\/blog\/yapay-zeka\)/);
-assert.doesNotMatch(repaired, /## Sık Sorulan Sorular/);
+assert.match(repaired, /## Sık Sorulan Sorular/);
 assert.equal(evaluateSeoQa(repaired, {
   settings: { internalLinkIndex: { siteHost: "example.com" } },
   articleType: "how_to",
 }).checks.find((item) => item.label === "Internal links included")?.ok, true);
-assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, false);
+assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, true);
 
 const seoPackaged = applySeoPackage(`## Meta Title
 Old title

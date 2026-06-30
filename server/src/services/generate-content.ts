@@ -704,7 +704,41 @@ function linkFirstPlainMention(content: string, title: string, url: string) {
 }
 
 function ensureFaqSection(content: string, topic: string, settings?: GenerationSettings) {
-  return content;
+  if (hasFaqSection(content) && faqCount(content) >= 3) return content;
+
+  const turkish = isTurkishContent(content, settings);
+  const title = truncateAtWord(cleanPostTitle(content.match(/^#\s+(.+)$/m)?.[1] || topic || "this topic"), 72);
+  const sentences = plainArticleText(content)
+    .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 40 && !/\?$/.test(sentence))
+    .slice(0, 8) || [];
+  const answer = (index: number) => sentences[index] || sentences.at(-1) || (
+    turkish
+      ? "Yazıdaki ana noktalar, konunun pratik etkisini ve takip edilmesi gereken gelişmeleri özetliyor."
+      : "The article summarizes the practical impact and the developments worth watching next."
+  );
+  const faqs = turkish
+    ? [
+        [`${title} neden önemli?`, answer(0)],
+        [`${title} kimleri etkiliyor?`, answer(Math.floor(sentences.length / 2))],
+        [`${title} için bundan sonra ne beklenebilir?`, answer(sentences.length - 1)],
+      ]
+    : [
+        [`Why does ${title} matter?`, answer(0)],
+        [`Who is affected by ${title}?`, answer(Math.floor(sentences.length / 2))],
+        [`What should readers watch next for ${title}?`, answer(sentences.length - 1)],
+      ];
+
+  return [
+    content.trim(),
+    turkish ? "## Sık Sorulan Sorular" : "## FAQs",
+    ...faqs.flatMap(([question, faqAnswer]) => [`### ${question}`, faqAnswer, ""]),
+  ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function hasFaqSection(content: string) {
+  return /^##\s+(?:FAQs?|Sıkça Sorulan Sorular|Sık Sorulan Sorular|SSS|Frequently Asked Questions)\s*$/im.test(content);
 }
 
 function escapeRegExp(value: string) {
