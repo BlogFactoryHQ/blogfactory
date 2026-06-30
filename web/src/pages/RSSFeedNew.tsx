@@ -40,8 +40,7 @@ import {
   SplitImageGenerationSettings,
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
-  type Resolution,
-  type AspectRatio,
+  type InlineImageSource,
 } from "@/components/content/ImageGenerationSettings";
 
 type Platform = "rss" | "youtube" | "reddit" | "hackernews" | "github" | "lemmy" | "lobsters";
@@ -93,6 +92,7 @@ export default function RSSFeedNew() {
   // UI state
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
+  const [inlineImageSource, setInlineImageSource] = useState<InlineImageSource>("ai");
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
 
@@ -121,18 +121,13 @@ export default function RSSFeedNew() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
-          resolution: (userSettings.cover_resolution as Resolution) || "2K",
-          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
-          resolution: (userSettings.inline_resolution as Resolution) || "2K",
-          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
-        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
-        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
+      setInlineImageSource(userSettings.inline_image_source === "stock" ? "stock" : "ai");
     }
   }, [userSettings]);
 
@@ -214,16 +209,9 @@ export default function RSSFeedNew() {
             filterOldPostsDays: filterOldPostsDays || undefined,
             generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
             imageConfig: (imageConfig.cover.enabled || imageConfig.inline.enabled) ? {
-              imagePlacement: imageConfig.imagePlacement || "auto",
-              compressionEnabled: imageConfig.compressionEnabled ?? true,
-              cover: imageConfig.cover.enabled ? {
-                resolution: imageConfig.cover.resolution,
-                aspectRatio: imageConfig.cover.aspectRatio,
-              } : null,
+              cover: imageConfig.cover.enabled ? {} : null,
               inline: imageConfig.inline.enabled ? {
                 count: imageConfig.inline.count,
-                resolution: imageConfig.inline.resolution,
-                aspectRatio: imageConfig.inline.aspectRatio,
               } : null,
             } : undefined,
           });
@@ -742,7 +730,7 @@ export default function RSSFeedNew() {
               </div>
 
               <div className="space-y-2">
-                <Label>LLM Model</Label>
+                <Label>OpenRouter Text Model</Label>
                 <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -762,6 +750,7 @@ export default function RSSFeedNew() {
                 config={imageConfig}
                 onConfigChange={setImageConfig}
                 compact
+                inlineImageSource={inlineImageSource}
               />
             </div>
           </section>

@@ -63,10 +63,8 @@ import { Switch } from "@/components/ui/switch";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
-  SplitImageDefaults,
   DEFAULT_SPLIT_CONFIG,
-  Resolution,
-  AspectRatio
+  InlineImageSource,
 } from "@/components/content/ImageGenerationSettings";
 import { LiveImageModelSelect } from "@/components/content/LiveImageModelSelect";
 import {
@@ -104,21 +102,10 @@ interface UserSettings {
   image_style_prompt?: string | null;
   image_model?: string | null;
   inline_image_model?: string | null;
-  image_advanced_options?: Record<string, unknown> | null;
-  image_placement?: string | null;
-  image_compression_enabled?: boolean | null;
-  source_image_allowed?: boolean | null;
-  ai_fallback_enabled?: boolean | null;
-  max_ai_images_per_day?: number | null;
-  min_minutes_between_ai_images?: number | null;
+  inline_image_source?: InlineImageSource | null;
   cover_enabled?: boolean | null;
-  cover_image_count?: number | null;
-  cover_resolution?: string | null;
-  cover_aspect_ratio?: string | null;
   inline_enabled?: boolean | null;
   inline_count?: number | null;
-  inline_resolution?: string | null;
-  inline_aspect_ratio?: string | null;
   article_word_count?: number | null;
   article_language?: string | null;
   article_voice?: string | null;
@@ -261,27 +248,30 @@ const linkDensityOptions = [
   { value: "rich", label: "Rich", count: "Up to 8-12", description: "When the article supports it" },
 ];
 
-const DEFAULT_IMAGE_MODEL = "openrouter/free";
+const DEFAULT_COVER_IMAGE_MODEL = "";
+const DEFAULT_INLINE_IMAGE_MODEL = "openrouter/auto";
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  if (!value) return DEFAULT_IMAGE_MODEL;
-  if (value === "auto/consistent-cover" || value === "auto/cost-effective") return DEFAULT_IMAGE_MODEL;
-  return value;
+  return value || DEFAULT_COVER_IMAGE_MODEL;
 }
 
 function normalizeInlineImageModelId(modelId?: string | null) {
-  if (
-    !modelId
-    || modelId === "auto/consistent-cover"
-    || modelId === "auto/cost-effective"
-    || modelId.startsWith("google-ai-studio/")
-    || modelId.startsWith("google/")
-    || modelId.startsWith("replicate/")
-  ) {
-    return DEFAULT_IMAGE_MODEL;
-  }
-  return modelId;
+  const value = modelId?.trim();
+  return !value || value === "openrouter/free" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+}
+
+function normalizeInlineImageSource(value?: string | null): InlineImageSource {
+  return value === "stock" ? "stock" : "ai";
+}
+
+function imageCost(model?: LiveImageModel | null) {
+  if (!model || model.isFree || model.id === DEFAULT_INLINE_IMAGE_MODEL) return 0;
+  return model.rawPricing.image || 0;
+}
+
+function formatImageCostAmount(cost: number) {
+  return cost > 0 ? `~$${cost.toFixed(3)}` : "$0";
 }
 
 export default function Settings() {
@@ -292,18 +282,14 @@ export default function Settings() {
     "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays."
   );
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
-  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL);
-  const [selectedInlineImageModel, setSelectedInlineImageModel] = useState(DEFAULT_IMAGE_MODEL);
+  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_COVER_IMAGE_MODEL);
+  const [selectedInlineImageModel, setSelectedInlineImageModel] = useState(DEFAULT_INLINE_IMAGE_MODEL);
+  const [inlineImageSource, setInlineImageSource] = useState<InlineImageSource>("ai");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
-  const [sourceImageAllowed, setSourceImageAllowed] = useState(false);
-  const [aiFallbackEnabled, setAiFallbackEnabled] = useState(true);
-  const [maxAiImagesPerDay, setMaxAiImagesPerDay] = useState(30);
-  const [minMinutesBetweenAiImages, setMinMinutesBetweenAiImages] = useState(5);
-  const [showAdvancedImageStrategy, setShowAdvancedImageStrategy] = useState(false);
   const [testingProvider, setTestingProvider] = useState<ApiKeyProvider | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
@@ -370,7 +356,7 @@ export default function Settings() {
     [imageModels, modelMatchesFilters]
   );
   const coverImageModels = useMemo(
-    () => imageModels.filter((model) => model.id !== DEFAULT_IMAGE_MODEL),
+    () => imageModels.filter((model) => model.id !== DEFAULT_INLINE_IMAGE_MODEL),
     [imageModels]
   );
   const filteredTextModels = useMemo(
@@ -379,12 +365,12 @@ export default function Settings() {
   );
   const selectedImageModelUnavailable = Boolean(
     selectedImageModel && (
-      selectedImageModel === DEFAULT_IMAGE_MODEL
+      selectedImageModel === DEFAULT_INLINE_IMAGE_MODEL
       || (imageModels.length > 0 && !coverImageModels.some((model) => model.id === selectedImageModel))
     )
   );
   const selectedInlineImageModelUnavailable = Boolean(
-    selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
+    inlineImageSource === "ai" && selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
   );
 
   // Fetch user settings
@@ -403,10 +389,28 @@ export default function Settings() {
     queryFn: () => api.get<ApiKeyMetadata>("/settings/api-keys"),
     enabled: !!user,
   });
+  const selectedCoverModel = coverImageModels.find((model) => model.id === selectedImageModel);
+  const selectedInlineModel = imageModels.find((model) => model.id === selectedInlineImageModel);
+  const coverImageCost = imageConfig.cover.enabled ? imageCost(selectedCoverModel) : 0;
+  const inlineImageCost = imageConfig.inline.enabled && inlineImageSource === "ai"
+    ? imageCost(selectedInlineModel) * imageConfig.inline.count
+    : 0;
+  const imageSettingsError =
+    !selectedImageModel
+      ? "Cover AI model is required."
+      : selectedImageModelUnavailable
+        ? "Pick a live OpenRouter image model for covers."
+        : inlineImageSource === "ai" && !selectedInlineImageModel
+          ? "Inline AI model is required when inline source is AI."
+          : selectedInlineImageModelUnavailable
+            ? "Pick a live OpenRouter image model for inline images."
+            : "";
   const savedCoverImageModel = normalizeCoverImageModelId(userSettings?.image_model);
   const savedInlineImageModel = normalizeInlineImageModelId(
     userSettings?.inline_image_model
-    || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
+  );
+  const savedInlineImageSource = normalizeInlineImageSource(
+    userSettings?.inline_image_source
   );
 
   const basicsDirty: DirtyState = userSettings && (
@@ -429,24 +433,15 @@ export default function Settings() {
     JSON.stringify(internalLinkRules) !== JSON.stringify(userSettings.internal_link_rules || [])
   ) ? "dirty" : "clean";
 
-  const imageStrategyDirty: DirtyState = userSettings && (
+  const imageGenerationDirty: DirtyState = userSettings && (
     selectedImageModel !== savedCoverImageModel ||
     selectedInlineImageModel !== savedInlineImageModel ||
-    sourceImageAllowed !== (userSettings.source_image_allowed ?? false) ||
-    aiFallbackEnabled !== (userSettings.ai_fallback_enabled ?? true) ||
-    maxAiImagesPerDay !== (userSettings.max_ai_images_per_day ?? 30) ||
-    minMinutesBetweenAiImages !== (userSettings.min_minutes_between_ai_images ?? 5)
+    inlineImageSource !== savedInlineImageSource ||
+    imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
+    imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
+    imageConfig.inline.count !== (userSettings.inline_count ?? 2)
   ) ? "dirty" : "clean";
   const imagePromptDirty: DirtyState = userSettings && imageStylePrompt !== (userSettings.image_style_prompt || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.") ? "dirty" : "clean";
-  const imageDefaultsDirty: DirtyState = userSettings && (
-    imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
-    imageConfig.cover.resolution !== ((userSettings.cover_resolution as Resolution) || "1K") ||
-    imageConfig.cover.aspectRatio !== ((userSettings.cover_aspect_ratio as AspectRatio) || "16:9") ||
-    imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
-    imageConfig.inline.count !== (userSettings.inline_count ?? 2) ||
-    imageConfig.inline.resolution !== ((userSettings.inline_resolution as Resolution) || "Web") ||
-    imageConfig.inline.aspectRatio !== ((userSettings.inline_aspect_ratio as AspectRatio) || "3:2")
-  ) ? "dirty" : "clean";
 
   const brandDirty: DirtyState = userSettings && (
     brandCompanyName !== (userSettings.brand_company_name || "") ||
@@ -468,28 +463,15 @@ export default function Settings() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
-          resolution: (userSettings.cover_resolution as Resolution) || "1K",
-          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
-          resolution: (userSettings.inline_resolution as Resolution) || "Web",
-          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
-        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
-        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
       setSelectedImageModel(normalizeCoverImageModelId(userSettings.image_model));
-      setSelectedInlineImageModel(
-        normalizeInlineImageModelId(userSettings.inline_image_model
-          || (userSettings.image_advanced_options?.inlineImageModel as string | undefined)
-        )
-      );
-      setSourceImageAllowed(userSettings.source_image_allowed ?? false);
-      setAiFallbackEnabled(userSettings.ai_fallback_enabled ?? true);
-      setMaxAiImagesPerDay(userSettings.max_ai_images_per_day ?? 30);
-      setMinMinutesBetweenAiImages(userSettings.min_minutes_between_ai_images ?? 5);
+      setSelectedInlineImageModel(normalizeInlineImageModelId(userSettings.inline_image_model));
+      setInlineImageSource(normalizeInlineImageSource(userSettings.inline_image_source));
       setArticleWordCount(userSettings.article_word_count ?? 1500);
       setArticleLanguage(userSettings.article_language || "US English");
       setArticleVoice(userSettings.article_voice || "Natural");
@@ -516,6 +498,12 @@ export default function Settings() {
       setKnowledgeDocuments(userSettings.knowledge_documents || []);
     }
   }, [userSettings]);
+
+  useEffect(() => {
+    if (!selectedImageModel && coverImageModels[0]?.id) {
+      setSelectedImageModel(coverImageModels[0].id);
+    }
+  }, [coverImageModels, selectedImageModel]);
 
   useEffect(() => {
     const status = userSettings?.internal_link_status;
@@ -635,48 +623,21 @@ export default function Settings() {
     },
   });
 
-  // Save image defaults mutation
-  const saveDefaultsMutation = useMutation({
-    mutationFn: async (defaults: SplitImageDefaults) => {
-      await api.put("/settings", {
-        cover_enabled: defaults.cover.enabled,
-        cover_resolution: defaults.cover.resolution,
-        cover_aspect_ratio: defaults.cover.aspectRatio,
-        inline_enabled: defaults.inline.enabled,
-        inline_count: defaults.inline.count,
-        inline_resolution: defaults.inline.resolution,
-        inline_aspect_ratio: defaults.inline.aspectRatio,
-        image_placement: defaults.imagePlacement || "auto",
-        image_compression_enabled: defaults.compressionEnabled ?? true,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Image defaults saved!");
-    },
-    onError: (err) => {
-      console.error("Save defaults error:", err);
-      toast.error("Failed to save defaults");
-    },
-  });
-
   const saveImageCostSettingsMutation = useMutation({
     mutationFn: async () => {
+      if (imageSettingsError) throw new Error(imageSettingsError);
       await api.put("/settings", {
         image_model: selectedImageModel,
-        image_advanced_options: {
-          ...(userSettings?.image_advanced_options || {}),
-          inlineImageModel: selectedInlineImageModel,
-        },
-        source_image_allowed: sourceImageAllowed,
-        ai_fallback_enabled: aiFallbackEnabled,
-        max_ai_images_per_day: maxAiImagesPerDay,
-        min_minutes_between_ai_images: minMinutesBetweenAiImages,
+        inline_image_model: selectedInlineImageModel,
+        inline_image_source: inlineImageSource,
+        cover_enabled: imageConfig.cover.enabled,
+        inline_enabled: imageConfig.inline.enabled,
+        inline_count: imageConfig.inline.count,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Image strategy saved");
+      toast.success("Image settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save image cost settings"),
   });
@@ -880,33 +841,13 @@ export default function Settings() {
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
-    { id: "models", title: "Model Pricing", description: "Live prices, filters", icon: Zap },
-    { id: "api-keys", title: "API Keys", description: "Provider access", icon: KeyRound },
+    { id: "models", title: "OpenRouter Models", description: "Live text and image catalog", icon: Zap },
+    { id: "api-keys", title: "API Keys", description: "OpenRouter, stock, helpers", icon: KeyRound },
     { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
     { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
     { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
   ];
 
-  const imageStrategy =
-    !aiFallbackEnabled
-      ? "stock"
-      : "consistent";
-
-  const applyImageStrategy = (strategy: "consistent" | "stock") => {
-    setSourceImageAllowed(false);
-    if (strategy === "consistent") {
-      setSelectedImageModel(coverImageModels[0]?.id || selectedImageModel);
-      setSelectedInlineImageModel(imageModels[0]?.id || selectedInlineImageModel);
-      setAiFallbackEnabled(true);
-      setMaxAiImagesPerDay(30);
-      setMinMinutesBetweenAiImages(5);
-    } else {
-      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
-      setAiFallbackEnabled(false);
-      setMaxAiImagesPerDay(0);
-      setMinMinutesBetweenAiImages(5);
-    }
-  };
   const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
   const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
   const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
@@ -1064,7 +1005,7 @@ export default function Settings() {
               <SectionHeader
                 icon={KeyRound}
                 title="API Keys"
-                description="Store your own provider keys for beta usage. Keys are encrypted and never shown again."
+                description="OpenRouter powers text and AI images. Stock keys only apply when Inline Source is Stock."
               />
               <div className="grid gap-6 p-6 md:grid-cols-2">
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
@@ -1082,7 +1023,9 @@ export default function Settings() {
                     onChange={(e) => setOpenrouterKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">{formatSavedAt(apiKeys?.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Required for text generation and AI images. Models load from OpenRouter's live catalog. {formatSavedAt(apiKeys?.updatedAt)}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1128,7 +1071,9 @@ export default function Settings() {
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">Optional for PDF knowledge imports. Images use OpenRouter. {formatSavedAt(apiKeys?.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional for PDF knowledge imports only. Not used for text or image model selection. {formatSavedAt(apiKeys?.updatedAt)}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1174,7 +1119,9 @@ export default function Settings() {
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">Optional for semantic internal linking. Images use OpenRouter. {formatSavedAt(apiKeys?.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional for semantic internal linking only. Not used for text or image model selection. {formatSavedAt(apiKeys?.updatedAt)}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1220,7 +1167,9 @@ export default function Settings() {
                     onChange={(e) => setPixabayKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">Used first for free stock images before paid AI fallback.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional stock provider for Inline Source: Stock. Not used for AI images.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1257,7 +1206,9 @@ export default function Settings() {
                     onChange={(e) => setPexelsKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">Fallback stock provider with photographer attribution stored on assets.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional stock provider for Inline Source: Stock. Attribution is stored on assets.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -1286,8 +1237,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={Zap}
-                title="Model Pricing"
-                description="Live price browser only. Choose the article model on Create Content."
+                title="OpenRouter Models"
+                description="Live OpenRouter catalog for text and image models. No local or legacy model aliases."
                 action={
                   <Button
                     variant="outline"
@@ -1307,7 +1258,7 @@ export default function Settings() {
                     <Input
                       value={modelSearch}
                       onChange={(event) => setModelSearch(event.target.value)}
-                      placeholder="Search models, providers, or IDs"
+                      placeholder="Search OpenRouter models, providers, or IDs"
                       className="pl-9"
                     />
                   </div>
@@ -1338,13 +1289,13 @@ export default function Settings() {
                   </Select>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredImageModels.length} image models and {filteredTextModels.length} text models.
+                  Showing {filteredImageModels.length} official OpenRouter image models and {filteredTextModels.length} text models.
                 </p>
 
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <ImageIcon className="h-4 w-4" />
-                    Image Generation
+                    OpenRouter Image Models
                   </h4>
                   {imageModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
@@ -1387,7 +1338,7 @@ export default function Settings() {
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <FileText className="h-4 w-4" />
-                    Text Generation
+                    OpenRouter Text Models
                   </h4>
                   {textModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
@@ -1900,16 +1851,16 @@ export default function Settings() {
             <div className="space-y-6">
               <BywordCard>
                 <SectionHeader
-                  icon={Gauge}
-                  title="Image Strategy"
-                  description="Choose the default source for blog visuals."
+                  icon={ImagePlus}
+                  title="Image Generation"
+                  description="Cover and inline AI use OpenRouter image models. Inline Stock uses stock providers only."
                   action={
                     <Button
                       size="sm"
                       onClick={() => saveImageCostSettingsMutation.mutate()}
-                      disabled={saveImageCostSettingsMutation.isPending || (aiFallbackEnabled && (selectedImageModelUnavailable || selectedInlineImageModelUnavailable))}
+                      disabled={saveImageCostSettingsMutation.isPending || !!imageSettingsError}
                     >
-                      {unsavedBadge(imageStrategyDirty)}
+                      {unsavedBadge(imageGenerationDirty)}
                       {saveImageCostSettingsMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
@@ -1920,113 +1871,93 @@ export default function Settings() {
                   }
                 />
                 <div className="space-y-5 p-6">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {[
-                      { id: "consistent", title: "Recommended", text: "Cover uses only the selected AI model. Inline uses AI, then stock.", badge: "Stable" },
-                      { id: "stock", title: "Stock Only", text: "Skip AI generation and use stock/source images only.", badge: "$0" },
-                    ].map((strategy) => (
-                      <button
-                        key={strategy.id}
-                        type="button"
-                        onClick={() => applyImageStrategy(strategy.id as "consistent" | "stock")}
-                        className={cn(
-                          "rounded-lg border p-4 text-left transition-calm",
-                          imageStrategy === strategy.id
-                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
-                            : "border-byword-border hover:border-byword-blue/40"
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-semibold">{strategy.title}</p>
-                          <Badge variant="secondary">{strategy.badge}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{strategy.text}</p>
-                      </button>
-                    ))}
+                  <div className="grid gap-5 lg:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Cover AI Model</Label>
+                      <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
+                      {selectedImageModelUnavailable && (
+                        <p className="text-xs text-destructive">Pick a live OpenRouter image model for covers.</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Inline Source</Label>
+                      <div className="grid grid-cols-2 rounded-lg border border-byword-border p-1">
+                        {(["ai", "stock"] as const).map((source) => (
+                          <button
+                            key={source}
+                            type="button"
+                            onClick={() => setInlineImageSource(source)}
+                            className={cn(
+                              "rounded-md px-3 py-2 text-sm font-medium transition-calm",
+                              inlineImageSource === source
+                                ? "bg-byword-blue text-white"
+                                : "text-muted-foreground hover:bg-muted"
+                            )}
+                          >
+                            {source === "ai" ? "AI" : "Stock"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {imageStrategy === "consistent" && "Current: cover queues only the cover AI model with your style prompt. Inline queues the inline AI model, then stock fallback."}
-                    {imageStrategy === "stock" && "Current: AI queue is off; images resolve from stock or allowed source images."}
-                  </div>
+                  {inlineImageSource === "ai" && (
+                    <div className="space-y-2">
+                      <Label>Inline AI Model</Label>
+                      <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
+                      {selectedInlineImageModelUnavailable && (
+                        <p className="text-xs text-destructive">Pick a live OpenRouter image model for inline images.</p>
+                      )}
+                    </div>
+                  )}
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAdvancedImageStrategy((value) => !value)}
-                  >
-                    <SlidersHorizontal className="mr-2 h-4 w-4" />
-                    Advanced
-                  </Button>
-
-                  {showAdvancedImageStrategy && (
-                    <div className="grid gap-5 rounded-lg border border-byword-border p-4 lg:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Cover AI Model</Label>
-                        <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Inline AI Model</Label>
-                        <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
-                        <div>
-                          <Label>AI Queue</Label>
-                          <p className="text-xs text-muted-foreground">Queue AI first; only inline images use stock fallback.</p>
-                        </div>
-                        <Switch checked={aiFallbackEnabled} onCheckedChange={setAiFallbackEnabled} />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
-                        <div>
-                          <Label>Source Images</Label>
-                          <p className="text-xs text-muted-foreground">Reuse source images only when license or allowlist permits it.</p>
-                        </div>
-                        <Switch checked={sourceImageAllowed} onCheckedChange={setSourceImageAllowed} />
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="ai-per-day">AI/Day</Label>
-                          <Input id="ai-per-day" type="number" min={0} max={100} value={maxAiImagesPerDay} onChange={(e) => setMaxAiImagesPerDay(Number(e.target.value))} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="ai-spacing">Minutes</Label>
-                          <Input id="ai-spacing" type="number" min={0} max={240} value={minMinutesBetweenAiImages} onChange={(e) => setMinMinutesBetweenAiImages(Number(e.target.value))} />
-                        </div>
+                  {inlineImageSource === "stock" && (
+                    <div className="space-y-2">
+                      <Label>Stock Providers</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={apiKeys?.hasPixabayKey ? "secondary" : "outline"}>
+                          Pixabay {apiKeys?.hasPixabayKey ? "saved" : "missing"}
+                        </Badge>
+                        <Badge variant={apiKeys?.hasPexelsKey ? "secondary" : "outline"}>
+                          Pexels {apiKeys?.hasPexelsKey ? "saved" : "missing"}
+                        </Badge>
+                        <Badge variant="secondary">Openverse available</Badge>
                       </div>
                     </div>
                   )}
-                </div>
-              </BywordCard>
 
-              <BywordCard>
-                <SectionHeader
-                  icon={ImagePlus}
-                  title="Image Defaults"
-                  description="Set default image count, resolution, and aspect ratio for all generations."
-                />
-                <div className="p-6">
+                  {imageSettingsError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                      {imageSettingsError}
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 rounded-lg border border-byword-border bg-muted/20 p-4 text-sm md:grid-cols-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Cover AI</p>
+                      <p className="font-medium">{imageConfig.cover.enabled ? formatImageCostAmount(coverImageCost) : "$0 off"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Inline {inlineImageSource === "stock" ? "Stock" : "AI"}</p>
+                      <p className="font-medium">
+                        {!imageConfig.inline.enabled || imageConfig.inline.count === 0
+                          ? "$0 off"
+                          : inlineImageSource === "stock"
+                            ? "$0 stock"
+                            : `${formatImageCostAmount(inlineImageCost)} / ${imageConfig.inline.count}`}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Per Post</p>
+                      <p className="font-medium">{formatImageCostAmount(coverImageCost + inlineImageCost)}</p>
+                    </div>
+                  </div>
                   <SplitImageGenerationSettings
                     config={imageConfig}
                     onConfigChange={setImageConfig}
-                    onSaveDefaults={(defaults) => saveDefaultsMutation.mutate(defaults)}
-                    showSaveOption
-                    imageModelId={selectedImageModel}
-                    aiFallbackEnabled={aiFallbackEnabled}
+                    inlineImageSource={inlineImageSource}
                   />
-                  {imageDefaultsDirty === "dirty" && (
-                    <Badge variant="outline" className="mt-4 border-amber-300 text-amber-700">Unsaved defaults</Badge>
-                  )}
-                  {saveDefaultsMutation.isPending && (
-                    <div className="mt-4 flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Saving...</span>
-                    </div>
-                  )}
                 </div>
               </BywordCard>
 

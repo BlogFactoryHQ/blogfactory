@@ -4,7 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
-import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult, type SourceImageCandidate } from "./low-cost-images.js";
+import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult } from "./low-cost-images.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
@@ -68,7 +68,7 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
-type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; sourceImages?: SourceImageCandidate[]; variationIndex?: number; variationCount?: number };
+type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; variationIndex?: number; variationCount?: number };
 type SeoQaCheck = { label: string; ok: boolean | null; detail: string };
 type GenerationContract = ReturnType<typeof resolveGenerationContract>;
 export type SeoPackage = {
@@ -115,23 +115,14 @@ const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
   rich: [8, 12],
 };
 
-export function costEffectiveImageModel(opts: {
-  modelId: string;
-  openRouterKey: string | null;
-}) {
-  if (!opts.modelId || opts.modelId === "auto/consistent-cover" || opts.modelId === "auto/cost-effective") return "openrouter/free";
-  if (opts.modelId.startsWith("google-ai-studio/") || opts.modelId.startsWith("google/") || opts.modelId.startsWith("replicate/")) return "openrouter/free";
-  return opts.modelId;
+export function openRouterImageModelId(modelId: string | null | undefined) {
+  modelId = modelId?.trim();
+  return !modelId || modelId === "openrouter/free" ? "openrouter/auto" : modelId;
 }
 
 async function validateImageModelForRequest(openRouterKey: string | null, modelId: string, type: string) {
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
-  if (type === "cover" && modelId === "openrouter/free") {
-    throw new Error("Cover images require a selected OpenRouter image model; openrouter/free is inline-only");
-  }
-  if (modelId !== "openrouter/free") {
-    await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
-  }
+  await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
 }
 
 function truncatePromptText(value: string, maxChars = 1200) {
@@ -384,10 +375,14 @@ function imageAdvancedOptions(settings?: GenerationSettings) {
 
 export function inlineImageModel(settings?: GenerationSettings) {
   const value = settingValue(settings, "inlineImageModel", "inline_image_model")
-    || imageAdvancedOptions(settings).inlineImageModel
-    || imageAdvancedOptions(settings).inline_image_model;
-  const modelId = typeof value === "string" && value.trim() ? value.trim() : "openrouter/free";
-  return costEffectiveImageModel({ modelId, openRouterKey: null });
+    || imageAdvancedOptions(settings).inlineImageModel;
+  return openRouterImageModelId(typeof value === "string" ? value : "");
+}
+
+export function inlineImageSource(settings?: GenerationSettings) {
+  const value = settingValue(settings, "inlineImageSource", "inline_image_source")
+    || imageAdvancedOptions(settings).inlineImageSource;
+  return value === "stock" ? "stock" : "ai";
 }
 
 function isBlogDraftSource(sourceType: string) {
@@ -1107,7 +1102,7 @@ export async function generateContent(opts: GenerateOpts) {
       articles = [{ title, content: title }];
     } else if (opts.sourceType === "url") {
       const extracted = await extractContent({ userId, sourceType: "url", sourceValue: opts.sourceValue, extractModel: modelId });
-      articles = [{ title: extracted.title || "", content: extracted.content || opts.sourceValue, url: opts.sourceValue, sourceImages: extracted.metadata?.sourceImages }];
+      articles = [{ title: extracted.title || "", content: extracted.content || opts.sourceValue, url: opts.sourceValue }];
     } else if (opts.sourceType === "raw_text") {
       articles = [{ title: "", content: opts.sourceValue }];
     } else if (opts.sourceType === "youtube") {
@@ -1402,17 +1397,12 @@ export async function generateContent(opts: GenerateOpts) {
               postId: post.id,
               jobId: jobId!,
               imageConfig: opts.imageConfig,
-              imageModel: promptSettings?.imageModel || settings?.imageModel || "openrouter/free",
+              imageModel: promptSettings?.imageModel || settings?.imageModel || "openrouter/auto",
               inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
               stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
               settings: {
-                sourceImageAllowed: promptSettings?.sourceImageAllowed,
-                aiFallbackEnabled: promptSettings?.aiFallbackEnabled,
-                maxAiImagesPerDay: promptSettings?.maxAiImagesPerDay,
-                minMinutesBetweenAiImages: promptSettings?.minMinutesBetweenAiImages,
-                imageCompressionEnabled: opts.imageConfig?.compressionEnabled ?? promptSettings?.imageCompressionEnabled ?? true,
+                inlineImageSource: inlineImageSource(promptSettings || settings || undefined),
               },
-              sourceImages: (article as any).sourceImages as SourceImageCandidate[] | undefined,
             });
 
             imageResolutionResults.push({ postId: post.id, title: postTitle, result: summarizeImageResolution(imageResults) });
@@ -1500,7 +1490,7 @@ async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: 
     const text = await resp.text();
 
     // Simple RSS/Atom parsing
-    const items: Array<{ title: string; content: string; url?: string; hash?: string; pubDate?: Date; sourceImages?: SourceImageCandidate[] }> = [];
+    const items: Array<{ title: string; content: string; url?: string; hash?: string; pubDate?: Date }> = [];
 
     // Extract items from RSS
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -1515,10 +1505,6 @@ async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: 
       const link = extractTag(itemXml, "link") || extractAttr(itemXml, "link", "href");
       const description = extractTag(itemXml, "description") || extractTag(itemXml, "summary") || extractTag(itemXml, "content:encoded") || extractTag(itemXml, "content");
       const pubDate = extractTag(itemXml, "pubDate") || extractTag(itemXml, "published") || extractTag(itemXml, "updated");
-      const imageUrl = extractAttr(itemXml, "media:content", "url")
-        || extractAttr(itemXml, "media:thumbnail", "url")
-        || extractAttr(itemXml, "enclosure", "url");
-
       if (filterOldDays && pubDate) {
         const articleDate = new Date(pubDate);
         const cutoff = new Date(Date.now() - filterOldDays * 24 * 60 * 60 * 1000);
@@ -1529,7 +1515,6 @@ async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: 
         title: title || "Untitled",
         content: stripHtml(description || ""),
         url: link || undefined,
-        sourceImages: imageUrl ? [{ url: imageUrl }] : undefined,
       });
     }
 
@@ -1672,56 +1657,11 @@ function plainText(value: string, maxChars = 900) {
     .slice(0, maxChars);
 }
 
-function sectionCue(content: string, index: number) {
-  const headings = Array.from(content.matchAll(/^#{2,3}\s+(.+)$/gm)).map((match) => match[1].trim());
-  return headings[index] || headings[0] || "";
-}
-
-function buildImagePrompt(opts: {
-  content: string;
-  title: string;
-  type: "cover" | "inline";
-  index?: number;
-  stylePrompt?: string;
-}) {
-  const style = opts.stylePrompt?.trim() || "Modern, clean, professional editorial image style. No text overlays.";
-  const summary = plainText(opts.content);
-  const section = opts.type === "inline" ? sectionCue(opts.content, opts.index || 0) : "";
-  const subject = opts.type === "cover"
-    ? `Create a blog cover image for "${opts.title}".`
-    : `Create an inline blog image for "${opts.title}"${section ? `, focused on the section "${section}"` : ""}.`;
-
-  return [
-    subject,
-    summary ? `Use this article context to choose concrete visual metaphors and details: ${summary}` : "",
-    `Style direction: ${style}`,
-    "Avoid text, logos, UI screenshots, watermarks, and unreadable typography unless explicitly requested in the style direction.",
-  ].filter(Boolean).join("\n\n");
-}
-
-function buildImageAltText(opts: {
-  title: string;
-  type: "cover" | "inline";
-  index?: number;
-  content: string;
-}) {
-  const section = opts.type === "inline" ? sectionCue(opts.content, opts.index || 0) : "";
-  const detail = section ? `: ${section}` : "";
-  return `${opts.type === "cover" ? "Featured image" : "Article image"} for ${opts.title}${detail}`.slice(0, 180);
-}
-
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {
   if (!request.modelId || !request.jobId) throw new Error("Queued image request is missing model/job data");
-  const [settings] = await db
-    .select({ imageCompressionEnabled: userSettings.imageCompressionEnabled })
-    .from(userSettings)
-    .where(eq(userSettings.userId, request.userId))
-    .limit(1);
 
   const openRouterKey = await getOpenRouterKey(request.userId);
-  const modelId = request.type === "inline"
-    ? costEffectiveImageModel({ modelId: request.modelId, openRouterKey })
-    : request.modelId;
+  const modelId = openRouterImageModelId(request.modelId);
   await validateImageModelForRequest(openRouterKey, modelId, request.type);
 
   const result = await generateSingleImage(
@@ -1735,7 +1675,6 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
     request.type,
     request.position || 0,
     request.postId || null,
-    settings?.imageCompressionEnabled ?? true,
     openRouterKey || ""
   );
 
@@ -1767,7 +1706,6 @@ async function generateSingleImage(
   type: string,
   position: number,
   postId: string | null,
-  compressionEnabled: boolean,
   openRouterKey: string
 ): Promise<{ storagePath: string | null; cost: number } | null> {
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
@@ -1852,7 +1790,7 @@ async function generateSingleImage(
 
   try {
     const sharp = (await import("sharp")).default;
-    imageBuffer = (await sharp(imageBuffer).webp({ quality: compressionEnabled ? 85 : 100 }).toBuffer()) as any;
+    imageBuffer = (await sharp(imageBuffer).webp({ quality: 85 }).toBuffer()) as any;
   } catch {}
 
   const finalImageBuffer = imageBuffer;

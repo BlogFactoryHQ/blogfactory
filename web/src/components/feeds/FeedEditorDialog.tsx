@@ -41,6 +41,7 @@ import {
   SplitImageGenerationSettings,
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
+  type InlineImageSource,
 } from "@/components/content/ImageGenerationSettings";
 
 interface Feed {
@@ -83,6 +84,7 @@ interface FeedEditorDialogProps {
   isRunning: boolean;
   isDeleting: boolean;
   defaultImageConfig?: SplitImageConfig;
+  inlineImageSource?: InlineImageSource;
 }
 
 const POSTS_PER_RUN_OPTIONS = [1, 3, 5, 10, 15, 20];
@@ -99,6 +101,7 @@ export function FeedEditorDialog({
   isRunning,
   isDeleting,
   defaultImageConfig,
+  inlineImageSource = "ai",
 }: FeedEditorDialogProps) {
   const { data: textModels = [] } = useTextModels();
   const [editedFeed, setEditedFeed] = useState<Feed | null>(null);
@@ -230,7 +233,7 @@ export function FeedEditorDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>LLM Model</Label>
+                  <Label>OpenRouter Text Model</Label>
                   <LiveTextModelSelect
                     value={editedFeed.model_id}
                     onValueChange={(v) => setEditedFeed({ ...editedFeed, model_id: v })}
@@ -329,6 +332,7 @@ export function FeedEditorDialog({
                 config={imageConfig}
                 onConfigChange={setImageConfig}
                 compact
+                inlineImageSource={inlineImageSource}
               />
             </section>
 

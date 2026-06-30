@@ -14,6 +14,11 @@ function priceBadge(model: LiveTextModel) {
   return { text: "$$$", className: "text-red-500" };
 }
 
+function formatContext(length: number | null) {
+  if (!length) return "";
+  return length >= 1000 ? `${Math.round(length / 1000)}k ctx` : `${length} ctx`;
+}
+
 export function isUnavailableModel(modelId: string | null | undefined, models: LiveTextModel[]) {
   return Boolean(modelId && models.length > 0 && !models.some((model) => model.id === modelId));
 }
@@ -36,7 +41,7 @@ export function LiveTextModelSelect({
     const needle = query.trim().toLowerCase();
     if (!needle) return textModels;
     return textModels.filter((model) =>
-      [model.name, model.id, model.provider, model.costInfo]
+      [model.name, model.id, model.provider, model.costInfo, model.description]
         .some((field) => field.toLowerCase().includes(needle))
     );
   }, [query, textModels]);
@@ -63,7 +68,7 @@ export function LiveTextModelSelect({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search recommended blog models"
+            placeholder="Search OpenRouter text models"
             className="h-10 border-0 px-0 shadow-none focus-visible:ring-0"
           />
         </div>
@@ -93,7 +98,9 @@ export function LiveTextModelSelect({
                       <span className="truncate font-medium">{model.name}</span>
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{model.id}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{model.costInfo}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {[model.provider, formatContext(model.contextLength), model.costInfo].filter(Boolean).join(" · ")}
+                    </span>
                   </span>
                 </button>
               );

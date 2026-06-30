@@ -9,7 +9,7 @@ export interface LiveImageModel {
   pricing: "free" | "low" | "medium" | "high";
   costInfo: string;
   description: string;
-  apiProvider: "openrouter" | "manual";
+  apiProvider: "openrouter";
   isFree: boolean;
   limits: string | null;
   constraints: ImageModelConstraints | null;
@@ -31,14 +31,7 @@ export interface LiveImageModel {
 
 export async function fetchImageModels(refresh = false): Promise<LiveImageModel[]> {
   const models = await api.get<LiveImageModel[]>(`/models/image${refresh ? "?refresh=true" : ""}`);
-  return Array.isArray(models)
-    ? models.filter((model) =>
-      !["openrouter/free", "auto/consistent-cover", "auto/cost-effective"].includes(model.id)
-      && !model.id.startsWith("google/")
-      && !model.id.startsWith("google-ai-studio/")
-      && !model.id.startsWith("replicate/")
-    )
-    : [];
+  return Array.isArray(models) ? models : [];
 }
 
 export function useImageModels() {

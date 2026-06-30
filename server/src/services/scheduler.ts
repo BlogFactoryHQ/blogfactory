@@ -78,20 +78,12 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         .limit(1);
 
       const imageConfig: any = {};
-      imageConfig.imagePlacement = settings?.imagePlacement ?? "auto";
-      imageConfig.compressionEnabled = settings?.imageCompressionEnabled ?? true;
       if (settings?.coverEnabled) {
-        imageConfig.cover = {
-          count: settings.coverImageCount ?? 1,
-          resolution: settings.coverResolution ?? "1K",
-          aspectRatio: settings.coverAspectRatio ?? "16:9",
-        };
+        imageConfig.cover = {};
       }
       if (settings?.inlineEnabled) {
         imageConfig.inline = {
           count: settings.inlineCount ?? 2,
-          resolution: settings.inlineResolution ?? "1K",
-          aspectRatio: settings.inlineAspectRatio ?? "3:2",
         };
       }
 

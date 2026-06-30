@@ -57,8 +57,7 @@ import { FeedEditorDialog } from "@/components/feeds/FeedEditorDialog";
 import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
-  type Resolution,
-  type AspectRatio,
+  type InlineImageSource,
 } from "@/components/content/ImageGenerationSettings";
 import { cn } from "@/lib/utils";
 import {
@@ -144,19 +143,14 @@ export default function RSSFeeds() {
     return {
       cover: {
         enabled: userSettings.cover_enabled ?? true,
-        resolution: (userSettings.cover_resolution as Resolution) || "2K",
-        aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
       },
       inline: {
         enabled: userSettings.inline_enabled ?? true,
         count: userSettings.inline_count ?? 2,
-        resolution: (userSettings.inline_resolution as Resolution) || "2K",
-        aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
       },
-      imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
-      compressionEnabled: userSettings.image_compression_enabled ?? true,
     };
   }, [userSettings]);
+  const defaultInlineImageSource: InlineImageSource = userSettings?.inline_image_source === "stock" ? "stock" : "ai";
 
   // Fetch latest scheduler log
   const { data: lastSchedulerRun } = useQuery({
@@ -278,16 +272,9 @@ export default function RSSFeeds() {
         platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
-          imagePlacement: ic.imagePlacement || "auto",
-          compressionEnabled: ic.compressionEnabled ?? true,
-          cover: ic.cover.enabled ? {
-            resolution: ic.cover.resolution,
-            aspectRatio: ic.cover.aspectRatio,
-          } : null,
+          cover: ic.cover.enabled ? {} : null,
           inline: ic.inline.enabled ? {
             count: ic.inline.count,
-            resolution: ic.inline.resolution,
-            aspectRatio: ic.inline.aspectRatio,
           } : null,
         } : undefined,
       });
@@ -766,6 +753,7 @@ export default function RSSFeeds() {
         isRunning={runningFeedId === selectedFeed?.id}
         isDeleting={deleteFeedMutation.isPending}
         defaultImageConfig={defaultImageConfig}
+        inlineImageSource={defaultInlineImageSource}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -42,7 +42,7 @@ export function estimateGenerationCost(input: {
   inlineImageModel?: PricedModel | null;
   imageConfig: SplitImageConfig;
   averageTokensPerPost?: number | null;
-  aiFallbackEnabled?: boolean | null;
+  inlineImageSource?: "ai" | "stock" | string | null;
 }): CostEstimate {
   const postCount = Math.max(1, Math.round(numberOr(input.postCount, 1)));
   const wordCount = numberOr(input.articleWordCount, 1500);
@@ -58,20 +58,21 @@ export function estimateGenerationCost(input: {
   const completionCostPerPost = (completionTokens / 1_000_000) * completionPrice;
   const textPerPost = promptCostPerPost + completionCostPerPost + requestPrice;
 
-  const aiImages = input.aiFallbackEnabled !== false;
+  const inlineUsesAi = input.inlineImageSource !== "stock";
   const imagePrice = input.imageModel?.rawPricing.image || 0;
   const inlineImagePrice = input.inlineImageModel?.rawPricing.image || 0;
-  const autoCoverHigh = input.imageModel?.id.startsWith("auto/") ? 0.04 : imagePrice;
-  const coverPerPost = input.imageConfig.cover.enabled && aiImages ? imagePrice : 0;
-  const coverHighPerPost = input.imageConfig.cover.enabled && aiImages ? Math.max(imagePrice, autoCoverHigh) : 0;
-  const inlinePerPost = input.imageConfig.inline.enabled && aiImages ? inlineImagePrice * input.imageConfig.inline.count : 0;
+  const coverPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
+  const coverHighPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
+  const inlinePerPost = input.imageConfig.inline.enabled && inlineUsesAi ? inlineImagePrice * input.imageConfig.inline.count : 0;
 
   const assumptions = [
     avgTokens > 0 ? "Text estimate uses recent average tokens per post." : "Text estimate uses article word count heuristic.",
-    input.imageConfig.cover.enabled && aiImages ? "Cover uses the selected image model." : "Cover AI is off or stock-only.",
-    input.imageConfig.inline.enabled && input.imageConfig.inline.count > 0 && aiImages
-      ? "Inline images use the selected inline image model, then stock fallback."
-      : "Inline AI spend is off or no inline images are selected.",
+    input.imageConfig.cover.enabled ? "Cover uses the selected OpenRouter cover image model." : "Cover image is off.",
+    !input.imageConfig.inline.enabled || input.imageConfig.inline.count === 0
+      ? "Inline images are off."
+      : inlineUsesAi
+        ? "Inline images use the selected OpenRouter inline image model."
+        : "Inline images use stock providers at $0 image generation cost.",
   ];
 
   const textCost = textPerPost * postCount;

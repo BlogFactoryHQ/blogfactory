@@ -14,6 +14,14 @@ function priceBadge(model: LiveImageModel) {
   return { text: "$$$", className: "text-red-500" };
 }
 
+function imageMeta(model: LiveImageModel) {
+  const constraints = model.constraints;
+  const sizes = constraints?.resolutions?.length ? constraints.resolutions.join("/") : "";
+  const ratios = constraints?.aspectRatios?.includes("16:9") ? "16:9" : constraints?.aspectRatios?.[0] || "";
+  const params = model.supportedParameters?.slice(0, 3).join(", ");
+  return [model.provider, sizes, ratios, params ? `params: ${params}` : "", model.costInfo].filter(Boolean).join(" · ");
+}
+
 export function isUnavailableImageModel(modelId: string | null | undefined, models: LiveImageModel[]) {
   return Boolean(modelId && models.length > 0 && !models.some((model) => model.id === modelId));
 }
@@ -39,7 +47,7 @@ export function LiveImageModelSelect({
     const needle = query.trim().toLowerCase();
     if (!needle) return imageModels;
     return imageModels.filter((model) =>
-      [model.name, model.id, model.provider, model.costInfo]
+      [model.name, model.id, model.provider, model.costInfo, model.description, ...(model.supportedParameters || [])]
         .some((field) => field.toLowerCase().includes(needle))
     );
   }, [query, imageModels]);
@@ -88,7 +96,7 @@ export function LiveImageModelSelect({
                       <span className="truncate font-medium">{model.name}</span>
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{model.id}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{model.costInfo}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{imageMeta(model)}</span>
                   </span>
                 </button>
               );

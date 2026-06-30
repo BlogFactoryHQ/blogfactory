@@ -27,12 +27,17 @@ import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { resolveSignedUrl } from "@/hooks/useSignedUrl";
 import type { ImageAsset } from "@/hooks/useImageAssets";
+import { imageProviderName, imageSourceLabel, isStockProvider } from "@/lib/image-labels";
 
 interface ImageDetailDrawerProps {
   image: ImageAsset | null;
   signedUrl: string | null;
   onClose: () => void;
   onDetach: (id: string) => void;
+}
+
+function positionLabel(position: number | null) {
+  return position != null ? ` #${position + 1}` : "";
 }
 
 export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: ImageDetailDrawerProps) {
@@ -62,15 +67,10 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
     <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600">Used</Badge>
   );
   const sourceUrl = image.attribution_url || image.source_url;
-  const sourceName = image.provider === "pixabay" ? "Pixabay" : image.provider || "Source";
-  const stockProviders = new Set(["pixabay", "pexels", "openverse", "stock-fallback"]);
-  const isStock = image.source_kind === "stock" || stockProviders.has(image.provider || "");
+  const sourceName = imageProviderName(image.provider);
+  const isStock = image.source_kind === "stock" || isStockProvider(image.provider);
   const isAi = image.source_kind === "ai" || image.provider === "openrouter-image";
-  const sourceKindLabel = isAi
-    ? `AI · ${image.model_id || image.provider || "model"}`
-    : isStock
-      ? `Stock · ${sourceName}`
-      : `${image.source_kind || "Source"} · ${sourceName}`;
+  const sourceKindLabel = imageSourceLabel(image);
 
   return (
     <Dialog open={!!image} onOpenChange={(open) => !open && onClose()}>
@@ -82,7 +82,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             ) : (
               <ImagePlus className="h-4 w-4 text-primary" />
             )}
-            {image.type === "cover" ? "Cover Image" : `Inline Image${image.position ? ` #${image.position}` : ""}`}
+            {image.type === "cover" ? "Cover Image" : `Inline Image${positionLabel(image.position)}`}
           </DialogTitle>
         </DialogHeader>
 
@@ -115,7 +115,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
               <span className="text-muted-foreground text-xs">Type:</span>
               <Badge variant="outline">{image.type}</Badge>
               {image.position != null && (
-                <span className="text-muted-foreground text-xs ml-1">Position #{image.position}</span>
+                <span className="text-muted-foreground text-xs ml-1">Position #{image.position + 1}</span>
               )}
             </div>
             <div className="flex items-center gap-2">

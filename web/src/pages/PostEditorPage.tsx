@@ -12,7 +12,6 @@ import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { UserSettings } from "@/lib/types";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
 import {
   Select,
@@ -80,15 +79,6 @@ export default function PostEditorPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-
-  // Fetch user settings for image metadata display
-  const { data: userSettings } = useQuery({
-    queryKey: ["user-settings"],
-    queryFn: async () => {
-      return api.get<UserSettings>("/settings");
-    },
-    enabled: !!user,
-  });
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -377,13 +367,6 @@ export default function PostEditorPage() {
                 onRemoveCoverImage={handleRemoveCoverImage}
                 onInsertInlineImage={handleInsertInlineImage}
                 onRemoveInlineImage={handleRemoveInlineImage}
-                imageMetadata={{
-                  coverResolution: userSettings?.cover_resolution || "2K",
-                  coverAspectRatio: userSettings?.cover_aspect_ratio || "16:9",
-                  inlineResolution: userSettings?.inline_resolution || "2K",
-                  inlineAspectRatio: userSettings?.inline_aspect_ratio || "3:2",
-                  model: userSettings?.image_model || "gemini-2.5-flash-image",
-                }}
               />
             </div>
           )}

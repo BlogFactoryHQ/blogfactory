@@ -119,7 +119,7 @@ export function buildCostAnalytics(input: {
 
   const imageSummary = {
     total: imageAssets.length,
-    ai: imageAssets.filter((asset) => (asset.sourceKind || "").includes("ai") || (asset.provider || "").includes("image") || (asset.provider || "").includes("google-ai-studio")).length,
+    ai: imageAssets.filter((asset) => (asset.sourceKind || "").includes("ai") || (asset.provider || "").includes("image")).length,
     stock: imageAssets.filter((asset) => asset.sourceKind === "stock").length,
     source: imageAssets.filter((asset) => asset.sourceKind === "source").length,
     cover: imageAssets.filter((asset) => asset.type === "cover").length,

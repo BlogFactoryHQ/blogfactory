@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { imageAssets, imageGenerationRequests, posts, userSettings } from "../db/schema.js";
+import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
-import { attachImageRequestToPost, processNextDeferredImage } from "../services/low-cost-images.js";
+import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
 
 export const imagesRoutes = new Hono();
 
@@ -42,13 +42,17 @@ function serializeRequest(row: any) {
     license_label: row.licenseLabel,
     attribution_url: row.attributionUrl,
     imported_asset_id: row.importedAssetId,
-    fallback_policy: row.fallbackPolicy,
     last_error: row.lastError,
     completed_via: row.completedVia,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
     post_title: row.postTitle,
   };
+}
+
+function positiveInt(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
 }
 
 imagesRoutes.get("/", async (c) => {
@@ -94,6 +98,8 @@ imagesRoutes.get("/requests", async (c) => {
   const conditions = [eq(imageGenerationRequests.userId, userId)];
   if (status === "active") {
     conditions.push(inArray(imageGenerationRequests.status, ["pending", "queued", "processing"]));
+  } else if (status === "all") {
+    conditions.push(inArray(imageGenerationRequests.status, ["pending", "queued", "processing", "failed", "done"]));
   } else if (status) {
     conditions.push(eq(imageGenerationRequests.status, status));
   }
@@ -119,7 +125,6 @@ imagesRoutes.get("/requests", async (c) => {
       licenseLabel: imageGenerationRequests.licenseLabel,
       attributionUrl: imageGenerationRequests.attributionUrl,
       importedAssetId: imageGenerationRequests.importedAssetId,
-      fallbackPolicy: imageGenerationRequests.fallbackPolicy,
       lastError: imageGenerationRequests.lastError,
       completedVia: imageGenerationRequests.completedVia,
       createdAt: imageGenerationRequests.createdAt,
@@ -131,13 +136,53 @@ imagesRoutes.get("/requests", async (c) => {
     .where(and(...conditions))
     .orderBy(desc(imageGenerationRequests.createdAt));
 
+  if ((status === "active" || status === "all") && rows.some((row) => row.provider === "ai-deferred" && row.status === "queued")) {
+    kickDeferredImageWorker(userId, rows.length);
+  }
+
   return c.json(rows.map(serializeRequest));
 });
 
 imagesRoutes.post("/queue/process", async (c) => {
   const userId = getUserId(c);
-  const result = await processNextDeferredImage(userId);
-  return c.json(result);
+  const results = await drainDeferredImages(userId, positiveInt(c.req.query("limit"), 10));
+  return c.json({
+    processed: results.some((result) => result.processed),
+    results,
+    ...results.find((result) => result.processed),
+    error: results.find((result) => result.error)?.error,
+  });
+});
+
+imagesRoutes.post("/requests/:id/retry", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+
+  const [request] = await db
+    .select()
+    .from(imageGenerationRequests)
+    .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
+    .limit(1);
+
+  if (!request) return c.json({ error: "Image request not found" }, 404);
+  if (request.provider !== "ai-deferred") return c.json({ error: "Only AI image requests can be retried" }, 400);
+  if (request.status !== "failed") return c.json({ error: "Only failed image requests can be retried" }, 400);
+
+  const [updated] = await db
+    .update(imageGenerationRequests)
+    .set({
+      status: "queued",
+      retryCount: 0,
+      lastError: null,
+      completedVia: null,
+      availableAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
+    .returning();
+
+  kickDeferredImageWorker(userId, 1);
+  return c.json(serializeRequest(updated));
 });
 
 imagesRoutes.patch("/requests/:id", async (c) => {
@@ -174,14 +219,9 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
   if (request.status === "done") return c.json({ error: "Image request was already imported" }, 400);
 
   let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
-  const [settings] = await db
-    .select({ imageCompressionEnabled: userSettings.imageCompressionEnabled, imagePlacement: userSettings.imagePlacement })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
   try {
     const sharp = (await import("sharp")).default;
-    buffer = await sharp(buffer).webp({ quality: (settings?.imageCompressionEnabled ?? true) ? 85 : 100 }).toBuffer();
+    buffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
   } catch {}
 
   const { asset, storagePath } = await saveImageBuffer(buffer, userId, {
@@ -203,7 +243,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
     postId: request.postId || undefined,
   });
 
-  await attachImageRequestToPost(request, storagePath, settings?.imagePlacement, userId);
+  await attachImageRequestToPost(request, storagePath, "auto", userId);
 
   const [updated] = await db
     .update(imageGenerationRequests)
