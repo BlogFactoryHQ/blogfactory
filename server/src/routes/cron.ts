@@ -28,8 +28,7 @@ cronRoutes.get("/drain", async (c) => {
     maxPostsPerFeed: positiveInt(process.env.RSS_CRON_MAX_POSTS_PER_FEED, 1),
   });
   const runImages = async () => {
-    const limit = positiveInt(process.env.IMAGE_CRON_MAX_REQUESTS, 2);
-    return drainDeferredImages(undefined, limit);
+    return drainDeferredImages();
   };
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });

@@ -50,7 +50,6 @@ Runtime safety knobs in backend env:
 ```text
 RSS_CRON_MAX_FEEDS=1
 RSS_CRON_MAX_POSTS_PER_FEED=1
-IMAGE_CRON_MAX_REQUESTS=2
 ```
 
 Raise those only if cron runs finish comfortably under the backend function limit.

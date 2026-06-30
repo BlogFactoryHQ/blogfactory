@@ -50,11 +50,6 @@ function serializeRequest(row: any) {
   };
 }
 
-function positiveInt(value: unknown, fallback: number) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
-}
-
 imagesRoutes.get("/", async (c) => {
   const userId = getUserId(c);
 
@@ -137,7 +132,7 @@ imagesRoutes.get("/requests", async (c) => {
     .orderBy(desc(imageGenerationRequests.createdAt));
 
   if ((status === "active" || status === "all") && rows.some((row) => row.provider === "ai-deferred" && row.status === "queued")) {
-    kickDeferredImageWorker(userId, rows.length);
+    kickDeferredImageWorker(userId);
   }
 
   return c.json(rows.map(serializeRequest));
@@ -145,7 +140,7 @@ imagesRoutes.get("/requests", async (c) => {
 
 imagesRoutes.post("/queue/process", async (c) => {
   const userId = getUserId(c);
-  const results = await drainDeferredImages(userId, positiveInt(c.req.query("limit"), 10));
+  const results = await drainDeferredImages(userId);
   return c.json({
     processed: results.some((result) => result.processed),
     results,
@@ -181,7 +176,7 @@ imagesRoutes.post("/requests/:id/retry", async (c) => {
     .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
     .returning();
 
-  kickDeferredImageWorker(userId, 1);
+  kickDeferredImageWorker(userId);
   return c.json(serializeRequest(updated));
 });
 

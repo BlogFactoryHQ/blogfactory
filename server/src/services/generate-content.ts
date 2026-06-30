@@ -98,7 +98,7 @@ function summarizeImageResolution(result: ImageResolutionResult) {
 }
 
 const AI_REQUEST_TIMEOUT_MS = 35_000;
-const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
+const IMAGE_REQUEST_TIMEOUT_MS = 45_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
 const RSS_FETCH_TIMEOUT_MS = 15_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
@@ -1471,7 +1471,7 @@ export async function generateContent(opts: GenerateOpts) {
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
     if (imageResolutionResults.some((item) => (item.result?.queued || 0) > 0)) {
-      kickDeferredImageWorker(userId, 2);
+      kickDeferredImageWorker(userId);
     }
 
     return { jobId, status: "completed", postIds: createdPostIds };
@@ -1711,6 +1711,14 @@ export function openRouterImageBase64(data: any) {
   return typeof value === "string" ? value.replace(/^data:image\/[^;]+;base64,/, "") : "";
 }
 
+export function openRouterImageTimeoutMessage() {
+  return `OpenRouter image timed out after ${Math.round(IMAGE_REQUEST_TIMEOUT_MS / 1000)}s. Retry or choose a faster image model.`;
+}
+
+function isAbortTimeout(err: unknown) {
+  return err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/i.test(err.message));
+}
+
 async function generateSingleImage(
   prompt: string,
   altText: string,
@@ -1727,15 +1735,33 @@ async function generateSingleImage(
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
 
   const startedAt = Date.now();
-  const resp = await fetch("https://openrouter.ai/api/v1/images", {
-    method: "POST",
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${openRouterKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(openRouterImageRequestPayload(modelId, prompt, resolution, aspectRatio)),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch("https://openrouter.ai/api/v1/images", {
+      method: "POST",
+      signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(openRouterImageRequestPayload(modelId, prompt, resolution, aspectRatio)),
+    });
+  } catch (err) {
+    if (!isAbortTimeout(err)) throw err;
+    const message = openRouterImageTimeoutMessage();
+    await db.insert(generationLogs).values({
+      userId,
+      postId,
+      usageType: "image",
+      modelId,
+      provider: "openrouter-image",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      sessionId: jobId,
+      responseData: { error: message },
+    });
+    throw new Error(message);
+  }
 
   if (!resp.ok) {
     const errorText = await resp.text().catch(() => "");

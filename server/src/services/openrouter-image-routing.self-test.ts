@@ -4,6 +4,7 @@ import {
   openRouterImageBase64,
   openRouterImageModelId,
   openRouterImageRequestPayload,
+  openRouterImageTimeoutMessage,
 } from "./generate-content.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
@@ -24,5 +25,6 @@ assertEqual(openRouterImageRequestPayload("x-ai/grok-imagine-image-quality", "dr
 assertEqual((payload as any).n, undefined, "image generation does not send optional provider-specific count");
 assertEqual((payload as any).messages, undefined, "image generation does not use chat messages");
 assertEqual(openRouterImageBase64({ data: [{ b64_json: "data:image/png;base64,abcd" }] }), "abcd", "image response base64 is extracted");
+assertEqual(openRouterImageTimeoutMessage(), "OpenRouter image timed out after 45s. Retry or choose a faster image model.", "image timeout error is explicit");
 
 console.log("openrouter-image-routing self-check passed");

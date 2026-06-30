@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageGenerationRequests } from "../db/schema.js";
 import { attachPostImage } from "./image-post-attachments.js";
-import { clampInt, imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
+import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
 
 export async function queueDeferredImageRequest(opts: {
   userId: string;
@@ -158,23 +158,15 @@ export async function processNextDeferredImage(userId?: string) {
   }
 }
 
-export async function drainDeferredImages(userId?: string, limit = 2) {
-  const attempts = clampInt(limit, 2, 1, 10);
-  const results = [];
-  for (let index = 0; index < attempts; index += 1) {
-    const result = await processNextDeferredImage(userId);
-    results.push(result);
-    if (!result.processed && !result.error) break;
-  }
-  return results;
+export async function drainDeferredImages(userId?: string) {
+  return [await processNextDeferredImage(userId)];
 }
 
-export function kickDeferredImageWorker(userId?: string, limit = 2) {
-  const count = clampInt(limit, 2, 1, 10);
+export function kickDeferredImageWorker(userId?: string) {
   setTimeout(() => {
     // ponytail: best-effort local wake; cron is the durable worker on deploy.
     (async () => {
-      await drainDeferredImages(userId, count);
+      await drainDeferredImages(userId);
     })().catch((err) => console.warn("[images] Deferred worker kick failed:", err instanceof Error ? err.message : err));
   }, 0);
 }
