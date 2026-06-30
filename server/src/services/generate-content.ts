@@ -122,11 +122,16 @@ export function openRouterImageModelId(modelId: string | null | undefined) {
 
 async function validateImageModelForRequest(openRouterKey: string | null, modelId: string, type: string) {
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
-  if (modelId) {
-    await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
-    return modelId;
-  }
   const fallback = (await getOpenRouterModels(openRouterKey, "image"))[0]?.id;
+  if (modelId) {
+    try {
+      await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
+      return modelId;
+    } catch {
+      if (fallback) return fallback;
+      throw new Error(`Selected image model is unavailable and no OpenRouter 1K fallback exists for ${type} images`);
+    }
+  }
   if (!fallback) throw new Error(`No OpenRouter 1K image model is available for ${type} images`);
   return fallback;
 }

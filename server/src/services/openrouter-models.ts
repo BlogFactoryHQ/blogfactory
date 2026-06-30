@@ -56,6 +56,8 @@ function enumValues(value: any) {
 function supports1KImage(model: any) {
   const resolutions = enumValues(model.supported_parameters?.resolution);
   const aspectRatios = enumValues(model.supported_parameters?.aspect_ratio);
+  // ponytail: Google image routes currently require Google AI Studio provider auth behind OpenRouter.
+  if (String(model.id || "").startsWith("google/")) return false;
   // ponytail: Seedream advertises 1K, but its provider rejects our 1K web-size request.
   if (model.id === "bytedance-seed/seedream-4.5") return false;
   if (/preview/i.test(`${model.id} ${model.name || ""}`)) return false;
