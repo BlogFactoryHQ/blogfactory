@@ -14,7 +14,7 @@ const payload = {
       },
     },
     {
-      id: "google/gemini-image",
+      id: "bad",
       architecture: { output_modalities: ["image"] },
       pricing: { prompt: "0", completion: "0" },
       supported_parameters: {
@@ -30,9 +30,15 @@ const payload = {
         resolution: { type: "enum", values: ["1K", "2K"] },
         aspect_ratio: { type: "enum", values: ["1:1", "16:9", "3:2"] },
       },
+      image_endpoints: [{
+        pricing: [
+          { billable: "output_image", unit: "image", variant: "1k", cost_usd: 0.05 },
+          { billable: "output_image", unit: "image", variant: "2k", cost_usd: 0.07 },
+        ],
+      }],
     },
     {
-      id: "bytedance-seed/seedream-4.5",
+      id: "other",
       architecture: { output_modalities: ["image"] },
       pricing: { prompt: "0", completion: "0" },
       supported_parameters: {
@@ -41,12 +47,12 @@ const payload = {
       },
     },
     {
-      id: "google/gemini-web-image-preview",
+      id: "google/gemini-3.1-flash-image-preview",
       architecture: { output_modalities: ["image"] },
       pricing: { prompt: "0", completion: "0" },
       supported_parameters: {
-        resolution: { type: "enum", values: ["1K", "2K"] },
-        aspect_ratio: { type: "enum", values: ["16:9", "3:2"] },
+        resolution: { type: "enum", values: ["512", "1K", "2K", "4K"] },
+        aspect_ratio: { type: "enum", values: ["1:1", "16:9", "3:2"] },
       },
     },
   ],
@@ -58,8 +64,10 @@ const image = catalogFromOpenRouterPayload(payload, "image");
 assert.deepEqual(text.map((model: { id: string }) => model.id), ["openai/gpt-4o-mini", "openrouter/auto"]);
 assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.costInfo, "Dynamic pricing");
 assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.isFree, false);
-assert.deepEqual(image.map((model: { id: string }) => model.id), ["x-ai/grok-imagine-image-quality"]);
+assert.deepEqual(image.map((model: { id: string }) => model.id), ["x-ai/grok-imagine-image-quality", "google/gemini-3.1-flash-image-preview"]);
 assert.deepEqual(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.constraints.resolutions, ["1K"]);
+assert.equal(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.rawPricing.imageByResolution["1K"], 0.05);
+assert.deepEqual(image.find((model: { id: string }) => model.id === "google/gemini-3.1-flash-image-preview")?.constraints.resolutions, ["512", "1K"]);
 assert.deepEqual(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.supportedParameters, ["resolution", "aspect_ratio"]);
 assert.match(OPENROUTER_MODEL_UNAVAILABLE_MESSAGE, /no longer available on OpenRouter/);
 

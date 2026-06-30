@@ -209,9 +209,10 @@ export default function RSSFeedNew() {
             filterOldPostsDays: filterOldPostsDays || undefined,
             generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
             imageConfig: (imageConfig.cover.enabled || imageConfig.inline.enabled) ? {
-              cover: imageConfig.cover.enabled ? {} : null,
+              cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
               inline: imageConfig.inline.enabled ? {
                 count: imageConfig.inline.count,
+                resolution: imageConfig.inline.resolution || "1K",
               } : null,
             } : undefined,
           });

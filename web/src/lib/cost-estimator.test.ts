@@ -3,7 +3,8 @@ import { estimateGenerationCost, shouldWarnForCost } from "./cost-estimator";
 
 const textModel = { id: "test/text", rawPricing: { prompt: 1, completion: 2, request: 0 } };
 const imageModel = { id: "x-ai/grok-imagine-image-quality", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
-const paidImageModel = { id: "openai/gpt-image-1", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
+const paidImageModel = { id: "x-ai/grok-imagine-image-quality", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
+const resolutionPricedImageModel = { id: "test/image", rawPricing: { prompt: 0, completion: 0, image: 0.05, request: 0, imageByResolution: { "512": 0.02, "1K": 0.05 } } };
 
 const imageConfig = {
   cover: { enabled: true },
@@ -35,12 +36,25 @@ describe("cost estimator", () => {
   it("keeps zero-priced inline model at zero expected image spend", () => {
     const estimate = estimateGenerationCost({ postCount: 10, textModel, imageModel, inlineImageModel: imageModel, imageConfig, inlineImageSource: "ai" });
     expect(estimate.inlineImageCost).toBe(0);
-    expect(estimate.assumptions.join(" ")).toContain("selected OpenRouter inline image model");
+    expect(estimate.assumptions.join(" ")).toContain("OpenRouter image model");
   });
 
   it("counts paid inline image spend", () => {
     const estimate = estimateGenerationCost({ postCount: 2, textModel, imageModel, inlineImageModel: paidImageModel, imageConfig, inlineImageSource: "ai" });
     expect(estimate.inlineImageCost).toBeCloseTo(0.16);
+  });
+
+  it("uses selected image resolution pricing when available", () => {
+    const estimate = estimateGenerationCost({
+      postCount: 2,
+      textModel,
+      imageModel: resolutionPricedImageModel,
+      inlineImageModel: resolutionPricedImageModel,
+      imageConfig: { cover: { enabled: true, resolution: "512" }, inline: { enabled: true, count: 1, resolution: "1K" } },
+      inlineImageSource: "ai",
+    });
+    expect(estimate.coverImageCost).toBeCloseTo(0.04);
+    expect(estimate.inlineImageCost).toBeCloseTo(0.1);
   });
 
   it("keeps stock inline image spend at zero", () => {

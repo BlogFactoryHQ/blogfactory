@@ -49,6 +49,10 @@ export function imageModelForTarget(selectedModel: string, type: ImageTargetType
   return type === "inline" ? inlineModel : selectedModel;
 }
 
+function normalizeImageResolution(value: unknown) {
+  return value === "512" ? "512" : "1K";
+}
+
 function plainText(value: string, maxChars = 700) {
   return value
     .replace(/```[\s\S]*?```/g, " ")
@@ -105,7 +109,7 @@ export function imageTargets(imageConfig: any) {
       type: "cover",
       position: 0,
       aspectRatio: imageConfig.cover?.aspectRatio || "16:9",
-      resolution: "1K",
+      resolution: normalizeImageResolution(imageConfig.cover?.resolution),
     });
   }
   if (imageConfig?.inline && imageConfig.inline.enabled !== false) {
@@ -115,7 +119,7 @@ export function imageTargets(imageConfig: any) {
         type: "inline",
         position: i,
         aspectRatio: imageConfig.inline?.aspectRatio || "3:2",
-        resolution: "1K",
+        resolution: normalizeImageResolution(imageConfig.inline?.resolution),
       });
     }
   }

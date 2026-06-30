@@ -248,23 +248,35 @@ const linkDensityOptions = [
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
 const DEFAULT_INLINE_IMAGE_MODEL = "";
+const OPENROUTER_IMAGE_MODEL_IDS = new Set([
+  "google/gemini-3.1-flash-image",
+  "google/gemini-3-pro-image",
+  "x-ai/grok-imagine-image-quality",
+  "google/gemini-3.1-flash-image-preview",
+]);
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return value || DEFAULT_COVER_IMAGE_MODEL;
+  return value && OPENROUTER_IMAGE_MODEL_IDS.has(value) ? value : DEFAULT_COVER_IMAGE_MODEL;
 }
 
 function normalizeInlineImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return !value || value === "openrouter/free" || value === "openrouter/auto" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+  return value && OPENROUTER_IMAGE_MODEL_IDS.has(value) ? value : DEFAULT_INLINE_IMAGE_MODEL;
+}
+
+function normalizeImageResolution(value?: string | null): "512" | "1K" {
+  return value === "512" ? "512" : "1K";
 }
 
 function normalizeInlineImageSource(value?: string | null): InlineImageSource {
   return value === "stock" ? "stock" : "ai";
 }
 
-function imageCost(model?: LiveImageModel | null) {
+function imageCost(model: LiveImageModel | null | undefined, resolution?: "512" | "1K") {
   if (!model || model.isFree) return 0;
+  const byResolution = model.rawPricing.imageByResolution?.[resolution || "1K"];
+  if (byResolution) return byResolution;
   return model.rawPricing.image || 0;
 }
 
@@ -376,9 +388,9 @@ export default function Settings() {
   });
   const selectedCoverModel = coverImageModels.find((model) => model.id === selectedImageModel);
   const selectedInlineModel = imageModels.find((model) => model.id === selectedInlineImageModel);
-  const coverImageCost = imageConfig.cover.enabled ? imageCost(selectedCoverModel) : 0;
+  const coverImageCost = imageConfig.cover.enabled ? imageCost(selectedCoverModel, imageConfig.cover.resolution || "1K") : 0;
   const inlineImageCost = imageConfig.inline.enabled && inlineImageSource === "ai"
-    ? imageCost(selectedInlineModel) * imageConfig.inline.count
+    ? imageCost(selectedInlineModel, imageConfig.inline.resolution || "1K") * imageConfig.inline.count
     : 0;
   const imageSettingsError =
     !selectedImageModel
@@ -424,7 +436,9 @@ export default function Settings() {
     inlineImageSource !== savedInlineImageSource ||
     imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
     imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
-    imageConfig.inline.count !== (userSettings.inline_count ?? 2)
+    imageConfig.inline.count !== (userSettings.inline_count ?? 2) ||
+    (imageConfig.cover.resolution || "1K") !== normalizeImageResolution(userSettings.cover_image_resolution) ||
+    (imageConfig.inline.resolution || "1K") !== normalizeImageResolution(userSettings.inline_image_resolution)
   ) ? "dirty" : "clean";
   const imagePromptDirty: DirtyState = userSettings && imageStylePrompt !== (userSettings.image_style_prompt || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.") ? "dirty" : "clean";
 
@@ -448,10 +462,12 @@ export default function Settings() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
+          resolution: normalizeImageResolution(userSettings.cover_image_resolution),
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
+          resolution: normalizeImageResolution(userSettings.inline_image_resolution),
         },
       });
       setSelectedImageModel(normalizeCoverImageModelId(userSettings.image_model));
@@ -618,6 +634,8 @@ export default function Settings() {
         image_model: selectedImageModel,
         inline_image_model: selectedInlineImageModel,
         inline_image_source: inlineImageSource,
+        cover_image_resolution: imageConfig.cover.resolution || "1K",
+        inline_image_resolution: imageConfig.inline.resolution || "1K",
         cover_enabled: imageConfig.cover.enabled,
         inline_enabled: imageConfig.inline.enabled,
         inline_count: imageConfig.inline.count,
@@ -829,7 +847,7 @@ export default function Settings() {
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
-    { id: "models", title: "Models", description: "Text + 1K images", icon: Zap },
+    { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
     { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
     { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
@@ -1226,7 +1244,7 @@ export default function Settings() {
               <SectionHeader
                 icon={Zap}
                 title="Models"
-                description="Live OpenRouter catalog. Text models write articles; 1K image models generate cover and inline AI images."
+                description="Live OpenRouter catalog. Text models write articles; approved image models generate cover and inline AI images."
                 action={
                   <Button
                     variant="outline"
@@ -1264,18 +1282,18 @@ export default function Settings() {
                   </Select>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredTextModels.length} text models and {filteredImageModels.length} official 1K image models.
+                  Showing {filteredTextModels.length} text models and {filteredImageModels.length} approved image models.
                 </p>
 
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <ImageIcon className="h-4 w-4" />
-                    1K Image Models
+                    Image Models
                   </h4>
                   {imageModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
                   ) : filteredImageModels.length === 0 ? (
-                    <div className="py-4 text-center text-muted-foreground">No image models match these filters.</div>
+                    <div className="py-4 text-center text-muted-foreground">No image model matches these filters.</div>
                   ) : (
                     <div className="grid grid-cols-1 gap-3">
                       {filteredImageModels.map((model) => (
@@ -1290,7 +1308,7 @@ export default function Settings() {
                             <p className="mb-1 font-mono text-xs text-muted-foreground">{model.id}</p>
                             <p className="line-clamp-1 text-xs text-muted-foreground">{model.description}</p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                              {model.provider} · 1K output
+                              {model.provider} · {model.constraints?.resolutions?.join("/") || "1K"} output
                             </p>
                             {model.isFree && model.limits && (
                               <p className="mt-0.5 text-xs text-primary">{model.limits}</p>
@@ -1823,7 +1841,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={ImagePlus}
                   title="Image Generation"
-                  description="Cover and inline AI use OpenRouter 1K image models. Inline Stock uses stock providers only."
+                  description="Cover and inline AI use approved OpenRouter image models. Inline Stock uses stock providers only."
                   action={
                     <Button
                       size="sm"
@@ -1927,6 +1945,8 @@ export default function Settings() {
                     config={imageConfig}
                     onConfigChange={setImageConfig}
                     inlineImageSource={inlineImageSource}
+                    coverResolutions={selectedCoverModel?.constraints?.resolutions}
+                    inlineResolutions={selectedInlineModel?.constraints?.resolutions}
                   />
                 </div>
               </BywordCard>

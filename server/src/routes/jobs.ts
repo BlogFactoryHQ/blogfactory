@@ -87,12 +87,18 @@ export function staleTimeoutUpdateForJob(job: {
 
 function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
   const imageConfig: Record<string, unknown> = {};
+  const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)
+    ? settings.imageAdvancedOptions as Record<string, unknown>
+    : {};
+  const coverResolution = imageOptions.coverResolution === "512" ? "512" : "1K";
+  const inlineResolution = imageOptions.inlineResolution === "512" ? "512" : "1K";
   if (settings?.coverEnabled) {
-    imageConfig.cover = {};
+    imageConfig.cover = { resolution: coverResolution };
   }
   if (settings?.inlineEnabled) {
     imageConfig.inline = {
       count: settings.inlineCount ?? 2,
+      resolution: inlineResolution,
     };
   }
   const generateImages = Boolean(settings?.coverEnabled || settings?.inlineEnabled);

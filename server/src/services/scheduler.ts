@@ -78,12 +78,18 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         .limit(1);
 
       const imageConfig: any = {};
+      const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)
+        ? settings.imageAdvancedOptions as Record<string, unknown>
+        : {};
+      const coverResolution = imageOptions.coverResolution === "512" ? "512" : "1K";
+      const inlineResolution = imageOptions.inlineResolution === "512" ? "512" : "1K";
       if (settings?.coverEnabled) {
-        imageConfig.cover = {};
+        imageConfig.cover = { resolution: coverResolution };
       }
       if (settings?.inlineEnabled) {
         imageConfig.inline = {
           count: settings.inlineCount ?? 2,
+          resolution: inlineResolution,
         };
       }
 

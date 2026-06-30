@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,17 @@ import {
 import { cn } from "@/lib/utils";
 
 export type InlineImageSource = "ai" | "stock";
+export type ImageResolution = "512" | "1K";
 
 export interface CoverImageConfig {
   enabled: boolean;
+  resolution?: ImageResolution;
 }
 
 export interface InlineImageConfig {
   enabled: boolean;
   count: number;
+  resolution?: ImageResolution;
 }
 
 export interface SplitImageConfig {
@@ -39,11 +42,13 @@ export interface SplitImageConfig {
 
 export const DEFAULT_COVER_CONFIG: CoverImageConfig = {
   enabled: true,
+  resolution: "1K",
 };
 
 export const DEFAULT_INLINE_CONFIG: InlineImageConfig = {
   enabled: true,
   count: 2,
+  resolution: "1K",
 };
 
 export const DEFAULT_SPLIT_CONFIG: SplitImageConfig = {
@@ -57,6 +62,8 @@ interface SplitImageGenerationSettingsProps {
   compact?: boolean;
   className?: string;
   inlineImageSource?: InlineImageSource;
+  coverResolutions?: ImageResolution[];
+  inlineResolutions?: ImageResolution[];
 }
 
 export function SplitImageGenerationSettings({
@@ -65,6 +72,8 @@ export function SplitImageGenerationSettings({
   compact = false,
   className,
   inlineImageSource = "ai",
+  coverResolutions = ["512", "1K"],
+  inlineResolutions = ["512", "1K"],
 }: SplitImageGenerationSettingsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -75,6 +84,35 @@ export function SplitImageGenerationSettings({
   const updateInline = (updates: Partial<InlineImageConfig>) => {
     onConfigChange({ ...config, inline: { ...config.inline, ...updates } });
   };
+  useEffect(() => {
+    const nextCover = coverResolutions.includes(config.cover.resolution || "1K") ? config.cover.resolution : coverResolutions.includes("1K") ? "1K" : coverResolutions[0];
+    const nextInline = inlineResolutions.includes(config.inline.resolution || "1K") ? config.inline.resolution : inlineResolutions.includes("1K") ? "1K" : inlineResolutions[0];
+    if (nextCover !== config.cover.resolution || nextInline !== config.inline.resolution) {
+      onConfigChange({
+        cover: { ...config.cover, resolution: nextCover },
+        inline: { ...config.inline, resolution: nextInline },
+      });
+    }
+  }, [config, coverResolutions, inlineResolutions, onConfigChange]);
+  const resolutionButtons = (value: ImageResolution | undefined, available: ImageResolution[], onChange: (resolution: ImageResolution) => void) => (
+    <div className="grid grid-cols-2 rounded-lg border border-border p-1">
+      {(["512", "1K"] as const).map((resolution) => (
+        <button
+          key={resolution}
+          type="button"
+          disabled={!available.includes(resolution)}
+          onClick={() => available.includes(resolution) && onChange(resolution)}
+          className={cn(
+            "rounded-md px-3 py-2 text-sm font-medium transition-calm",
+            (value || "1K") === resolution ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+            !available.includes(resolution) && "cursor-not-allowed opacity-40 hover:bg-transparent"
+          )}
+        >
+          {resolution}
+        </button>
+      ))}
+    </div>
+  );
 
   const inlineCostLabel = !config.inline.enabled || config.inline.count === 0
     ? "Off"
@@ -95,10 +133,11 @@ export function SplitImageGenerationSettings({
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div>
           <Label>Cover Image</Label>
-          <p className="text-xs text-muted-foreground">{config.cover.enabled ? "AI" : "Off"}</p>
+          <p className="text-xs text-muted-foreground">{config.cover.enabled ? `${config.cover.resolution || "1K"} AI` : "Off"}</p>
         </div>
         <Switch checked={config.cover.enabled} onCheckedChange={(enabled) => updateCover({ enabled })} />
       </div>
+      {config.cover.enabled && resolutionButtons(config.cover.resolution, coverResolutions, (resolution) => updateCover({ resolution }))}
 
       <div className="space-y-3 rounded-lg border border-border p-3">
         <div className="flex items-center justify-between">
@@ -111,6 +150,7 @@ export function SplitImageGenerationSettings({
 
         {config.inline.enabled && (
           <div className="space-y-2">
+            {inlineImageSource === "ai" && resolutionButtons(config.inline.resolution, inlineResolutions, (resolution) => updateInline({ resolution }))}
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Count</span>
               <span className="font-medium">{config.inline.count}</span>

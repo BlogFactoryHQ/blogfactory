@@ -22,6 +22,7 @@ import {
 } from "../services/internal-linking.js";
 import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
+import { normalizeOpenRouterImageModelId } from "../services/openrouter-models.js";
 
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay"]);
@@ -42,8 +43,15 @@ const MAX_KNOWLEDGE_FILE_BYTES = 10 * 1024 * 1024;
 type SettingsUpdate = Record<string, any>;
 
 function normalizeInlineImageModelId(modelId: string | undefined) {
-  const value = modelId?.trim();
-  return !value || value === "openrouter/free" || value === "openrouter/auto" ? "" : value;
+  return normalizeOpenRouterImageModelId(modelId);
+}
+
+function normalizeImageModelId(modelId: string | undefined) {
+  return normalizeOpenRouterImageModelId(modelId);
+}
+
+function normalizeImageResolution(value: unknown) {
+  return value === "512" ? "512" : "1K";
 }
 
 function normalizeInlineImageSource(value: unknown) {
@@ -55,9 +63,13 @@ function normalizeImageAdvancedOptions(value: unknown) {
   const options = value as Record<string, unknown>;
   const inlineModel = asOptionalText(options.inlineImageModel);
   const inlineSource = options.inlineImageSource;
+  const coverResolution = options.coverResolution;
+  const inlineResolution = options.inlineResolution;
   return {
     ...(inlineModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(inlineModel) } : {}),
     ...(inlineSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(inlineSource) } : {}),
+    ...(coverResolution !== undefined ? { coverResolution: normalizeImageResolution(coverResolution) } : {}),
+    ...(inlineResolution !== undefined ? { inlineResolution: normalizeImageResolution(inlineResolution) } : {}),
   };
 }
 
@@ -145,6 +157,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     ? normalizeInlineImageModelId(imageAdvancedOptions.inlineImageModel)
     : "";
   const inlineImageSource = normalizeInlineImageSource(imageAdvancedOptions.inlineImageSource);
+  const coverImageResolution = normalizeImageResolution(imageAdvancedOptions.coverResolution);
+  const inlineImageResolution = normalizeImageResolution(imageAdvancedOptions.inlineResolution);
 
   return {
     id: settings.id,
@@ -158,6 +172,10 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     inlineImageModel,
     inline_image_source: inlineImageSource,
     inlineImageSource,
+    cover_image_resolution: coverImageResolution,
+    coverImageResolution: coverImageResolution,
+    inline_image_resolution: inlineImageResolution,
+    inlineImageResolution: inlineImageResolution,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
     cover_enabled: settings.coverEnabled,
@@ -267,7 +285,7 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   };
 
   const imageModel = asOptionalText(body.image_model ?? body.imageModel);
-  if (imageModel !== undefined) update.imageModel = imageModel.trim();
+  if (imageModel !== undefined) update.imageModel = normalizeImageModelId(imageModel);
   setText("imageStylePrompt", "image_style_prompt");
   const inlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
   if (inlineImageModel !== undefined) {
@@ -287,6 +305,20 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       ? update.imageAdvancedOptions as Record<string, unknown>
       : {};
     update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageSource } as never;
+  }
+  const coverImageResolution = body.cover_image_resolution ?? body.coverImageResolution;
+  const inlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
+  if (coverImageResolution !== undefined || inlineImageResolution !== undefined) {
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = {
+      ...imageAdvancedOptions,
+      ...(coverImageResolution !== undefined ? { coverResolution: normalizeImageResolution(coverImageResolution) } : {}),
+      ...(inlineImageResolution !== undefined ? { inlineResolution: normalizeImageResolution(inlineImageResolution) } : {}),
+    } as never;
   }
   setBool("coverEnabled", "cover_enabled");
   setBool("inlineEnabled", "inline_enabled");
@@ -761,7 +793,9 @@ settingsRoutes.put("/", async (c) => {
 
   const directInlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
   const directInlineImageSource = body.inline_image_source ?? body.inlineImageSource;
-  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined) {
+  const directCoverImageResolution = body.cover_image_resolution ?? body.coverImageResolution;
+  const directInlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
+  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined) {
     const [existing] = await db
       .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
       .from(userSettings)
@@ -772,6 +806,8 @@ settingsRoutes.put("/", async (c) => {
       ...imageAdvancedOptions,
       ...(directInlineImageModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(directInlineImageModel) } : {}),
       ...(directInlineImageSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(directInlineImageSource) } : {}),
+      ...(directCoverImageResolution !== undefined ? { coverResolution: normalizeImageResolution(directCoverImageResolution) } : {}),
+      ...(directInlineImageResolution !== undefined ? { inlineResolution: normalizeImageResolution(directInlineImageResolution) } : {}),
     } as never;
   }
 

@@ -15,7 +15,8 @@ function priceBadge(model: LiveImageModel) {
 }
 
 function imageMeta(model: LiveImageModel) {
-  return [model.provider, "1K output", model.costInfo].filter(Boolean).join(" · ");
+  const resolutions = model.constraints?.resolutions?.length ? `${model.constraints.resolutions.join("/")} output` : "";
+  return [model.provider, resolutions, model.costInfo].filter(Boolean).join(" · ");
 }
 
 export function isUnavailableImageModel(modelId: string | null | undefined, models: LiveImageModel[]) {
@@ -64,7 +65,7 @@ export function LiveImageModelSelect({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search OpenRouter 1K image models"
+            placeholder="Search OpenRouter image models"
             className="h-10 border-0 px-0 shadow-none focus-visible:ring-0"
           />
         </div>

@@ -17,14 +17,14 @@ assertEqual(shouldProcessAiImagesNow(3), false, "more than two AI images stay qu
 assertEqual(shouldProcessAiImagesNow(1, false), false, "low function budget keeps AI images queued");
 
 assertEqual(
-  imageModelForTarget("openai/gpt-image-1", "cover", "openai/gpt-image-1-mini"),
-  "openai/gpt-image-1",
+  imageModelForTarget("x-ai/grok-imagine-image-quality", "cover", "x-ai/grok-imagine-image-quality"),
+  "x-ai/grok-imagine-image-quality",
   "cover uses selected cover model"
 );
 
 assertEqual(
-  imageModelForTarget("openai/gpt-image-1", "inline", "openai/gpt-image-1-mini"),
-  "openai/gpt-image-1-mini",
+  imageModelForTarget("x-ai/grok-imagine-image-quality", "inline", "x-ai/grok-imagine-image-quality"),
+  "x-ai/grok-imagine-image-quality",
   "inline AI uses selected inline model"
 );
 
@@ -32,6 +32,12 @@ assertEqual(
   imageTargets({ inline: { count: 1, resolution: "1K", aspectRatio: "3:2" } }).length,
   1,
   "inline config without enabled flag still creates targets"
+);
+
+assertEqual(
+  imageTargets({ cover: { resolution: "512", aspectRatio: "16:9" }, inline: { count: 1, resolution: "512", aspectRatio: "3:2" } })[0].resolution,
+  "512",
+  "slot builder keeps 512 resolution"
 );
 
 assertEqual(

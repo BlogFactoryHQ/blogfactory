@@ -5,7 +5,12 @@ import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult } from "./low-cost-images.js";
-import { assertOpenRouterModelAvailable, getOpenRouterModels } from "./openrouter-models.js";
+import {
+  assertOpenRouterModelAvailable,
+  getOpenRouterModels,
+  normalizeOpenRouterImageModelId,
+  openRouterImageResolution,
+} from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
@@ -116,8 +121,7 @@ const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
 };
 
 export function openRouterImageModelId(modelId: string | null | undefined) {
-  modelId = modelId?.trim();
-  return !modelId || modelId === "openrouter/free" || modelId === "openrouter/auto" ? "" : modelId;
+  return normalizeOpenRouterImageModelId(modelId);
 }
 
 async function validateImageModelForRequest(openRouterKey: string | null, modelId: string, type: string) {
@@ -129,10 +133,10 @@ async function validateImageModelForRequest(openRouterKey: string | null, modelI
       return modelId;
     } catch {
       if (fallback) return fallback;
-      throw new Error(`Selected image model is unavailable and no OpenRouter 1K fallback exists for ${type} images`);
+      throw new Error(`Selected image model is unavailable and no OpenRouter image fallback exists for ${type} images`);
     }
   }
-  if (!fallback) throw new Error(`No OpenRouter 1K image model is available for ${type} images`);
+  if (!fallback) throw new Error(`No OpenRouter image model is available for ${type} images`);
   return fallback;
 }
 
@@ -1708,7 +1712,7 @@ export function openRouterImageRequestPayload(modelId: string, prompt: string, r
   return {
     model: modelId,
     prompt,
-    resolution: "1K",
+    resolution: openRouterImageResolution(modelId, resolution),
     aspect_ratio: aspectRatio,
   };
 }
@@ -1719,7 +1723,7 @@ export function openRouterImageBase64(data: any) {
 }
 
 export function openRouterImageTimeoutMessage() {
-  return `OpenRouter image timed out after ${Math.round(IMAGE_REQUEST_TIMEOUT_MS / 1000)}s. Retry or choose a faster image model.`;
+  return `OpenRouter image timed out after ${Math.round(IMAGE_REQUEST_TIMEOUT_MS / 1000)}s. Retry later or use stock for inline images.`;
 }
 
 function isAbortTimeout(err: unknown) {

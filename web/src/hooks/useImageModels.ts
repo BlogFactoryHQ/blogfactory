@@ -19,6 +19,7 @@ export interface LiveImageModel {
     image: number;
     request: number;
     webSearch?: number;
+    imageByResolution?: Partial<Record<"512" | "1K", number>>;
   };
   contextLength: number | null;
   modalities?: {

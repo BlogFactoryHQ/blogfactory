@@ -272,9 +272,10 @@ export default function RSSFeeds() {
         platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
         imageConfig: imagesEnabled ? {
-          cover: ic.cover.enabled ? {} : null,
+          cover: ic.cover.enabled ? { resolution: ic.cover.resolution || "1K" } : null,
           inline: ic.inline.enabled ? {
             count: ic.inline.count,
+            resolution: ic.inline.resolution || "1K",
           } : null,
         } : undefined,
       });

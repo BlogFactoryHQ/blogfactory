@@ -26,6 +26,7 @@ interface PricedModel {
     completion: number;
     image?: number;
     request?: number;
+    imageByResolution?: Partial<Record<"512" | "1K", number>>;
   };
 }
 
@@ -59,19 +60,21 @@ export function estimateGenerationCost(input: {
   const textPerPost = promptCostPerPost + completionCostPerPost + requestPrice;
 
   const inlineUsesAi = input.inlineImageSource !== "stock";
-  const imagePrice = input.imageModel?.rawPricing.image || 0;
-  const inlineImagePrice = input.inlineImageModel?.rawPricing.image || 0;
+  const coverResolution = input.imageConfig.cover.resolution === "512" ? "512" : "1K";
+  const inlineResolution = input.imageConfig.inline.resolution === "512" ? "512" : "1K";
+  const imagePrice = input.imageModel?.rawPricing.imageByResolution?.[coverResolution] || input.imageModel?.rawPricing.image || 0;
+  const inlineImagePrice = input.inlineImageModel?.rawPricing.imageByResolution?.[inlineResolution] || input.inlineImageModel?.rawPricing.image || 0;
   const coverPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
   const coverHighPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
   const inlinePerPost = input.imageConfig.inline.enabled && inlineUsesAi ? inlineImagePrice * input.imageConfig.inline.count : 0;
 
   const assumptions = [
     avgTokens > 0 ? "Text estimate uses recent average tokens per post." : "Text estimate uses article word count heuristic.",
-    input.imageConfig.cover.enabled ? "Cover uses the selected OpenRouter cover image model." : "Cover image is off.",
+    input.imageConfig.cover.enabled ? "Cover uses the OpenRouter image model." : "Cover image is off.",
     !input.imageConfig.inline.enabled || input.imageConfig.inline.count === 0
       ? "Inline images are off."
       : inlineUsesAi
-        ? "Inline images use the selected OpenRouter inline image model."
+        ? "Inline images use the OpenRouter image model."
         : "Inline images use stock providers at $0 image generation cost.",
   ];
 

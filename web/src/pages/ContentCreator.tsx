@@ -76,15 +76,25 @@ import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/l
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
 const DEFAULT_INLINE_IMAGE_MODEL = "";
+const OPENROUTER_IMAGE_MODEL_IDS = new Set([
+  "google/gemini-3.1-flash-image",
+  "google/gemini-3-pro-image",
+  "x-ai/grok-imagine-image-quality",
+  "google/gemini-3.1-flash-image-preview",
+]);
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return value || DEFAULT_COVER_IMAGE_MODEL;
+  return value && OPENROUTER_IMAGE_MODEL_IDS.has(value) ? value : DEFAULT_COVER_IMAGE_MODEL;
 }
 
 function normalizeInlineImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return !value || value === "openrouter/free" || value === "openrouter/auto" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+  return value && OPENROUTER_IMAGE_MODEL_IDS.has(value) ? value : DEFAULT_INLINE_IMAGE_MODEL;
+}
+
+function normalizeImageResolution(value?: string | null): "512" | "1K" {
+  return value === "512" ? "512" : "1K";
 }
 
 function normalizeInlineImageSource(value?: string | null): InlineImageSource {
@@ -424,10 +434,12 @@ export default function ContentCreator() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
+          resolution: normalizeImageResolution(userSettings.cover_image_resolution),
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
+          resolution: normalizeImageResolution(userSettings.inline_image_resolution),
         },
       });
       setInternalLinkDensity(
@@ -700,9 +712,10 @@ export default function ContentCreator() {
       internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
       generateImages: imagesEnabled,
       imageConfig: imagesEnabled ? {
-        cover: imageConfig.cover.enabled ? {} : null,
+        cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
         inline: imageConfig.inline.enabled ? {
           count: imageConfig.inline.count,
+          resolution: imageConfig.inline.resolution || "1K",
         } : null,
       } : undefined,
     });
@@ -1316,6 +1329,8 @@ export default function ContentCreator() {
               onConfigChange={setImageConfig}
               compact
               inlineImageSource={selectedInlineImageSource}
+              coverResolutions={selectedImageModel?.constraints?.resolutions}
+              inlineResolutions={selectedInlineImageModel?.constraints?.resolutions}
             />
 
             <div className="space-y-3">
@@ -1519,6 +1534,8 @@ export default function ContentCreator() {
                 onConfigChange={setImageConfig}
                 compact
                 inlineImageSource={selectedInlineImageSource}
+                coverResolutions={selectedImageModel?.constraints?.resolutions}
+                inlineResolutions={selectedInlineImageModel?.constraints?.resolutions}
               />
 
               <CostEstimateCard estimate={campaignCostEstimate} />

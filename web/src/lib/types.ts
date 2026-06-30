@@ -6,7 +6,7 @@ export interface User {
 }
 
 export interface ImageModelConstraints {
-  resolutions: "1K"[];
+  resolutions: Array<"512" | "1K">;
   aspectRatios: string[];
   maxDimensionPx?: number;
 }
@@ -186,6 +186,8 @@ export interface UserSettings {
   image_model: string | null;
   inline_image_model?: string | null;
   inline_image_source?: "ai" | "stock" | null;
+  cover_image_resolution?: "512" | "1K" | null;
+  inline_image_resolution?: "512" | "1K" | null;
   image_style_prompt: string | null;
   cover_enabled: boolean | null;
   inline_enabled: boolean | null;
