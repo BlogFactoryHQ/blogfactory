@@ -18,7 +18,8 @@ assertEqual(inlineImageModel({}), "openrouter/auto", "inline model defaults to O
 assertEqual(inlineImageSource({}), "ai", "inline source defaults to AI");
 assertEqual(inlineImageSource({ imageAdvancedOptions: { inlineImageSource: "stock" } }), "stock", "inline source loads from settings");
 const payload = openRouterImageRequestPayload("x-ai/grok-imagine-image-quality", "draw a chart", "Web", "16:9");
-assertEqual(payload.resolution, "512", "Web maps to OpenRouter image resolution");
+assertEqual(payload.resolution, "1K", "Web maps to a broadly supported OpenRouter image resolution");
+assertEqual((payload as any).n, undefined, "image generation does not send optional provider-specific count");
 assertEqual((payload as any).messages, undefined, "image generation does not use chat messages");
 assertEqual(openRouterImageBase64({ data: [{ b64_json: "data:image/png;base64,abcd" }] }), "abcd", "image response base64 is extracted");
 

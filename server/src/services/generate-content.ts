@@ -1699,8 +1699,7 @@ export function openRouterImageRequestPayload(modelId: string, prompt: string, r
   return {
     model: modelId,
     prompt,
-    n: 1,
-    resolution: resolution === "Web" ? "512" : resolution,
+    resolution: resolution === "Web" || resolution === "512" ? "1K" : resolution,
     aspect_ratio: aspectRatio,
   };
 }
