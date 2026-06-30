@@ -187,7 +187,7 @@ export async function drainCampaignQueue(maxCampaigns = 5, maxItemsPerCampaign =
 
   let processed = 0;
   for (const row of rows) {
-    // ponytail: bounded cron chunks; add a real external queue if single articles exceed Vercel duration.
+    // ponytail: bounded cron chunks; add a real external queue if single articles exceed function duration.
     processed += await runCampaign(row.id, { maxItems: maxItemsPerCampaign }) || 0;
   }
   return { campaigns: rows.length, processed };

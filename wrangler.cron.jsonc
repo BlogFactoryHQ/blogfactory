@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blogfactory-cron",
+  "main": "cloudflare/cron-worker.ts",
+  "compatibility_date": "2026-06-30",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "7 * * * *",
+      "23 3 * * *"
+    ]
+  },
+  "vars": {
+    "CRON_BASE_URL": "https://blogfactory.io"
+  }
+}

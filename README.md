@@ -10,7 +10,7 @@ AI-assisted content operations for generating, managing, scheduling, and publish
 | Backend  | Hono (TypeScript) with Bun for local dev     |
 | Database | PostgreSQL via Drizzle ORM                   |
 | Storage  | S3-compatible storage, such as Cloudflare R2 |
-| Deploy   | Vercel, with the frontend and API together   |
+| Deploy   | Vercel app/API + Cloudflare cron worker      |
 
 ## Project Structure
 
@@ -33,6 +33,7 @@ AI-assisted content operations for generating, managing, scheduling, and publish
 │       └── ...
 │
 ├── vercel.json           # Vercel build, functions, and routing config
+├── wrangler.cron.jsonc   # Cloudflare Worker cron config
 ├── package.json          # Root npm workspaces and scripts
 └── .env.example          # Copy to .env and fill in local values
 ```
@@ -103,6 +104,7 @@ Copy `.env.example` to `.env` for local development. The main values are:
 | `JWT_SECRET`                | Secret used for auth tokens                      |
 | `ADMIN_EMAILS`              | Comma-separated admin email list                 |
 | `API_KEY_ENCRYPTION_SECRET` | Secret used to encrypt stored API keys           |
+| `CRON_SECRET`               | Bearer token for protected cron drains           |
 | `S3_ENDPOINT`               | S3-compatible endpoint URL                       |
 | `S3_ACCESS_KEY_ID`          | Storage access key                               |
 | `S3_SECRET_ACCESS_KEY`      | Storage secret key                               |
@@ -122,3 +124,20 @@ OpenRouter, Google Gemini, and publishing integration credentials are stored per
 Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through the single serverless entrypoint at `api/index.ts`, which loads the Hono backend from `server/src/index.ts`.
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
+
+## Cloudflare Cron
+
+Vercel cron is not used. Cloudflare Worker Cron calls the protected backend drain endpoint:
+
+```bash
+npm run cron:dry-run
+npm run cron:deploy
+```
+
+Set the Worker secret to the same value as the backend `CRON_SECRET`:
+
+```bash
+npx wrangler secret put CRON_SECRET --config wrangler.cron.jsonc
+```
+
+The cron worker drains images every 5 minutes, feeds hourly, and all background tasks daily.
