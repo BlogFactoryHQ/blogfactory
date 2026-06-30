@@ -48,8 +48,8 @@ export async function resolvePostImages(opts: {
   settings?: LowCostImageSettings | null;
 }): Promise<ImageResolutionResult> {
   const settings = opts.settings || {};
-  const imageModel = opts.imageModel || "openrouter/auto";
-  const inlineImageModel = opts.inlineImageModel || "openrouter/auto";
+  const imageModel = opts.imageModel || "";
+  const inlineImageModel = opts.inlineImageModel || "";
   const inlineSource = normalizeInlineImageSource(settings.inlineImageSource);
   const slots = buildImageSlots({ imageConfig: opts.imageConfig, content: opts.content, title: opts.title, stylePrompt: opts.stylePrompt });
   const usedSourceUrls = new Set<string>();

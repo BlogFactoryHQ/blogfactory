@@ -75,7 +75,7 @@ import { ProgrammaticPanel } from "@/pages/Programmatic";
 import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
-const DEFAULT_INLINE_IMAGE_MODEL = "openrouter/auto";
+const DEFAULT_INLINE_IMAGE_MODEL = "";
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
@@ -84,7 +84,7 @@ function normalizeCoverImageModelId(modelId?: string | null) {
 
 function normalizeInlineImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return !value || value === "openrouter/free" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+  return !value || value === "openrouter/free" || value === "openrouter/auto" ? DEFAULT_INLINE_IMAGE_MODEL : value;
 }
 
 function normalizeInlineImageSource(value?: string | null): InlineImageSource {

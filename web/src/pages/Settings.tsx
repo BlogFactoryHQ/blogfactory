@@ -249,7 +249,7 @@ const linkDensityOptions = [
 ];
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
-const DEFAULT_INLINE_IMAGE_MODEL = "openrouter/auto";
+const DEFAULT_INLINE_IMAGE_MODEL = "";
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
@@ -258,7 +258,7 @@ function normalizeCoverImageModelId(modelId?: string | null) {
 
 function normalizeInlineImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  return !value || value === "openrouter/free" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+  return !value || value === "openrouter/free" || value === "openrouter/auto" ? DEFAULT_INLINE_IMAGE_MODEL : value;
 }
 
 function normalizeInlineImageSource(value?: string | null): InlineImageSource {
@@ -266,7 +266,7 @@ function normalizeInlineImageSource(value?: string | null): InlineImageSource {
 }
 
 function imageCost(model?: LiveImageModel | null) {
-  if (!model || model.isFree || model.id === DEFAULT_INLINE_IMAGE_MODEL) return 0;
+  if (!model || model.isFree) return 0;
   return model.rawPricing.image || 0;
 }
 
@@ -355,19 +355,13 @@ export default function Settings() {
     () => imageModels.filter(modelMatchesFilters),
     [imageModels, modelMatchesFilters]
   );
-  const coverImageModels = useMemo(
-    () => imageModels.filter((model) => model.id !== DEFAULT_INLINE_IMAGE_MODEL),
-    [imageModels]
-  );
+  const coverImageModels = imageModels;
   const filteredTextModels = useMemo(
     () => textModels.filter(modelMatchesFilters),
     [textModels, modelMatchesFilters]
   );
   const selectedImageModelUnavailable = Boolean(
-    selectedImageModel && (
-      selectedImageModel === DEFAULT_INLINE_IMAGE_MODEL
-      || (imageModels.length > 0 && !coverImageModels.some((model) => model.id === selectedImageModel))
-    )
+    selectedImageModel && imageModels.length > 0 && !coverImageModels.some((model) => model.id === selectedImageModel)
   );
   const selectedInlineImageModelUnavailable = Boolean(
     inlineImageSource === "ai" && selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
@@ -500,10 +494,13 @@ export default function Settings() {
   }, [userSettings]);
 
   useEffect(() => {
-    if (!selectedImageModel && coverImageModels[0]?.id) {
+    if ((!selectedImageModel || selectedImageModelUnavailable) && coverImageModels[0]?.id) {
       setSelectedImageModel(coverImageModels[0].id);
     }
-  }, [coverImageModels, selectedImageModel]);
+    if (inlineImageSource === "ai" && (!selectedInlineImageModel || selectedInlineImageModelUnavailable) && imageModels[0]?.id) {
+      setSelectedInlineImageModel(imageModels[0].id);
+    }
+  }, [coverImageModels, imageModels, inlineImageSource, selectedImageModel, selectedImageModelUnavailable, selectedInlineImageModel, selectedInlineImageModelUnavailable]);
 
   useEffect(() => {
     const status = userSettings?.internal_link_status;
@@ -1289,13 +1286,13 @@ export default function Settings() {
                   </Select>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredImageModels.length} official OpenRouter image models and {filteredTextModels.length} text models.
+                  Showing {filteredImageModels.length} official OpenRouter 1K image models and {filteredTextModels.length} text models.
                 </p>
 
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <ImageIcon className="h-4 w-4" />
-                    OpenRouter Image Models
+                    OpenRouter 1K Image Models
                   </h4>
                   {imageModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
@@ -1853,7 +1850,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={ImagePlus}
                   title="Image Generation"
-                  description="Cover and inline AI use OpenRouter image models. Inline Stock uses stock providers only."
+                  description="Cover and inline AI use OpenRouter 1K image models. Inline Stock uses stock providers only."
                   action={
                     <Button
                       size="sm"

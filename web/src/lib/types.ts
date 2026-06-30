@@ -6,7 +6,7 @@ export interface User {
 }
 
 export interface ImageModelConstraints {
-  resolutions: ("Web" | "1K" | "2K" | "4K")[];
+  resolutions: "1K"[];
   aspectRatios: string[];
   maxDimensionPx?: number;
 }

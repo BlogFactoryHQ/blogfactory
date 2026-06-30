@@ -45,7 +45,7 @@ export function imageRouteForSlot(type: ImageTargetType, inlineSource: InlineIma
   return type === "inline" && inlineSource === "stock" ? "stock" : "ai";
 }
 
-export function imageModelForTarget(selectedModel: string, type: ImageTargetType, inlineModel = "openrouter/auto") {
+export function imageModelForTarget(selectedModel: string, type: ImageTargetType, inlineModel = "") {
   return type === "inline" ? inlineModel : selectedModel;
 }
 
@@ -105,7 +105,7 @@ export function imageTargets(imageConfig: any) {
       type: "cover",
       position: 0,
       aspectRatio: imageConfig.cover?.aspectRatio || "16:9",
-      resolution: imageConfig.cover?.resolution || "1K",
+      resolution: "1K",
     });
   }
   if (imageConfig?.inline && imageConfig.inline.enabled !== false) {
@@ -115,7 +115,7 @@ export function imageTargets(imageConfig: any) {
         type: "inline",
         position: i,
         aspectRatio: imageConfig.inline?.aspectRatio || "3:2",
-        resolution: imageConfig.inline?.resolution || "Web",
+        resolution: "1K",
       });
     }
   }
@@ -140,7 +140,7 @@ export function imageSlotFromRequest(request: typeof imageGenerationRequests.$in
     type: request.type as ImageTargetType,
     position: request.position || 0,
     aspectRatio: request.aspectRatio || "16:9",
-    resolution: request.resolution || "Web",
+    resolution: request.resolution || "1K",
     prompt: request.prompt,
     altText: request.altText || `Image for ${fallbackTitle}`,
   };

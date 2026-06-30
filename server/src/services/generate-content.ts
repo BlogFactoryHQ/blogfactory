@@ -5,7 +5,7 @@ import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult } from "./low-cost-images.js";
-import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
+import { assertOpenRouterModelAvailable, getOpenRouterModels } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
@@ -117,12 +117,18 @@ const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
 
 export function openRouterImageModelId(modelId: string | null | undefined) {
   modelId = modelId?.trim();
-  return !modelId || modelId === "openrouter/free" ? "openrouter/auto" : modelId;
+  return !modelId || modelId === "openrouter/free" || modelId === "openrouter/auto" ? "" : modelId;
 }
 
 async function validateImageModelForRequest(openRouterKey: string | null, modelId: string, type: string) {
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
-  await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
+  if (modelId) {
+    await assertOpenRouterModelAvailable(openRouterKey, modelId, "image");
+    return modelId;
+  }
+  const fallback = (await getOpenRouterModels(openRouterKey, "image"))[0]?.id;
+  if (!fallback) throw new Error(`No OpenRouter 1K image model is available for ${type} images`);
+  return fallback;
 }
 
 function truncatePromptText(value: string, maxChars = 1200) {
@@ -1397,7 +1403,7 @@ export async function generateContent(opts: GenerateOpts) {
               postId: post.id,
               jobId: jobId!,
               imageConfig: opts.imageConfig,
-              imageModel: promptSettings?.imageModel || settings?.imageModel || "openrouter/auto",
+              imageModel: promptSettings?.imageModel || settings?.imageModel || "",
               inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
               stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
               settings: {
@@ -1658,17 +1664,16 @@ function plainText(value: string, maxChars = 900) {
 }
 
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {
-  if (!request.modelId || !request.jobId) throw new Error("Queued image request is missing model/job data");
+  if (!request.jobId) throw new Error("Queued image request is missing job data");
 
   const openRouterKey = await getOpenRouterKey(request.userId);
-  const modelId = openRouterImageModelId(request.modelId);
-  await validateImageModelForRequest(openRouterKey, modelId, request.type);
+  const modelId = await validateImageModelForRequest(openRouterKey, openRouterImageModelId(request.modelId), request.type);
 
   const result = await generateSingleImage(
     request.prompt,
     request.altText || "Article image",
     modelId,
-    request.resolution || "Web",
+    request.resolution || "1K",
     request.aspectRatio || "16:9",
     request.userId,
     request.jobId,
@@ -1699,7 +1704,7 @@ export function openRouterImageRequestPayload(modelId: string, prompt: string, r
   return {
     model: modelId,
     prompt,
-    resolution: resolution === "Web" || resolution === "512" ? "1K" : resolution,
+    resolution: "1K",
     aspect_ratio: aspectRatio,
   };
 }

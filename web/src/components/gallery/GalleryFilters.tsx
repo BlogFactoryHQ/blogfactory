@@ -97,18 +97,6 @@ export function GalleryFilters({ filters, onChange }: GalleryFiltersProps) {
           </SelectContent>
         </Select>
 
-        {/* Resolution */}
-        <Select value={filters.resolution} onValueChange={(v) => update({ resolution: v })}>
-          <SelectTrigger className="w-[120px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any res</SelectItem>
-            <SelectItem value="1K">1K</SelectItem>
-            <SelectItem value="2K">2K</SelectItem>
-            <SelectItem value="4K">4K</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
     </div>
   );

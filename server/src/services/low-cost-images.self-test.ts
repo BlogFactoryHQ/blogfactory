@@ -32,14 +32,14 @@ assertEqual(
 );
 
 assertEqual(
-  imageTargets({ inline: { count: 0, resolution: "Web", aspectRatio: "3:2" } }).length,
+  imageTargets({ inline: { count: 0, resolution: "1K", aspectRatio: "3:2" } }).length,
   0,
   "inline count 0 creates no inline slots"
 );
 
 assertEqual(
   buildImageSlots({
-    imageConfig: { cover: { resolution: "1K", aspectRatio: "16:9" }, inline: { count: 2, resolution: "Web", aspectRatio: "3:2" } },
+    imageConfig: { cover: { resolution: "1K", aspectRatio: "16:9" }, inline: { count: 2, resolution: "1K", aspectRatio: "3:2" } },
     content: "Intro\n\n## First\n\nBody",
     title: "Test Article",
   }).length,

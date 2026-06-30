@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { estimateGenerationCost, shouldWarnForCost } from "./cost-estimator";
 
 const textModel = { id: "test/text", rawPricing: { prompt: 1, completion: 2, request: 0 } };
-const imageModel = { id: "openrouter/auto", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
+const imageModel = { id: "x-ai/grok-imagine-image-quality", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
 const paidImageModel = { id: "openai/gpt-image-1", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
 
 const imageConfig = {

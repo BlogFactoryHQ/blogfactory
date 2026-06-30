@@ -44,7 +44,7 @@ type SettingsUpdate = Record<string, any>;
 
 function normalizeInlineImageModelId(modelId: string | undefined) {
   const value = modelId?.trim();
-  return !value || value === "openrouter/free" ? "openrouter/auto" : value;
+  return !value || value === "openrouter/free" || value === "openrouter/auto" ? "" : value;
 }
 
 function normalizeInlineImageSource(value: unknown) {
@@ -144,7 +144,7 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     : {};
   const inlineImageModel = typeof imageAdvancedOptions.inlineImageModel === "string"
     ? normalizeInlineImageModelId(imageAdvancedOptions.inlineImageModel)
-    : "openrouter/auto";
+    : "";
   const inlineImageSource = normalizeInlineImageSource(imageAdvancedOptions.inlineImageSource);
 
   return {

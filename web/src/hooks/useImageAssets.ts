@@ -12,7 +12,6 @@ export interface GalleryFilters {
   postStatus: "all" | "draft" | "published";
   dateRange: "all" | "7d" | "30d" | "90d";
   aspectRatio: "all" | string;
-  resolution: "all" | string;
   search: string;
 }
 
@@ -22,7 +21,6 @@ export const defaultFilters: GalleryFilters = {
   postStatus: "all",
   dateRange: "all",
   aspectRatio: "all",
-  resolution: "all",
   search: "",
 };
 
@@ -36,7 +34,6 @@ export function useImageAssets(filters: GalleryFilters) {
       if (filters.type !== "all") assets = assets.filter((a) => a.type === filters.type);
       if (filters.status !== "all") assets = assets.filter((a) => a.status === filters.status);
       if (filters.aspectRatio !== "all") assets = assets.filter((a) => a.aspect_ratio === filters.aspectRatio);
-      if (filters.resolution !== "all") assets = assets.filter((a) => a.resolution === filters.resolution);
 
       if (filters.dateRange !== "all") {
         const days = filters.dateRange === "7d" ? 7 : filters.dateRange === "30d" ? 30 : 90;

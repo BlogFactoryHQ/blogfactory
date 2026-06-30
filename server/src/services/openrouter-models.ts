@@ -53,14 +53,17 @@ function enumValues(value: any) {
   return value?.type === "enum" && Array.isArray(value.values) ? value.values.map(String) : [];
 }
 
+function supports1KImage(model: any) {
+  return enumValues(model.supported_parameters?.resolution).includes("1K");
+}
+
 function openRouterImageConstraints(model: any) {
   const params = model.supported_parameters || {};
   const aspectRatios = enumValues(params.aspect_ratio).filter((value: string) => value !== "auto");
-  const resolutions = enumValues(params.resolution).filter((value: string) => ["Web", "1K", "2K", "4K"].includes(value));
   return {
-    resolutions: resolutions.length ? resolutions : ["1K", "2K", "4K"],
+    resolutions: ["1K"],
     aspectRatios: aspectRatios.length ? aspectRatios : ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
-    maxDimensionPx: 4096,
+    maxDimensionPx: 1024,
   };
 }
 
@@ -108,6 +111,7 @@ export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
 export function catalogFromOpenRouterPayload(data: any, kind: ModelKind) {
   return (data.data || [])
     .filter((model: any) => model.architecture?.output_modalities?.includes(kind))
+    .filter((model: any) => kind !== "image" || supports1KImage(model))
     .map((model: any) => normalizeOpenRouterModel(model, kind));
 }
 
