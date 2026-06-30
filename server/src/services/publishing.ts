@@ -3,7 +3,7 @@ import { SignJWT } from "jose";
 import { connect } from "framer-api";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
+import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, placeInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
@@ -201,13 +201,6 @@ export async function publishPost(userId: string, postId: string, integrationId:
 
   const provider = integration.provider as IntegrationProvider;
   const credentials = decryptProviderCredentials(integration);
-  const [settings] = await db
-    .select({
-      imagePlacement: userSettings.imagePlacement,
-    })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
   const assetRows = await db
     .select({
       storagePath: imageAssets.storagePath,
@@ -215,7 +208,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     })
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
-  const article = buildArticlePayload(post, options, normalizeImagePlacement(settings?.imagePlacement), new Map(assetRows.map((asset) => [asset.storagePath, asset.altText])));
+  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), new Map(assetRows.map((asset) => [asset.storagePath, asset.altText])));
   const mode = options.mode === "publish" ? "publish" : "draft";
 
   try {

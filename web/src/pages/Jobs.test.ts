@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateJobRows, jobGroupKey, parseStepProgress } from "./Jobs";
+import { aggregateJobRows, imageResolutionStatus, jobGroupKey, parseStepProgress } from "./Jobs";
 
 const baseJob = {
   id: "job-1",
@@ -69,7 +69,7 @@ describe("job progress steps", () => {
     const progress = parseStepProgress("resolving_images_for_draft_1", [], { totalDrafts: 1, imagesEnabled: true });
 
     expect(progress.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "Queue AI images or find stock/source fallback", active: true }),
+      expect.objectContaining({ label: "Resolve cover AI and inline images", active: true }),
       expect.objectContaining({ label: "Draft 1 (images)", active: true }),
     ]));
   });
@@ -79,5 +79,12 @@ describe("job progress steps", () => {
 
     expect(progress.label).toBe("Finding images for draft 1 of 1");
     expect(progress.steps[0]).toMatchObject({ label: "Draft 1 (finding images)", active: true });
+  });
+});
+
+describe("image resolution labels", () => {
+  it("uses direct operational labels", () => {
+    expect(imageResolutionStatus({ status: "queued", provider: "ai-deferred" })).toBe("Waiting for AI");
+    expect(imageResolutionStatus({ status: "failed", error: "No stock image found" })).toBe("Stock provider unavailable");
   });
 });

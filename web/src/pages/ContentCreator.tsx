@@ -53,10 +53,8 @@ import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/Li
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
-  SplitImageDefaults,
   DEFAULT_SPLIT_CONFIG,
-  Resolution,
-  AspectRatio
+  InlineImageSource,
 } from "@/components/content/ImageGenerationSettings";
 import { useJobTracker } from "@/hooks/useJobTracker";
 import { ConcurrentJobDialog, ConcurrentAction } from "@/components/content/ConcurrentJobDialog";
@@ -76,38 +74,28 @@ import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/
 import { ProgrammaticPanel } from "@/pages/Programmatic";
 import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 
-const DEFAULT_IMAGE_MODEL = "openrouter/free";
+const DEFAULT_COVER_IMAGE_MODEL = "";
+const DEFAULT_INLINE_IMAGE_MODEL = "openrouter/auto";
 
 function normalizeCoverImageModelId(modelId?: string | null) {
   const value = modelId?.trim();
-  if (!value) return DEFAULT_IMAGE_MODEL;
-  if (value === "auto/consistent-cover" || value === "auto/cost-effective") return DEFAULT_IMAGE_MODEL;
-  return value;
+  return value || DEFAULT_COVER_IMAGE_MODEL;
 }
 
 function normalizeInlineImageModelId(modelId?: string | null) {
-  if (
-    !modelId
-    || modelId === "auto/consistent-cover"
-    || modelId === "auto/cost-effective"
-    || modelId.startsWith("google-ai-studio/")
-    || modelId.startsWith("google/")
-    || modelId.startsWith("replicate/")
-  ) {
-    return DEFAULT_IMAGE_MODEL;
-  }
-  return modelId;
+  const value = modelId?.trim();
+  return !value || value === "openrouter/free" ? DEFAULT_INLINE_IMAGE_MODEL : value;
+}
+
+function normalizeInlineImageSource(value?: string | null): InlineImageSource {
+  return value === "stock" ? "stock" : "ai";
 }
 
 interface ContentUserSettings {
   image_model?: string | null;
   inline_image_model?: string | null;
-  image_advanced_options?: Record<string, unknown> | null;
+  inline_image_source?: InlineImageSource | null;
   image_style_prompt?: string | null;
-  image_placement?: string | null;
-  image_compression_enabled?: boolean | null;
-  ai_fallback_enabled?: boolean | null;
-  max_ai_images_per_day?: number | null;
   article_word_count?: number | null;
   article_language?: string | null;
   include_table_of_contents?: boolean | null;
@@ -116,12 +104,8 @@ interface ContentUserSettings {
   internal_link_density?: string | null;
   monthly_budget?: number | null;
   cover_enabled?: boolean | null;
-  cover_resolution?: string | null;
-  cover_aspect_ratio?: string | null;
   inline_enabled?: boolean | null;
   inline_count?: number | null;
-  inline_resolution?: string | null;
-  inline_aspect_ratio?: string | null;
 }
 
 interface PersonaOption {
@@ -440,79 +424,17 @@ export default function ContentCreator() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
-          resolution: (userSettings.cover_resolution as Resolution) || "1K",
-          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
-          resolution: (userSettings.inline_resolution as Resolution) || "Web",
-          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
         },
-        imagePlacement: (userSettings.image_placement as SplitImageConfig["imagePlacement"]) || "auto",
-        compressionEnabled: userSettings.image_compression_enabled ?? true,
       });
       setInternalLinkDensity(
         isInternalLinkDensity(userSettings.internal_link_density) ? userSettings.internal_link_density : "balanced"
       );
     }
   }, [userSettings]);
-
-  // Get defaults from user settings
-  const imageDefaults: SplitImageDefaults | undefined = userSettings
-    ? {
-        cover: {
-          enabled: userSettings.cover_enabled ?? true,
-          resolution: (userSettings.cover_resolution as Resolution) || "1K",
-          aspectRatio: (userSettings.cover_aspect_ratio as AspectRatio) || "16:9",
-        },
-        inline: {
-          enabled: userSettings.inline_enabled ?? true,
-          count: userSettings.inline_count ?? 2,
-          resolution: (userSettings.inline_resolution as Resolution) || "Web",
-          aspectRatio: (userSettings.inline_aspect_ratio as AspectRatio) || "3:2",
-        },
-        imagePlacement: (userSettings.image_placement as SplitImageDefaults["imagePlacement"]) || "auto",
-        compressionEnabled: userSettings.image_compression_enabled ?? true,
-      }
-    : undefined;
-
-  // Save image defaults mutation
-  const saveDefaultsMutation = useMutation({
-    mutationFn: async (defaults: SplitImageDefaults) => {
-      await api.put("/settings", {
-        cover_enabled: defaults.cover.enabled,
-        cover_resolution: defaults.cover.resolution,
-        cover_aspect_ratio: defaults.cover.aspectRatio,
-        inline_enabled: defaults.inline.enabled,
-        inline_count: defaults.inline.count,
-        inline_resolution: defaults.inline.resolution,
-        inline_aspect_ratio: defaults.inline.aspectRatio,
-        image_placement: defaults.imagePlacement || "auto",
-        image_compression_enabled: defaults.compressionEnabled ?? true,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Image defaults saved!");
-    },
-    onError: () => {
-      toast.error("Failed to save defaults");
-    },
-  });
-
-  // Reset to defaults handler
-  const handleResetToDefaults = () => {
-    if (imageDefaults) {
-      setImageConfig({
-        cover: { ...imageDefaults.cover, enabled: imageDefaults.cover.enabled ?? true },
-        inline: { ...imageDefaults.inline, enabled: imageDefaults.inline.enabled ?? true },
-        imagePlacement: imageDefaults.imagePlacement || "auto",
-        compressionEnabled: imageDefaults.compressionEnabled ?? true,
-      });
-      toast.success("Reset to your saved defaults");
-    }
-  };
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
@@ -533,7 +455,9 @@ export default function ContentCreator() {
   const selectedImageModelId = normalizeCoverImageModelId(userSettings?.image_model);
   const selectedInlineImageModelId = normalizeInlineImageModelId(
     userSettings?.inline_image_model
-    || (userSettings?.image_advanced_options?.inlineImageModel as string | undefined)
+  );
+  const selectedInlineImageSource = normalizeInlineImageSource(
+    userSettings?.inline_image_source
   );
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const selectedInlineImageModel = imageModels.find((model) => model.id === selectedInlineImageModelId);
@@ -694,8 +618,8 @@ export default function ContentCreator() {
     imageModel: selectedImageModel,
     inlineImageModel: selectedInlineImageModel,
     imageConfig,
-    aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
+    inlineImageSource: selectedInlineImageSource,
+  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, selectedInlineImageSource]);
   const campaignCostEstimate = useMemo(() => estimateGenerationCost({
     postCount: Math.max(1, campaignItemCount),
     articleWordCount: userSettings?.article_word_count || 1500,
@@ -703,8 +627,8 @@ export default function ContentCreator() {
     imageModel: selectedImageModel,
     inlineImageModel: selectedInlineImageModel,
     imageConfig,
-    aiFallbackEnabled: userSettings?.ai_fallback_enabled,
-  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, userSettings?.ai_fallback_enabled]);
+    inlineImageSource: selectedInlineImageSource,
+  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, selectedInlineImageSource]);
   const costWarningInput = (estimate: CostEstimate) => ({
     estimate,
     monthlyBudget: userSettings?.monthly_budget,
@@ -734,7 +658,7 @@ export default function ContentCreator() {
     }
   };
   const imagePlanLabel = imageConfig.cover.enabled || imageConfig.inline.enabled
-    ? `${imageConfig.cover.enabled ? "Cover" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline` : "No inline"}`
+    ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`
     : "Off";
   const articleBriefBlockers = [
     !personaId ? "Select a voice persona." : "",
@@ -776,16 +700,9 @@ export default function ContentCreator() {
       internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
       generateImages: imagesEnabled,
       imageConfig: imagesEnabled ? {
-        imagePlacement: imageConfig.imagePlacement || "auto",
-        compressionEnabled: imageConfig.compressionEnabled ?? true,
-        cover: imageConfig.cover.enabled ? {
-          resolution: imageConfig.cover.resolution,
-          aspectRatio: imageConfig.cover.aspectRatio,
-        } : null,
+        cover: imageConfig.cover.enabled ? {} : null,
         inline: imageConfig.inline.enabled ? {
           count: imageConfig.inline.count,
-          resolution: imageConfig.inline.resolution,
-          aspectRatio: imageConfig.inline.aspectRatio,
         } : null,
       } : undefined,
     });
@@ -1368,7 +1285,7 @@ export default function ContentCreator() {
               </div>
 
               <div className="space-y-2">
-                <Label>AI Model</Label>
+                <Label>OpenRouter Text Model</Label>
                 <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1397,12 +1314,8 @@ export default function ContentCreator() {
             <SplitImageGenerationSettings
               config={imageConfig}
               onConfigChange={setImageConfig}
-              defaults={imageDefaults}
-              onSaveDefaults={(defaults) => saveDefaultsMutation.mutate(defaults)}
-              onResetToDefaults={handleResetToDefaults}
-              showSaveOption
               compact
-              imageModelId={selectedImageModelId}
+              inlineImageSource={selectedInlineImageSource}
             />
 
             <div className="space-y-3">
@@ -1588,7 +1501,7 @@ export default function ContentCreator() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>AI Model</Label>
+                  <Label>OpenRouter Text Model</Label>
                   <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                   {selectedModelUnavailable && (
                     <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1604,10 +1517,8 @@ export default function ContentCreator() {
               <SplitImageGenerationSettings
                 config={imageConfig}
                 onConfigChange={setImageConfig}
-                defaults={imageDefaults}
                 compact
-                imageModelId={selectedImageModelId}
-                aiFallbackEnabled={userSettings?.ai_fallback_enabled ?? true}
+                inlineImageSource={selectedInlineImageSource}
               />
 
               <CostEstimateCard estimate={campaignCostEstimate} />

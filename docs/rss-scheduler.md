@@ -7,8 +7,13 @@ GET /api/cron/drain?task=feeds
 Authorization: Bearer $CRON_SECRET
 ```
 
-Vercel Hobby can only run daily cron jobs, so frequent RSS checks are handled by
-GitHub Actions in `.github/workflows/rss-cron.yml`.
+Vercel Hobby can only run daily cron jobs, so frequent ticks are handled by
+GitHub Actions:
+
+```text
+.github/workflows/rss-cron.yml   # hourly feed drain
+.github/workflows/image-cron.yml # every 5 minutes image queue drain
+```
 
 Required GitHub secret:
 
@@ -20,9 +25,10 @@ Optional GitHub variable:
 
 ```text
 BLOGFACTORY_CRON_URL = https://blogfactory.io/api/cron/drain?task=feeds
+BLOGFACTORY_IMAGE_CRON_URL = https://blogfactory.io/api/cron/drain?task=images
 ```
 
-The action runs every hour. The app still decides which feeds are due from
+The RSS action runs every hour. The image action runs every 5 minutes. The app still decides which feeds are due from
 `last_run_at + frequency`, so 10 or 1,000 feeds do not require 10 or 1,000 crons.
 
 Runtime safety knobs in Vercel env:
@@ -30,6 +36,7 @@ Runtime safety knobs in Vercel env:
 ```text
 RSS_CRON_MAX_FEEDS=1
 RSS_CRON_MAX_POSTS_PER_FEED=1
+IMAGE_CRON_MAX_REQUESTS=2
 ```
 
 Raise those only if cron runs finish comfortably under Vercel's function limit.

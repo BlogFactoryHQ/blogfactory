@@ -123,22 +123,34 @@ export function useImageGenerationRequests(status = "active") {
 export function useProcessImageQueue() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => api.post<{ processed: boolean; storagePath?: string; fallback?: string; reason?: string; error?: string }>("/images/queue/process", {}),
+    mutationFn: async () => api.post<{ processed: boolean; storagePath?: string; error?: string }>("/images/queue/process", {}),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
       if (result.processed) {
-        toast.success(
-          result.fallback ? "AI failed; stock fallback attached" : "Image generated",
-          result.error ? { description: result.error } : undefined
-        );
+        toast.success("Image generated", result.error ? { description: result.error } : undefined);
       }
-      else toast.info(result.reason || result.error || "No queued image ready yet");
+      else toast.info(result.error || "No queued image ready yet");
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Unable to process image queue.";
       toast.error("Image queue failed", { description: message });
+    },
+  });
+}
+
+export function useRetryImageGenerationRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => api.post<ImageGenerationRequest>(`/images/requests/${id}/retry`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      toast.success("Image retry queued");
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unable to retry image request.";
+      toast.error("Retry failed", { description: message });
     },
   });
 }

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { estimateGenerationCost, shouldWarnForCost } from "./cost-estimator";
 
 const textModel = { id: "test/text", rawPricing: { prompt: 1, completion: 2, request: 0 } };
-const imageModel = { id: "openrouter/free", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
+const imageModel = { id: "openrouter/auto", rawPricing: { prompt: 0, completion: 0, image: 0, request: 0 } };
 const paidImageModel = { id: "openai/gpt-image-1", rawPricing: { prompt: 0, completion: 0, image: 0.04, request: 0 } };
 
 const imageConfig = {
-  cover: { enabled: true, resolution: "1K" as const, aspectRatio: "16:9" as const },
-  inline: { enabled: true, count: 2, resolution: "Web" as const, aspectRatio: "3:2" as const },
+  cover: { enabled: true },
+  inline: { enabled: true, count: 2 },
 };
 
 describe("cost estimator", () => {
@@ -32,15 +32,21 @@ describe("cost estimator", () => {
     expect(shouldWarnForCost({ estimate })).toBe(true);
   });
 
-  it("keeps free inline routing at zero expected image spend", () => {
-    const estimate = estimateGenerationCost({ postCount: 10, textModel, imageModel, inlineImageModel: imageModel, imageConfig });
+  it("keeps zero-priced inline model at zero expected image spend", () => {
+    const estimate = estimateGenerationCost({ postCount: 10, textModel, imageModel, inlineImageModel: imageModel, imageConfig, inlineImageSource: "ai" });
     expect(estimate.inlineImageCost).toBe(0);
-    expect(estimate.assumptions.join(" ")).toContain("selected inline image model");
+    expect(estimate.assumptions.join(" ")).toContain("selected OpenRouter inline image model");
   });
 
   it("counts paid inline image spend", () => {
-    const estimate = estimateGenerationCost({ postCount: 2, textModel, imageModel, inlineImageModel: paidImageModel, imageConfig });
+    const estimate = estimateGenerationCost({ postCount: 2, textModel, imageModel, inlineImageModel: paidImageModel, imageConfig, inlineImageSource: "ai" });
     expect(estimate.inlineImageCost).toBeCloseTo(0.16);
+  });
+
+  it("keeps stock inline image spend at zero", () => {
+    const estimate = estimateGenerationCost({ postCount: 2, textModel, imageModel, inlineImageModel: paidImageModel, imageConfig, inlineImageSource: "stock" });
+    expect(estimate.inlineImageCost).toBe(0);
+    expect(estimate.assumptions.join(" ")).toContain("$0 image generation cost");
   });
 
   it("warns near budget", () => {

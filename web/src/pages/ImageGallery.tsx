@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Copy, ExternalLink, ImageIcon, Loader2, Play, Trash2, Upload, X } from "lucide-react";
+import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,6 +22,7 @@ import {
   useImageGenerationRequests,
   useImportImageGenerationRequest,
   useProcessImageQueue,
+  useRetryImageGenerationRequest,
   defaultFilters,
   type GalleryFilters as GalleryFiltersType,
   type ImageAsset,
@@ -33,6 +34,7 @@ import { GalleryFilters } from "@/components/gallery/GalleryFilters";
 import { GalleryCard } from "@/components/gallery/GalleryCard";
 import { GalleryBulkActions } from "@/components/gallery/GalleryBulkActions";
 import { ImageDetailDrawer } from "@/components/gallery/ImageDetailDrawer";
+import { imageProviderName, isStockProvider } from "@/lib/image-labels";
 import { toast } from "sonner";
 
 function providerUrl(provider: string) {
@@ -43,9 +45,28 @@ function providerUrl(provider: string) {
 }
 
 function requestLabel(request: ImageGenerationRequest) {
-  if (request.provider === "ai-deferred") return "AI";
-  if (request.provider === "stock-fallback") return "Stock fallback";
-  return request.provider.replace("-", " ");
+  if (request.provider === "ai-deferred") return `AI model: ${request.model_id || "not selected"}`;
+  const sourceKind = isStockProvider(request.provider) ? "Stock" : "Provider";
+  const license = request.license_label ? ` · ${request.license_label}` : "";
+  const credit = request.credit && !request.license_label ? ` · ${request.credit}` : "";
+  return `${sourceKind}: ${imageProviderName(request.provider)}${license}${credit}`;
+}
+
+function statusBadgeClass(status: string) {
+  if (status === "done") return "border-transparent bg-[hsl(var(--status-success)/0.12)] text-status-success";
+  if (status === "failed") return "border-transparent bg-destructive text-destructive-foreground";
+  if (status === "processing") return "border-transparent bg-primary text-primary-foreground";
+  if (status === "queued" || status === "pending") return "border-amber-300 text-amber-700";
+  return "";
+}
+
+function galleryEmptyState(filters: GalleryFiltersType, counts: { queued: number; processing: number; failed: number }, stockUnavailable: boolean) {
+  if (filters.status === "orphaned") return { title: "No images yet", detail: "No orphaned images. Your gallery is clean." };
+  if (filters.status === "unused") return { title: "No images yet", detail: "No unused images found." };
+  if (stockUnavailable) return { title: "Stock provider unavailable", detail: "Stock could not return an image. Check provider keys or switch inline images to AI." };
+  if (counts.processing > 0 || counts.queued > 0) return { title: "Waiting for AI", detail: "Images are queued or processing. They will appear here when generation finishes." };
+  if (counts.failed > 0) return { title: "No images yet", detail: "Image generation failed. Review the failed request above and retry or change model." };
+  return { title: "No images yet", detail: "Generate content with images enabled to see them here." };
 }
 
 function ImageRequestCard({
@@ -53,24 +74,32 @@ function ImageRequestCard({
   onImport,
   onCancel,
   onProcess,
+  onRetry,
   importing,
   cancelling,
   processing,
+  retrying,
 }: {
   request: ImageGenerationRequest;
   onImport: (request: ImageGenerationRequest, file: File) => void;
   onCancel: (id: string) => void;
   onProcess: () => void;
+  onRetry: (id: string) => void;
   importing: boolean;
   cancelling: boolean;
   processing: boolean;
+  retrying: boolean;
 }) {
   const url = providerUrl(request.provider);
   const fileInputId = `image-request-${request.id}`;
   const title = request.post_title || "Untitled post";
   const isAiQueue = request.provider === "ai-deferred";
+  const isDone = request.status === "done";
+  const isFailed = request.status === "failed";
+  const isProcessing = request.status === "processing";
   const nextRun = request.available_at ? new Date(request.available_at) : null;
   const waiting = nextRun && nextRun.getTime() > Date.now();
+  const canProcess = isAiQueue && (request.status === "queued" || request.status === "pending") && !waiting;
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(request.prompt);
@@ -86,14 +115,9 @@ function ImageRequestCard({
             <Badge variant="outline" className="text-[10px] capitalize">
               {request.type}{request.position != null ? ` ${request.position + 1}` : ""}
             </Badge>
-            <Badge variant={request.status === "processing" ? "default" : "secondary"} className="text-[10px] capitalize">
+            <Badge variant={request.status === "processing" ? "default" : "outline"} className={`text-[10px] capitalize ${statusBadgeClass(request.status)}`}>
               {request.status}
             </Badge>
-            {request.fallback_policy && (
-              <Badge variant="outline" className="text-[10px]">
-                fallback: {request.fallback_policy}
-              </Badge>
-            )}
             {request.completed_via && (
               <Badge variant="secondary" className="text-[10px]">
                 via {request.completed_via}
@@ -102,20 +126,26 @@ function ImageRequestCard({
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {requestLabel(request)}
-            {request.model_id ? ` · ${request.model_id}` : ""}
-            {request.retry_count ? ` · retry ${request.retry_count}` : ""}
+            {isAiQueue ? ` · retries: ${request.retry_count || 0}` : request.retry_count ? ` · retries: ${request.retry_count}` : ""}
           </p>
-          {request.last_error && (
-            <p className="mt-1 line-clamp-2 text-xs text-destructive">{request.last_error}</p>
+          {isFailed && (
+            <p className="mt-1 line-clamp-2 text-xs text-destructive">
+              Failure reason: {request.last_error || "Provider returned no image."} {isAiQueue ? "Retry this request or change the model in Settings." : "Check the stock provider and try again."}
+            </p>
+          )}
+          {!isFailed && request.last_error && (
+            <p className="mt-1 line-clamp-2 text-xs text-destructive">Last error: {request.last_error}</p>
           )}
           {request.prompt && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{request.prompt}</p>}
           {isAiQueue && request.model_id && (
-            waiting && <p className="mt-1 text-xs text-muted-foreground">Retry after {nextRun.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+            waiting && nextRun && <p className="mt-1 text-xs text-muted-foreground">Retry after {nextRun.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
           )}
         </div>
-        <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling || request.status === "processing"}>
-          <X className="h-4 w-4" />
-        </Button>
+        {!isDone && !isProcessing && (
+          <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling}>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copyPrompt}>
@@ -130,12 +160,19 @@ function ImageRequestCard({
             </a>
           </Button>
         )}
-        {isAiQueue ? (
-          <Button size="sm" onClick={onProcess} disabled={processing || request.status === "processing"}>
+        {isFailed && isAiQueue && (
+          <Button size="sm" onClick={() => onRetry(request.id)} disabled={retrying}>
+            {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Retry
+          </Button>
+        )}
+        {canProcess && (
+          <Button size="sm" onClick={onProcess} disabled={processing}>
             {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             Process
           </Button>
-        ) : (
+        )}
+        {!isAiQueue && !isDone && (
           <>
             <input
               id={fileInputId}
@@ -169,12 +206,13 @@ export default function ImageGallery() {
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
-  const { data: activeRequests = [] } = useImageGenerationRequests("active");
+  const { data: imageRequests = [] } = useImageGenerationRequests("all");
   const deleteImages = useDeleteImageAssets();
   const detachImage = useDetachImageAsset();
   const cancelRequest = useCancelImageGenerationRequest();
   const importRequest = useImportImageGenerationRequest();
   const processQueue = useProcessImageQueue();
+  const retryRequest = useRetryImageGenerationRequest();
 
   const storagePaths = useMemo(() => (images || []).map((i) => i.storage_path), [images]);
   const signedUrls = useSignedUrls(storagePaths);
@@ -187,6 +225,25 @@ export default function ImageGallery() {
     () => (images || []).filter((i) => selectedIds.has(i.id)),
     [images, selectedIds]
   );
+  const requestCounts = useMemo(() => {
+    const counts = { queued: 0, processing: 0, failed: 0, done: 0 };
+    for (const request of imageRequests) {
+      if (request.status === "pending" || request.status === "queued") counts.queued += 1;
+      else if (request.status === "processing") counts.processing += 1;
+      else if (request.status === "failed") counts.failed += 1;
+      else if (request.status === "done") counts.done += 1;
+    }
+    return counts;
+  }, [imageRequests]);
+  const visibleRequests = useMemo(
+    () => imageRequests.filter((request) => request.status !== "done"),
+    [imageRequests]
+  );
+  const stockProviderUnavailable = useMemo(
+    () => visibleRequests.some((request) => request.status === "failed" && request.provider !== "ai-deferred"),
+    [visibleRequests]
+  );
+  const emptyState = galleryEmptyState(filters, requestCounts, stockProviderUnavailable);
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -217,7 +274,7 @@ export default function ImageGallery() {
     <div className="p-6 max-w-7xl mx-auto">
       <PageHeader
         title="Image Gallery"
-        description={`${stats?.total || 0} generated images • Asset management & lifecycle tracking`}
+        description={`${stats?.total || 0} images • AI queue, stock assets, and post attachments`}
       />
 
       {/* Stats */}
@@ -251,32 +308,40 @@ export default function ImageGallery() {
       </div>
 
       {/* Filters */}
-      {activeRequests.length > 0 && (
+      {visibleRequests.length > 0 && (
         <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold">Image Queue</h2>
-              <p className="text-xs text-muted-foreground">Queued visuals attach automatically when processed.</p>
+              <h2 className="text-sm font-semibold">Image Requests</h2>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {(["queued", "processing", "failed", "done"] as const).map((status) => (
+                  <Badge key={status} variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
+                    {status} {requestCounts[status]}
+                  </Badge>
+                ))}
+              </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">{activeRequests.length} active</span>
-              <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending}>
+              <span className="text-xs text-muted-foreground">{visibleRequests.length} active request{visibleRequests.length === 1 ? "" : "s"}</span>
+              <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.queued < 1}>
                 {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Process
               </Button>
             </div>
           </div>
           <div className="mt-3 grid gap-2">
-            {activeRequests.map((request) => (
+            {visibleRequests.map((request) => (
               <ImageRequestCard
                 key={request.id}
                 request={request}
                 onImport={(item, file) => importRequest.mutate({ id: item.id, file })}
                 onCancel={(id) => cancelRequest.mutate(id)}
                 onProcess={() => processQueue.mutate()}
+                onRetry={(id) => retryRequest.mutate(id)}
                 importing={importRequest.isPending}
                 cancelling={cancelRequest.isPending}
                 processing={processQueue.isPending}
+                retrying={retryRequest.isPending}
               />
             ))}
           </div>
@@ -295,14 +360,8 @@ export default function ImageGallery() {
       ) : !images || images.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <ImageIcon className="h-12 w-12 mb-4" />
-          <p className="text-lg font-medium">No images found</p>
-          <p className="text-sm">
-            {filters.status === "orphaned"
-              ? "No orphaned images — your gallery is clean!"
-              : filters.status === "unused"
-              ? "No unused images found."
-              : "Generate content with images enabled to see them here."}
-          </p>
+          <p className="text-lg font-medium">{emptyState.title}</p>
+          <p className="text-sm">{emptyState.detail}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

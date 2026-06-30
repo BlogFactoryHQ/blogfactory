@@ -34,12 +34,11 @@ import {
   Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { imageSourceLabel } from "@/lib/image-labels";
 
 interface GeneratedImage {
   url: string;
   type: "cover" | "inline";
-  resolution?: string;
-  aspectRatio?: string;
   model?: string;
   provider?: string | null;
   sourceKind?: string | null;
@@ -62,13 +61,6 @@ interface GeneratedImagesPanelProps {
   onRemoveCoverImage?: () => void;
   onInsertInlineImage?: (url: string) => void;
   onRemoveInlineImage?: (index: number) => void;
-  imageMetadata?: {
-    coverResolution?: string;
-    coverAspectRatio?: string;
-    inlineResolution?: string;
-    inlineAspectRatio?: string;
-    model?: string;
-  };
   className?: string;
 }
 
@@ -80,7 +72,6 @@ export function GeneratedImagesPanel({
   onRemoveCoverImage,
   onInsertInlineImage,
   onRemoveInlineImage,
-  imageMetadata,
   className,
 }: GeneratedImagesPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
@@ -154,9 +145,7 @@ export function GeneratedImagesPanel({
                   image={{
                     url: signedCoverUrl,
                     type: "cover",
-                    resolution: imageMetadata?.coverResolution || "2K",
-                    aspectRatio: imageMetadata?.coverAspectRatio || "16:9",
-                    model: assetByPath.get(coverImageUrl)?.model_id || imageMetadata?.model,
+                    model: assetByPath.get(coverImageUrl)?.model_id,
                     provider: assetByPath.get(coverImageUrl)?.provider,
                     sourceKind: assetByPath.get(coverImageUrl)?.source_kind,
                     licenseLabel: assetByPath.get(coverImageUrl)?.license_label,
@@ -187,9 +176,7 @@ export function GeneratedImagesPanel({
                         image={{
                           url: signedUrl,
                           type: "inline",
-                          resolution: imageMetadata?.inlineResolution || "2K",
-                          aspectRatio: imageMetadata?.inlineAspectRatio || "3:2",
-                          model: assetByPath.get(originalUrl)?.model_id || imageMetadata?.model,
+                          model: assetByPath.get(originalUrl)?.model_id,
                           provider: assetByPath.get(originalUrl)?.provider,
                           sourceKind: assetByPath.get(originalUrl)?.source_kind,
                           licenseLabel: assetByPath.get(originalUrl)?.license_label,
@@ -222,24 +209,6 @@ interface ImageCardProps {
   onSetAsCover?: () => void;
 }
 
-function providerName(provider?: string | null) {
-  if (!provider) return "";
-  if (provider === "google-ai-studio") return "Google";
-  if (provider === "openrouter-image") return "OpenRouter";
-  if (provider === "openai-image") return "OpenAI";
-  return provider.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function sourceLabel(image: GeneratedImage) {
-  const provider = image.provider || image.model || "";
-  if (image.sourceKind === "stock" || ["pexels", "pixabay", "openverse"].includes(provider)) {
-    return `Stock${provider ? ` · ${providerName(provider)}` : ""}`;
-  }
-  if (image.sourceKind === "source" || provider === "source-image") return "Source image";
-  if (provider) return `AI · ${providerName(provider)}`;
-  return "Image";
-}
-
 function ImageCard({
   image,
   index,
@@ -252,7 +221,7 @@ function ImageCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [fileSize, setFileSize] = useState<string | null>(null);
-  const label = sourceLabel(image);
+  const label = imageSourceLabel(image);
 
   useEffect(() => {
     // Fetch file metadata from the image URL
@@ -385,20 +354,13 @@ function ImageCard({
             )}
           </div>
 
-          {/* Metadata */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge variant="outline" className="text-[10px] bg-background/80 border-white/20 text-white">
-              {image.resolution}
-            </Badge>
-            <Badge variant="outline" className="text-[10px] bg-background/80 border-white/20 text-white">
-              {image.aspectRatio}
-            </Badge>
-            {fileSize && (
+          {fileSize && (
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Badge variant="outline" className="text-[10px] bg-background/80 border-white/20 text-white">
                 {fileSize}
               </Badge>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

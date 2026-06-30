@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
-import { processNextDeferredImage } from "../services/low-cost-images.js";
+import { drainDeferredImages } from "../services/low-cost-images.js";
 
 export const cronRoutes = new Hono();
 
@@ -29,13 +29,7 @@ cronRoutes.get("/drain", async (c) => {
   });
   const runImages = async () => {
     const limit = positiveInt(process.env.IMAGE_CRON_MAX_REQUESTS, 2);
-    const results = [];
-    for (let index = 0; index < limit; index += 1) {
-      const result = await processNextDeferredImage();
-      results.push(result);
-      if (!result.processed) break;
-    }
-    return results;
+    return drainDeferredImages(undefined, limit);
   };
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });

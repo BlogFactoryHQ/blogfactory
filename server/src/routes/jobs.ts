@@ -86,22 +86,13 @@ export function staleTimeoutUpdateForJob(job: {
 }
 
 function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
-  const imageConfig: Record<string, unknown> = {
-    imagePlacement: settings?.imagePlacement ?? "auto",
-    compressionEnabled: settings?.imageCompressionEnabled ?? true,
-  };
+  const imageConfig: Record<string, unknown> = {};
   if (settings?.coverEnabled) {
-    imageConfig.cover = {
-      count: settings.coverImageCount ?? 1,
-      resolution: settings.coverResolution ?? "1K",
-      aspectRatio: settings.coverAspectRatio ?? "16:9",
-    };
+    imageConfig.cover = {};
   }
   if (settings?.inlineEnabled) {
     imageConfig.inline = {
       count: settings.inlineCount ?? 2,
-      resolution: settings.inlineResolution ?? "1K",
-      aspectRatio: settings.inlineAspectRatio ?? "3:2",
     };
   }
   const generateImages = Boolean(settings?.coverEnabled || settings?.inlineEnabled);

@@ -92,10 +92,8 @@ const emptyTemplate: ProgrammaticTemplate = {
 };
 
 const noImageConfig: SplitImageConfig = {
-  cover: { enabled: false, resolution: "1K", aspectRatio: "16:9" },
-  inline: { enabled: false, count: 0, resolution: "Web", aspectRatio: "3:2" },
-  imagePlacement: "auto",
-  compressionEnabled: true,
+  cover: { enabled: false },
+  inline: { enabled: false, count: 0 },
 };
 
 const sectionTypes = [
@@ -565,7 +563,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>AI Model</Label>
+          <Label>OpenRouter Text Model</Label>
           <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
           {selectedModelUnavailable && <p className="text-xs text-destructive">Pick a live OpenRouter model.</p>}
         </div>

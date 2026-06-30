@@ -27,7 +27,6 @@ import { chunkKnowledgeContent } from "../services/knowledge.js";
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate", "pexels", "pixabay"]);
 const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
-const IMAGE_PLACEMENTS = new Set(["auto", "featured_only", "after_intro", "between_sections"]);
 type TestableProvider = "openrouter" | "google" | "openai" | "replicate";
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
@@ -45,25 +44,22 @@ type SettingsUpdate = Record<string, any>;
 
 function normalizeInlineImageModelId(modelId: string | undefined) {
   const value = modelId?.trim();
-  if (!value) return value;
-  if (
-    value === "auto/consistent-cover"
-    || value === "auto/cost-effective"
-    || value.startsWith("google-ai-studio/")
-    || value.startsWith("google/")
-    || value.startsWith("replicate/")
-  ) {
-    return "openrouter/free";
-  }
-  return value;
+  return !value || value === "openrouter/free" ? "openrouter/auto" : value;
+}
+
+function normalizeInlineImageSource(value: unknown) {
+  return value === "stock" ? "stock" : "ai";
 }
 
 function normalizeImageAdvancedOptions(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const options = value as Record<string, unknown>;
-  const inlineModel = asOptionalText(options.inlineImageModel ?? options.inline_image_model);
-  if (inlineModel === undefined) return options;
-  return { ...options, inlineImageModel: normalizeInlineImageModelId(inlineModel) };
+  const inlineModel = asOptionalText(options.inlineImageModel);
+  const inlineSource = options.inlineImageSource;
+  return {
+    ...(inlineModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(inlineModel) } : {}),
+    ...(inlineSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(inlineSource) } : {}),
+  };
 }
 
 function firstTextFromGemini(data: unknown) {
@@ -148,7 +144,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     : {};
   const inlineImageModel = typeof imageAdvancedOptions.inlineImageModel === "string"
     ? normalizeInlineImageModelId(imageAdvancedOptions.inlineImageModel)
-    : "openrouter/free";
+    : "openrouter/auto";
+  const inlineImageSource = normalizeInlineImageSource(imageAdvancedOptions.inlineImageSource);
 
   return {
     id: settings.id,
@@ -160,38 +157,16 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     imageModel: settings.imageModel,
     inline_image_model: inlineImageModel,
     inlineImageModel,
+    inline_image_source: inlineImageSource,
+    inlineImageSource,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
-    image_placement: settings.imagePlacement || "auto",
-    imagePlacement: settings.imagePlacement || "auto",
-    image_compression_enabled: settings.imageCompressionEnabled ?? true,
-    imageCompressionEnabled: settings.imageCompressionEnabled ?? true,
-    source_image_allowed: settings.sourceImageAllowed ?? false,
-    sourceImageAllowed: settings.sourceImageAllowed ?? false,
-    ai_fallback_enabled: settings.aiFallbackEnabled ?? true,
-    aiFallbackEnabled: settings.aiFallbackEnabled ?? true,
-    max_ai_images_per_day: settings.maxAiImagesPerDay ?? 30,
-    maxAiImagesPerDay: settings.maxAiImagesPerDay ?? 30,
-    min_minutes_between_ai_images: settings.minMinutesBetweenAiImages ?? 5,
-    minMinutesBetweenAiImages: settings.minMinutesBetweenAiImages ?? 5,
-    image_advanced_options: normalizeImageAdvancedOptions(settings.imageAdvancedOptions),
-    imageAdvancedOptions: normalizeImageAdvancedOptions(settings.imageAdvancedOptions),
     cover_enabled: settings.coverEnabled,
     coverEnabled: settings.coverEnabled,
-    cover_image_count: settings.coverImageCount,
-    coverImageCount: settings.coverImageCount,
-    cover_resolution: settings.coverResolution,
-    coverResolution: settings.coverResolution,
-    cover_aspect_ratio: settings.coverAspectRatio,
-    coverAspectRatio: settings.coverAspectRatio,
     inline_enabled: settings.inlineEnabled,
     inlineEnabled: settings.inlineEnabled,
     inline_count: settings.inlineCount,
     inlineCount: settings.inlineCount,
-    inline_resolution: settings.inlineResolution,
-    inlineResolution: settings.inlineResolution,
-    inline_aspect_ratio: settings.inlineAspectRatio,
-    inlineAspectRatio: settings.inlineAspectRatio,
     article_word_count: settings.articleWordCount,
     articleWordCount: settings.articleWordCount,
     article_language: settings.articleLanguage,
@@ -295,19 +270,6 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   const imageModel = asOptionalText(body.image_model ?? body.imageModel);
   if (imageModel !== undefined) update.imageModel = imageModel.trim();
   setText("imageStylePrompt", "image_style_prompt");
-  const imagePlacement = body.image_placement ?? body.imagePlacement;
-  if (imagePlacement !== undefined) {
-    if (typeof imagePlacement !== "string" || !IMAGE_PLACEMENTS.has(imagePlacement)) throw new Error("Invalid image placement");
-    update.imagePlacement = imagePlacement;
-  }
-  setBool("imageCompressionEnabled", "image_compression_enabled");
-  setBool("sourceImageAllowed", "source_image_allowed");
-  setBool("aiFallbackEnabled", "ai_fallback_enabled");
-  setNumber("maxAiImagesPerDay", "max_ai_images_per_day");
-  setNumber("minMinutesBetweenAiImages", "min_minutes_between_ai_images");
-  if (body.image_advanced_options !== undefined || body.imageAdvancedOptions !== undefined) {
-    update.imageAdvancedOptions = normalizeImageAdvancedOptions(body.image_advanced_options ?? body.imageAdvancedOptions) as never;
-  }
   const inlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
   if (inlineImageModel !== undefined) {
     const imageAdvancedOptions = update.imageAdvancedOptions
@@ -317,15 +279,20 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       : {};
     update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeInlineImageModelId(inlineImageModel) } as never;
   }
+  const inlineImageSource = body.inline_image_source ?? body.inlineImageSource;
+  if (inlineImageSource !== undefined) {
+    if (inlineImageSource !== "ai" && inlineImageSource !== "stock") throw new Error("Invalid inline image source");
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageSource } as never;
+  }
   setBool("coverEnabled", "cover_enabled");
-  setNumber("coverImageCount", "cover_image_count");
-  setOptionalText("coverResolution", "cover_resolution");
-  setOptionalText("coverAspectRatio", "cover_aspect_ratio");
   setBool("inlineEnabled", "inline_enabled");
   const inlineCount = asNumber(body.inline_count ?? body.inlineCount);
   if (inlineCount !== undefined) update.inlineCount = clampNumber(inlineCount, 0, 10);
-  setOptionalText("inlineResolution", "inline_resolution");
-  setOptionalText("inlineAspectRatio", "inline_aspect_ratio");
 
   setNumber("articleWordCount", "article_word_count");
   setOptionalText("articleLanguage", "article_language");
@@ -798,22 +765,19 @@ settingsRoutes.put("/", async (c) => {
   }
 
   const directInlineImageModel = asOptionalText(body.inline_image_model ?? body.inlineImageModel);
-  if (
-    directInlineImageModel !== undefined
-    && body.image_advanced_options === undefined
-    && body.imageAdvancedOptions === undefined
-  ) {
+  const directInlineImageSource = body.inline_image_source ?? body.inlineImageSource;
+  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined) {
     const [existing] = await db
       .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
       .from(userSettings)
       .where(eq(userSettings.userId, userId))
       .limit(1);
-    const imageAdvancedOptions = existing?.imageAdvancedOptions
-      && typeof existing.imageAdvancedOptions === "object"
-      && !Array.isArray(existing.imageAdvancedOptions)
-      ? existing.imageAdvancedOptions as Record<string, unknown>
-      : {};
-    update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageModel: normalizeInlineImageModelId(directInlineImageModel) } as never;
+    const imageAdvancedOptions = normalizeImageAdvancedOptions(existing?.imageAdvancedOptions);
+    update.imageAdvancedOptions = {
+      ...imageAdvancedOptions,
+      ...(directInlineImageModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(directInlineImageModel) } : {}),
+      ...(directInlineImageSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(directInlineImageSource) } : {}),
+    } as never;
   }
 
   // Upsert: insert or update on conflict

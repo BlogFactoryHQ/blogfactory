@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { ImageAsset } from "@/hooks/useImageAssets";
 import { resolveSignedUrl } from "@/hooks/useSignedUrl";
+import { imageSourceLabel } from "@/lib/image-labels";
 
 interface GalleryCardProps {
   image: ImageAsset;
@@ -27,6 +28,10 @@ interface GalleryCardProps {
   selected: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
+}
+
+function positionLabel(position: number | null) {
+  return position != null ? ` #${position + 1}` : "";
 }
 
 export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: GalleryCardProps) {
@@ -61,6 +66,7 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
     : image.status === "unused"
     ? "bg-muted-foreground text-background"
     : "";
+  const sourceLabel = imageSourceLabel(image);
 
   return (
     <div
@@ -114,7 +120,7 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
           </div>
         ) : (
           <div className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
-            <ImagePlus className="h-2.5 w-2.5" /> Inline{image.position ? ` #${image.position}` : ""}
+            <ImagePlus className="h-2.5 w-2.5" /> Inline{positionLabel(image.position)}
           </div>
         )}
         {statusIcon && (
@@ -144,11 +150,9 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
         )}
         <p className="text-white/70 text-[10px]">{format(new Date(image.created_at), "MMM d, yyyy")}</p>
         <div className="flex items-center gap-1.5 mt-1.5">
-          {image.model_id && (
-            <Badge variant="outline" className="text-[10px] bg-background/80 border-white/20 text-white">
-              {image.model_id.split("/").pop()}
-            </Badge>
-          )}
+          <Badge title={sourceLabel} variant="outline" className="max-w-[calc(100%-2rem)] truncate text-[10px] bg-background/80 border-white/20 text-white">
+            {sourceLabel}
+          </Badge>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/drain",
-      "schedule": "* * * * *"
+      "schedule": "0 3 * * *"
     }
   ],
   "rewrites": [

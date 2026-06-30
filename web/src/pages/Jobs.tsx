@@ -82,6 +82,30 @@ interface SeoQaResult {
   };
 }
 
+type ImageResolutionSlot = {
+  type: string;
+  position?: number | null;
+  status: string;
+  provider?: string | null;
+  query?: string | null;
+  error?: string | null;
+};
+
+type ImageResolutionEntry = {
+  postId: string;
+  title: string;
+  result?: { queued?: number; failed?: number; results?: ImageResolutionSlot[] };
+  error?: string;
+};
+
+export const imageResolutionStatus = (item: Pick<ImageResolutionSlot, "status" | "provider" | "error">) => {
+  if (item.status === "queued" && item.provider === "ai-deferred") return "Waiting for AI";
+  if (item.status === "failed" && /stock/i.test(item.error || "")) return "Stock provider unavailable";
+  if (item.status === "failed") return item.error || "Image failed";
+  if (item.status === "attached" || item.status === "done") return "Done";
+  return item.status;
+};
+
 const normalizeJob = (job: any): Job => ({
   id: job.id,
   source_type: job.source_type ?? job.sourceType ?? "unknown",
@@ -237,7 +261,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
   const isImageStep = step.startsWith("generating_images") || step.startsWith("resolving_images");
   if (step.startsWith("resolving_images") && generationPlan?.imagesEnabled) {
-    steps.push({ label: "Queue AI images or find stock/source fallback", done: false, active: true });
+    steps.push({ label: "Resolve cover AI and inline images", done: false, active: true });
   }
 
   for (let i = 0; i < effectiveTotal; i++) {
@@ -663,6 +687,7 @@ export default function Jobs() {
                 const plan = selectedJob.generation_plan;
                 const failedDrafts: Array<{index: number, error: string}> = plan?.failedDrafts || [];
                 const seoQa: SeoQaResult[] = Array.isArray(plan?.seoQa) ? plan.seoQa : [];
+                const imageResolution: ImageResolutionEntry[] = Array.isArray(plan?.imageResolution) ? plan.imageResolution : [];
                 const draftStats = draftStatsFor(selectedJob);
                 const isPartial = draftStats.partial;
 
@@ -741,6 +766,35 @@ export default function Jobs() {
                             </div>
                           </div>
                         )})}
+                      </div>
+                    )}
+                    {imageResolution.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border space-y-3">
+                        <p className="text-xs font-medium text-muted-foreground">Images</p>
+                        {imageResolution.map((item) => (
+                          <div key={item.postId} className="rounded-lg border border-border bg-card p-3">
+                            <p className="truncate text-sm font-medium">{item.title}</p>
+                            {item.error && <p className="mt-1 text-xs text-status-error">{item.error}</p>}
+                            <div className="mt-2 space-y-1.5">
+                              {(item.result?.results || []).map((image, index) => (
+                                <div key={`${image.type}-${image.position ?? index}`} className="flex items-start gap-2 text-xs">
+                                  {image.status === "failed" ? (
+                                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-error" />
+                                  ) : image.status === "queued" ? (
+                                    <RefreshCw className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+                                  ) : (
+                                    <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-success" />
+                                  )}
+                                  <span className="flex-1">
+                                    {image.type === "inline" ? `Inline ${Number(image.position ?? index) + 1}` : "Cover"}: {imageResolutionStatus(image)}
+                                    {image.provider && image.provider !== "ai-deferred" ? <span className="text-muted-foreground"> via {image.provider}</span> : null}
+                                    {image.query ? <span className="text-muted-foreground"> - {image.query}</span> : null}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                     {failedDrafts.length > 0 && (
