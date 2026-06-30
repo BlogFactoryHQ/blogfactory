@@ -15,11 +15,7 @@ function priceBadge(model: LiveImageModel) {
 }
 
 function imageMeta(model: LiveImageModel) {
-  const constraints = model.constraints;
-  const sizes = constraints?.resolutions?.length ? constraints.resolutions.join("/") : "";
-  const ratios = constraints?.aspectRatios?.includes("16:9") ? "16:9" : constraints?.aspectRatios?.[0] || "";
-  const params = model.supportedParameters?.slice(0, 3).join(", ");
-  return [model.provider, sizes, ratios, params ? `params: ${params}` : "", model.costInfo].filter(Boolean).join(" · ");
+  return [model.provider, "1K output", model.costInfo].filter(Boolean).join(" · ");
 }
 
 export function isUnavailableImageModel(modelId: string | null | undefined, models: LiveImageModel[]) {
@@ -47,7 +43,7 @@ export function LiveImageModelSelect({
     const needle = query.trim().toLowerCase();
     if (!needle) return imageModels;
     return imageModels.filter((model) =>
-      [model.name, model.id, model.provider, model.costInfo, model.description, ...(model.supportedParameters || [])]
+      [model.name, model.id, model.provider, model.costInfo, model.description]
         .some((field) => field.toLowerCase().includes(needle))
     );
   }, [query, imageModels]);
@@ -68,7 +64,7 @@ export function LiveImageModelSelect({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search OpenRouter image models"
+            placeholder="Search OpenRouter 1K image models"
             className="h-10 border-0 px-0 shadow-none focus-visible:ring-0"
           />
         </div>

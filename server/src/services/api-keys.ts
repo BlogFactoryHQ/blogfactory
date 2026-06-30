@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
-export type Provider = "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay";
+export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay";
 
 function encryptionKey(): Buffer {
   const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
@@ -61,8 +61,6 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
     googleKeyLast4: row?.googleKeyLast4 || null,
     hasOpenaiKey: Boolean(row?.openaiApiKeyEncrypted),
     openaiKeyLast4: row?.openaiKeyLast4 || null,
-    hasReplicateKey: Boolean(row?.replicateApiKeyEncrypted),
-    replicateKeyLast4: row?.replicateKeyLast4 || null,
     hasPexelsKey: Boolean(row?.pexelsApiKeyEncrypted),
     pexelsKeyLast4: row?.pexelsKeyLast4 || null,
     hasPixabayKey: Boolean(row?.pixabayApiKeyEncrypted),
@@ -86,9 +84,6 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
   }
   if (provider === "openai" && !trimmed.startsWith("sk-")) {
     throw new Error("OpenAI keys should start with sk-");
-  }
-  if (provider === "replicate" && trimmed.length < 20) {
-    throw new Error("Replicate API token looks too short");
   }
   if ((provider === "pexels" || provider === "pixabay") && trimmed.length < 10) {
     throw new Error("Stock photo API key looks too short");
@@ -114,13 +109,6 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
           userId,
           openaiApiKeyEncrypted: encryptSecret(trimmed),
           openaiKeyLast4: last4(trimmed),
-          updatedAt: new Date(),
-        }
-      : provider === "replicate"
-      ? {
-          userId,
-          replicateApiKeyEncrypted: encryptSecret(trimmed),
-          replicateKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
       : provider === "pexels"
@@ -168,12 +156,6 @@ export async function deleteApiKey(userId: string, provider: Provider) {
           openaiKeyLast4: null,
           updatedAt: new Date(),
         }
-      : provider === "replicate"
-      ? {
-          replicateApiKeyEncrypted: null,
-          replicateKeyLast4: null,
-          updatedAt: new Date(),
-        }
       : provider === "pexels"
       ? {
           pexelsApiKeyEncrypted: null,
@@ -211,15 +193,6 @@ export async function getGoogleAiKey(userId: string): Promise<string | null> {
 export async function getOpenAiKey(userId: string): Promise<string | null> {
   const [row] = await db
     .select({ key: userApiKeys.openaiApiKeyEncrypted })
-    .from(userApiKeys)
-    .where(eq(userApiKeys.userId, userId))
-    .limit(1);
-  return decryptStoredSecret(row?.key);
-}
-
-export async function getReplicateKey(userId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ key: userApiKeys.replicateApiKeyEncrypted })
     .from(userApiKeys)
     .where(eq(userApiKeys.userId, userId))
     .limit(1);

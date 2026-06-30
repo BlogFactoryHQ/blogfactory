@@ -258,7 +258,7 @@ export function InternalLinksPanel() {
               <Button type="button" variant="outline" size="sm" asChild>
                 <Link to="/settings?section=api-keys">
                   <KeyRound className="mr-2 h-4 w-4" />
-                  API Keys
+                  Access Keys
                 </Link>
               </Button>
             </div>

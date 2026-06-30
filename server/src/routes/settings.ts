@@ -10,7 +10,6 @@ import {
   getGoogleAiKey,
   getOpenAiKey,
   getOpenRouterKey,
-  getReplicateKey,
   setApiKey,
   type Provider,
 } from "../services/api-keys.js";
@@ -25,9 +24,9 @@ import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
 
 export const settingsRoutes = new Hono();
-const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate", "pexels", "pixabay"]);
-const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "replicate"]);
-type TestableProvider = "openrouter" | "google" | "openai" | "replicate";
+const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay"]);
+const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai"]);
+type TestableProvider = "openrouter" | "google" | "openai";
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -380,8 +379,7 @@ settingsRoutes.post("/api-keys/test", async (c) => {
   const apiKey =
     testableProvider === "openrouter" ? await getOpenRouterKey(userId) :
     testableProvider === "google" ? await getGoogleAiKey(userId) :
-    testableProvider === "openai" ? await getOpenAiKey(userId) :
-    await getReplicateKey(userId);
+    await getOpenAiKey(userId);
 
   if (!apiKey) return c.json({ error: "No saved API key for this provider" }, 400);
 
@@ -391,9 +389,6 @@ settingsRoutes.post("/api-keys/test", async (c) => {
     }),
     google: () => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`),
     openai: () => fetch("https://api.openai.com/v1/models", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    }),
-    replicate: () => fetch("https://api.replicate.com/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },
     }),
   };

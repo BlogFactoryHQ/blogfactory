@@ -77,7 +77,7 @@ export function LiveTextModelSelect({
             <div className="border-b px-3 py-2 text-sm text-destructive">Unavailable: {value}</div>
           )}
           {filteredModels.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm text-muted-foreground">No model found.</div>
+            <div className="px-3 py-6 text-center text-sm text-muted-foreground">No text model found.</div>
           ) : (
             filteredModels.map((model) => {
               const badge = priceBadge(model);

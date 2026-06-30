@@ -82,8 +82,6 @@ interface ApiKeyMetadata {
   googleKeyLast4: string | null;
   hasOpenaiKey: boolean;
   openaiKeyLast4: string | null;
-  hasReplicateKey: boolean;
-  replicateKeyLast4: string | null;
   hasPexelsKey: boolean;
   pexelsKeyLast4: string | null;
   hasPixabayKey: boolean;
@@ -91,7 +89,7 @@ interface ApiKeyMetadata {
   updatedAt: string | null;
 }
 
-type ApiKeyProvider = "openrouter" | "google" | "openai" | "replicate";
+type ApiKeyProvider = "openrouter" | "google" | "openai";
 
 interface ApiKeyTestResult {
   ok: boolean;
@@ -292,7 +290,6 @@ export default function Settings() {
   const [pixabayKey, setPixabayKey] = useState("");
   const [testingProvider, setTestingProvider] = useState<ApiKeyProvider | null>(null);
   const [modelSearch, setModelSearch] = useState("");
-  const [providerFilter, setProviderFilter] = useState("all");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
   const [activeSection, setActiveSection] = useState(() => searchParams.get("section") || "basics");
   const [articleWordCount, setArticleWordCount] = useState(1500);
@@ -337,19 +334,13 @@ export default function Settings() {
     if (section) setActiveSection(section);
   }, [searchParams]);
 
-  const modelProviders = useMemo(() => {
-    const providers = new Set([...imageModels, ...textModels].map((model) => model.provider).filter(Boolean));
-    return Array.from(providers).sort((a, b) => a.localeCompare(b));
-  }, [imageModels, textModels]);
-
   const modelMatchesFilters = useCallback((model: LiveImageModel | LiveTextModel) => {
     const query = modelSearch.trim().toLowerCase();
     const matchesSearch = !query || [model.name, model.id, model.provider, model.description]
       .some((value) => value?.toLowerCase().includes(query));
-    const matchesProvider = providerFilter === "all" || model.provider === providerFilter;
     const matchesPrice = priceFilter === "all" || model.pricing === priceFilter;
-    return matchesSearch && matchesProvider && matchesPrice;
-  }, [modelSearch, providerFilter, priceFilter]);
+    return matchesSearch && matchesPrice;
+  }, [modelSearch, priceFilter]);
 
   const filteredImageModels = useMemo(
     () => imageModels.filter(modelMatchesFilters),
@@ -640,7 +631,7 @@ export default function Settings() {
   });
 
   const saveApiKeyMutation = useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay"; apiKey: string }) =>
+    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay"; apiKey: string }) =>
       api.put<ApiKeyMetadata>("/settings/api-keys", { provider, apiKey }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -657,7 +648,7 @@ export default function Settings() {
   });
 
   const deleteApiKeyMutation = useMutation({
-    mutationFn: (provider: "openrouter" | "google" | "openai" | "replicate" | "pexels" | "pixabay") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
+    mutationFn: (provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       queryClient.invalidateQueries({ queryKey: ["image-models"] });
@@ -838,8 +829,8 @@ export default function Settings() {
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
-    { id: "models", title: "OpenRouter Models", description: "Live text and image catalog", icon: Zap },
-    { id: "api-keys", title: "API Keys", description: "OpenRouter, stock, helpers", icon: KeyRound },
+    { id: "models", title: "Models", description: "Text + 1K images", icon: Zap },
+    { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
     { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
     { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
     { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
@@ -1001,8 +992,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={KeyRound}
-                title="API Keys"
-                description="OpenRouter powers text and AI images. Stock keys only apply when Inline Source is Stock."
+                title="Access Keys"
+                description="OpenRouter is the only text and AI image provider. Stock keys only apply when Inline Source is Stock."
               />
               <div className="grid gap-6 p-6 md:grid-cols-2">
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
@@ -1055,7 +1046,7 @@ export default function Settings() {
 
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="google-key">Google Gemini PDF/Knowledge</Label>
+                    <Label htmlFor="google-key">Google PDF Import</Label>
                     <Badge variant={apiKeys?.hasGoogleAiKey ? "default" : "secondary"}>
                       {apiKeys?.hasGoogleAiKey ? `Saved ****${apiKeys.googleKeyLast4}` : "Missing"}
                     </Badge>
@@ -1063,13 +1054,13 @@ export default function Settings() {
                   <Input
                     id="google-key"
                     type="password"
-                    placeholder="Google Gemini API key"
+                    placeholder="Google API key"
                     value={googleKey}
                     onChange={(e) => setGoogleKey(e.target.value)}
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional for PDF knowledge imports only. Not used for text or image model selection. {formatSavedAt(apiKeys?.updatedAt)}
+                    Optional for PDF knowledge imports only. Not used for article text or AI image generation. {formatSavedAt(apiKeys?.updatedAt)}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -1103,7 +1094,7 @@ export default function Settings() {
 
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="openai-key">OpenAI Embeddings</Label>
+                    <Label htmlFor="openai-key">OpenAI Internal Linking</Label>
                     <Badge variant={apiKeys?.hasOpenaiKey ? "default" : "secondary"}>
                       {apiKeys?.hasOpenaiKey ? `Saved ****${apiKeys.openaiKeyLast4}` : "Missing"}
                     </Badge>
@@ -1117,7 +1108,7 @@ export default function Settings() {
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional for semantic internal linking only. Not used for text or image model selection. {formatSavedAt(apiKeys?.updatedAt)}
+                    Optional for semantic internal linking only. Not used for article text or AI image generation. {formatSavedAt(apiKeys?.updatedAt)}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -1234,8 +1225,8 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={Zap}
-                title="OpenRouter Models"
-                description="Live OpenRouter catalog for text and image models. No local or legacy model aliases."
+                title="Models"
+                description="Live OpenRouter catalog. Text models write articles; 1K image models generate cover and inline AI images."
                 action={
                   <Button
                     variant="outline"
@@ -1249,29 +1240,16 @@ export default function Settings() {
                 }
               />
               <div className="space-y-6 p-6">
-                <div className="grid gap-3 md:grid-cols-[1fr_180px_160px]">
+                <div className="grid gap-3 md:grid-cols-[1fr_160px]">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={modelSearch}
                       onChange={(event) => setModelSearch(event.target.value)}
-                      placeholder="Search OpenRouter models, providers, or IDs"
+                      placeholder="Search model names, families, or IDs"
                       className="pl-9"
                     />
                   </div>
-                  <Select value={providerFilter} onValueChange={setProviderFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All providers</SelectItem>
-                      {modelProviders.map((provider) => (
-                        <SelectItem key={provider} value={provider}>
-                          {provider}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <Select value={priceFilter} onValueChange={(value) => setPriceFilter(value as ModelPriceFilter)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Price" />
@@ -1286,13 +1264,13 @@ export default function Settings() {
                   </Select>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredImageModels.length} official OpenRouter 1K image models and {filteredTextModels.length} text models.
+                  Showing {filteredTextModels.length} text models and {filteredImageModels.length} official 1K image models.
                 </p>
 
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <ImageIcon className="h-4 w-4" />
-                    OpenRouter 1K Image Models
+                    1K Image Models
                   </h4>
                   {imageModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
@@ -1312,13 +1290,8 @@ export default function Settings() {
                             <p className="mb-1 font-mono text-xs text-muted-foreground">{model.id}</p>
                             <p className="line-clamp-1 text-xs text-muted-foreground">{model.description}</p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                              {model.provider} · {formatContextLength(model.contextLength)}
+                              {model.provider} · 1K output
                             </p>
-                            {model.constraints && (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {model.constraints.resolutions.join("/")} · Max {model.constraints.maxDimensionPx}px
-                              </p>
-                            )}
                             {model.isFree && model.limits && (
                               <p className="mt-0.5 text-xs text-primary">{model.limits}</p>
                             )}
@@ -1335,7 +1308,7 @@ export default function Settings() {
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <FileText className="h-4 w-4" />
-                    OpenRouter Text Models
+                    Text Models
                   </h4>
                   {textModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
@@ -1556,7 +1529,7 @@ export default function Settings() {
                       </div>
                       <Button type="button" variant="outline" size="sm" onClick={() => setActiveSection("api-keys")}>
                         <KeyRound className="mr-2 h-4 w-4" />
-                        API Keys
+                        Access Keys
                       </Button>
                     </div>
                   )}
