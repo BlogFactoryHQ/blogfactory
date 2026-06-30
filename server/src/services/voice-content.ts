@@ -159,7 +159,7 @@ export async function analyzeVoiceProfile(opts: { userId: string; samples: unkno
           content: `Create a reusable brand voice profile from these samples. Return JSON with keys summary, styleTraits, doRules, dontRules, vocabularyGuidance, finalPromptInstructions.\n\n${sampleText}`,
         },
       ],
-      max_tokens: 1800,
+      max_completion_tokens: 1800,
     }),
   });
 

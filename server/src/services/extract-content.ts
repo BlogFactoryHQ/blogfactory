@@ -131,9 +131,10 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
           role: "user",
           content: [
             { type: "text", text: "Extract all text content from this PDF. Preserve structure. Output in markdown." },
-            { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
+            { type: "file", file: { filename: "document.pdf", file_data: `data:application/pdf;base64,${base64}` } },
           ],
         }],
+        plugins: [{ id: "file-parser", pdf: { engine: "cloudflare-ai" } }],
       }),
     });
 
@@ -194,7 +195,7 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
             role: "user",
             content: `Extract the main article content from this webpage HTML. Return clean text in markdown format:\n\n${html.substring(0, 15000)}`,
           }],
-          max_tokens: 4096,
+          max_completion_tokens: 4096,
         }),
       });
 

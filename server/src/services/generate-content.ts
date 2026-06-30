@@ -807,8 +807,7 @@ async function repairShortArticle(opts: {
           content: `The draft below is too short. Expand it to at least ${opts.contract.minWords} words and aim for about ${opts.contract.targetWords} words. Preserve the H1 title, language, markdown links, FAQ section, brand rules, and factual meaning. Return only the finished markdown article.\n\n${opts.content}`,
         },
       ],
-      max_tokens: completionTokenBudget(opts.contract),
-      plugins: [],
+      max_completion_tokens: completionTokenBudget(opts.contract),
     }),
   });
 
@@ -998,8 +997,7 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1200,
-      plugins: [],
+      max_completion_tokens: 1200,
     }),
   });
 
@@ -1267,8 +1265,7 @@ export async function generateContent(opts: GenerateOpts) {
               { role: "system", content: draftSystemPrompt },
               { role: "user", content: userMessage },
             ],
-            max_tokens: completionTokenBudget(generationContract),
-            plugins: [],
+            max_completion_tokens: completionTokenBudget(generationContract),
           }),
         });
 

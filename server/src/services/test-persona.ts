@@ -87,7 +87,7 @@ export async function testPersona(opts: {
     addTrace("plugin", "Response healing plugin enabled");
   }
 
-  const requestBody: Record<string, unknown> = { model: persona.baseModel, messages, max_tokens: 2000 };
+  const requestBody: Record<string, unknown> = { model: persona.baseModel, messages, max_completion_tokens: 2000 };
 
   if (tools.length > 0) {
     requestBody.tools = tools;
