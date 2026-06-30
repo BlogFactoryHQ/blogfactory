@@ -1695,6 +1695,21 @@ export async function generateQueuedImageRequest(request: typeof imageGeneration
   return result;
 }
 
+export function openRouterImageRequestPayload(modelId: string, prompt: string, resolution: string, aspectRatio: string) {
+  return {
+    model: modelId,
+    prompt,
+    n: 1,
+    resolution: resolution === "Web" ? "512" : resolution,
+    aspect_ratio: aspectRatio,
+  };
+}
+
+export function openRouterImageBase64(data: any) {
+  const value = data?.data?.[0]?.b64_json || data?.data?.[0]?.b64 || "";
+  return typeof value === "string" ? value.replace(/^data:image\/[^;]+;base64,/, "") : "";
+}
+
 async function generateSingleImage(
   prompt: string,
   altText: string,
@@ -1711,22 +1726,14 @@ async function generateSingleImage(
   if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before using AI image models");
 
   const startedAt = Date.now();
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await fetch("https://openrouter.ai/api/v1/images", {
     method: "POST",
     signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${openRouterKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: "user", content: prompt }],
-      modalities: ["image", "text"],
-      image_config: {
-        aspect_ratio: aspectRatio,
-        image_size: resolution === "Web" ? "0.5K" : resolution,
-      },
-    }),
+    body: JSON.stringify(openRouterImageRequestPayload(modelId, prompt, resolution, aspectRatio)),
   });
 
   if (!resp.ok) {
@@ -1742,29 +1749,25 @@ async function generateSingleImage(
       sessionId: jobId,
       responseData: { status: resp.status, error: errorText.slice(0, 1000) },
     });
-    throw new Error(`OpenRouter image failed (${resp.status})`);
+    throw new Error(`OpenRouter image failed (${resp.status})${errorText ? `: ${errorText.slice(0, 180)}` : ""}`);
   }
 
   const data = await resp.json() as any;
-  const openRouterUsage = await getOpenRouterCost(openRouterKey, data);
   const usage = data.usage || {};
-  const promptTokens = usage.prompt_tokens ?? openRouterUsage.stats?.tokens_prompt ?? openRouterUsage.stats?.native_tokens_prompt ?? null;
-  const completionTokens = usage.completion_tokens ?? openRouterUsage.stats?.tokens_completion ?? openRouterUsage.stats?.native_tokens_completion ?? null;
+  const cost = Number(usage.cost || 0);
+  const promptTokens = usage.prompt_tokens ?? null;
+  const completionTokens = usage.completion_tokens ?? null;
   const countedTokens = (promptTokens || 0) + (completionTokens || 0);
   const totalTokens = usage.total_tokens ?? (countedTokens || null);
-  // Extract base64 image or URL from response
-  const message = data.choices?.[0]?.message;
-  const imageUrl = message?.images?.[0]?.image_url?.url || message?.images?.[0]?.imageUrl?.url || "";
-  const imageContent = `${imageUrl}\n${message?.content || ""}`;
-  const base64Match = imageContent.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/=]+)/);
-  const urlMatch = imageContent.match(/https?:\/\/[^\s"'\)]+\.(png|jpg|jpeg|webp|gif)/i);
+  const imageUrl = data?.data?.[0]?.url || "";
+  const base64Image = openRouterImageBase64(data);
 
   let imageBuffer: Buffer | null = null;
 
-  if (base64Match) {
-    imageBuffer = Buffer.from(base64Match[1], "base64");
-  } else if (urlMatch) {
-    const imgResp = await fetch(urlMatch[0], { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
+  if (base64Image) {
+    imageBuffer = Buffer.from(base64Image, "base64");
+  } else if (imageUrl) {
+    const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
     if (imgResp.ok) {
       imageBuffer = Buffer.from(await imgResp.arrayBuffer());
     }
@@ -1780,13 +1783,13 @@ async function generateSingleImage(
     promptTokens,
     completionTokens,
     totalTokens,
-    cost: openRouterUsage.cost,
+    cost,
     latencyMs: Date.now() - startedAt,
     sessionId: jobId,
-    responseData: { id: data.id, generation: openRouterUsage.stats },
+    responseData: { id: data.id, usage },
   });
 
-  if (!imageBuffer) return { storagePath: null, cost: openRouterUsage.cost };
+  if (!imageBuffer) return { storagePath: null, cost };
 
   try {
     const sharp = (await import("sharp")).default;
@@ -1794,7 +1797,7 @@ async function generateSingleImage(
   } catch {}
 
   const finalImageBuffer = imageBuffer;
-  if (!finalImageBuffer) return { storagePath: null, cost: openRouterUsage.cost };
+  if (!finalImageBuffer) return { storagePath: null, cost };
 
   const { storagePath } = await saveImageBuffer(finalImageBuffer, userId, {
     type,
@@ -1806,10 +1809,10 @@ async function generateSingleImage(
     aspectRatio,
     resolution,
     position,
-    cost: openRouterUsage.cost,
+    cost,
     jobId,
     postId: postId || undefined,
   });
 
-  return { storagePath, cost: openRouterUsage.cost };
+  return { storagePath, cost };
 }
