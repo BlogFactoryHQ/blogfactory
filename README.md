@@ -140,4 +140,4 @@ Set the Worker secret to the same value as the backend `CRON_SECRET`:
 npx wrangler secret put CRON_SECRET --config wrangler.cron.jsonc
 ```
 
-Cloudflare drains images every 5 minutes. GitHub Actions drains feeds hourly and all background tasks daily. Set GitHub secret `BLOGFACTORY_CRON_SECRET` to the same backend `CRON_SECRET`; optional variable `BLOGFACTORY_BASE_URL` defaults to `https://blogfactory.io`.
+Cloudflare drains two images in parallel every 5 minutes. GitHub Actions drains feeds hourly and all background tasks daily. Set GitHub secret `BLOGFACTORY_CRON_SECRET` to the same backend `CRON_SECRET`; optional variable `BLOGFACTORY_BASE_URL` defaults to `https://blogfactory.io`.

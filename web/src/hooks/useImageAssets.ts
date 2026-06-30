@@ -120,13 +120,29 @@ export function useImageGenerationRequests(status = "active") {
 export function useProcessImageQueue() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => api.post<{ processed: boolean; storagePath?: string; error?: string }>("/images/queue/process", {}),
+    mutationFn: async () => {
+      const results = await Promise.allSettled([
+        api.post<{ processed: boolean; storagePath?: string; error?: string }>("/images/queue/process", {}),
+        api.post<{ processed: boolean; storagePath?: string; error?: string }>("/images/queue/process", {}),
+      ]);
+      const fulfilled = results.filter((result): result is PromiseFulfilledResult<{ processed: boolean; storagePath?: string; error?: string }> => result.status === "fulfilled");
+      const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason instanceof Error ? result.reason.message : "Image queue failed")
+        .concat(fulfilled.map((result) => result.value.error).filter(Boolean) as string[]);
+      if (!fulfilled.length) throw new Error(errors[0] || "Image queue failed");
+      return {
+        processed: fulfilled.some((result) => result.value.processed),
+        processedCount: fulfilled.filter((result) => result.value.processed).length,
+        error: errors[0],
+      };
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
       if (result.processed) {
-        toast.success("Image generated", result.error ? { description: result.error } : undefined);
+        toast.success(`${result.processedCount} image${result.processedCount === 1 ? "" : "s"} generated`, result.error ? { description: result.error } : undefined);
       }
       else toast.info(result.error || "No queued image ready yet");
     },

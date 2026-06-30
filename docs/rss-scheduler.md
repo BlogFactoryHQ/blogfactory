@@ -10,7 +10,7 @@ Authorization: Bearer $CRON_SECRET
 Vercel cron is not used.
 
 ```text
-Cloudflare Worker Cron: image queue every 5 minutes
+Cloudflare Worker Cron: image queue every 5 minutes, two parallel drains
 GitHub Actions: RSS hourly, full background drain daily
 ```
 

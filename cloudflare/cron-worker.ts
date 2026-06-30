@@ -3,6 +3,8 @@ type Env = {
   CRON_SECRET?: string;
 };
 
+const IMAGE_DRAIN_CONCURRENCY = 2;
+
 function drainUrl(env: Env, task: string) {
   if (!env.CRON_BASE_URL) throw new Error("CRON_BASE_URL is not configured");
   const base = env.CRON_BASE_URL.replace(/\/+$/, "");
@@ -21,7 +23,7 @@ async function drain(task: string, env: Env) {
 
 export default {
   async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
-    ctx.waitUntil(drain("images", env));
+    ctx.waitUntil(Promise.all(Array.from({ length: IMAGE_DRAIN_CONCURRENCY }, () => drain("images", env))));
   },
 
   async fetch() {
