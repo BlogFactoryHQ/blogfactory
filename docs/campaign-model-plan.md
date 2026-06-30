@@ -215,7 +215,7 @@ export async function runCampaign(campaignId: string) {
 }
 ```
 
-This is intentionally simple. If Vercel/serverless kills long requests, the next step is not a queue library; it is a resumable runner endpoint/cron that picks queued campaign items. Same tables support that.
+This is intentionally simple. If serverless kills long requests, the next step is not a queue library; it is a resumable runner endpoint/cron that picks queued campaign items. Same tables support that.
 
 Important: current `jobs` route marks `running` jobs older than 2 minutes as failed. Campaign items can run longer. Change stale logic to either:
 

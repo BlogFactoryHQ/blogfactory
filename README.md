@@ -10,7 +10,7 @@ AI-assisted content operations for generating, managing, scheduling, and publish
 | Backend  | Hono (TypeScript) with Bun for local dev     |
 | Database | PostgreSQL via Drizzle ORM                   |
 | Storage  | S3-compatible storage, such as Cloudflare R2 |
-| Deploy   | Vercel app/API + Cloudflare cron worker      |
+| Deploy   | Vercel app/API + Cloudflare/GitHub cron      |
 
 ## Project Structure
 
@@ -125,9 +125,9 @@ Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through th
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
 
-## Cloudflare Cron
+## Background Cron
 
-Vercel cron is not used. Cloudflare Worker Cron calls the protected backend drain endpoint:
+Vercel cron is not used. Cloudflare handles frequent image ticks; GitHub Actions handles slower drains.
 
 ```bash
 npm run cron:dry-run
@@ -140,4 +140,4 @@ Set the Worker secret to the same value as the backend `CRON_SECRET`:
 npx wrangler secret put CRON_SECRET --config wrangler.cron.jsonc
 ```
 
-The cron worker drains images every 5 minutes, feeds hourly, and all background tasks daily.
+Cloudflare drains images every 5 minutes. GitHub Actions drains feeds hourly and all background tasks daily. Set GitHub secret `BLOGFACTORY_CRON_SECRET` to the same backend `CRON_SECRET`; optional variable `BLOGFACTORY_BASE_URL` defaults to `https://blogfactory.io`.

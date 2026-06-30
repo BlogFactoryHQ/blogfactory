@@ -3,12 +3,6 @@ type Env = {
   CRON_SECRET?: string;
 };
 
-const TASK_BY_CRON: Record<string, string> = {
-  "*/5 * * * *": "images",
-  "7 * * * *": "feeds",
-  "23 3 * * *": "all",
-};
-
 function drainUrl(env: Env, task: string) {
   if (!env.CRON_BASE_URL) throw new Error("CRON_BASE_URL is not configured");
   const base = env.CRON_BASE_URL.replace(/\/+$/, "");
@@ -26,8 +20,8 @@ async function drain(task: string, env: Env) {
 }
 
 export default {
-  async scheduled(controller: { cron: string }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
-    ctx.waitUntil(drain(TASK_BY_CRON[controller.cron] || "all", env));
+  async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
+    ctx.waitUntil(drain("images", env));
   },
 
   async fetch() {
