@@ -1,4 +1,4 @@
-import { queueDeferredImageRequest, drainDeferredImages, kickDeferredImageWorker, processNextDeferredImage } from "./ai-image-queue.js";
+import { queueDeferredImageRequest, drainDeferredImages, kickDeferredImageWorker, processDeferredImageRequest, processNextDeferredImage } from "./ai-image-queue.js";
 import { attachImageRequestToPost, attachPostImage } from "./image-post-attachments.js";
 import {
   buildImagePrompt,
@@ -21,6 +21,7 @@ export {
   imageRouteForSlot,
   kickDeferredImageWorker,
   normalizeInlineImageSource,
+  processDeferredImageRequest,
   processNextDeferredImage,
   stockOrientation,
   stockQueries,
@@ -35,6 +36,10 @@ export interface LowCostImageSettings {
   inlineImageSource?: InlineImageSource | null;
 }
 
+export function shouldProcessAiImagesNow(count: number, immediateAi = true) {
+  return immediateAi && count > 0 && count <= 2;
+}
+
 export async function resolvePostImages(opts: {
   content: string;
   title: string;
@@ -46,6 +51,7 @@ export async function resolvePostImages(opts: {
   inlineImageModel?: string | null;
   stylePrompt?: string | null;
   settings?: LowCostImageSettings | null;
+  immediateAi?: boolean;
 }): Promise<ImageResolutionResult> {
   const settings = opts.settings || {};
   const imageModel = opts.imageModel || "";
@@ -56,22 +62,20 @@ export async function resolvePostImages(opts: {
   let coverPath: string | null = null;
   const inlinePaths: string[] = [];
   const results: ImageSlotResult[] = [];
-  let queued = 0;
-  let failed = 0;
+  const aiRequests: Array<{ requestId: string; resultIndex: number; slot: (typeof slots)[number] }> = [];
 
   for (const slot of slots) {
     try {
       if (imageRouteForSlot(slot.type, inlineSource) === "ai") {
         const queuedRequest = await queueDeferredImageRequest({ ...opts, imageModel: imageModelForTarget(imageModel, slot.type, inlineImageModel), slot });
-        if (queuedRequest.created) queued += 1;
-        results.push({ slot, status: "queued", queuedRequestId: queuedRequest.id || undefined, provider: "ai-deferred" });
+        const resultIndex = results.push({ slot, status: "queued", queuedRequestId: queuedRequest.id || undefined, provider: "ai-deferred" }) - 1;
+        if (queuedRequest.id && queuedRequest.status === "queued") aiRequests.push({ requestId: queuedRequest.id, resultIndex, slot });
         console.info("[images] queued", { jobId: opts.jobId, type: slot.type, position: slot.position, requestId: queuedRequest.id });
         continue;
       }
 
       const stock = await tryStockImage({ ...opts, slot, usedSourceUrls });
       if (!stock?.storagePath) {
-        failed += 1;
         results.push({ slot, status: "failed", error: "No stock image found" });
         continue;
       }
@@ -82,13 +86,32 @@ export async function resolvePostImages(opts: {
       results.push(stock);
       console.info("[images] attached", { jobId: opts.jobId, type: slot.type, position: slot.position, provider: stock.provider, query: stock.query });
     } catch (err) {
-      failed += 1;
       const error = err instanceof Error ? err.message : "Image slot failed";
       results.push({ slot, status: "failed", error });
       console.warn("[images] slot failed", { jobId: opts.jobId, type: slot.type, position: slot.position, error });
     }
   }
 
+  if (shouldProcessAiImagesNow(aiRequests.length, opts.immediateAi !== false)) {
+    const processed = await Promise.all(aiRequests.map((request) => processDeferredImageRequest(request.requestId, opts.userId)));
+    processed.forEach((processedResult, index) => {
+      const request = aiRequests[index];
+      const result = results[request.resultIndex];
+      if (processedResult.processed && processedResult.storagePath) {
+        result.status = "attached";
+        result.storagePath = processedResult.storagePath;
+        result.provider = "openrouter-image";
+        if (request.slot.type === "cover") coverPath ||= processedResult.storagePath;
+        else inlinePaths[request.slot.position] = processedResult.storagePath;
+        return;
+      }
+      if (processedResult.status === "failed") result.status = "failed";
+      if (processedResult.error) result.error = processedResult.error;
+    });
+  }
+
+  const queued = results.filter((result) => result.status === "queued").length;
+  const failed = results.filter((result) => result.status === "failed").length;
   return { coverPath, inlinePaths: inlinePaths.filter(Boolean), queued, failed, cost: 0, results };
 }
 

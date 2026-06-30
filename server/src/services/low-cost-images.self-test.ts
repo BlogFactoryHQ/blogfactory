@@ -1,4 +1,4 @@
-import { buildImagePrompt, buildImageSlots, imageModelForTarget, imageRouteForSlot, normalizeInlineImageSource, stockOrientation, stockQueries, stockQuery, stockSourceKey, stockSourceUrlKey, usableStockCandidate } from "./low-cost-images.js";
+import { buildImagePrompt, buildImageSlots, imageModelForTarget, imageRouteForSlot, normalizeInlineImageSource, shouldProcessAiImagesNow, stockOrientation, stockQueries, stockQuery, stockSourceKey, stockSourceUrlKey, usableStockCandidate } from "./low-cost-images.js";
 import { imageTargets } from "./image-slots.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
@@ -12,6 +12,9 @@ assertEqual(normalizeInlineImageSource(undefined), "ai", "inline defaults to AI"
 assertEqual(imageRouteForSlot("cover", "stock"), "ai", "cover always queues AI");
 assertEqual(imageRouteForSlot("inline", "ai"), "ai", "inline AI queues AI");
 assertEqual(imageRouteForSlot("inline", "stock"), "stock", "inline stock skips AI queue");
+assertEqual(shouldProcessAiImagesNow(2), true, "one or two AI images process immediately");
+assertEqual(shouldProcessAiImagesNow(3), false, "more than two AI images stay queued");
+assertEqual(shouldProcessAiImagesNow(1, false), false, "low function budget keeps AI images queued");
 
 assertEqual(
   imageModelForTarget("openai/gpt-image-1", "cover", "openai/gpt-image-1-mini"),

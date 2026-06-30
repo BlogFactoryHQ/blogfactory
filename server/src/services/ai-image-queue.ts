@@ -4,6 +4,13 @@ import { imageGenerationRequests } from "../db/schema.js";
 import { attachPostImage } from "./image-post-attachments.js";
 import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
 
+export type ImageProcessResult = {
+  processed: boolean;
+  status?: "done" | "queued" | "failed";
+  storagePath?: string;
+  error?: string;
+};
+
 export async function queueDeferredImageRequest(opts: {
   userId: string;
   postId: string;
@@ -43,11 +50,11 @@ export async function queueDeferredImageRequest(opts: {
       completedVia: null,
       updatedAt: new Date(),
     }).where(eq(imageGenerationRequests.id, existing.id));
-    return { id: existing.id, created: false };
+    return { id: existing.id, created: false, status: "queued" };
   }
 
   if (existing?.status === "processing" || (existing && existing.prompt === opts.slot.prompt && existing.modelId === opts.imageModel)) {
-    return { id: existing.id, created: false };
+    return { id: existing.id, created: false, status: existing.status };
   }
 
   const [request] = await db.insert(imageGenerationRequests).values({
@@ -64,7 +71,7 @@ export async function queueDeferredImageRequest(opts: {
     resolution: opts.slot.resolution,
     status: "queued",
   }).returning({ id: imageGenerationRequests.id });
-  return { id: request?.id || null, created: true };
+  return { id: request?.id || null, created: true, status: "queued" };
 }
 
 async function claimNextDeferredImageRequest(userId?: string) {
@@ -117,16 +124,8 @@ async function claimNextDeferredImageRequest(userId?: string) {
   return ((claimed as any)[0] || (claimed as any).rows?.[0] || null) as typeof imageGenerationRequests.$inferSelect | null;
 }
 
-export async function processNextDeferredImage(userId?: string) {
-  await db.update(imageGenerationRequests).set({ status: "queued", updatedAt: new Date() }).where(and(
-    eq(imageGenerationRequests.provider, "ai-deferred"),
-    eq(imageGenerationRequests.status, "processing"),
-    lte(imageGenerationRequests.updatedAt, new Date(Date.now() - 20 * 60_000))
-  ));
-
-  const request = await claimNextDeferredImageRequest(userId);
-  if (!request || !request.postId || !request.jobId || !request.modelId) return { processed: false };
-
+async function processClaimedDeferredImage(request: typeof imageGenerationRequests.$inferSelect): Promise<ImageProcessResult> {
+  if (!request.postId || !request.jobId || !request.modelId) return { processed: false };
   try {
     const { generateQueuedImageRequest } = await import("./generate-content.js");
     const result = await generateQueuedImageRequest(request);
@@ -134,7 +133,7 @@ export async function processNextDeferredImage(userId?: string) {
 
     await attachPostImage(request.postId, imageSlotFromRequest(request), result.storagePath, "auto");
     await db.update(imageGenerationRequests).set({ status: "done", completedVia: "ai", lastError: null, updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
-    return { processed: true, storagePath: result.storagePath };
+    return { processed: true, status: "done", storagePath: result.storagePath };
   } catch (err: any) {
     const retryCount = (request.retryCount || 0) + 1;
     if (retryCount >= 3) {
@@ -144,7 +143,7 @@ export async function processNextDeferredImage(userId?: string) {
         retryCount,
         updatedAt: new Date(),
       }).where(eq(imageGenerationRequests.id, request.id));
-      return { processed: false, error: err?.message || "Image generation failed" };
+      return { processed: false, status: "failed", error: err?.message || "Image generation failed" };
     }
     const backoffMinutes = Math.min(120, 10 * retryCount);
     await db.update(imageGenerationRequests).set({
@@ -154,8 +153,45 @@ export async function processNextDeferredImage(userId?: string) {
       availableAt: new Date(Date.now() + backoffMinutes * 60_000),
       updatedAt: new Date(),
     }).where(eq(imageGenerationRequests.id, request.id));
-    return { processed: false, error: err?.message || "Image generation failed" };
+    return { processed: false, status: "queued", error: err?.message || "Image generation failed" };
   }
+}
+
+async function resetStaleImageProcessing() {
+  await db.update(imageGenerationRequests).set({ status: "queued", updatedAt: new Date() }).where(and(
+    eq(imageGenerationRequests.provider, "ai-deferred"),
+    eq(imageGenerationRequests.status, "processing"),
+    lte(imageGenerationRequests.updatedAt, new Date(Date.now() - 20 * 60_000))
+  ));
+}
+
+async function claimDeferredImageRequestById(id: string, userId?: string) {
+  const conditions = [
+    eq(imageGenerationRequests.id, id),
+    eq(imageGenerationRequests.provider, "ai-deferred"),
+    eq(imageGenerationRequests.status, "queued"),
+    lte(imageGenerationRequests.availableAt, new Date()),
+  ];
+  if (userId) conditions.push(eq(imageGenerationRequests.userId, userId));
+  const [request] = await db.update(imageGenerationRequests)
+    .set({ status: "processing", updatedAt: new Date() })
+    .where(and(...conditions))
+    .returning();
+  return request || null;
+}
+
+export async function processDeferredImageRequest(id: string, userId?: string) {
+  const request = await claimDeferredImageRequestById(id, userId);
+  if (!request || !request.postId || !request.jobId || !request.modelId) return { processed: false };
+  return processClaimedDeferredImage(request);
+}
+
+export async function processNextDeferredImage(userId?: string) {
+  await resetStaleImageProcessing();
+
+  const request = await claimNextDeferredImageRequest(userId);
+  if (!request || !request.postId || !request.jobId || !request.modelId) return { processed: false };
+  return processClaimedDeferredImage(request);
 }
 
 export async function drainDeferredImages(userId?: string) {

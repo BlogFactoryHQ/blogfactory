@@ -1388,10 +1388,11 @@ export async function generateContent(opts: GenerateOpts) {
           },
         }).where(eq(jobs.id, jobId));
 
-        // Resolve images after the draft exists. Paid AI is queued, never run inline by default.
+        // Resolve images after the draft exists. Small AI batches run now if the function budget is still safe.
         if (opts.generateImages && opts.imageConfig) {
           try {
             await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+            const immediateAi = JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= IMAGE_REQUEST_TIMEOUT_MS + 5_000;
 
             const imageResults = await resolveLowCostImages({
               content: genContent,
@@ -1406,6 +1407,7 @@ export async function generateContent(opts: GenerateOpts) {
               settings: {
                 inlineImageSource: inlineImageSource(promptSettings || settings || undefined),
               },
+              immediateAi,
             });
 
             imageResolutionResults.push({ postId: post.id, title: postTitle, result: summarizeImageResolution(imageResults) });
