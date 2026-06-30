@@ -22,6 +22,33 @@ const payload = {
         aspect_ratio: { type: "enum", values: ["1:1", "16:9", "auto"] },
       },
     },
+    {
+      id: "google/gemini-web-image",
+      architecture: { output_modalities: ["image"] },
+      pricing: { prompt: "0", completion: "0" },
+      supported_parameters: {
+        resolution: { type: "enum", values: ["1K", "2K"] },
+        aspect_ratio: { type: "enum", values: ["1:1", "16:9", "3:2"] },
+      },
+    },
+    {
+      id: "bytedance-seed/seedream-4.5",
+      architecture: { output_modalities: ["image"] },
+      pricing: { prompt: "0", completion: "0" },
+      supported_parameters: {
+        resolution: { type: "enum", values: ["1K", "2K", "4K"] },
+        aspect_ratio: { type: "enum", values: ["16:9", "3:2"] },
+      },
+    },
+    {
+      id: "google/gemini-web-image-preview",
+      architecture: { output_modalities: ["image"] },
+      pricing: { prompt: "0", completion: "0" },
+      supported_parameters: {
+        resolution: { type: "enum", values: ["1K", "2K"] },
+        aspect_ratio: { type: "enum", values: ["16:9", "3:2"] },
+      },
+    },
   ],
 };
 
@@ -31,9 +58,9 @@ const image = catalogFromOpenRouterPayload(payload, "image");
 assert.deepEqual(text.map((model: { id: string }) => model.id), ["openai/gpt-4o-mini", "openrouter/auto"]);
 assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.costInfo, "Dynamic pricing");
 assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.isFree, false);
-assert.deepEqual(image.map((model: { id: string }) => model.id), ["google/gemini-image"]);
-assert.deepEqual(image.find((model: { id: string }) => model.id === "google/gemini-image")?.constraints.resolutions, ["1K"]);
-assert.deepEqual(image.find((model: { id: string }) => model.id === "google/gemini-image")?.supportedParameters, ["resolution", "aspect_ratio"]);
+assert.deepEqual(image.map((model: { id: string }) => model.id), ["google/gemini-web-image"]);
+assert.deepEqual(image.find((model: { id: string }) => model.id === "google/gemini-web-image")?.constraints.resolutions, ["1K"]);
+assert.deepEqual(image.find((model: { id: string }) => model.id === "google/gemini-web-image")?.supportedParameters, ["resolution", "aspect_ratio"]);
 assert.match(OPENROUTER_MODEL_UNAVAILABLE_MESSAGE, /no longer available on OpenRouter/);
 
 console.log("openrouter-models self-check passed");

@@ -54,7 +54,12 @@ function enumValues(value: any) {
 }
 
 function supports1KImage(model: any) {
-  return enumValues(model.supported_parameters?.resolution).includes("1K");
+  const resolutions = enumValues(model.supported_parameters?.resolution);
+  const aspectRatios = enumValues(model.supported_parameters?.aspect_ratio);
+  // ponytail: Seedream advertises 1K, but its provider rejects our 1K web-size request.
+  if (model.id === "bytedance-seed/seedream-4.5") return false;
+  if (/preview/i.test(`${model.id} ${model.name || ""}`)) return false;
+  return resolutions.includes("1K") && ["16:9", "3:2"].every((ratio) => aspectRatios.includes(ratio));
 }
 
 function openRouterImageConstraints(model: any) {
