@@ -9,6 +9,7 @@ type ModelKind = "text" | "image";
 type NormalizedOpenRouterModel = ReturnType<typeof normalizeOpenRouterModel>;
 
 const BLOG_TEXT_MODEL_IDS = new Set([
+  "openrouter/auto",
   "deepseek/deepseek-v4-flash",
   "mistralai/mistral-small-3.2-24b-instruct",
   "deepseek/deepseek-v3.2",

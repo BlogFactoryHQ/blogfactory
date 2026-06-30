@@ -31,7 +31,14 @@ export interface LiveImageModel {
 
 export async function fetchImageModels(refresh = false): Promise<LiveImageModel[]> {
   const models = await api.get<LiveImageModel[]>(`/models/image${refresh ? "?refresh=true" : ""}`);
-  return Array.isArray(models) ? models : [];
+  return Array.isArray(models)
+    ? models.filter((model) =>
+      !["openrouter/free", "auto/consistent-cover", "auto/cost-effective"].includes(model.id)
+      && !model.id.startsWith("google/")
+      && !model.id.startsWith("google-ai-studio/")
+      && !model.id.startsWith("replicate/")
+    )
+    : [];
 }
 
 export function useImageModels() {
