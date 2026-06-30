@@ -68,6 +68,7 @@ import {
   Resolution,
   AspectRatio
 } from "@/components/content/ImageGenerationSettings";
+import { LiveImageModelSelect } from "@/components/content/LiveImageModelSelect";
 import {
   BywordCard,
   BywordPageShell,
@@ -895,7 +896,7 @@ export default function Settings() {
     setSourceImageAllowed(false);
     if (strategy === "consistent") {
       setSelectedImageModel(coverImageModels[0]?.id || selectedImageModel);
-      setSelectedInlineImageModel(DEFAULT_IMAGE_MODEL);
+      setSelectedInlineImageModel(imageModels[0]?.id || selectedInlineImageModel);
       setAiFallbackEnabled(true);
       setMaxAiImagesPerDay(30);
       setMinMinutesBetweenAiImages(5);
@@ -1906,7 +1907,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       onClick={() => saveImageCostSettingsMutation.mutate()}
-                      disabled={saveImageCostSettingsMutation.isPending || (aiFallbackEnabled && selectedImageModelUnavailable) || selectedInlineImageModelUnavailable}
+                      disabled={saveImageCostSettingsMutation.isPending || (aiFallbackEnabled && (selectedImageModelUnavailable || selectedInlineImageModelUnavailable))}
                     >
                       {unsavedBadge(imageStrategyDirty)}
                       {saveImageCostSettingsMutation.isPending ? (
@@ -1963,54 +1964,12 @@ export default function Settings() {
                     <div className="grid gap-5 rounded-lg border border-byword-border p-4 lg:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Cover AI Model</Label>
-                        <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedImageModelUnavailable && (
-                              <SelectItem value={selectedImageModel}>
-                                <span className="text-destructive">Unavailable: {selectedImageModel}</span>
-                              </SelectItem>
-                            )}
-                            {coverImageModels.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                <div className="flex items-center gap-2">
-                                  <span>{model.name}</span>
-                                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
-                                    {priceBadgeText(model.pricing)}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
                       </div>
 
                       <div className="space-y-2">
                         <Label>Inline AI Model</Label>
-                        <Select value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedInlineImageModelUnavailable && (
-                              <SelectItem value={selectedInlineImageModel}>
-                                <span className="text-destructive">Unavailable: {selectedInlineImageModel}</span>
-                              </SelectItem>
-                            )}
-                            {imageModels.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                <div className="flex items-center gap-2">
-                                  <span>{model.name}</span>
-                                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
-                                    {priceBadgeText(model.pricing)}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
                       </div>
 
                       <div className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-4">
