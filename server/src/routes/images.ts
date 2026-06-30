@@ -5,6 +5,7 @@ import { eq, and, inArray, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
 import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
+import { canRestartImageRequest } from "./image-request-controls.js";
 
 export const imagesRoutes = new Hono();
 
@@ -160,14 +161,15 @@ imagesRoutes.post("/requests/:id/retry", async (c) => {
     .limit(1);
 
   if (!request) return c.json({ error: "Image request not found" }, 404);
-  if (request.provider !== "ai-deferred") return c.json({ error: "Only AI image requests can be retried" }, 400);
-  if (request.status !== "failed") return c.json({ error: "Only failed image requests can be retried" }, 400);
+  if (!canRestartImageRequest(request.provider, request.status)) {
+    return c.json({ error: "Only active or failed AI image requests can be restarted" }, 400);
+  }
 
   const [updated] = await db
     .update(imageGenerationRequests)
     .set({
       status: "queued",
-      retryCount: 0,
+      retryCount: request.status === "processing" ? (request.retryCount || 0) + 1 : 0,
       lastError: null,
       completedVia: null,
       availableAt: new Date(),

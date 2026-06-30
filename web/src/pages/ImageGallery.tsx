@@ -100,6 +100,8 @@ function ImageRequestCard({
   const nextRun = request.available_at ? new Date(request.available_at) : null;
   const waiting = nextRun && nextRun.getTime() > Date.now();
   const canProcess = isAiQueue && (request.status === "queued" || request.status === "pending") && !waiting;
+  const canRestart = isAiQueue && (isFailed || isProcessing || Boolean(waiting));
+  const restartLabel = isFailed ? "Retry" : "Restart";
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(request.prompt);
@@ -141,11 +143,6 @@ function ImageRequestCard({
             waiting && nextRun && <p className="mt-1 text-xs text-muted-foreground">Retry after {nextRun.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
           )}
         </div>
-        {!isDone && !isProcessing && (
-          <Button variant="ghost" size="icon" onClick={() => onCancel(request.id)} disabled={cancelling}>
-            <X className="h-4 w-4" />
-          </Button>
-        )}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copyPrompt}>
@@ -160,16 +157,22 @@ function ImageRequestCard({
             </a>
           </Button>
         )}
-        {isFailed && isAiQueue && (
-          <Button size="sm" onClick={() => onRetry(request.id)} disabled={retrying}>
+        {canRestart && (
+          <Button size="sm" variant={isFailed ? "default" : "outline"} onClick={() => onRetry(request.id)} disabled={retrying}>
             {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Retry
+            {restartLabel}
           </Button>
         )}
         {canProcess && (
           <Button size="sm" onClick={onProcess} disabled={processing}>
             {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             Process
+          </Button>
+        )}
+        {!isDone && (
+          <Button variant="outline" size="sm" onClick={() => onCancel(request.id)} disabled={cancelling}>
+            {cancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            Cancel
           </Button>
         )}
         {!isAiQueue && !isDone && (

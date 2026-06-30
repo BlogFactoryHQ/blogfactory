@@ -6,7 +6,7 @@ import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
 
 export type ImageProcessResult = {
   processed: boolean;
-  status?: "done" | "queued" | "failed";
+  status?: "done" | "queued" | "failed" | "cancelled";
   storagePath?: string;
   error?: string;
 };
@@ -126,10 +126,20 @@ async function claimNextDeferredImageRequest(userId?: string) {
 
 async function processClaimedDeferredImage(request: typeof imageGenerationRequests.$inferSelect): Promise<ImageProcessResult> {
   if (!request.postId || !request.jobId || !request.modelId) return { processed: false };
+  const attemptRetryCount = request.retryCount || 0;
   try {
     const { generateQueuedImageRequest } = await import("./generate-content.js");
     const result = await generateQueuedImageRequest(request);
     if (!result?.storagePath) throw new Error("Provider did not return an image");
+
+    const [current] = await db
+      .select({ status: imageGenerationRequests.status, retryCount: imageGenerationRequests.retryCount })
+      .from(imageGenerationRequests)
+      .where(eq(imageGenerationRequests.id, request.id))
+      .limit(1);
+    if (current?.status !== "processing" || (current.retryCount || 0) !== attemptRetryCount) {
+      return { processed: false, status: "cancelled" };
+    }
 
     await attachPostImage(request.postId, imageSlotFromRequest(request), result.storagePath, "auto");
     await db.update(imageGenerationRequests).set({ status: "done", completedVia: "ai", lastError: null, updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
@@ -142,7 +152,11 @@ async function processClaimedDeferredImage(request: typeof imageGenerationReques
         lastError: err?.message || "Image generation failed",
         retryCount,
         updatedAt: new Date(),
-      }).where(eq(imageGenerationRequests.id, request.id));
+      }).where(and(
+        eq(imageGenerationRequests.id, request.id),
+        eq(imageGenerationRequests.status, "processing"),
+        eq(imageGenerationRequests.retryCount, attemptRetryCount)
+      ));
       return { processed: false, status: "failed", error: err?.message || "Image generation failed" };
     }
     const backoffMinutes = Math.min(120, 10 * retryCount);
@@ -152,13 +166,21 @@ async function processClaimedDeferredImage(request: typeof imageGenerationReques
       lastError: err?.message || "Image generation failed",
       availableAt: new Date(Date.now() + backoffMinutes * 60_000),
       updatedAt: new Date(),
-    }).where(eq(imageGenerationRequests.id, request.id));
+    }).where(and(
+      eq(imageGenerationRequests.id, request.id),
+      eq(imageGenerationRequests.status, "processing"),
+      eq(imageGenerationRequests.retryCount, attemptRetryCount)
+    ));
     return { processed: false, status: "queued", error: err?.message || "Image generation failed" };
   }
 }
 
 async function resetStaleImageProcessing() {
-  await db.update(imageGenerationRequests).set({ status: "queued", updatedAt: new Date() }).where(and(
+  await db.update(imageGenerationRequests).set({
+    status: "queued",
+    retryCount: sql`coalesce(${imageGenerationRequests.retryCount}, 0) + 1`,
+    updatedAt: new Date(),
+  }).where(and(
     eq(imageGenerationRequests.provider, "ai-deferred"),
     eq(imageGenerationRequests.status, "processing"),
     lte(imageGenerationRequests.updatedAt, new Date(Date.now() - 20 * 60_000))

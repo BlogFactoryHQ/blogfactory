@@ -159,7 +159,7 @@ export function useRetryImageGenerationRequest() {
     mutationFn: async (id: string) => api.post<ImageGenerationRequest>(`/images/requests/${id}/retry`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
-      toast.success("Image retry queued");
+      toast.success("Image request restarted");
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Unable to retry image request.";
