@@ -8,6 +8,15 @@ import { getOpenRouterKey } from "../services/api-keys.js";
 
 export const contentRoutes = new Hono();
 
+export function fetchSocialSourceUrl(body: Record<string, any>) {
+  if (body.sourceUrl) return body.sourceUrl;
+  const config = body.config || body.platformConfig || {};
+  if (body.platform === "youtube" && config.channelId) {
+    return `https://www.youtube.com/feeds/videos.xml?channel_id=${config.channelId}`;
+  }
+  return config.url || config.channelUrl || config.subredditUrl || config.instanceUrl || "";
+}
+
 contentRoutes.post("/generate", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
@@ -82,7 +91,7 @@ contentRoutes.post("/fetch-social", async (c) => {
 
   // Map frontend request shape to service interface
   const opts = {
-    sourceUrl: body.sourceUrl || body.config?.url || body.config?.channelUrl || body.config?.subredditUrl || body.config?.instanceUrl || "",
+    sourceUrl: fetchSocialSourceUrl(body),
     platform: body.platform,
     platformConfig: body.config || body.platformConfig,
     filterType: body.filterType,

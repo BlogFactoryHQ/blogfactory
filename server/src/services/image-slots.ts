@@ -53,17 +53,6 @@ function normalizeImageResolution(value: unknown) {
   return value === "512" ? "512" : "1K";
 }
 
-function plainText(value: string, maxChars = 700) {
-  return value
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
-    .replace(/\[[^\]]+]\([^)]+\)/g, (match) => match.replace(/^\[|\]\([^)]+\)$/g, ""))
-    .replace(/[#*_>`~-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxChars);
-}
-
 function sectionCue(content: string, index: number) {
   const headings = Array.from(content.matchAll(/^#{2,3}\s+(.+)$/gm)).map((match) => match[1].trim());
   return headings[index] || headings[0] || "";
@@ -78,15 +67,12 @@ export function buildImagePrompt(opts: {
 }) {
   const style = opts.stylePrompt?.trim() || "Modern, clean, professional editorial image style. No text overlays.";
   const section = opts.type === "inline" ? sectionCue(opts.content, opts.index || 0) : "";
-  const context = plainText(opts.content);
   return [
     `Shared visual style for every image in this article: ${style}`,
     opts.type === "cover"
       ? `Image role: cover for "${opts.title}". Show the article's main idea.`
       : `Image role: inline for "${opts.title}".`,
     opts.type === "inline" && section ? `Inline focus: ${section}` : "",
-    context ? `Article context: ${context}` : "",
-    "Use the article context only for subject matter; keep the shared visual style consistent across cover and inline images.",
     "Avoid text, logos, UI screenshots, watermarks, and unreadable typography unless explicitly requested in the style direction.",
   ].filter(Boolean).join("\n\n");
 }

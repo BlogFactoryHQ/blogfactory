@@ -63,6 +63,12 @@ assertEqual(
 );
 
 assertEqual(
+  buildImagePrompt({ content: "This body should not be sent", title: "Test", type: "cover", stylePrompt: "hand drawn only" }).includes("This body should not be sent"),
+  false,
+  "image prompt does not include article body"
+);
+
+assertEqual(
   buildImagePrompt({ content: "Intro\n\n## Market impact\n\nBody", title: "Test", type: "inline", stylePrompt: "hand drawn only" }).includes("Inline focus: Market impact"),
   true,
   "inline prompt includes section focus"
