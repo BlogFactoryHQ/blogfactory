@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSites, type Site } from "@/hooks/useSites";
-import { BywordCard, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
+import { BywordCard, FactoryDivider, FactoryMark, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
 
 const profileTypes = [
   { id: "agency", label: "Agency", icon: Building2 },
@@ -33,7 +33,7 @@ const errorMessage = (error: unknown, fallback: string) =>
 function SiteSummary({ site }: { site: Site }) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-4 rounded-lg border border-byword-border bg-muted/30 p-4">
+      <div className="flex items-center gap-4 rounded-md border border-byword-border bg-muted/30 p-4">
         <IconTile icon={Globe2} />
         <div className="min-w-0">
           <p className="truncate text-lg font-semibold text-foreground">{site.name}</p>
@@ -41,21 +41,21 @@ function SiteSummary({ site }: { site: Site }) {
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-byword-border p-4">
+        <div className="rounded-md border border-byword-border p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Pages</p>
           <p className="mt-2 text-2xl font-semibold">{site.pageCount}</p>
         </div>
-        <div className="rounded-lg border border-byword-border p-4">
+        <div className="rounded-md border border-byword-border p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Topics</p>
           <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
             {site.topics.length ? site.topics.slice(0, 4).join(", ") : "Ready to learn"}
           </p>
         </div>
-        <div className="rounded-lg border border-byword-border p-4">
+        <div className="rounded-md border border-byword-border p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Vectors</p>
           <p className="mt-2 text-2xl font-semibold">{site.vectorCount}</p>
         </div>
-        <div className="rounded-lg border border-byword-border p-4">
+        <div className="rounded-md border border-byword-border p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Language</p>
           <p className="mt-2 text-2xl font-semibold">{site.language || "auto"}</p>
         </div>
@@ -94,12 +94,11 @@ export default function Onboarding() {
       <div className="w-full max-w-2xl">
         {!isCreating && !createdSite && (
           <>
-            <BywordCard className="mx-auto max-w-xl p-8">
+            <BywordCard className="mx-auto max-w-xl overflow-hidden p-8">
+              <FactoryDivider className="-mx-8 -mt-8 mb-8 w-[calc(100%+4rem)]" />
               <div className="mb-8 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-byword-blue-soft text-byword-blue">
-                  <span className="text-sm font-bold">BF</span>
-                </div>
-                <h1 className="mt-6 text-2xl font-semibold">Welcome to BlogFactory</h1>
+                <FactoryMark className="justify-center" />
+                <h1 className="mt-6 font-mono text-2xl font-semibold uppercase">Welcome to BlogFactory</h1>
                 <p className="mt-2 text-sm text-byword-blue">Hi, {firstName || "there"}!</p>
               </div>
 
@@ -124,7 +123,7 @@ export default function Onboarding() {
                         type="button"
                         onClick={() => setProfileType(type.id)}
                         className={cn(
-                          "flex h-14 items-center gap-3 rounded-lg border px-4 text-left transition-calm",
+                          "flex h-14 items-center gap-3 rounded-md border px-4 text-left transition-calm",
                           profileType === type.id
                             ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
                             : "border-byword-border bg-card hover:border-byword-blue/40"
@@ -167,8 +166,9 @@ export default function Onboarding() {
         {isCreating && (
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-8 text-center">
-              <IconTile icon={Globe2} className="mx-auto h-14 w-14" />
-              <h1 className="mt-6 text-2xl font-semibold">Setting up {siteUrl || "your site"}</h1>
+              <FactoryMark className="justify-center" />
+              <IconTile icon={Globe2} className="mx-auto mt-6 h-14 w-14" />
+              <h1 className="mt-6 font-mono text-2xl font-semibold uppercase">Setting up {siteUrl || "your site"}</h1>
               <p className="mt-2 text-muted-foreground">Usually takes about 15 seconds</p>
             </div>
             <div className="space-y-6 p-8">
@@ -190,10 +190,10 @@ export default function Onboarding() {
         {!isCreating && createdSite && (
           <BywordCard className="mx-auto max-w-2xl p-8">
             <div className="mb-8 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-byword-border bg-muted">
                 <Check className="h-6 w-6 text-muted-foreground" />
               </div>
-              <h1 className="mt-6 text-2xl font-semibold">Your workspace is ready</h1>
+              <h1 className="mt-6 font-mono text-2xl font-semibold uppercase">Your workspace is ready</h1>
             </div>
             <SiteSummary site={createdSite} />
             <Button className="mt-8 h-12 w-full" onClick={() => navigate("/content-creator", { replace: true })}>

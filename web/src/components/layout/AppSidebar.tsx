@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { FactoryMark } from "@/components/layout/BywordSurface";
 
 const primaryNavigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -121,16 +122,19 @@ export function AppSidebar() {
       <aside
         onClick={handleSidebarClick}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar factory-scanlines",
           "transition-[width] duration-200 ease-out",
           isCollapsed ? "w-[60px] cursor-pointer" : "w-[224px]"
         )}
       >
-        <div className="shrink-0 space-y-2 border-b border-sidebar-border p-2.5">
+        <div className="shrink-0 space-y-3 border-b border-sidebar-border p-2.5">
+          {!isCollapsed && (
+            <FactoryMark className="px-1 pt-1" />
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={isCollapsed}>
-              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-md border border-sidebar-border bg-card px-2.5 text-left transition-calm hover:border-byword-blue/50">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-byword-blue-soft text-byword-blue">
+              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card/90 px-2.5 text-left transition-calm hover:border-byword-blue/60">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
                   <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                 </div>
                 <div className="min-w-0 flex-1">
@@ -140,7 +144,7 @@ export function AppSidebar() {
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
                 <span
                   className={cn(
-                    "ml-0.5 h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    "ml-0.5 h-6 w-6 shrink-0 items-center justify-center rounded-sm text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     isCollapsed ? "hidden" : "flex"
                   )}
                   onClick={(e) => { e.stopPropagation(); toggle(); }}
@@ -150,14 +154,14 @@ export function AppSidebar() {
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-lg border-byword-border p-3">
+            <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-md border-byword-border p-3">
               {activeSite && (
                 <>
                   <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                     Current domain
                   </DropdownMenuLabel>
-                  <div className="mb-3 flex items-center gap-4 rounded-lg border border-byword-border bg-byword-blue-soft/60 p-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-md bg-card text-byword-blue">
+                  <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft/70 p-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue">
                       <span className="text-sm font-bold">{workspaceInitial}</span>
                     </div>
                     <div className="min-w-0 flex-1">
@@ -179,7 +183,7 @@ export function AppSidebar() {
                     className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-3"
                     onClick={() => activateSite(site.id)}
                   >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-md border border-byword-border text-byword-blue">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border text-byword-blue">
                       <span className="text-xs font-bold">{site.name.charAt(0).toUpperCase()}</span>
                     </div>
                     <div className="min-w-0">
@@ -195,14 +199,14 @@ export function AppSidebar() {
               <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-2 p-1">
                 <DropdownMenuItem
-                  className="cursor-pointer justify-center gap-2 rounded-md border border-transparent py-2"
+                  className="cursor-pointer justify-center gap-2 rounded-sm border border-transparent py-2"
                   onClick={() => navigate("/sites")}
                 >
                   <Settings className="h-4 w-4" />
                   Manage
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="cursor-pointer justify-center gap-2 rounded-md border border-dashed border-byword-border py-2"
+                  className="cursor-pointer justify-center gap-2 rounded-sm border border-dashed border-byword-border py-2"
                   onClick={() => navigate("/sites")}
                 >
                   <Plus className="h-4 w-4" />
@@ -214,7 +218,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={openSearch}
-            className={cn("flex h-8 w-full items-center gap-2 rounded-md bg-muted/60 px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:bg-muted hover:text-foreground", isCollapsed && "hidden")}
+            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-muted/60 px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:bg-muted hover:text-foreground", isCollapsed && "hidden")}
           >
             <Search className="h-4 w-4" />
             <span className="flex-1">Search</span>
@@ -233,9 +237,9 @@ export function AppSidebar() {
             <DropdownMenuTrigger asChild>
               <button
                 data-profile-menu
-                className="flex w-full items-center overflow-hidden rounded-md p-1 text-left transition-calm hover:bg-sidebar-accent"
+                className="flex w-full items-center overflow-hidden rounded-sm p-1 text-left transition-calm hover:bg-sidebar-accent"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-byword-blue text-[11px] font-semibold text-white">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-byword-blue bg-byword-blue text-[11px] font-semibold text-primary-foreground">
                   {displayName[0].toUpperCase()}
                 </span>
                 <span className={cn("ml-2 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
@@ -245,7 +249,7 @@ export function AppSidebar() {
                 <ChevronDown className={cn("ml-2 h-3.5 w-3.5 shrink-0 text-sidebar-muted", isCollapsed && "hidden")} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={8} className="w-56 rounded-lg border-byword-border">
+            <DropdownMenuContent align="start" sideOffset={8} className="w-56 rounded-md border-byword-border">
               <DropdownMenuLabel className="truncate">
                 {displayName}
                 <span className="block truncate text-xs font-normal text-muted-foreground">{email}</span>
@@ -273,7 +277,7 @@ export function AppSidebar() {
         <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
           <DialogContent className="top-[20%] max-w-md gap-3 p-4">
             <DialogTitle className="sr-only">Search navigation</DialogTitle>
-            <div className="flex items-center gap-2 rounded-md border border-input px-3">
+            <div className="flex items-center gap-2 rounded-sm border border-input bg-background/80 px-3">
               <Search className="h-4 w-4 text-muted-foreground" />
               <Input
                 autoFocus
@@ -289,7 +293,7 @@ export function AppSidebar() {
                   key={item.href}
                   type="button"
                   onClick={() => goTo(item.href)}
-                  className="flex h-9 w-full items-center gap-3 rounded-md px-2 text-left text-sm transition-calm hover:bg-sidebar-accent"
+                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-sidebar-accent"
                 >
                   <item.icon className="h-4 w-4 text-sidebar-muted" />
                   <span>{item.name}</span>
@@ -326,7 +330,7 @@ function SidebarSection({
   return (
     <div className="mb-4 last:mb-0">
       {!isCollapsed && (
-        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted/70">
+        <p className="mb-1.5 px-2 font-mono text-[10px] font-semibold uppercase text-sidebar-muted/70">
           {title}
         </p>
       )}
@@ -336,9 +340,9 @@ function SidebarSection({
           const inner = (
             <div
               className={cn(
-                "flex h-8 items-center overflow-hidden rounded-md border-l-2 transition-calm",
+                "flex h-8 items-center overflow-hidden rounded-sm border-l-2 transition-calm",
                 isActive
-                  ? "border-byword-blue bg-byword-blue-soft/70 text-byword-blue"
+                  ? "border-byword-blue bg-byword-blue-soft/80 text-byword-blue"
                   : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >

@@ -2,6 +2,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Clock, Loader2, LogOut, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FactoryMark } from "@/components/layout/BywordSurface";
 
 function AccountStatusScreen({
   type,
@@ -16,12 +17,13 @@ function AccountStatusScreen({
   const Icon = rejected ? ShieldX : Clock;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
+    <div className="flex min-h-screen items-center justify-center factory-grid-bg p-4">
+      <div className="w-full max-w-md rounded-md border border-byword-border bg-card/95 p-6 text-center factory-panel">
+        <FactoryMark className="mb-6 justify-center" />
+        <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-muted">
           <Icon className="h-6 w-6 text-foreground" />
         </div>
-        <h1 className="text-xl font-semibold">
+        <h1 className="font-mono text-xl font-semibold uppercase">
           {rejected ? "Access request rejected" : "Approval pending"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
@@ -43,7 +45,7 @@ export function ProtectedRoute() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center factory-grid-bg">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading...</p>

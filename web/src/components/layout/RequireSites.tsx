@@ -8,8 +8,8 @@ export function RequireSites() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center byword-dot-bg">
-        <div className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-5 py-4 text-sm text-muted-foreground">
+      <div className="flex min-h-screen items-center justify-center factory-grid-bg">
+        <div className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-5 py-4 text-sm text-muted-foreground factory-panel">
           <Loader2 className="h-4 w-4 animate-spin text-byword-blue" />
           Loading workspace...
         </div>

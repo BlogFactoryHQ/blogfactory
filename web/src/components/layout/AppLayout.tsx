@@ -7,7 +7,7 @@ function LayoutContent() {
   const { isCollapsed } = useSidebar();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <AppSidebar />
       <main className={cn(
         "min-h-screen transition-all duration-300",

@@ -271,7 +271,7 @@ export default function PostEditorPage() {
               label={status === "published" ? "Published" : "Draft"}
             />
             {hasChanges && (
-              <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded">
+              <span className="rounded-sm border border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] px-2 py-0.5 font-mono text-xs text-[hsl(var(--status-warning))]">
                 Unsaved changes
               </span>
             )}

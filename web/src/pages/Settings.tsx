@@ -202,7 +202,7 @@ const formatSavedAt = (value?: string | null) => {
 
 const unsavedBadge = (state: DirtyState) =>
   state === "dirty" ? (
-    <span className="mr-2 rounded-full border border-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+    <span className="mr-2 rounded-sm border border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] px-2.5 py-0.5 font-mono text-xs font-semibold text-[hsl(var(--status-warning))]">
       Unsaved
     </span>
   ) : null;

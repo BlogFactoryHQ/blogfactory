@@ -604,9 +604,9 @@ export default function News() {
                 </div>
               </div>
               {feedUrl.trim() && (
-                <div className={`rounded-lg border p-4 ${feedRuleMatch ? "border-status-success/30 bg-[hsl(var(--status-success)/0.08)]" : "border-amber-300/50 bg-amber-50/60"}`}>
+                <div className={`rounded-md border p-4 ${feedRuleMatch ? "border-status-success/30 bg-[hsl(var(--status-success)/0.08)]" : "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]"}`}>
                   <div className="flex items-start gap-3">
-                    {feedRuleMatch ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-status-success" /> : <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600" />}
+                    {feedRuleMatch ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-status-success" /> : <AlertCircle className="mt-0.5 h-4 w-4 text-[hsl(var(--status-warning))]" />}
                     <div className="min-w-0 flex-1">
                       {feedRuleMatch ? (
                         <>

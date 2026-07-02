@@ -56,7 +56,7 @@ function statusBadgeClass(status: string) {
   if (status === "done") return "border-transparent bg-[hsl(var(--status-success)/0.12)] text-status-success";
   if (status === "failed") return "border-transparent bg-destructive text-destructive-foreground";
   if (status === "processing") return "border-transparent bg-primary text-primary-foreground";
-  if (status === "queued" || status === "pending") return "border-amber-300 text-amber-700";
+  if (status === "queued" || status === "pending") return "border-[hsl(var(--status-warning)/0.35)] text-[hsl(var(--status-warning))]";
   return "";
 }
 

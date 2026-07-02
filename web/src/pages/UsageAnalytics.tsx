@@ -203,7 +203,7 @@ export default function UsageAnalytics() {
         </div>
       ) : (
         <>
-          <div className="mb-8 rounded-lg border border-byword-border bg-card p-4 shadow-[0_12px_40px_rgba(22,82,125,0.04)]">
+          <div className="mb-8 rounded-md border border-byword-border bg-card p-4 factory-panel">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Spend pulse</h2>
@@ -250,13 +250,13 @@ export default function UsageAnalytics() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-amber-600" />
+                  <TrendingUp className="h-4 w-4 text-[hsl(var(--status-warning))]" />
                   Cost drivers
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3">
                 {costDrivers.map((driver) => (
-                  <div key={driver.title} className={cn("rounded-lg border p-3", semanticToneClass(driver.tone))}>
+                  <div key={driver.title} className={cn("rounded-md border p-3", semanticToneClass(driver.tone))}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{driver.title}</p>

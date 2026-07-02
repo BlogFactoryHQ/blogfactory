@@ -51,24 +51,24 @@ interface InternalLinkSettings {
 }
 
 const INSIGHT_COLORS = {
-  performance: "#1481c0",
-  opportunity: "#f59e0b",
-  risk: "#ef4444",
-  improved: "#16a34a",
+  performance: "#2EA7C9",
+  opportunity: "#D9A94E",
+  risk: "#E4513D",
+  improved: "#26B36B",
 };
 
 const bubbleTone: Record<SearchOpportunityBubble["kind"], string> = {
-  risk: "border-red-200 bg-red-50 text-red-700",
-  ctr: "border-amber-200 bg-amber-50 text-amber-700",
-  lift: "border-amber-200 bg-amber-50 text-amber-700",
-  improved: "border-green-200 bg-green-50 text-green-700",
+  risk: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
+  ctr: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+  lift: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+  improved: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
 };
 
 const rowTone: Record<SearchInsightRow["kind"], string> = {
-  risk: "bg-red-50 text-red-700",
-  ctr: "bg-amber-50 text-amber-700",
-  lift: "bg-amber-50 text-amber-700",
-  improved: "bg-green-50 text-green-700",
+  risk: "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
+  ctr: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+  lift: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+  improved: "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
   watch: "bg-secondary text-secondary-foreground",
 };
 
@@ -474,7 +474,7 @@ function ActionLanes({ insights, onSelectTab }: { insights: SearchConsoleInsight
           <div className="space-y-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-                <IconTile icon={lane.icon} className={cn(lane.kind === "risk" && "bg-red-50 text-red-600", lane.kind !== "risk" && "bg-amber-50 text-amber-600")} />
+                <IconTile icon={lane.icon} className={cn(lane.kind === "risk" && "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]", lane.kind !== "risk" && "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]")} />
                 <div>
                   <div className="flex items-center gap-1.5">
                     <h3 className="font-semibold text-foreground">{lane.title}</h3>
@@ -663,8 +663,8 @@ function TrendPill({ tone, label }: { tone: TrendTone; label: string }) {
   return (
     <div className={cn(
       "mt-2 inline-flex max-w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium",
-      tone === "good" && "bg-green-50 text-green-700",
-      tone === "bad" && "bg-red-50 text-red-700",
+      tone === "good" && "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
+      tone === "bad" && "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
       tone === "flat" && "bg-secondary text-secondary-foreground",
       tone === "pending" && "bg-secondary text-muted-foreground",
     )}>
@@ -715,9 +715,9 @@ function chartName(name: string, lineMetric: "clicks" | "ctr" | "position") {
 }
 
 function bubbleDotClass(kind: SearchOpportunityBubble["kind"]) {
-  if (kind === "risk") return "bg-red-500";
-  if (kind === "improved") return "bg-green-500";
-  return "bg-amber-500";
+  if (kind === "risk") return "bg-[hsl(var(--status-error))]";
+  if (kind === "improved") return "bg-[hsl(var(--status-success))]";
+  return "bg-[hsl(var(--status-warning))]";
 }
 
 function compactUrl(value: string) {

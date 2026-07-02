@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+        sans: ['Space Grotesk', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'Menlo', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -75,11 +75,23 @@ export default {
           "running-foreground": "hsl(var(--status-running-foreground))",
         },
         byword: {
-          blue: "#0B7DB3",
-          "blue-soft": "#E5F5FF",
-          "blue-muted": "#8FA6BF",
-          border: "#DDE9F4",
-          ink: "#1E2A3A",
+          blue: "#D9A94E",
+          "blue-soft": "#2B2116",
+          "blue-muted": "#8F7E65",
+          border: "#544733",
+          ink: "#E7D0A2",
+        },
+        factory: {
+          coal: "#15110D",
+          panel: "#1D1711",
+          rail: "#544733",
+          paper: "#D7BC83",
+          amber: "#D9A94E",
+          blue: "#2EA7C9",
+          green: "#26B36B",
+          orange: "#F26E2D",
+          red: "#E4513D",
+          purple: "#B46AF2",
         },
       },
       borderRadius: {

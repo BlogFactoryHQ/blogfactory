@@ -693,12 +693,12 @@ export default function Jobs() {
 
                 return (
                   <div className={cn(
-                    "p-4 rounded-lg border mb-6",
+                    "p-4 rounded-md border mb-6",
                     isPartial
-                      ? "border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/10"
+                      ? "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]"
                       : "border-status-success/30 bg-[hsl(var(--status-success)/0.05)]"
                   )}>
-                    <div className={cn("flex items-center gap-2 mb-3", isPartial ? "text-amber-700 dark:text-amber-400" : "text-[hsl(158_64%_30%)]")}>
+                    <div className={cn("flex items-center gap-2 mb-3", isPartial ? "text-[hsl(var(--status-warning))]" : "text-[hsl(var(--status-success))]")}>
                       <CheckCircle className="h-4 w-4" />
                       <span className="font-medium text-sm">
                         {isPartial ? `${draftStats.created}/${draftStats.total} drafts created · ${draftStats.failed} failed` : "Generation Successful"}
@@ -742,7 +742,7 @@ export default function Jobs() {
                               </div>
                               <div className={cn(
                                 "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                                item.qa.score >= 80 ? "bg-status-success/10 text-[hsl(158_64%_30%)]" : item.qa.score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-status-error/10 text-status-error"
+                                item.qa.score >= 80 ? "bg-status-success/10 text-status-success" : item.qa.score >= 60 ? "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]" : "bg-status-error/10 text-status-error"
                               )}>
                                 {item.qa.score}
                               </div>
@@ -1038,7 +1038,7 @@ function JobReliabilityInsights({
   const priciest = expensiveJobs[0];
 
   return (
-    <div className="mb-6 rounded-lg border border-byword-border bg-card p-4 shadow-[0_12px_40px_rgba(22,82,125,0.04)]">
+    <div className="mb-6 rounded-md border border-byword-border bg-card p-4 factory-panel">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Generation reliability</h2>
@@ -1128,7 +1128,7 @@ function ReliabilityLane({
   onSecondary?: () => void;
 }) {
   return (
-    <div className={cn("rounded-lg border p-3", semanticToneClass(tone))}>
+    <div className={cn("rounded-md border p-3", semanticToneClass(tone))}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{title}</p>

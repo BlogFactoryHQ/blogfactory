@@ -152,8 +152,8 @@ export default function Dashboard() {
                 key={item.title}
                 to={item.href}
                 className={cn(
-                  "group rounded-lg border p-4 transition-calm hover:border-foreground/15 hover:bg-muted/30",
-                  isNext ? "border-amber-200 bg-amber-50/60" : "border-border"
+                  "group rounded-md border p-4 transition-calm hover:border-foreground/15 hover:bg-muted/30",
+                  isNext ? "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]" : "border-border"
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -161,7 +161,7 @@ export default function Dashboard() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{item.title}</p>
-                      {isNext && <Badge variant="outline" className="border-amber-300 bg-card text-[10px] text-amber-700">Next best</Badge>}
+                      {isNext && <Badge variant="outline" className="border-[hsl(var(--status-warning)/0.45)] bg-card text-[10px] text-[hsl(var(--status-warning))]">Next best</Badge>}
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
                     <span className="mt-3 inline-flex items-center text-xs font-medium text-muted-foreground group-hover:text-foreground">

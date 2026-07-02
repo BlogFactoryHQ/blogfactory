@@ -67,13 +67,13 @@ export function classifyTrend(delta: number | null, lowerIsBetter = false): Tren
 export function semanticToneClass(tone: SemanticTone) {
   switch (tone) {
     case "performance":
-      return "border-byword-blue/25 bg-byword-blue-soft/45 text-byword-blue";
+      return "border-[hsl(var(--status-running)/0.35)] bg-[hsl(var(--status-running)/0.12)] text-[hsl(var(--status-running))]";
     case "opportunity":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]";
     case "risk":
-      return "border-red-200 bg-red-50 text-red-700";
+      return "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]";
     case "success":
-      return "border-green-200 bg-green-50 text-green-700";
+      return "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]";
     default:
       return "border-byword-border bg-muted/30 text-foreground";
   }

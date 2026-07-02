@@ -327,8 +327,8 @@ function GenerationBrief({
                 className={cn(
                   "rounded-md border px-2.5 py-1 text-xs font-semibold transition-calm disabled:cursor-not-allowed disabled:opacity-45",
                   linksEnabled && linkDensity === option.value
-                    ? "border-green-500 bg-green-600 text-white"
-                    : "border-byword-border bg-card text-foreground hover:border-green-300"
+                    ? "border-[hsl(var(--status-success)/0.45)] bg-[hsl(var(--status-success)/0.16)] text-[hsl(var(--status-success))]"
+                    : "border-byword-border bg-card text-foreground hover:border-[hsl(var(--status-success)/0.45)]"
                 )}
                 title={option.label}
               >
@@ -341,7 +341,7 @@ function GenerationBrief({
       {blockers.length > 0 && (
         <div className="mt-3 grid gap-2">
           {blockers.map((blocker) => (
-            <p key={blocker} className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            <p key={blocker} className="flex items-center gap-2 rounded-md border border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] px-3 py-2 text-xs font-medium text-[hsl(var(--status-error))]">
               <AlertTriangle className="h-3.5 w-3.5" />
               {blocker}
             </p>

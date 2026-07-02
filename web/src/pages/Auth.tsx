@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -6,9 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FactoryMark } from "@/components/layout/BywordSurface";
 import { toast } from "sonner";
 
 type View = "signin" | "signup" | "forgot-password" | "reset-password";
+
+function AuthShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center factory-grid-bg p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-5 flex justify-center">
+          <FactoryMark />
+        </div>
+        <div className="relative overflow-hidden rounded-md border border-byword-border bg-card/95 p-6 factory-panel">
+          <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-80" aria-hidden="true" />
+          {children}
+        </div>
+        <p className="mt-5 text-center font-mono text-[10px] uppercase text-muted-foreground">
+          Content assembly line ready
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -107,16 +127,8 @@ export default function Auth() {
 
   if (view === "forgot-password") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-sm">
-          <div className="flex items-center justify-center gap-2.5 mb-12">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[11px] font-bold text-background tracking-tight">BF</span>
-            </div>
-            <span className="text-base font-semibold text-foreground tracking-tight">BlogFactory</span>
-          </div>
-
-          <h2 className="text-lg font-semibold mb-1">Forgot Password</h2>
+      <AuthShell>
+          <h2 className="mb-1 font-mono text-lg font-semibold uppercase">Forgot Password</h2>
           <p className="text-sm text-muted-foreground mb-6">Enter your email to receive a reset link.</p>
 
           <form onSubmit={handleForgotPassword} className="space-y-5">
@@ -143,23 +155,14 @@ export default function Auth() {
           >
             Back to Sign In
           </button>
-        </div>
-      </div>
+      </AuthShell>
     );
   }
 
   if (view === "reset-password") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-sm">
-          <div className="flex items-center justify-center gap-2.5 mb-12">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[11px] font-bold text-background tracking-tight">BF</span>
-            </div>
-            <span className="text-base font-semibold text-foreground tracking-tight">BlogFactory</span>
-          </div>
-
-          <h2 className="text-lg font-semibold mb-1">Reset Password</h2>
+      <AuthShell>
+          <h2 className="mb-1 font-mono text-lg font-semibold uppercase">Reset Password</h2>
           <p className="text-sm text-muted-foreground mb-6">Enter the reset token from your email and a new password.</p>
 
           <form onSubmit={handleResetPassword} className="space-y-5">
@@ -198,22 +201,12 @@ export default function Auth() {
           >
             Back to Sign In
           </button>
-        </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        {/* Brand */}
-        <div className="flex items-center justify-center gap-2.5 mb-12">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
-            <span className="text-[11px] font-bold text-background tracking-tight">BF</span>
-          </div>
-          <span className="text-base font-semibold text-foreground tracking-tight">BlogFactory</span>
-        </div>
-
+    <AuthShell>
         <Tabs defaultValue="signin" className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-8">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -348,7 +341,6 @@ export default function Auth() {
             </form>
           </TabsContent>
         </Tabs>
-      </div>
-    </div>
+    </AuthShell>
   );
 }
