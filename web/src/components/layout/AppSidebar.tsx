@@ -122,7 +122,7 @@ export function AppSidebar() {
       <aside
         onClick={handleSidebarClick}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar factory-scanlines",
+          "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar",
           "transition-[width] duration-200 ease-out",
           isCollapsed ? "w-[60px] cursor-pointer" : "w-[224px]"
         )}
@@ -133,7 +133,7 @@ export function AppSidebar() {
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={isCollapsed}>
-              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card/90 px-2.5 text-left transition-calm hover:border-byword-blue/60">
+              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left transition-calm hover:border-byword-blue/60">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
                   <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                 </div>
@@ -160,7 +160,7 @@ export function AppSidebar() {
                   <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                     Current domain
                   </DropdownMenuLabel>
-                  <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft/70 p-4">
+                  <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft p-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue">
                       <span className="text-sm font-bold">{workspaceInitial}</span>
                     </div>
@@ -218,7 +218,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={openSearch}
-            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-muted/60 px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:bg-muted hover:text-foreground", isCollapsed && "hidden")}
+            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue", isCollapsed && "hidden")}
           >
             <Search className="h-4 w-4" />
             <span className="flex-1">Search</span>
@@ -239,7 +239,7 @@ export function AppSidebar() {
                 data-profile-menu
                 className="flex w-full items-center overflow-hidden rounded-sm p-1 text-left transition-calm hover:bg-sidebar-accent"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-byword-blue bg-byword-blue text-[11px] font-semibold text-primary-foreground">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-secondary bg-secondary text-[11px] font-semibold text-secondary-foreground">
                   {displayName[0].toUpperCase()}
                 </span>
                 <span className={cn("ml-2 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
@@ -277,7 +277,7 @@ export function AppSidebar() {
         <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
           <DialogContent className="top-[20%] max-w-md gap-3 p-4">
             <DialogTitle className="sr-only">Search navigation</DialogTitle>
-            <div className="flex items-center gap-2 rounded-sm border border-input bg-background/80 px-3">
+            <div className="flex items-center gap-2 rounded-sm border border-input bg-card px-3">
               <Search className="h-4 w-4 text-muted-foreground" />
               <Input
                 autoFocus
@@ -293,7 +293,7 @@ export function AppSidebar() {
                   key={item.href}
                   type="button"
                   onClick={() => goTo(item.href)}
-                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-sidebar-accent"
+                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-byword-blue-soft hover:text-byword-blue"
                 >
                   <item.icon className="h-4 w-4 text-sidebar-muted" />
                   <span>{item.name}</span>

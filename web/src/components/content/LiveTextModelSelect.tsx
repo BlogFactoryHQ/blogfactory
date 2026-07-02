@@ -89,7 +89,7 @@ export function LiveTextModelSelect({
                     onValueChange(model.id);
                     setOpen(false);
                   }}
-                  className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                  className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm hover:bg-byword-blue-soft hover:text-byword-blue"
                 >
                   <Check className={cn("mt-0.5 h-4 w-4", value === model.id ? "opacity-100" : "opacity-0")} />
                   <span className="min-w-0 flex-1">

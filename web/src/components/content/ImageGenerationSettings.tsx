@@ -175,8 +175,8 @@ export function SplitImageGenerationSettings({
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center justify-between rounded-lg border border-border p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent">
-            <ImageIcon className="h-4 w-4 text-accent-foreground" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-byword-blue/30 bg-byword-blue-soft">
+            <ImageIcon className="h-4 w-4 text-byword-blue" />
           </div>
           <div>
             <p className="text-sm font-medium">Images</p>

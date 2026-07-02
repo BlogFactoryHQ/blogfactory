@@ -18,7 +18,7 @@ function AuthShell({ children }: { children: ReactNode }) {
         <div className="mb-5 flex justify-center">
           <FactoryMark />
         </div>
-        <div className="relative overflow-hidden rounded-md border border-byword-border bg-card/95 p-6 factory-panel">
+        <div className="relative overflow-hidden rounded-md border border-byword-border bg-card p-6 factory-panel">
           <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-80" aria-hidden="true" />
           {children}
         </div>

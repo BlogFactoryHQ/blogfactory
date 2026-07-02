@@ -331,7 +331,7 @@ export default function Dashboard() {
                 { label: "Brand Voice", sub: "Profiles and brand defaults", href: "/brand-voice", icon: Users },
               ].map((action) => (
                 <Link key={action.href} to={action.href}>
-                  <div className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-foreground/15 hover:bg-muted/30 transition-calm cursor-pointer">
+                  <div className="flex items-center gap-3 rounded-md border border-border p-3 transition-calm hover:border-byword-blue/40 hover:bg-byword-blue-soft/40 cursor-pointer">
                     <action.icon className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                     <div className="min-w-0">
                       <p className="text-sm font-medium leading-tight">{action.label}</p>

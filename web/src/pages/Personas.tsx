@@ -799,7 +799,7 @@ export default function Personas() {
                   className={cn(
                     "w-full text-left p-3 rounded-lg transition-calm",
                     selectedPersona?.id === persona.id
-                      ? "bg-accent"
+                      ? "bg-byword-blue-soft text-byword-blue"
                       : "hover:bg-muted"
                   )}
                 >

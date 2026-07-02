@@ -628,7 +628,7 @@ export default function RSSFeeds() {
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border text-sm">
-                      <span className="h-5 w-5 rounded bg-accent flex items-center justify-center text-xs">
+                      <span className="flex h-5 w-5 items-center justify-center rounded border border-byword-blue/30 bg-byword-blue-soft text-xs text-byword-blue">
                         {getPersonaName(feed.persona_id)?.[0] || "?"}
                       </span>
                       {getPersonaName(feed.persona_id)}

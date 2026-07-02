@@ -10,8 +10,8 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
   return (
     <div className="mb-8 flex items-start justify-between gap-4 border-b border-byword-border pb-5">
       <div>
-        <p className="mb-2 font-mono text-[11px] font-semibold uppercase text-byword-blue">Factory Console</p>
-        <h1 className="font-mono text-[24px] font-semibold uppercase text-foreground">{title}</h1>
+        <p className="mb-2 font-mono text-[10px] font-semibold uppercase text-byword-blue">Assembly Console</p>
+        <h1 className="font-mono text-[23px] font-semibold uppercase text-foreground">{title}</h1>
         {description && (
           <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
         )}

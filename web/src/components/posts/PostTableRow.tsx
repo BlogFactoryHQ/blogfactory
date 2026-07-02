@@ -111,7 +111,7 @@ export function PostTableRow({
       </TableCell>
       <TableCell>{post.personas?.name || "—"}</TableCell>
       <TableCell>
-        <span className="inline-flex items-center px-2 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+        <span className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
           {formatModelName(post.model_id)}
         </span>
       </TableCell>

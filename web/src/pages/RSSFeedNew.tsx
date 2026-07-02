@@ -676,7 +676,7 @@ export default function RSSFeedNew() {
                   {keywords.map((keyword) => (
                     <span
                       key={keyword}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-byword-blue/30 bg-byword-blue-soft px-3 py-1.5 text-sm text-byword-blue"
                     >
                       {keyword}
                       <button

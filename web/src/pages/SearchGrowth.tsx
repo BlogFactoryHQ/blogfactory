@@ -51,10 +51,10 @@ interface InternalLinkSettings {
 }
 
 const INSIGHT_COLORS = {
-  performance: "#2EA7C9",
-  opportunity: "#D9A94E",
-  risk: "#E4513D",
-  improved: "#26B36B",
+  performance: "#2F8EDB",
+  opportunity: "#D68400",
+  risk: "#D92D20",
+  improved: "#00856A",
 };
 
 const bubbleTone: Record<SearchOpportunityBubble["kind"], string> = {
@@ -69,7 +69,7 @@ const rowTone: Record<SearchInsightRow["kind"], string> = {
   ctr: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
   lift: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
   improved: "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
-  watch: "bg-secondary text-secondary-foreground",
+  watch: "bg-muted text-muted-foreground",
 };
 
 export default function SearchGrowth() {
@@ -329,7 +329,7 @@ function PerformanceCard({ insights }: { insights: SearchConsoleInsights }) {
     <BywordCard>
       <div className="flex flex-col gap-4 border-b border-byword-border px-6 py-5 md:flex-row md:items-center md:justify-between">
         <SectionTitle icon={BarChart3} title="Performance trend" description="Impressions set the backdrop; the line shows the selected performance signal." />
-        <div className="inline-flex w-fit rounded-md bg-secondary p-1">
+        <div className="inline-flex w-fit rounded-md border border-border bg-muted p-1">
           {[
             ["clicks", "Clicks"],
             ["ctr", "CTR"],
@@ -489,7 +489,7 @@ function ActionLanes({ insights, onSelectTab }: { insights: SearchConsoleInsight
               {lane.rows.length ? lane.rows.slice(0, 3).map((row) => (
                 <MiniInsightRow key={`${lane.title}-${row.label}`} row={row} />
               )) : (
-                <p className="rounded-md bg-secondary px-3 py-2 text-sm text-muted-foreground">No active signal in this window.</p>
+                <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">No active signal in this window.</p>
               )}
             </div>
             <Button variant="outline" className="w-full" onClick={() => onSelectTab("optimize")}>
@@ -516,7 +516,7 @@ function RankedBars({ title, icon, rows, color }: { title: string; icon: LucideI
               <span className="truncate font-medium text-foreground">{compactUrl(row.label)}</span>
               <span className="shrink-0 text-muted-foreground">{formatCompactNumber(row.clicks)} clicks</span>
             </div>
-            <div className="h-2 rounded-full bg-secondary">
+            <div className="h-2 rounded-full bg-muted">
               <div className="h-2 rounded-full" style={{ width: `${Math.max(4, (row.value / max) * 100)}%`, backgroundColor: color }} />
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -665,8 +665,8 @@ function TrendPill({ tone, label }: { tone: TrendTone; label: string }) {
       "mt-2 inline-flex max-w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium",
       tone === "good" && "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
       tone === "bad" && "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
-      tone === "flat" && "bg-secondary text-secondary-foreground",
-      tone === "pending" && "bg-secondary text-muted-foreground",
+      tone === "flat" && "bg-muted text-muted-foreground",
+      tone === "pending" && "bg-muted text-muted-foreground",
     )}>
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{label}</span>

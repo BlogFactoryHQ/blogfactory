@@ -18,7 +18,7 @@ function AccountStatusScreen({
 
   return (
     <div className="flex min-h-screen items-center justify-center factory-grid-bg p-4">
-      <div className="w-full max-w-md rounded-md border border-byword-border bg-card/95 p-6 text-center factory-panel">
+      <div className="w-full max-w-md rounded-md border border-byword-border bg-card p-6 text-center factory-panel">
         <FactoryMark className="mb-6 justify-center" />
         <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-muted">
           <Icon className="h-6 w-6 text-foreground" />

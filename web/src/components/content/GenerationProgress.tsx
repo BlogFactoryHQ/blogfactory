@@ -154,7 +154,7 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
     : [];
 
   return (
-    <div className="space-y-4 p-4 bg-accent/50 rounded-lg border border-border">
+    <div className="space-y-4 rounded-lg border border-border bg-byword-blue-soft/60 p-4">
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2 font-medium">
           {getSourceIcon(sourceType)}

@@ -19,13 +19,13 @@ const InputAffordance = React.forwardRef<HTMLInputElement, InputAffordanceProps>
     return (
       <div
         className={cn(
-          "flex h-10 w-full items-center rounded-sm border border-input bg-background/80 text-base ring-offset-background focus-within:border-primary/70 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 md:text-sm",
+          "flex h-9 w-full items-center rounded-sm border border-input bg-card text-base shadow-[inset_0_1px_2px_hsl(210_5%_20%/0.07)] ring-offset-background focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 md:text-sm",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}
       >
         {prefix && (
-          <span className="flex h-full shrink-0 items-center border-r border-input bg-muted/60 px-3 font-mono text-muted-foreground">
+          <span className="flex h-full shrink-0 items-center border-r border-input bg-muted px-3 font-mono text-[12px] text-muted-foreground">
             {prefix}
           </span>
         )}
@@ -42,7 +42,7 @@ const InputAffordance = React.forwardRef<HTMLInputElement, InputAffordanceProps>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label="Input help"
                 tabIndex={0}
               >
@@ -56,7 +56,7 @@ const InputAffordance = React.forwardRef<HTMLInputElement, InputAffordanceProps>
           <button
             type="button"
             onClick={onClear}
-            className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label={clearLabel}
           >
             <X className="h-4 w-4" />
