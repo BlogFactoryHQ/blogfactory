@@ -38,6 +38,22 @@ const snapshotKeys = [
 ] as const;
 const internalLinkDensities = new Set(["minimal", "light", "balanced", "rich"]);
 
+function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
+  const imageConfig: Record<string, unknown> = {};
+  const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)
+    ? settings.imageAdvancedOptions as Record<string, unknown>
+    : {};
+  const coverResolution = imageOptions.coverResolution === "512" ? "512" : "1K";
+  const inlineResolution = imageOptions.inlineResolution === "512" ? "512" : "1K";
+  if (settings?.coverEnabled) imageConfig.cover = { resolution: coverResolution };
+  const inlineCount = Math.max(0, Number(settings?.inlineCount ?? 2) || 0);
+  if (settings?.inlineEnabled && inlineCount > 0) {
+    imageConfig.inline = { count: inlineCount, resolution: inlineResolution };
+  }
+  const generateImages = Boolean(Object.keys(imageConfig).length);
+  return { generateImages, imageConfig: generateImages ? imageConfig : null };
+}
+
 async function buildSettingsSnapshot(userId: string, body: any) {
   const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
   const snapshot: Record<string, unknown> = {};
@@ -50,8 +66,9 @@ async function buildSettingsSnapshot(userId: string, body: any) {
     snapshot.manualImageProvider = body.manualImageProvider;
   }
   snapshot.customInstructions = typeof body.customInstructions === "string" ? body.customInstructions.trim() : "";
-  snapshot.generateImages = Boolean(body.generateImages);
-  snapshot.imageConfig = body.imageConfig || null;
+  const defaultImageSettings = imageConfigFromSettings(settings);
+  snapshot.generateImages = typeof body.generateImages === "boolean" ? body.generateImages : defaultImageSettings.generateImages;
+  snapshot.imageConfig = body.imageConfig || defaultImageSettings.imageConfig;
   return snapshot;
 }
 

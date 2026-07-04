@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { campaignItems, campaigns, jobs } from "../db/schema.js";
+import { campaignItems, campaigns, jobs, userSettings } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
@@ -10,6 +10,46 @@ const STALE_ITEM_MINUTES = 45;
 
 type Campaign = typeof campaigns.$inferSelect;
 type CampaignItem = typeof campaignItems.$inferSelect;
+
+function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
+  const imageConfig: Record<string, unknown> = {};
+  const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)
+    ? settings.imageAdvancedOptions as Record<string, unknown>
+    : {};
+  const coverResolution = imageOptions.coverResolution === "512" ? "512" : "1K";
+  const inlineResolution = imageOptions.inlineResolution === "512" ? "512" : "1K";
+  if (settings?.coverEnabled) imageConfig.cover = { resolution: coverResolution };
+  const inlineCount = Math.max(0, Number(settings?.inlineCount ?? 2) || 0);
+  if (settings?.inlineEnabled && inlineCount > 0) {
+    imageConfig.inline = { count: inlineCount, resolution: inlineResolution };
+  }
+  const generateImages = Boolean(Object.keys(imageConfig).length);
+  return { generateImages, imageConfig: generateImages ? imageConfig : null };
+}
+
+async function campaignImageSettings(campaign: Campaign) {
+  const snapshot = campaign.settingsSnapshot as Record<string, unknown> | null;
+  if (snapshot?.generateImages && snapshot.imageConfig) {
+    return { settingsSnapshot: snapshot, generateImages: true, imageConfig: snapshot.imageConfig };
+  }
+  if (campaign.mode !== "programmatic") {
+    return { settingsSnapshot: snapshot, generateImages: Boolean(snapshot?.generateImages), imageConfig: snapshot?.imageConfig || null };
+  }
+
+  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, campaign.userId)).limit(1);
+  const defaults = imageConfigFromSettings(settings);
+  return {
+    settingsSnapshot: {
+      ...(snapshot || {}),
+      generateImages: defaults.generateImages,
+      imageConfig: defaults.imageConfig,
+      imageAdvancedOptions: snapshot?.imageAdvancedOptions || settings?.imageAdvancedOptions || null,
+      imageStylePrompt: snapshot?.imageStylePrompt || settings?.imageStylePrompt || null,
+    },
+    generateImages: defaults.generateImages,
+    imageConfig: defaults.imageConfig,
+  };
+}
 
 function itemOutline(item: CampaignItem, campaign: Campaign) {
   const own = Array.isArray(item.outline) ? item.outline as OutlineHeading[] : [];
@@ -97,6 +137,7 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
   let result: Awaited<ReturnType<typeof generateContent>>;
   try {
     const article = programmaticArticle(campaign, item);
+    const imageSettings = await campaignImageSettings(campaign);
     result = await generateContent({
       userId: campaign.userId,
       sourceType: "campaign",
@@ -105,9 +146,9 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
       personaId: campaign.personaId,
       campaignId: campaign.id,
       campaignItemId: item.id,
-      settingsSnapshot: campaign.settingsSnapshot,
-      generateImages: Boolean((campaign.settingsSnapshot as any)?.generateImages),
-      imageConfig: (campaign.settingsSnapshot as any)?.imageConfig,
+      settingsSnapshot: imageSettings.settingsSnapshot,
+      generateImages: imageSettings.generateImages,
+      imageConfig: imageSettings.imageConfig,
       campaignArticle: article || {
         mode: campaign.mode as CampaignMode,
         keyword: item.keyword,
