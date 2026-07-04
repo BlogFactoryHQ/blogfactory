@@ -58,6 +58,14 @@ function normalizeInlineImageSource(value: unknown) {
   return value === "stock" ? "stock" : "ai";
 }
 
+function normalizeImageDeliveryMode(value: unknown) {
+  return value === "manual_prompt" ? "manual_prompt" : "generate";
+}
+
+function normalizeManualImageProvider(value: unknown) {
+  return value === "midjourney" ? "midjourney" : "midjourney";
+}
+
 function normalizeImageAdvancedOptions(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const options = value as Record<string, unknown>;
@@ -65,11 +73,15 @@ function normalizeImageAdvancedOptions(value: unknown) {
   const inlineSource = options.inlineImageSource;
   const coverResolution = options.coverResolution;
   const inlineResolution = options.inlineResolution;
+  const imageDeliveryMode = options.imageDeliveryMode;
+  const manualImageProvider = options.manualImageProvider;
   return {
     ...(inlineModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(inlineModel) } : {}),
     ...(inlineSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(inlineSource) } : {}),
     ...(coverResolution !== undefined ? { coverResolution: normalizeImageResolution(coverResolution) } : {}),
     ...(inlineResolution !== undefined ? { inlineResolution: normalizeImageResolution(inlineResolution) } : {}),
+    ...(imageDeliveryMode !== undefined ? { imageDeliveryMode: normalizeImageDeliveryMode(imageDeliveryMode) } : {}),
+    ...(manualImageProvider !== undefined ? { manualImageProvider: normalizeManualImageProvider(manualImageProvider) } : {}),
   };
 }
 
@@ -159,6 +171,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
   const inlineImageSource = normalizeInlineImageSource(imageAdvancedOptions.inlineImageSource);
   const coverImageResolution = normalizeImageResolution(imageAdvancedOptions.coverResolution);
   const inlineImageResolution = normalizeImageResolution(imageAdvancedOptions.inlineResolution);
+  const imageDeliveryMode = normalizeImageDeliveryMode(imageAdvancedOptions.imageDeliveryMode);
+  const manualImageProvider = normalizeManualImageProvider(imageAdvancedOptions.manualImageProvider);
 
   return {
     id: settings.id,
@@ -176,6 +190,10 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     coverImageResolution: coverImageResolution,
     inline_image_resolution: inlineImageResolution,
     inlineImageResolution: inlineImageResolution,
+    image_delivery_mode: imageDeliveryMode,
+    imageDeliveryMode,
+    manual_image_provider: manualImageProvider,
+    manualImageProvider,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
     cover_enabled: settings.coverEnabled,
@@ -305,6 +323,26 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       ? update.imageAdvancedOptions as Record<string, unknown>
       : {};
     update.imageAdvancedOptions = { ...imageAdvancedOptions, inlineImageSource } as never;
+  }
+  const imageDeliveryMode = body.image_delivery_mode ?? body.imageDeliveryMode;
+  if (imageDeliveryMode !== undefined) {
+    if (imageDeliveryMode !== "generate" && imageDeliveryMode !== "manual_prompt") throw new Error("Invalid image delivery mode");
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, imageDeliveryMode } as never;
+  }
+  const manualImageProvider = body.manual_image_provider ?? body.manualImageProvider;
+  if (manualImageProvider !== undefined) {
+    if (manualImageProvider !== "midjourney") throw new Error("Invalid manual image provider");
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, manualImageProvider } as never;
   }
   const coverImageResolution = body.cover_image_resolution ?? body.coverImageResolution;
   const inlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
@@ -795,7 +833,9 @@ settingsRoutes.put("/", async (c) => {
   const directInlineImageSource = body.inline_image_source ?? body.inlineImageSource;
   const directCoverImageResolution = body.cover_image_resolution ?? body.coverImageResolution;
   const directInlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
-  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined) {
+  const directImageDeliveryMode = body.image_delivery_mode ?? body.imageDeliveryMode;
+  const directManualImageProvider = body.manual_image_provider ?? body.manualImageProvider;
+  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined || directImageDeliveryMode !== undefined || directManualImageProvider !== undefined) {
     const [existing] = await db
       .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
       .from(userSettings)
@@ -808,6 +848,8 @@ settingsRoutes.put("/", async (c) => {
       ...(directInlineImageSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(directInlineImageSource) } : {}),
       ...(directCoverImageResolution !== undefined ? { coverResolution: normalizeImageResolution(directCoverImageResolution) } : {}),
       ...(directInlineImageResolution !== undefined ? { inlineResolution: normalizeImageResolution(directInlineImageResolution) } : {}),
+      ...(directImageDeliveryMode !== undefined ? { imageDeliveryMode: normalizeImageDeliveryMode(directImageDeliveryMode) } : {}),
+      ...(directManualImageProvider !== undefined ? { manualImageProvider: normalizeManualImageProvider(directManualImageProvider) } : {}),
     } as never;
   }
 

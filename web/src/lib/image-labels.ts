@@ -30,6 +30,7 @@ export function imageSourceLabel(image: ImageLabelInput) {
   const isStock = sourceKind === "stock" || STOCK_PROVIDERS.has(provider);
   const isAi = sourceKind === "ai" || provider === "openrouter-image" || provider === "ai-deferred";
   if (isStock) return `Stock: ${imageProviderName(provider)}${license ? ` · ${license}` : ""}`;
+  if (sourceKind === "manual") return `Manual: ${imageProviderName(provider)}${license ? ` · ${license}` : ""}`;
   if (isAi) return `AI model: ${model || imageProviderName(provider)}`;
   return model ? `AI model: ${model}` : imageProviderName(provider);
 }

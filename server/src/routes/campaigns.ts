@@ -43,6 +43,12 @@ async function buildSettingsSnapshot(userId: string, body: any) {
   const snapshot: Record<string, unknown> = {};
   for (const key of snapshotKeys) snapshot[key] = settings?.[key] ?? null;
   if (internalLinkDensities.has(body.internalLinkDensity)) snapshot.internalLinkDensity = body.internalLinkDensity;
+  if (body.imageDeliveryMode === "manual_prompt" || body.imageDeliveryMode === "generate") {
+    snapshot.imageDeliveryMode = body.imageDeliveryMode;
+  }
+  if (body.manualImageProvider === "midjourney") {
+    snapshot.manualImageProvider = body.manualImageProvider;
+  }
   snapshot.customInstructions = typeof body.customInstructions === "string" ? body.customInstructions.trim() : "";
   snapshot.generateImages = Boolean(body.generateImages);
   snapshot.imageConfig = body.imageConfig || null;

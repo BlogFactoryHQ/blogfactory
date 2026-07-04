@@ -65,6 +65,8 @@ import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
   InlineImageSource,
+  ImageDeliveryMode,
+  ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 import { LiveImageModelSelect } from "@/components/content/LiveImageModelSelect";
 import {
@@ -101,6 +103,8 @@ interface UserSettings {
   image_model?: string | null;
   inline_image_model?: string | null;
   inline_image_source?: InlineImageSource | null;
+  image_delivery_mode?: ImageDeliveryMode | null;
+  manual_image_provider?: ManualImageProvider | null;
   cover_enabled?: boolean | null;
   inline_enabled?: boolean | null;
   inline_count?: number | null;
@@ -273,6 +277,14 @@ function normalizeInlineImageSource(value?: string | null): InlineImageSource {
   return value === "stock" ? "stock" : "ai";
 }
 
+function normalizeImageDeliveryMode(value?: string | null): ImageDeliveryMode {
+  return value === "manual_prompt" ? "manual_prompt" : "generate";
+}
+
+function normalizeManualImageProvider(value?: string | null): ManualImageProvider {
+  return value === "midjourney" ? "midjourney" : "midjourney";
+}
+
 function imageCost(model: LiveImageModel | null | undefined, resolution?: "512" | "1K") {
   if (!model || model.isFree) return 0;
   const byResolution = model.rawPricing.imageByResolution?.[resolution || "1K"];
@@ -295,6 +307,8 @@ export default function Settings() {
   const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_COVER_IMAGE_MODEL);
   const [selectedInlineImageModel, setSelectedInlineImageModel] = useState(DEFAULT_INLINE_IMAGE_MODEL);
   const [inlineImageSource, setInlineImageSource] = useState<InlineImageSource>("ai");
+  const [imageDeliveryMode, setImageDeliveryMode] = useState<ImageDeliveryMode>("generate");
+  const [manualImageProvider, setManualImageProvider] = useState<ManualImageProvider>("midjourney");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -388,12 +402,15 @@ export default function Settings() {
   });
   const selectedCoverModel = coverImageModels.find((model) => model.id === selectedImageModel);
   const selectedInlineModel = imageModels.find((model) => model.id === selectedInlineImageModel);
-  const coverImageCost = imageConfig.cover.enabled ? imageCost(selectedCoverModel, imageConfig.cover.resolution || "1K") : 0;
-  const inlineImageCost = imageConfig.inline.enabled && inlineImageSource === "ai"
+  const manualPromptMode = imageDeliveryMode === "manual_prompt";
+  const coverImageCost = imageConfig.cover.enabled && !manualPromptMode ? imageCost(selectedCoverModel, imageConfig.cover.resolution || "1K") : 0;
+  const inlineImageCost = imageConfig.inline.enabled && inlineImageSource === "ai" && !manualPromptMode
     ? imageCost(selectedInlineModel, imageConfig.inline.resolution || "1K") * imageConfig.inline.count
     : 0;
   const imageSettingsError =
-    !selectedImageModel
+    manualPromptMode
+      ? ""
+      : !selectedImageModel
       ? "Cover AI model is required."
       : selectedImageModelUnavailable
         ? "Pick a live OpenRouter image model for covers."
@@ -409,6 +426,8 @@ export default function Settings() {
   const savedInlineImageSource = normalizeInlineImageSource(
     userSettings?.inline_image_source
   );
+  const savedImageDeliveryMode = normalizeImageDeliveryMode(userSettings?.image_delivery_mode);
+  const savedManualImageProvider = normalizeManualImageProvider(userSettings?.manual_image_provider);
 
   const basicsDirty: DirtyState = userSettings && (
     articleWordCount !== (userSettings.article_word_count ?? 1500) ||
@@ -434,6 +453,8 @@ export default function Settings() {
     selectedImageModel !== savedCoverImageModel ||
     selectedInlineImageModel !== savedInlineImageModel ||
     inlineImageSource !== savedInlineImageSource ||
+    imageDeliveryMode !== savedImageDeliveryMode ||
+    manualImageProvider !== savedManualImageProvider ||
     imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
     imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
     imageConfig.inline.count !== (userSettings.inline_count ?? 2) ||
@@ -473,6 +494,8 @@ export default function Settings() {
       setSelectedImageModel(normalizeCoverImageModelId(userSettings.image_model));
       setSelectedInlineImageModel(normalizeInlineImageModelId(userSettings.inline_image_model));
       setInlineImageSource(normalizeInlineImageSource(userSettings.inline_image_source));
+      setImageDeliveryMode(normalizeImageDeliveryMode(userSettings.image_delivery_mode));
+      setManualImageProvider(normalizeManualImageProvider(userSettings.manual_image_provider));
       setArticleWordCount(userSettings.article_word_count ?? 1500);
       setArticleLanguage(userSettings.article_language || "US English");
       setArticleVoice(userSettings.article_voice || "Natural");
@@ -634,6 +657,8 @@ export default function Settings() {
         image_model: selectedImageModel,
         inline_image_model: selectedInlineImageModel,
         inline_image_source: inlineImageSource,
+        image_delivery_mode: imageDeliveryMode,
+        manual_image_provider: manualImageProvider,
         cover_image_resolution: imageConfig.cover.resolution || "1K",
         inline_image_resolution: imageConfig.inline.resolution || "1K",
         cover_enabled: imageConfig.cover.enabled,
@@ -1841,7 +1866,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={ImagePlus}
                   title="Image Generation"
-                  description="Cover and inline AI use approved OpenRouter image models. Inline Stock uses stock providers only."
+                  description="Generate images automatically, or create one Midjourney prompt for manual image creation."
                   action={
                     <Button
                       size="sm"
@@ -1859,60 +1884,72 @@ export default function Settings() {
                   }
                 />
                 <div className="space-y-5 p-6">
-                  <div className="grid gap-5 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Cover AI Model</Label>
-                      <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
-                      {selectedImageModelUnavailable && (
-                        <p className="text-xs text-destructive">Pick a live OpenRouter image model for covers.</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Inline Source</Label>
-                      <div className="grid grid-cols-2 rounded-lg border border-byword-border p-1">
-                        {(["ai", "stock"] as const).map((source) => (
-                          <button
-                            key={source}
-                            type="button"
-                            onClick={() => setInlineImageSource(source)}
-                            className={cn(
-                              "rounded-md px-3 py-2 text-sm font-medium transition-calm",
-                              inlineImageSource === source
-                                ? "bg-byword-blue text-white"
-                                : "text-muted-foreground hover:bg-muted"
-                            )}
-                          >
-                            {source === "ai" ? "AI" : "Stock"}
-                          </button>
-                        ))}
+                  {manualPromptMode ? (
+                    <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+                      <p className="text-sm font-medium">Manual provider</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge variant="secondary">Midjourney</Badge>
+                        <Badge variant="outline">$0 image generation</Badge>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-5 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Cover AI Model</Label>
+                          <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
+                          {selectedImageModelUnavailable && (
+                            <p className="text-xs text-destructive">Pick a live OpenRouter image model for covers.</p>
+                          )}
+                        </div>
 
-                  {inlineImageSource === "ai" && (
-                    <div className="space-y-2">
-                      <Label>Inline AI Model</Label>
-                      <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
-                      {selectedInlineImageModelUnavailable && (
-                        <p className="text-xs text-destructive">Pick a live OpenRouter image model for inline images.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {inlineImageSource === "stock" && (
-                    <div className="space-y-2">
-                      <Label>Stock Providers</Label>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={apiKeys?.hasPixabayKey ? "secondary" : "outline"}>
-                          Pixabay {apiKeys?.hasPixabayKey ? "saved" : "missing"}
-                        </Badge>
-                        <Badge variant={apiKeys?.hasPexelsKey ? "secondary" : "outline"}>
-                          Pexels {apiKeys?.hasPexelsKey ? "saved" : "missing"}
-                        </Badge>
-                        <Badge variant="secondary">Openverse available</Badge>
+                        <div className="space-y-2">
+                          <Label>Inline Source</Label>
+                          <div className="grid grid-cols-2 rounded-lg border border-byword-border p-1">
+                            {(["ai", "stock"] as const).map((source) => (
+                              <button
+                                key={source}
+                                type="button"
+                                onClick={() => setInlineImageSource(source)}
+                                className={cn(
+                                  "rounded-md px-3 py-2 text-sm font-medium transition-calm",
+                                  inlineImageSource === source
+                                    ? "bg-byword-blue text-white"
+                                    : "text-muted-foreground hover:bg-muted"
+                                )}
+                              >
+                                {source === "ai" ? "AI" : "Stock"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+
+                      {inlineImageSource === "ai" && (
+                        <div className="space-y-2">
+                          <Label>Inline AI Model</Label>
+                          <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
+                          {selectedInlineImageModelUnavailable && (
+                            <p className="text-xs text-destructive">Pick a live OpenRouter image model for inline images.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {inlineImageSource === "stock" && (
+                        <div className="space-y-2">
+                          <Label>Stock Providers</Label>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={apiKeys?.hasPixabayKey ? "secondary" : "outline"}>
+                              Pixabay {apiKeys?.hasPixabayKey ? "saved" : "missing"}
+                            </Badge>
+                            <Badge variant={apiKeys?.hasPexelsKey ? "secondary" : "outline"}>
+                              Pexels {apiKeys?.hasPexelsKey ? "saved" : "missing"}
+                            </Badge>
+                            <Badge variant="secondary">Openverse available</Badge>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {imageSettingsError && (
@@ -1924,12 +1961,14 @@ export default function Settings() {
                   <div className="grid gap-3 rounded-lg border border-byword-border bg-muted/20 p-4 text-sm md:grid-cols-3">
                     <div>
                       <p className="text-xs text-muted-foreground">Cover AI</p>
-                      <p className="font-medium">{imageConfig.cover.enabled ? formatImageCostAmount(coverImageCost) : "$0 off"}</p>
+                      <p className="font-medium">{manualPromptMode ? "$0 manual" : imageConfig.cover.enabled ? formatImageCostAmount(coverImageCost) : "$0 off"}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Inline {inlineImageSource === "stock" ? "Stock" : "AI"}</p>
+                      <p className="text-xs text-muted-foreground">Inline {manualPromptMode ? "Skipped" : inlineImageSource === "stock" ? "Stock" : "AI"}</p>
                       <p className="font-medium">
-                        {!imageConfig.inline.enabled || imageConfig.inline.count === 0
+                        {manualPromptMode
+                          ? "$0 manual"
+                          : !imageConfig.inline.enabled || imageConfig.inline.count === 0
                           ? "$0 off"
                           : inlineImageSource === "stock"
                             ? "$0 stock"
@@ -1945,6 +1984,9 @@ export default function Settings() {
                     config={imageConfig}
                     onConfigChange={setImageConfig}
                     inlineImageSource={inlineImageSource}
+                    imageDeliveryMode={imageDeliveryMode}
+                    manualImageProvider={manualImageProvider}
+                    onImageDeliveryModeChange={setImageDeliveryMode}
                     coverResolutions={selectedCoverModel?.constraints?.resolutions}
                     inlineResolutions={selectedInlineModel?.constraints?.resolutions}
                   />

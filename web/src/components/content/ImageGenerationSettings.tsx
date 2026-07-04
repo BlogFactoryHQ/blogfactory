@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils";
 
 export type InlineImageSource = "ai" | "stock";
 export type ImageResolution = "512" | "1K";
+export type ImageDeliveryMode = "generate" | "manual_prompt";
+export type ManualImageProvider = "midjourney";
 
 export interface CoverImageConfig {
   enabled: boolean;
@@ -62,6 +64,9 @@ interface SplitImageGenerationSettingsProps {
   compact?: boolean;
   className?: string;
   inlineImageSource?: InlineImageSource;
+  imageDeliveryMode?: ImageDeliveryMode;
+  manualImageProvider?: ManualImageProvider;
+  onImageDeliveryModeChange?: (mode: ImageDeliveryMode) => void;
   coverResolutions?: ImageResolution[];
   inlineResolutions?: ImageResolution[];
 }
@@ -72,6 +77,9 @@ export function SplitImageGenerationSettings({
   compact = false,
   className,
   inlineImageSource = "ai",
+  imageDeliveryMode = "generate",
+  manualImageProvider = "midjourney",
+  onImageDeliveryModeChange,
   coverResolutions = ["512", "1K"],
   inlineResolutions = ["512", "1K"],
 }: SplitImageGenerationSettingsProps) {
@@ -116,6 +124,8 @@ export function SplitImageGenerationSettings({
 
   const inlineCostLabel = !config.inline.enabled || config.inline.count === 0
     ? "Off"
+    : imageDeliveryMode === "manual_prompt"
+    ? "Manual prompt"
     : inlineImageSource === "stock"
     ? "Stock providers"
     : "AI";
@@ -123,13 +133,55 @@ export function SplitImageGenerationSettings({
   const inlineSummary = config.inline.enabled && config.inline.count > 0
     ? `${config.inline.count} inline ${inlineImageSource === "stock" ? "stock" : "AI"}`
     : "";
-  const summary = [
+  const summary = imageDeliveryMode === "manual_prompt"
+    ? imagesEnabled ? `1 ${manualImageProvider === "midjourney" ? "Midjourney" : "manual"} prompt` : "No images"
+    : [
     config.cover.enabled ? "Cover AI" : "",
     inlineSummary,
   ].filter(Boolean).join(" · ") || "No images";
 
+  const deliveryModeControl = onImageDeliveryModeChange ? (
+    <div className="grid grid-cols-2 rounded-lg border border-border p-1">
+      {([
+        ["generate", "Generate Images"],
+        ["manual_prompt", "Manual Prompt"],
+      ] as const).map(([mode, label]) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onImageDeliveryModeChange(mode)}
+          className={cn(
+            "rounded-md px-3 py-2 text-sm font-medium transition-calm",
+            imageDeliveryMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   const controls = (
     <div className="space-y-3">
+      {deliveryModeControl}
+      {imageDeliveryMode === "manual_prompt" ? (
+        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+          <div>
+            <Label>Manual Image Prompt</Label>
+            <p className="text-xs text-muted-foreground">
+              {imagesEnabled ? "Creates one Midjourney prompt" : "Off"}
+            </p>
+          </div>
+          <Switch
+            checked={imagesEnabled}
+            onCheckedChange={(enabled) => onConfigChange({
+              cover: { ...config.cover, enabled },
+              inline: { ...config.inline, enabled: false },
+            })}
+          />
+        </div>
+      ) : (
+        <>
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div>
           <Label>Cover Image</Label>
@@ -165,6 +217,8 @@ export function SplitImageGenerationSettings({
           </div>
         )}
       </div>
+        </>
+      )}
 
     </div>
   );
@@ -188,13 +242,13 @@ export function SplitImageGenerationSettings({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-                  {inlineImageSource === "stock" ? "Cover AI + inline stock" : "AI images"}
+                  {imageDeliveryMode === "manual_prompt" ? "Manual prompt" : inlineImageSource === "stock" ? "Cover AI + inline stock" : "AI images"}
                 </span>
               </TooltipTrigger>
               <TooltipContent>
                 <div className="space-y-1 text-xs">
                   <p>Cover: {config.cover.enabled ? "AI" : "Off"}</p>
-                  <p>Inline: {inlineCostLabel}</p>
+                  <p>Inline: {imageDeliveryMode === "manual_prompt" ? "Manual prompt mode" : inlineCostLabel}</p>
                 </div>
               </TooltipContent>
             </Tooltip>

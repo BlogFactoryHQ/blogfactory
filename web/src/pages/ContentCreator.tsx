@@ -55,6 +55,8 @@ import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
   InlineImageSource,
+  ImageDeliveryMode,
+  ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 import { useJobTracker } from "@/hooks/useJobTracker";
 import { ConcurrentJobDialog, ConcurrentAction } from "@/components/content/ConcurrentJobDialog";
@@ -101,10 +103,20 @@ function normalizeInlineImageSource(value?: string | null): InlineImageSource {
   return value === "stock" ? "stock" : "ai";
 }
 
+function normalizeImageDeliveryMode(value?: string | null): ImageDeliveryMode {
+  return value === "manual_prompt" ? "manual_prompt" : "generate";
+}
+
+function normalizeManualImageProvider(value?: string | null): ManualImageProvider {
+  return value === "midjourney" ? "midjourney" : "midjourney";
+}
+
 interface ContentUserSettings {
   image_model?: string | null;
   inline_image_model?: string | null;
   inline_image_source?: InlineImageSource | null;
+  image_delivery_mode?: ImageDeliveryMode | null;
+  manual_image_provider?: ManualImageProvider | null;
   image_style_prompt?: string | null;
   article_word_count?: number | null;
   article_language?: string | null;
@@ -384,6 +396,8 @@ export default function ContentCreator() {
   const [modelId, setModelId] = useState("anthropic/claude-3.5-sonnet");
   const [variations, setVariations] = useState<1 | 3 | 5>(1);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
+  const [imageDeliveryMode, setImageDeliveryMode] = useState<ImageDeliveryMode>("generate");
+  const [manualImageProvider, setManualImageProvider] = useState<ManualImageProvider>("midjourney");
   const [internalLinkDensity, setInternalLinkDensity] = useState<InternalLinkDensity>("balanced");
   const [showConcurrentDialog, setShowConcurrentDialog] = useState(false);
   const [campaignName, setCampaignName] = useState("");
@@ -445,6 +459,8 @@ export default function ContentCreator() {
       setInternalLinkDensity(
         isInternalLinkDensity(userSettings.internal_link_density) ? userSettings.internal_link_density : "balanced"
       );
+      setImageDeliveryMode(normalizeImageDeliveryMode(userSettings.image_delivery_mode));
+      setManualImageProvider(normalizeManualImageProvider(userSettings.manual_image_provider));
     }
   }, [userSettings]);
 
@@ -630,8 +646,9 @@ export default function ContentCreator() {
     imageModel: selectedImageModel,
     inlineImageModel: selectedInlineImageModel,
     imageConfig,
+    imageDeliveryMode,
     inlineImageSource: selectedInlineImageSource,
-  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, selectedInlineImageSource]);
+  }), [variations, effectiveWordCount, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, imageDeliveryMode, selectedInlineImageSource]);
   const campaignCostEstimate = useMemo(() => estimateGenerationCost({
     postCount: Math.max(1, campaignItemCount),
     articleWordCount: userSettings?.article_word_count || 1500,
@@ -639,8 +656,9 @@ export default function ContentCreator() {
     imageModel: selectedImageModel,
     inlineImageModel: selectedInlineImageModel,
     imageConfig,
+    imageDeliveryMode,
     inlineImageSource: selectedInlineImageSource,
-  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, selectedInlineImageSource]);
+  }), [campaignItemCount, userSettings?.article_word_count, selectedTextModel, selectedImageModel, selectedInlineImageModel, imageConfig, imageDeliveryMode, selectedInlineImageSource]);
   const costWarningInput = (estimate: CostEstimate) => ({
     estimate,
     monthlyBudget: userSettings?.monthly_budget,
@@ -669,7 +687,9 @@ export default function ContentCreator() {
       default: return "Source";
     }
   };
-  const imagePlanLabel = imageConfig.cover.enabled || imageConfig.inline.enabled
+  const imagePlanLabel = imageDeliveryMode === "manual_prompt"
+    ? imageConfig.cover.enabled || imageConfig.inline.enabled ? "1 Midjourney prompt" : "Off"
+    : imageConfig.cover.enabled || imageConfig.inline.enabled
     ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`
     : "Off";
   const articleBriefBlockers = [
@@ -711,6 +731,8 @@ export default function ContentCreator() {
       enableResearch: isArticleSource && articleResearchFocus ? true : undefined,
       internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
       generateImages: imagesEnabled,
+      imageDeliveryMode,
+      manualImageProvider,
       imageConfig: imagesEnabled ? {
         cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
         inline: imageConfig.inline.enabled ? {
@@ -848,6 +870,8 @@ export default function ContentCreator() {
         customInstructions: campaignCustomInstructions,
         internalLinkDensity: internalLinksEnabled ? internalLinkDensity : undefined,
         generateImages: imagesEnabled,
+        imageDeliveryMode,
+        manualImageProvider,
         imageConfig: imagesEnabled ? imageConfig : null,
       });
       if (campaignStartNow) await api.post(`/campaigns/${result.campaign.id}/start`);
@@ -1329,6 +1353,9 @@ export default function ContentCreator() {
               onConfigChange={setImageConfig}
               compact
               inlineImageSource={selectedInlineImageSource}
+              imageDeliveryMode={imageDeliveryMode}
+              manualImageProvider={manualImageProvider}
+              onImageDeliveryModeChange={setImageDeliveryMode}
               coverResolutions={selectedImageModel?.constraints?.resolutions}
               inlineResolutions={selectedInlineImageModel?.constraints?.resolutions}
             />
@@ -1534,6 +1561,9 @@ export default function ContentCreator() {
                 onConfigChange={setImageConfig}
                 compact
                 inlineImageSource={selectedInlineImageSource}
+                imageDeliveryMode={imageDeliveryMode}
+                manualImageProvider={manualImageProvider}
+                onImageDeliveryModeChange={setImageDeliveryMode}
                 coverResolutions={selectedImageModel?.constraints?.resolutions}
                 inlineResolutions={selectedInlineImageModel?.constraints?.resolutions}
               />
