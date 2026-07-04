@@ -11,6 +11,7 @@ import {
   LogOut,
   Settings,
   ChevronsLeft,
+  ChevronsRight,
   Shield,
   Search,
   SearchCheck,
@@ -108,30 +109,30 @@ export function AppSidebar() {
     navigate(href);
   };
 
-  const handleSidebarClick = (e: React.MouseEvent) => {
-    if (!isCollapsed) return;
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-signout]')) return;
-    if (target.closest('[data-profile-menu]')) return;
-    e.preventDefault();
-    toggle();
-  };
-
   return (
     <TooltipProvider delayDuration={0}>
       <aside
-        onClick={handleSidebarClick}
         className={cn(
-          "device-hairline-bg fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar",
+          "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar shadow-[inset_-1px_0_0_hsl(var(--sidebar-border)/0.55)]",
           "transition-[width] duration-200 ease-out",
-          isCollapsed ? "w-[60px] cursor-pointer" : "w-[224px]"
+          isCollapsed ? "w-[60px]" : "w-[224px]"
         )}
       >
         <div className="shrink-0 space-y-3 border-b border-sidebar-border p-2.5">
+          <div className={cn("flex items-center", isCollapsed ? "flex-col justify-center gap-2" : "justify-between px-1 pt-1")}>
+            <FactoryMark showText={!isCollapsed} />
+            <button
+              type="button"
+              onClick={toggle}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
+            </button>
+          </div>
           {!isCollapsed && (
-            <FactoryMark className="px-1 pt-1" />
-          )}
-          <DropdownMenu>
+            <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={isCollapsed}>
               <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
@@ -142,16 +143,6 @@ export function AppSidebar() {
                   <p className="truncate text-[10px] leading-tight text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
-                <span
-                  className={cn(
-                    "ml-0.5 h-6 w-6 shrink-0 items-center justify-center rounded-sm text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    isCollapsed ? "hidden" : "flex"
-                  )}
-                  onClick={(e) => { e.stopPropagation(); toggle(); }}
-                  aria-label="Collapse sidebar"
-                >
-                  <ChevronsLeft className="h-3.5 w-3.5" />
-                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-md border-byword-border p-3">
@@ -214,7 +205,8 @@ export function AppSidebar() {
                 </DropdownMenuItem>
               </div>
             </DropdownMenuContent>
-          </DropdownMenu>
+            </DropdownMenu>
+          )}
           <button
             type="button"
             onClick={openSearch}
@@ -226,7 +218,7 @@ export function AppSidebar() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-hidden px-2.5 py-3">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
           <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
           <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
           <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
@@ -358,13 +350,17 @@ function SidebarSection({
           if (isCollapsed) {
             return (
               <Tooltip key={item.name}>
-                <TooltipTrigger asChild>{inner}</TooltipTrigger>
+                <TooltipTrigger asChild>
+                  <Link to={item.href} aria-label={item.name} className="block">
+                    {inner}
+                  </Link>
+                </TooltipTrigger>
                 <TooltipContent side="right" className="text-xs">{item.name}</TooltipContent>
               </Tooltip>
             );
           }
 
-          return <Link key={item.name} to={item.href}>{inner}</Link>;
+          return <Link key={item.name} to={item.href} className="block">{inner}</Link>;
         })}
       </div>
     </div>

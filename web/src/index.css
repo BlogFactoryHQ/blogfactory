@@ -178,17 +178,15 @@
   }
 
   .factory-divider {
-    background-image: repeating-linear-gradient(
-      90deg,
-      hsl(var(--foreground)) 0,
-      hsl(var(--foreground)) 9px,
-      transparent 9px,
-      transparent 14px,
-      hsl(var(--primary)) 14px,
-      hsl(var(--primary)) 18px,
-      transparent 18px,
-      transparent 28px
-    );
+    background:
+      repeating-linear-gradient(
+        135deg,
+        hsl(var(--foreground) / 0.34) 0,
+        hsl(var(--foreground) / 0.34) 4px,
+        transparent 4px,
+        transparent 10px
+      ),
+      linear-gradient(180deg, hsl(var(--border)), hsl(var(--muted)));
   }
 
   .pixel-edge {

@@ -271,8 +271,9 @@ export default function PostEditorPage() {
               label={status === "published" ? "Published" : "Draft"}
             />
             {hasChanges && (
-              <span className="rounded-sm border border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] px-2 py-0.5 font-mono text-xs text-[hsl(var(--status-warning))]">
-                Unsaved changes
+              <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                Unsaved
               </span>
             )}
           </div>
