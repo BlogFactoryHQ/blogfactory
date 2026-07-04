@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { posts, personas, imageAssets, campaigns, jobs } from "../db/schema.js";
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
@@ -216,9 +216,36 @@ postsRoutes.get("/:id", async (c) => {
 
   if (!post) return c.json({ error: "Post not found" }, 404);
   const { persona_name, campaign_name, ...result } = post;
-  const attachedPaths = [result.cover_image_url, ...(normalizeInlineImages(result.inline_images, result.cover_image_url) || [])]
+  const storedInlineImages = normalizeInlineImages(result.inline_images, result.cover_image_url);
+  const postImageAssets = await db
+    .select({
+      storage_path: imageAssets.storagePath,
+      type: imageAssets.type,
+      provider: imageAssets.provider,
+      model_id: imageAssets.modelId,
+      source_kind: imageAssets.sourceKind,
+      source_url: imageAssets.sourceUrl,
+      credit: imageAssets.credit,
+      license_label: imageAssets.licenseLabel,
+      attribution_url: imageAssets.attributionUrl,
+      position: imageAssets.position,
+      created_at: imageAssets.createdAt,
+    })
+    .from(imageAssets)
+    .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, id)))
+    .orderBy(asc(imageAssets.type), asc(imageAssets.position), asc(imageAssets.createdAt));
+  const inlineAssetPaths = postImageAssets
+    .filter((asset) => asset.type === "inline" && asset.storage_path !== result.cover_image_url)
+    .map((asset) => asset.storage_path);
+  const inlineImages = Array.from(new Set([
+    ...inlineAssetPaths,
+    ...storedInlineImages.filter((path) => !inlineAssetPaths.includes(path)),
+  ]));
+  const attachedPaths = [result.cover_image_url, ...inlineImages]
     .filter((path): path is string => Boolean(path));
-  const attachedAssets = attachedPaths.length
+  const attachedAssets = postImageAssets.length
+    ? postImageAssets.filter((asset) => attachedPaths.includes(asset.storage_path))
+    : attachedPaths.length
     ? await db
       .select({
         storage_path: imageAssets.storagePath,
@@ -236,7 +263,7 @@ postsRoutes.get("/:id", async (c) => {
     : [];
   return c.json({
     ...result,
-    inline_images: normalizeInlineImages(result.inline_images, result.cover_image_url),
+    inline_images: inlineImages,
     image_assets: attachedAssets,
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,

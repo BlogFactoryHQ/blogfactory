@@ -425,7 +425,7 @@ export default function ImageGallery() {
               <ImageRequestCard
                 key={request.id}
                 request={request}
-                onImport={(item, file) => importRequest.mutate({ id: item.id, file })}
+                onImport={(item, file) => importRequest.mutate({ id: item.id, file, postId: item.post_id })}
                 onCancel={(id) => cancelRequest.mutate(id)}
                 onProcess={() => processQueue.mutate()}
                 onRetry={(id) => retryRequest.mutate(id)}

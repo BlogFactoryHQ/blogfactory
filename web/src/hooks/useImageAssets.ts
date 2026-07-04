@@ -188,15 +188,23 @@ export function useCancelImageGenerationRequest() {
 export function useImportImageGenerationRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+    mutationFn: async ({ id, file, postId }: { id: string; file: File; postId?: string | null }) => {
       const formData = new FormData();
       formData.append("file", file);
-      await api.upload(`/images/requests/${id}/import`, formData);
+      const result = await api.upload<{
+        request?: ImageGenerationRequest;
+        asset?: ImageAsset;
+      }>(`/images/requests/${id}/import`, formData);
+      return { ...result, postId: result.request?.post_id || postId || null };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      if (result.postId) {
+        queryClient.invalidateQueries({ queryKey: ["post", result.postId] });
+      }
       toast.success("Image imported");
     },
     onError: (err: unknown) => {

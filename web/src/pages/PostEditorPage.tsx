@@ -88,6 +88,7 @@ export default function PostEditorPage() {
   const [initialized, setInitialized] = useState(false);
 
   const contentRef = useRef<string>(content);
+  const serverImagesRef = useRef<{ cover: string | null; inline: string[] }>({ cover: null, inline: [] });
   contentRef.current = content;
 
   // Fetch post data
@@ -127,9 +128,37 @@ export default function PostEditorPage() {
       setStatus(post.status);
       setCoverImageUrl(post.cover_image_url || null);
       setInlineImages(post.inline_images || []);
+      serverImagesRef.current = {
+        cover: post.cover_image_url || null,
+        inline: post.inline_images || [],
+      };
       setInitialized(true);
     }
   }, [post, initialized]);
+
+  const serverInlineImagesKey = JSON.stringify(post?.inline_images || []);
+
+  useEffect(() => {
+    if (!post || !initialized) return;
+    const nextServerImages = {
+      cover: post.cover_image_url || null,
+      inline: post.inline_images || [],
+    };
+    const previousServerImages = serverImagesRef.current;
+    const newlyAttachedInline = nextServerImages.inline.filter((image) => !previousServerImages.inline.includes(image));
+
+    if (nextServerImages.cover !== previousServerImages.cover) {
+      setCoverImageUrl((current) => current === previousServerImages.cover ? nextServerImages.cover : current);
+    }
+
+    if (newlyAttachedInline.length) {
+      setInlineImages((current) => Array.from(new Set([...current, ...newlyAttachedInline]))
+        .filter((image) => image && image !== nextServerImages.cover));
+      setContent((current) => placeMissingInlineImages(current, newlyAttachedInline));
+    }
+
+    serverImagesRef.current = nextServerImages;
+  }, [post, initialized, serverInlineImagesKey]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageGenerationRequests, posts } from "../db/schema.js";
-import { normalizeImagePlacement, placeInlineImages, removeInlineImagePath, replaceInlineImagePath } from "./image-placement.js";
+import { normalizeImagePlacement, placeInlineImages, removeInlineImagePath } from "./image-placement.js";
 import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
 
 async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null, position?: number | null, userId?: string) {
@@ -18,17 +18,19 @@ async function attachInlineImage(postId: string, path: string, placement: unknow
     return;
   }
   const alreadyTracked = inlineImages.includes(path);
-  const existing = typeof position === "number" && position >= 0 ? inlineImages[position] : null;
-  if (existing) inlineImages[position!] = path;
-  else if (!alreadyTracked) inlineImages.push(path);
+  const nextInlineImages = inlineImages.filter(Boolean);
+  if (!alreadyTracked) {
+    const insertAt = typeof position === "number" && position >= 0
+      ? Math.min(position, nextInlineImages.length)
+      : nextInlineImages.length;
+    nextInlineImages.splice(insertAt, 0, path);
+  }
   const previousContent = post.content || "";
-  const content = existing && existing !== path
-    ? replaceInlineImagePath(previousContent, existing, path)
-    : existing === path || alreadyTracked || previousContent.includes(path)
+  const content = alreadyTracked || previousContent.includes(path)
       ? previousContent
       : placeInlineImages(previousContent, [{ url: path, altText }], normalizeImagePlacement(placement));
   await db.update(posts).set({
-    inlineImages: Array.from(new Set(inlineImages.filter(Boolean))),
+    inlineImages: Array.from(new Set(nextInlineImages)),
     content,
   }).where(and(...conditions));
 }
