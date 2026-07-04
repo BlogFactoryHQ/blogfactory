@@ -52,9 +52,14 @@ assertEqual(
   "A colorful editorial illustration about AI communities --ar 16:9 --profile 376a42y g7qoxps",
   "manual suffix is appended after the generated prompt"
 );
-const manualSummary = manualPromptImageResolutionSummary("request-1");
-assertEqual(manualSummary.results.length, 1, "manual mode reports one request");
+const manualSummary = manualPromptImageResolutionSummary([
+  { id: "cover-request", type: "cover", position: 0 },
+  { id: "inline-request", type: "inline", position: 1 },
+]);
+assertEqual(manualSummary.results.length, 2, "manual mode reports every selected image slot");
 assertEqual(manualSummary.results[0].type, "cover", "manual mode uses a cover-style request");
+assertEqual(manualSummary.results[1].type, "inline", "manual mode reports inline requests");
+assertEqual(manualSummary.queued, 2, "manual mode queues all prompt slots");
 assertEqual(manualSummary.inlinePaths.length, 0, "manual mode does not attach inline images");
 
 console.log("openrouter-image-routing self-check passed");

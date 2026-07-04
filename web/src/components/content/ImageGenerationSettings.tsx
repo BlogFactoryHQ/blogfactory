@@ -125,16 +125,19 @@ export function SplitImageGenerationSettings({
   const inlineCostLabel = !config.inline.enabled || config.inline.count === 0
     ? "Off"
     : imageDeliveryMode === "manual_prompt"
-    ? "Manual prompt"
+    ? "Manual prompts"
     : inlineImageSource === "stock"
     ? "Stock providers"
     : "AI";
   const imagesEnabled = config.cover.enabled || (config.inline.enabled && config.inline.count > 0);
   const inlineSummary = config.inline.enabled && config.inline.count > 0
-    ? `${config.inline.count} inline ${inlineImageSource === "stock" ? "stock" : "AI"}`
+    ? `${config.inline.count} inline ${imageDeliveryMode === "manual_prompt" ? "prompt" : inlineImageSource === "stock" ? "stock" : "AI"}${imageDeliveryMode === "manual_prompt" && config.inline.count !== 1 ? "s" : ""}`
     : "";
   const summary = imageDeliveryMode === "manual_prompt"
-    ? imagesEnabled ? `1 ${manualImageProvider === "midjourney" ? "Midjourney" : "manual"} prompt` : "No images"
+    ? [
+      config.cover.enabled ? `Cover ${manualImageProvider === "midjourney" ? "Midjourney" : "manual"} prompt` : "",
+      inlineSummary,
+    ].filter(Boolean).join(" · ") || "No images"
     : [
     config.cover.enabled ? "Cover AI" : "",
     inlineSummary,
@@ -164,37 +167,21 @@ export function SplitImageGenerationSettings({
   const controls = (
     <div className="space-y-3">
       {deliveryModeControl}
-      {imageDeliveryMode === "manual_prompt" ? (
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
-          <div>
-            <Label>Manual Image Prompt</Label>
-            <p className="text-xs text-muted-foreground">
-              {imagesEnabled ? "Creates one Midjourney prompt" : "Off"}
-            </p>
-          </div>
-          <Switch
-            checked={imagesEnabled}
-            onCheckedChange={(enabled) => onConfigChange({
-              cover: { ...config.cover, enabled },
-              inline: { ...config.inline, enabled: false },
-            })}
-          />
-        </div>
-      ) : (
-        <>
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div>
-          <Label>Cover Image</Label>
-          <p className="text-xs text-muted-foreground">{config.cover.enabled ? `${config.cover.resolution || "1K"} AI` : "Off"}</p>
+          <Label>{imageDeliveryMode === "manual_prompt" ? "Cover Prompt" : "Cover Image"}</Label>
+          <p className="text-xs text-muted-foreground">
+            {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "Midjourney prompt" : `${config.cover.resolution || "1K"} AI` : "Off"}
+          </p>
         </div>
         <Switch checked={config.cover.enabled} onCheckedChange={(enabled) => updateCover({ enabled })} />
       </div>
-      {config.cover.enabled && resolutionButtons(config.cover.resolution, coverResolutions, (resolution) => updateCover({ resolution }))}
+      {imageDeliveryMode !== "manual_prompt" && config.cover.enabled && resolutionButtons(config.cover.resolution, coverResolutions, (resolution) => updateCover({ resolution }))}
 
       <div className="space-y-3 rounded-lg border border-border p-3">
         <div className="flex items-center justify-between">
           <div>
-            <Label>Inline Images</Label>
+            <Label>{imageDeliveryMode === "manual_prompt" ? "Inline Prompts" : "Inline Images"}</Label>
             <p className="text-xs text-muted-foreground">{inlineCostLabel}</p>
           </div>
           <Switch checked={config.inline.enabled} onCheckedChange={(enabled) => updateInline({ enabled })} />
@@ -202,7 +189,7 @@ export function SplitImageGenerationSettings({
 
         {config.inline.enabled && (
           <div className="space-y-2">
-            {inlineImageSource === "ai" && resolutionButtons(config.inline.resolution, inlineResolutions, (resolution) => updateInline({ resolution }))}
+            {imageDeliveryMode !== "manual_prompt" && inlineImageSource === "ai" && resolutionButtons(config.inline.resolution, inlineResolutions, (resolution) => updateInline({ resolution }))}
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Count</span>
               <span className="font-medium">{config.inline.count}</span>
@@ -217,8 +204,6 @@ export function SplitImageGenerationSettings({
           </div>
         )}
       </div>
-        </>
-      )}
 
     </div>
   );
@@ -247,8 +232,8 @@ export function SplitImageGenerationSettings({
               </TooltipTrigger>
               <TooltipContent>
                 <div className="space-y-1 text-xs">
-                  <p>Cover: {config.cover.enabled ? "AI" : "Off"}</p>
-                  <p>Inline: {imageDeliveryMode === "manual_prompt" ? "Manual prompt mode" : inlineCostLabel}</p>
+                  <p>Cover: {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "Manual prompt" : "AI" : "Off"}</p>
+                  <p>Inline: {inlineCostLabel}</p>
                 </div>
               </TooltipContent>
             </Tooltip>

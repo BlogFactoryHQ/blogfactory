@@ -64,7 +64,7 @@ export function retrieveKnowledgeChunks(value: unknown, query: string, maxChunks
   if (!Array.isArray(value)) return [];
   const queryTokens = tokenizeKnowledge(query);
 
-  return value
+  const scored = value
     .flatMap((item) => {
       if (!item || typeof item !== "object") return [];
       const document = item as KnowledgeDocument;
@@ -87,8 +87,10 @@ export function retrieveKnowledgeChunks(value: unknown, query: string, maxChunks
           return { title, text: chunk.text.trim(), score };
         });
     })
-    .filter((chunk) => chunk.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score);
+
+  const matched = scored.filter((chunk) => chunk.score > 0);
+  return (matched.length ? matched : scored)
     .slice(0, maxChunks)
     .map((chunk) => `${chunk.title}: ${chunk.text}`);
 }

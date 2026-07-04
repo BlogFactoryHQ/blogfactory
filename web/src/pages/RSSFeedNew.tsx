@@ -277,10 +277,10 @@ export default function RSSFeedNew() {
             keywords: keywords.length > 0 ? keywords : undefined,
             extractFullContent,
             filterOldPostsDays: filterOldPostsDays || undefined,
-            generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
+            generateImages: imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0),
             imageDeliveryMode,
             manualImageProvider,
-            imageConfig: (imageConfig.cover.enabled || imageConfig.inline.enabled) ? {
+            imageConfig: (imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0)) ? {
               cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
               inline: imageConfig.inline.enabled ? {
                 count: imageConfig.inline.count,
@@ -789,6 +789,7 @@ export default function RSSFeedNew() {
                 inlineImageSource={inlineImageSource}
                 imageDeliveryMode={imageDeliveryMode}
                 manualImageProvider={manualImageProvider}
+                onImageDeliveryModeChange={setImageDeliveryMode}
               />
             </div>
           </section>

@@ -33,6 +33,25 @@ function jsonValue(settings: SettingsLike, camel: string, snake: string) {
   return settings[camel] ?? settings[snake];
 }
 
+function presetVoiceInstruction(value: string) {
+  switch (value.toLowerCase()) {
+    case "natural":
+      return "Use a natural, human-sounding style: clear, varied sentence lengths, concrete wording, no stiff corporate filler, no exaggerated hype.";
+    case "professional":
+      return "Use a professional style: polished, structured, business-appropriate, precise, and calm without sounding robotic.";
+    case "conversational":
+      return "Use a conversational style: relaxed, direct to the reader, approachable, plain-spoken, and easy to scan.";
+    case "technical":
+      return "Use a technical style: precise, specific, implementation-aware, careful with claims, and comfortable with domain terminology.";
+    case "friendly":
+      return "Use a friendly style: warm, encouraging, accessible, and helpful without becoming casual or fluffy.";
+    case "authoritative":
+      return "Use an authoritative style: expert, confident, decisive, evidence-oriented, and clear about practical implications.";
+    default:
+      return `Use this default voice/style: ${value}.`;
+  }
+}
+
 function profileInstructions(profile: unknown) {
   if (!profile || typeof profile !== "object") return "";
   const record = profile as Record<string, unknown>;
@@ -61,7 +80,7 @@ export function buildVoiceContentInstructions(settings?: SettingsLike) {
     lines.push(`Use this custom trained voice profile:\n${customProfile}`);
   } else {
     const articleVoice = cleanText(jsonValue(settings, "articleVoice", "article_voice"), 80);
-    if (articleVoice) lines.push(`Use this default voice/style: ${articleVoice}.`);
+    if (articleVoice) lines.push(presetVoiceInstruction(articleVoice));
   }
 
   const rules = jsonValue(settings, "contentRules", "content_rules") || {};

@@ -1985,14 +1985,14 @@ export default function Settings() {
 
                   <div className="grid gap-3 rounded-lg border border-byword-border bg-muted/20 p-4 text-sm md:grid-cols-3">
                     <div>
-                      <p className="text-xs text-muted-foreground">Cover AI</p>
+                      <p className="text-xs text-muted-foreground">{manualPromptMode ? "Cover Prompt" : "Cover AI"}</p>
                       <p className="font-medium">{manualPromptMode ? "$0 manual" : imageConfig.cover.enabled ? formatImageCostAmount(coverImageCost) : "$0 off"}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Inline {manualPromptMode ? "Skipped" : inlineImageSource === "stock" ? "Stock" : "AI"}</p>
+                      <p className="text-xs text-muted-foreground">Inline {manualPromptMode ? "Prompts" : inlineImageSource === "stock" ? "Stock" : "AI"}</p>
                       <p className="font-medium">
                         {manualPromptMode
-                          ? "$0 manual"
+                          ? imageConfig.inline.enabled && imageConfig.inline.count > 0 ? `$0 / ${imageConfig.inline.count}` : "$0 off"
                           : !imageConfig.inline.enabled || imageConfig.inline.count === 0
                           ? "$0 off"
                           : inlineImageSource === "stock"

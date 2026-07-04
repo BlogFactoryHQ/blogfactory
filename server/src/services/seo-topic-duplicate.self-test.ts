@@ -193,12 +193,18 @@ const snakeSettingsPrompt = buildSettingsInstructions({
   custom_article_instructions: "Use first-hand product language.",
   brand_company_name: "SnakeCo",
   brand_description: "A platform for saved API snapshots.",
+  brand_target_audience: "technical founders",
+  brand_mentions: "prominent",
+  brand_value_props: ["Fast setup", "Clean drafts", "Editorial controls", "Live sources", "Low image cost"],
   knowledge_base_enabled: true,
   knowledge_documents: [{ title: "Fact", content: "SnakeCo supports URL, PDF, raw text, YouTube, RSS, and campaigns." }],
 }, "campaigns");
 
 assert.match(snakeSettingsPrompt, /Write in Turkish/);
 assert.match(snakeSettingsPrompt, /SnakeCo/);
+assert.match(snakeSettingsPrompt, /technical founders/);
+assert.match(snakeSettingsPrompt, /recurring lens/);
+assert.match(snakeSettingsPrompt, /Low image cost/);
 assert.match(snakeSettingsPrompt, /URL, PDF, raw text, YouTube, RSS, and campaigns/);
 
 const leanArticleExtras = buildArticleExtras({

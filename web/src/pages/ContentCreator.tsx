@@ -688,8 +688,11 @@ export default function ContentCreator() {
     }
   };
   const imagePlanLabel = imageDeliveryMode === "manual_prompt"
-    ? imageConfig.cover.enabled || imageConfig.inline.enabled ? "1 Midjourney prompt" : "Off"
-    : imageConfig.cover.enabled || imageConfig.inline.enabled
+    ? [
+      imageConfig.cover.enabled ? "Cover Midjourney prompt" : "",
+      imageConfig.inline.enabled && imageConfig.inline.count > 0 ? `${imageConfig.inline.count} inline prompt${imageConfig.inline.count === 1 ? "" : "s"}` : "",
+    ].filter(Boolean).join(" · ") || "Off"
+    : imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0)
     ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`
     : "Off";
   const articleBriefBlockers = [
@@ -705,7 +708,7 @@ export default function ContentCreator() {
 
   const executeGeneration = async () => {
     const sourceValue = getSourceValue();
-    const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
+    const imagesEnabled = imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0);
     const isArticleSource = sourceType.startsWith("article_");
     const draftBatchId = variations > 1 ? `draft_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : undefined;
 
@@ -858,7 +861,7 @@ export default function ContentCreator() {
 
   const createCampaignMutation = useMutation({
     mutationFn: async () => {
-      const imagesEnabled = imageConfig.cover.enabled || imageConfig.inline.enabled;
+      const imagesEnabled = imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0);
       const result = await api.post<{ campaign: Campaign; items: CampaignItem[] }>("/campaigns", {
         name: campaignName,
         mode: campaignMode,

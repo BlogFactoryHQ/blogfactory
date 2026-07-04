@@ -3,6 +3,13 @@ import { buildVoiceContentInstructions } from "./voice-content.js";
 
 assert.deepEqual(buildVoiceContentInstructions(), []);
 
+const natural = buildVoiceContentInstructions({ articleVoice: "Natural", voiceMode: "preset" });
+assert.equal(natural.some((line) => line.includes("natural, human-sounding style")), true);
+assert.equal(natural.some((line) => line.includes("stiff corporate filler")), true);
+
+const technical = buildVoiceContentInstructions({ articleVoice: "Technical", voiceMode: "preset" });
+assert.equal(technical.some((line) => line.includes("implementation-aware")), true);
+
 const custom = buildVoiceContentInstructions({
   articleVoice: "Professional",
   voiceMode: "custom",

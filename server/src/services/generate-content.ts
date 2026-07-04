@@ -18,6 +18,7 @@ import { buildVoiceContentInstructions } from "./voice-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
 import { fetchSocialContent } from "./fetch-social-content.js";
+import { imageTargets } from "./image-slots.js";
 
 interface GenerateOpts {
   userId: string;
@@ -113,22 +114,28 @@ function summarizeImageResolution(result: ImageResolutionResult) {
   };
 }
 
-export function manualPromptImageResolutionSummary(requestId: string | null, provider: ManualImageProvider = "midjourney"): ReturnType<typeof summarizeImageResolution> {
+type ManualPromptRequestSlot = {
+  id: string | null;
+  type: "cover" | "inline";
+  position: number;
+};
+
+export function manualPromptImageResolutionSummary(requests: ManualPromptRequestSlot[], provider: ManualImageProvider = "midjourney"): ReturnType<typeof summarizeImageResolution> {
   return {
     coverPath: null,
     inlinePaths: [],
-    queued: 1,
+    queued: requests.length,
     failed: 0,
-    results: [{
-      type: "cover" as const,
-      position: 0,
+    results: requests.map((request) => ({
+      type: request.type,
+      position: request.position,
       status: "queued" as const,
       storagePath: undefined,
       provider,
-      queuedRequestId: requestId || undefined,
+      queuedRequestId: request.id || undefined,
       query: undefined,
       error: undefined,
-    }],
+    })),
   };
 }
 
@@ -193,6 +200,20 @@ function summarizeJsonList(value: unknown, maxItems = 5) {
     })
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function brandMentionInstruction(value: string, companyName?: string) {
+  const brand = companyName?.trim() || "the brand";
+  switch (value.toLowerCase()) {
+    case "subtle":
+      return `Brand mention guidance: Keep ${brand} subtle. Mention it at most once, only when directly relevant to the source. Do not force a pitch or CTA.`;
+    case "moderate":
+      return `Brand mention guidance: Weave ${brand} into 2-3 relevant examples or practical takeaways when natural. Keep the article useful first and avoid sounding like an ad.`;
+    case "prominent":
+      return `Brand mention guidance: Make ${brand} a recurring lens throughout the article with practical examples and a clear CTA when appropriate, while still grounding claims in the source.`;
+    default:
+      return `Brand mention guidance: ${value}.`;
+  }
 }
 
 export function openRouterErrorMessage(value: string, status?: number, modelId?: string): string {
@@ -377,18 +398,18 @@ export function buildSettingsInstructions(settings?: GenerationSettings, sourceT
   const brandMentions = String(settingValue(settings, "brandMentions", "brand_mentions") || "").trim();
   if (brandCompanyName) brand.push(`Company name: ${brandCompanyName}`);
   if (brandDescription) brand.push(`What the company does: ${truncatePromptText(brandDescription, 500)}`);
-  if (brandTargetAudience) brand.push(`Audience: ${truncatePromptText(brandTargetAudience, 300)}`);
-  if (brandMentions) brand.push(`Brand mention style: ${brandMentions}`);
+  if (brandTargetAudience) brand.push(`Target reader: ${truncatePromptText(brandTargetAudience, 300)}. Write for this audience's needs, assumptions, and decision criteria.`);
+  if (brandMentions) brand.push(brandMentionInstruction(brandMentions, brandCompanyName));
 
-  const valueProps = summarizeJsonList(settingValue(settings, "brandValueProps", "brand_value_props"), 3);
+  const valueProps = summarizeJsonList(settingValue(settings, "brandValueProps", "brand_value_props"), 5);
   if (valueProps.length) brand.push(`Value propositions: ${valueProps.join("; ")}`);
 
   const ctas = summarizeJsonList(settingValue(settings, "brandCtas", "brand_ctas"), 2);
   if (ctas.length) brand.push(`Calls to action to weave in when natural: ${ctas.join("; ")}`);
 
   const knowledgeDocuments = settingValue(settings, "knowledgeDocuments", "knowledge_documents");
-  const knowledge = settingBool(settings, "knowledgeBaseEnabled", "knowledge_base_enabled") ? retrieveKnowledgeChunks(knowledgeDocuments, sourceText).slice(0, 2) : [];
-  if (knowledge.length) brand.push(`Knowledge context:\n${knowledge.map((line) => `  - ${truncatePromptText(line, 600)}`).join("\n")}`);
+  const knowledge = settingBool(settings, "knowledgeBaseEnabled", "knowledge_base_enabled") ? retrieveKnowledgeChunks(knowledgeDocuments, sourceText, 4) : [];
+  if (knowledge.length) brand.push(`Knowledge context to use when relevant. Treat these as saved facts/templates, not suggestions to invent beyond:\n${knowledge.map((line) => `  - ${truncatePromptText(line, 600)}`).join("\n")}`);
 
   if (brand.length) {
     instructions.push(`Brand context:\n${brand.map((line) => `- ${line}`).join("\n")}`);
@@ -1812,12 +1833,13 @@ export async function generateContent(opts: GenerateOpts) {
                 openRouterKey,
                 stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
                 manualPromptSuffix: manualSuffix,
+                imageConfig: opts.imageConfig,
                 provider: manualProvider,
               });
               imageResolutionResults.push({
                 postId: post.id,
                 title: postTitle,
-                result: manualPromptImageResolutionSummary(manualRequest.requestId, manualProvider),
+                result: manualPromptImageResolutionSummary(manualRequest.requests, manualProvider),
               });
               totalCost += manualRequest.cost;
             } else {
@@ -2159,6 +2181,7 @@ async function createManualImagePromptRequest(opts: {
   content: string;
   stylePrompt?: string | null;
   manualPromptSuffix?: string | null;
+  imageConfig: any;
   provider: ManualImageProvider;
 }) {
   const startedAt = Date.now();
@@ -2222,21 +2245,37 @@ async function createManualImagePromptRequest(opts: {
     responseData: { id: data.id, generation: openRouterUsage.stats, task: "manual_image_prompt" },
   });
 
-  const [request] = await db.insert(imageGenerationRequests).values({
+  const targets = imageTargets(opts.imageConfig);
+  if (!targets.length) throw new Error("Manual image prompt has no enabled image slots");
+
+  const requests = await db.insert(imageGenerationRequests).values(targets.map((target) => ({
     userId: opts.userId,
     postId: opts.postId,
     jobId: opts.jobId,
     provider: opts.provider,
     modelId: opts.modelId,
     prompt,
-    altText: `Featured image for ${opts.title}`.slice(0, 180),
-    type: "cover",
-    position: 0,
-    aspectRatio: "16:9",
+    altText: `${target.type === "cover" ? "Featured image" : "Article image"} for ${opts.title}`.slice(0, 180),
+    type: target.type,
+    position: target.position,
+    aspectRatio: target.aspectRatio,
+    resolution: target.resolution,
     status: "pending",
-  }).returning({ id: imageGenerationRequests.id });
+  }))).returning({
+    id: imageGenerationRequests.id,
+    type: imageGenerationRequests.type,
+    position: imageGenerationRequests.position,
+  });
 
-  return { requestId: request?.id || null, prompt, cost: openRouterUsage.cost };
+  return {
+    requests: requests.map((request) => ({
+      id: request.id,
+      type: request.type === "inline" ? "inline" as const : "cover" as const,
+      position: request.position || 0,
+    })),
+    prompt,
+    cost: openRouterUsage.cost,
+  };
 }
 
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {

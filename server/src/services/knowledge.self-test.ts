@@ -14,4 +14,11 @@ assert.equal(retrieved.length, 1);
 assert.match(retrieved[0], /Alpha CRM/);
 assert.doesNotMatch(retrieved[0], /starter plan/);
 
+const fallback = retrieveKnowledgeChunks([
+  { title: "Brand template", status: "ready", content: "Use a compact alternatives article format with verdict sections." },
+], "unrelated source tokens", 1);
+
+assert.equal(fallback.length, 1);
+assert.match(fallback[0], /alternatives article format/);
+
 console.log("knowledge self-test ok");
