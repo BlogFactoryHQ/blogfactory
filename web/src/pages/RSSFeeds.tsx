@@ -276,14 +276,16 @@ export default function RSSFeeds() {
       const ic = imgConfig ?? defaultImageConfig;
       const inlineEnabled = ic.inline.enabled && ic.inline.count > 0;
       const imagesEnabled = ic.cover.enabled || inlineEnabled;
+      const postsPerRun = feed.posts_per_run ?? 5;
 
-      const data = await api.post<any>("/content/generate", {
+      const buildGenerationPayload = (feedItemOffset: number) => ({
         sourceType: sourceTypeForPlatform(feed.platform),
         sourceValue: feed.source_url,
         personaId: feed.persona_id,
         modelId: feed.model_id,
-        variations: feed.posts_per_run ?? 5,
-        postsPerRun: feed.posts_per_run ?? 5,
+        variations: 1,
+        postsPerRun: 1,
+        feedItemOffset,
         feedId: feed.id,
         filterType: feed.filter_type,
         filterValue: feed.filter_value,
@@ -302,8 +304,13 @@ export default function RSSFeeds() {
           } : null,
         } : undefined,
       });
+      const results = await Promise.allSettled(
+        Array.from({ length: postsPerRun }, (_, index) => api.post<any>("/content/generate", buildGenerationPayload(index)))
+      );
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed) throw new Error(`${failed}/${postsPerRun} feed draft jobs failed to start`);
 
-      return data;
+      return results;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

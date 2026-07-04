@@ -8,6 +8,7 @@ export const jobsRoutes = new Hono();
 const STALE_RUNNING_MS = 10 * 60 * 1000;
 const NO_DRAFT_TIMEOUT_MESSAGE =
   "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source.";
+const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
 
 type FailedDraft = { index: number; error: string };
 
@@ -112,6 +113,20 @@ function requestedSourceItemsFromPlan(plan: unknown) {
   const value = (plan as Record<string, unknown>).requestedSourceItems;
   const count = Math.round(Number(value));
   return Number.isFinite(count) && count > 0 ? count : undefined;
+}
+
+function feedItemOffsetFromPlan(plan: unknown) {
+  if (!plan || typeof plan !== "object") return undefined;
+  const value = (plan as Record<string, unknown>).feedItemOffset;
+  const offset = Math.floor(Number(value));
+  return Number.isFinite(offset) && offset >= 0 ? offset : undefined;
+}
+
+function retryIndicesFromBody(body: unknown) {
+  if (!body || typeof body !== "object") return [];
+  const value = (body as Record<string, unknown>).retryIndices;
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => Math.floor(Number(item))).filter((item) => Number.isFinite(item) && item >= 0))];
 }
 
 async function markStaleRunningJobs(userId: string, jobId?: string) {
@@ -259,6 +274,7 @@ jobsRoutes.put("/:id/stop", async (c) => {
 jobsRoutes.post("/:id/retry", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
 
   const [job] = await db
     .select()
@@ -273,6 +289,25 @@ jobsRoutes.post("/:id/retry", async (c) => {
     .where(eq(userSettings.userId, userId))
     .limit(1);
   const imageSettings = imageConfigFromSettings(settings);
+  const retryIndices = retryIndicesFromBody(body);
+
+  if (retryIndices.length && FEED_SOURCE_TYPES.has(job.sourceType)) {
+    const { generateContent } = await import("../services/generate-content.js");
+    const retries = retryIndices.map((index) => generateContent({
+      userId,
+      sourceType: job.sourceType,
+      sourceValue: job.sourceValue,
+      modelId: job.modelId,
+      personaId: job.personaId,
+      postsPerRun: 1,
+      variations: 1,
+      feedItemOffset: index,
+      generateImages: imageSettings.generateImages,
+      imageConfig: imageSettings.imageConfig,
+    }).catch((err) => console.error(`[retry] Feed draft ${index + 1} error:`, err)));
+    retries.forEach((retry) => void retry);
+    return c.json({ status: "retrying", retryCount: retryIndices.length });
+  }
 
   // Reset job to pending status
   const [updated] = await db
@@ -298,6 +333,7 @@ jobsRoutes.post("/:id/retry", async (c) => {
     personaId: updated.personaId,
     postsPerRun: requestedSourceItemsFromPlan(updated.generationPlan),
     variations: requestedSourceItemsFromPlan(updated.generationPlan),
+    feedItemOffset: feedItemOffsetFromPlan(updated.generationPlan),
     generateImages: imageSettings.generateImages,
     imageConfig: imageSettings.imageConfig,
   }).catch((err) => console.error("[retry] Generation error:", err));

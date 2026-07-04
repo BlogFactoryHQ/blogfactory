@@ -265,13 +265,14 @@ export default function RSSFeedNew() {
         try {
           const inlineEnabled = imageConfig.inline.enabled && imageConfig.inline.count > 0;
           const imagesEnabled = imageConfig.cover.enabled || inlineEnabled;
-          await api.post("/content/generate", {
+          const buildGenerationPayload = (feedItemOffset: number) => ({
             sourceType: sourceTypeForPlatform(platform),
             sourceValue: feedSourceUrl,
             personaId,
             modelId,
-            variations: postsPerRun,
-            postsPerRun,
+            variations: 1,
+            postsPerRun: 1,
+            feedItemOffset,
             feedId: feed.id,
             platformConfig,
             filterType,
@@ -290,6 +291,11 @@ export default function RSSFeedNew() {
               } : null,
             } : undefined,
           });
+          const results = await Promise.allSettled(
+            Array.from({ length: postsPerRun }, (_, index) => api.post("/content/generate", buildGenerationPayload(index)))
+          );
+          const failed = results.filter((result) => result.status === "rejected").length;
+          if (failed) throw new Error(`${failed}/${postsPerRun} feed draft jobs failed to start`);
           return { feed, ranNow: true };
         } catch (genErr) {
           console.error("Generation error:", genErr);

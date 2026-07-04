@@ -102,14 +102,16 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
       const sourceType = feed.platform === "reddit" || feed.platform === "hackernews" || feed.platform === "github"
         ? feed.platform
         : "rss_feed";
-      const generation = generateContent({
+      const postsPerRun = maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5;
+      const generationPayload = (feedItemOffset: number) => ({
         userId: feed.userId,
         sourceType,
         sourceValue: feed.sourceUrl || "",
         personaId: feed.personaId,
         modelId: feed.modelId,
-        variations: maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5,
-        postsPerRun: maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5,
+        variations: 1,
+        postsPerRun: 1,
+        feedItemOffset,
         feedId: feed.id,
         filterType: feed.filterType,
         filterValue: feed.filterValue,
@@ -120,9 +122,12 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         generateImages,
         imageConfig: Object.keys(imageConfig).length > 0 ? imageConfig : undefined,
       });
+      const generations = Array.from({ length: postsPerRun }, (_, index) => generateContent(generationPayload(index)));
 
-      if (options.awaitGeneration) await generation;
-      else generation.catch((err) => console.error(`[scheduler] Feed "${feed.name}" error:`, err));
+      if (options.awaitGeneration) await Promise.allSettled(generations);
+      else generations.forEach((generation, index) => {
+        generation.catch((err) => console.error(`[scheduler] Feed "${feed.name}" item ${index + 1} error:`, err));
+      });
 
       results.push({ feedId: feed.id, feedName: feed.name, status: "triggered" });
     } catch (error: any) {

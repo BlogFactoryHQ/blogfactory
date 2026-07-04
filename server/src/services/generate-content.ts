@@ -28,6 +28,7 @@ interface GenerateOpts {
   personaId?: string | null;
   variations?: number;
   postsPerRun?: number;
+  feedItemOffset?: number;
   filterType?: string;
   filterValue?: number | null;
   keywords?: string[] | string | null;
@@ -444,6 +445,11 @@ export function feedSourceItemCount(value: unknown) {
 
 export function feedCandidateItemCount(requested: number) {
   return Math.max(requested, Math.min(50, requested * 4));
+}
+
+function feedItemOffset(value: unknown) {
+  const offset = Math.floor(Number(value));
+  return Number.isFinite(offset) && offset > 0 ? Math.min(offset, 100) : 0;
 }
 
 export function expandDraftVariations(
@@ -1418,8 +1424,12 @@ export async function generateContent(opts: GenerateOpts) {
 
     // Fetch source content
     let articles: SourceArticle[] = [];
-    const requestedSourceItems = isFeedSource(opts.sourceType)
+    const requestedFeedItems = isFeedSource(opts.sourceType)
       ? feedSourceItemCount(opts.postsPerRun ?? feedRecord?.postsPerRun ?? opts.variations)
+      : null;
+    const explicitFeedOffset = isFeedSource(opts.sourceType) ? feedItemOffset(opts.feedItemOffset) : 0;
+    const requestedSourceItems = requestedFeedItems
+      ? feedSourceItemCount(requestedFeedItems + explicitFeedOffset)
       : null;
     const feedCandidateLimit = requestedSourceItems ? feedCandidateItemCount(requestedSourceItems) : 0;
     let fetchedSourceItemCount = 0;
@@ -1467,8 +1477,11 @@ export async function generateContent(opts: GenerateOpts) {
     }
     fetchedSourceItemCount = isFeedSource(opts.sourceType) ? articles.length : 0;
 
-    if (requestedSourceItems) {
-      const filtered = await filterNewFeedArticles(userId, articles, effectiveOpts, requestedSourceItems);
+    if (requestedFeedItems) {
+      const candidateArticles = explicitFeedOffset > 0 || opts.feedItemOffset !== undefined
+        ? articles.slice(explicitFeedOffset, explicitFeedOffset + requestedFeedItems)
+        : articles;
+      const filtered = await filterNewFeedArticles(userId, candidateArticles, effectiveOpts, requestedFeedItems);
       articles = filtered.articles;
       skippedSourceItems = filtered.skipped;
     }
@@ -1476,7 +1489,7 @@ export async function generateContent(opts: GenerateOpts) {
     if (feedExtractFullContent && isFeedSource(opts.sourceType) && articles.length) {
       await db.update(jobs).set({ currentStep: "extracting_full_text" }).where(eq(jobs.id, jobId));
       articles = await hydrateFeedArticlesWithFullText(userId, articles, modelId);
-      const filtered = await filterNewFeedArticles(userId, articles, effectiveOpts, requestedSourceItems || articles.length);
+      const filtered = await filterNewFeedArticles(userId, articles, effectiveOpts, requestedFeedItems || articles.length);
       articles = filtered.articles;
       skippedSourceItems = [...skippedSourceItems, ...filtered.skipped];
     }
@@ -1578,7 +1591,8 @@ export async function generateContent(opts: GenerateOpts) {
     const generationPlan = {
       totalDrafts: articles.length,
       articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
-      requestedSourceItems,
+      requestedSourceItems: requestedFeedItems,
+      feedItemOffset: opts.feedItemOffset !== undefined ? explicitFeedOffset : null,
       fetchedSourceItems: fetchedSourceItemCount,
       skippedSourceItems,
       batchId: opts.draftBatchId || null,

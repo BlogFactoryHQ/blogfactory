@@ -306,13 +306,15 @@ export default function News() {
   const runFeedMutation = useMutation({
     mutationFn: async (feed: Feed) => {
       setRunningFeedId(feed.id);
-      return api.post("/content/generate", {
+      const postsPerRun = feed.posts_per_run ?? 5;
+      const buildGenerationPayload = (feedItemOffset: number) => ({
         sourceType: "rss_feed",
         sourceValue: feed.source_url,
         personaId: feed.persona_id,
         modelId: feed.model_id,
-        variations: feed.posts_per_run ?? 5,
-        postsPerRun: feed.posts_per_run ?? 5,
+        variations: 1,
+        postsPerRun: 1,
+        feedItemOffset,
         feedId: feed.id,
         filterType: feed.filter_type || undefined,
         filterValue: feed.filter_value ?? undefined,
@@ -322,6 +324,12 @@ export default function News() {
         platformConfig: feed.platform_config || { url: feed.source_url, editorialMode: "news" },
         generateImages: false,
       });
+      const results = await Promise.allSettled(
+        Array.from({ length: postsPerRun }, (_, index) => api.post("/content/generate", buildGenerationPayload(index)))
+      );
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed) throw new Error(`${failed}/${postsPerRun} news draft jobs failed to start`);
+      return results;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
