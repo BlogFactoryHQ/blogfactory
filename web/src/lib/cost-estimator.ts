@@ -44,6 +44,7 @@ export function estimateGenerationCost(input: {
   imageConfig: SplitImageConfig;
   averageTokensPerPost?: number | null;
   inlineImageSource?: "ai" | "stock" | string | null;
+  imageDeliveryMode?: "generate" | "manual_prompt" | string | null;
 }): CostEstimate {
   const postCount = Math.max(1, Math.round(numberOr(input.postCount, 1)));
   const wordCount = numberOr(input.articleWordCount, 1500);
@@ -59,19 +60,24 @@ export function estimateGenerationCost(input: {
   const completionCostPerPost = (completionTokens / 1_000_000) * completionPrice;
   const textPerPost = promptCostPerPost + completionCostPerPost + requestPrice;
 
+  const manualPromptMode = input.imageDeliveryMode === "manual_prompt";
   const inlineUsesAi = input.inlineImageSource !== "stock";
   const coverResolution = input.imageConfig.cover.resolution === "512" ? "512" : "1K";
   const inlineResolution = input.imageConfig.inline.resolution === "512" ? "512" : "1K";
   const imagePrice = input.imageModel?.rawPricing.imageByResolution?.[coverResolution] || input.imageModel?.rawPricing.image || 0;
   const inlineImagePrice = input.inlineImageModel?.rawPricing.imageByResolution?.[inlineResolution] || input.inlineImageModel?.rawPricing.image || 0;
-  const coverPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
-  const coverHighPerPost = input.imageConfig.cover.enabled ? imagePrice : 0;
-  const inlinePerPost = input.imageConfig.inline.enabled && inlineUsesAi ? inlineImagePrice * input.imageConfig.inline.count : 0;
+  const coverPerPost = input.imageConfig.cover.enabled && !manualPromptMode ? imagePrice : 0;
+  const coverHighPerPost = input.imageConfig.cover.enabled && !manualPromptMode ? imagePrice : 0;
+  const inlinePerPost = input.imageConfig.inline.enabled && inlineUsesAi && !manualPromptMode ? inlineImagePrice * input.imageConfig.inline.count : 0;
 
   const assumptions = [
     avgTokens > 0 ? "Text estimate uses recent average tokens per post." : "Text estimate uses article word count heuristic.",
-    input.imageConfig.cover.enabled ? "Cover uses the OpenRouter image model." : "Cover image is off.",
-    !input.imageConfig.inline.enabled || input.imageConfig.inline.count === 0
+    manualPromptMode
+      ? "Manual image mode creates one prompt at $0 image generation cost."
+      : input.imageConfig.cover.enabled ? "Cover uses the OpenRouter image model." : "Cover image is off.",
+    manualPromptMode
+      ? "Cover and inline image generation are skipped until a manual image is imported."
+      : !input.imageConfig.inline.enabled || input.imageConfig.inline.count === 0
       ? "Inline images are off."
       : inlineUsesAi
         ? "Inline images use the OpenRouter image model."

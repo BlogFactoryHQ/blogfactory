@@ -63,6 +63,22 @@ describe("cost estimator", () => {
     expect(estimate.assumptions.join(" ")).toContain("$0 image generation cost");
   });
 
+  it("keeps manual prompt mode at zero image generation spend", () => {
+    const estimate = estimateGenerationCost({
+      postCount: 3,
+      textModel,
+      imageModel: paidImageModel,
+      inlineImageModel: paidImageModel,
+      imageConfig,
+      inlineImageSource: "ai",
+      imageDeliveryMode: "manual_prompt",
+    });
+    expect(estimate.coverImageCost).toBe(0);
+    expect(estimate.inlineImageCost).toBe(0);
+    expect(estimate.totalExpected).toBeCloseTo(estimate.textCost);
+    expect(estimate.assumptions.join(" ")).toContain("Manual image mode");
+  });
+
   it("warns near budget", () => {
     const estimate = estimateGenerationCost({ postCount: 1, textModel, imageModel: paidImageModel, imageConfig });
     expect(shouldWarnForCost({ estimate, monthlyBudget: 1, currentMonthSpend: 0.79 })).toBe(true);

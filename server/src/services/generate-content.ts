@@ -34,6 +34,8 @@ interface GenerateOpts {
   platformConfig?: any;
   generateImages?: boolean;
   imageConfig?: any;
+  imageDeliveryMode?: string;
+  manualImageProvider?: string;
   relatedKeywords?: string[] | string;
   outline?: string;
   articleDirection?: string;
@@ -83,6 +85,10 @@ export type SeoPackage = {
   keyPoints?: string[];
   faqs: Array<{ question: string; answer: string; sourceQuery?: string }>;
 };
+
+type ImageDeliveryMode = "generate" | "manual_prompt";
+type ManualImageProvider = "midjourney";
+
 function summarizeImageResolution(result: ImageResolutionResult) {
   return {
     coverPath: result.coverPath,
@@ -99,6 +105,25 @@ function summarizeImageResolution(result: ImageResolutionResult) {
       query: item.query,
       error: item.error,
     })),
+  };
+}
+
+export function manualPromptImageResolutionSummary(requestId: string | null, provider: ManualImageProvider = "midjourney"): ReturnType<typeof summarizeImageResolution> {
+  return {
+    coverPath: null,
+    inlinePaths: [],
+    queued: 1,
+    failed: 0,
+    results: [{
+      type: "cover" as const,
+      position: 0,
+      status: "queued" as const,
+      storagePath: undefined,
+      provider,
+      queuedRequestId: requestId || undefined,
+      query: undefined,
+      error: undefined,
+    }],
   };
 }
 
@@ -400,6 +425,18 @@ export function inlineImageSource(settings?: GenerationSettings) {
   return value === "stock" ? "stock" : "ai";
 }
 
+export function imageDeliveryMode(settings?: GenerationSettings): ImageDeliveryMode {
+  const value = settingValue(settings, "imageDeliveryMode", "image_delivery_mode")
+    || imageAdvancedOptions(settings).imageDeliveryMode;
+  return value === "manual_prompt" ? "manual_prompt" : "generate";
+}
+
+export function manualImageProvider(settings?: GenerationSettings): ManualImageProvider {
+  const value = settingValue(settings, "manualImageProvider", "manual_image_provider")
+    || imageAdvancedOptions(settings).manualImageProvider;
+  return value === "midjourney" ? "midjourney" : "midjourney";
+}
+
 function isBlogDraftSource(sourceType: string) {
   return BLOG_DRAFT_SOURCE_TYPES.has(sourceType);
 }
@@ -411,9 +448,21 @@ function internalLinkTarget(settings?: GenerationSettings): [number, number] | n
 }
 
 export function applyGenerationOverrides(settings: GenerationSettings | undefined, opts: Partial<GenerateOpts> = {}) {
+  const nextSettings = { ...(settings || {}) };
   const density = typeof opts.internalLinkDensity === "string" ? opts.internalLinkDensity : "";
-  if (!density || !INTERNAL_LINK_TARGETS[density]) return settings;
-  return { ...(settings || {}), internalLinkDensity: density, internal_link_density: density };
+  if (density && INTERNAL_LINK_TARGETS[density]) {
+    nextSettings.internalLinkDensity = density;
+    nextSettings.internal_link_density = density;
+  }
+  if (opts.imageDeliveryMode === "manual_prompt" || opts.imageDeliveryMode === "generate") {
+    nextSettings.imageDeliveryMode = opts.imageDeliveryMode;
+    nextSettings.image_delivery_mode = opts.imageDeliveryMode;
+  }
+  if (opts.manualImageProvider === "midjourney") {
+    nextSettings.manualImageProvider = opts.manualImageProvider;
+    nextSettings.manual_image_provider = opts.manualImageProvider;
+  }
+  return nextSettings;
 }
 
 export function resolveGenerationContract(settings?: GenerationSettings, opts: Partial<GenerateOpts> = {}) {
@@ -1112,6 +1161,8 @@ export async function generateContent(opts: GenerateOpts) {
     const promptSettings = applyGenerationOverrides((opts.settingsSnapshot || settings) as GenerationSettings | undefined, opts);
     const effectiveOpts = applyArticleDefaults(opts, promptSettings);
     const generationContract = resolveGenerationContract(promptSettings, effectiveOpts);
+    const imageMode = imageDeliveryMode(promptSettings || settings || undefined);
+    const manualProvider = manualImageProvider(promptSettings || settings || undefined);
 
     // Load persona if set
     let systemPrompt = "You are a senior blog writer. Return only the finished article body in clean Markdown. Do not include process notes, SEO metadata sections, image suggestions, or internal-link summaries.";
@@ -1243,6 +1294,7 @@ export async function generateContent(opts: GenerateOpts) {
       articleType: isArticleSource(opts.sourceType) ? articleType(opts.articleType) : undefined,
       contract: buildGenerationContractMetadata("", promptSettings, effectiveOpts),
       imagesEnabled: Boolean(opts.generateImages && opts.imageConfig),
+      imageDeliveryMode: imageMode,
     };
 
     // Set generation plan
@@ -1435,26 +1487,46 @@ export async function generateContent(opts: GenerateOpts) {
         if (opts.generateImages && opts.imageConfig) {
           try {
             await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
-            const immediateAi = JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= IMAGE_REQUEST_TIMEOUT_MS + 5_000;
+            if (imageMode === "manual_prompt") {
+              const manualRequest = await createManualImagePromptRequest({
+                content: genContent,
+                title: postTitle,
+                userId,
+                postId: post.id,
+                jobId: jobId!,
+                modelId,
+                openRouterKey,
+                stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+                provider: manualProvider,
+              });
+              imageResolutionResults.push({
+                postId: post.id,
+                title: postTitle,
+                result: manualPromptImageResolutionSummary(manualRequest.requestId, manualProvider),
+              });
+              totalCost += manualRequest.cost;
+            } else {
+              const immediateAi = JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= IMAGE_REQUEST_TIMEOUT_MS + 5_000;
 
-            const imageResults = await resolveLowCostImages({
-              content: genContent,
-              title: postTitle,
-              userId,
-              postId: post.id,
-              jobId: jobId!,
-              imageConfig: opts.imageConfig,
-              imageModel: promptSettings?.imageModel || settings?.imageModel || "",
-              inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
-              stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
-              settings: {
-                inlineImageSource: inlineImageSource(promptSettings || settings || undefined),
-              },
-              immediateAi,
-            });
+              const imageResults = await resolveLowCostImages({
+                content: genContent,
+                title: postTitle,
+                userId,
+                postId: post.id,
+                jobId: jobId!,
+                imageConfig: opts.imageConfig,
+                imageModel: promptSettings?.imageModel || settings?.imageModel || "",
+                inlineImageModel: inlineImageModel(promptSettings || settings || undefined),
+                stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+                settings: {
+                  inlineImageSource: inlineImageSource(promptSettings || settings || undefined),
+                },
+                immediateAi,
+              });
 
-            imageResolutionResults.push({ postId: post.id, title: postTitle, result: summarizeImageResolution(imageResults) });
-            totalCost += imageResults.cost;
+              imageResolutionResults.push({ postId: post.id, title: postTitle, result: summarizeImageResolution(imageResults) });
+              totalCost += imageResults.cost;
+            }
           } catch (imageErr: any) {
             const imageError = imageErr?.message || "Image resolution failed";
             console.warn(`[images] Resolution failed for draft ${i + 1}:`, imageError);
@@ -1703,6 +1775,131 @@ function plainText(value: string, maxChars = 900) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxChars);
+}
+
+function cleanManualImagePrompt(value: string) {
+  return value
+    .replace(/^```(?:text|markdown)?/i, "")
+    .replace(/```$/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^\s*(?:midjourney prompt|prompt)\s*:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2500);
+}
+
+export function buildManualImagePromptMessages(opts: {
+  title: string;
+  content: string;
+  stylePrompt?: string | null;
+}) {
+  const style = opts.stylePrompt?.trim()
+    || "A colorful modern editorial illustration, hand-drawn graphic style, clean white background, no text, no letters, no numbers, no typography --ar 16:9";
+  const articleContext = plainText(opts.content, 1800);
+  return {
+    system: [
+      "You write one Midjourney image prompt for a generated blog post.",
+      "Return only the final prompt as plain text. Do not add markdown, labels, quotes, explanations, alternatives, or bullets.",
+      "Preserve the saved visual style, constraints, and Midjourney parameters exactly when possible, including --ar, --profile, --style, --sref, or similar suffixes.",
+      "Change only the article-specific subject, scene, symbols, and context.",
+      "Unless the saved style explicitly conflicts, include: no text, no letters, no numbers, no typography.",
+    ].join(" "),
+    user: [
+      `Article title: ${opts.title}`,
+      `Article context: ${articleContext}`,
+      `Saved Midjourney style/reference: ${style}`,
+      "Write one polished Midjourney prompt for the whole article, suitable as the cover image.",
+    ].join("\n\n"),
+  };
+}
+
+async function createManualImagePromptRequest(opts: {
+  userId: string;
+  postId: string;
+  jobId: string;
+  modelId: string;
+  openRouterKey: string;
+  title: string;
+  content: string;
+  stylePrompt?: string | null;
+  provider: ManualImageProvider;
+}) {
+  const startedAt = Date.now();
+  const messages = buildManualImagePromptMessages({
+    title: opts.title,
+    content: opts.content,
+    stylePrompt: opts.stylePrompt,
+  });
+  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${opts.openRouterKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: opts.modelId,
+      messages: [
+        { role: "system", content: messages.system },
+        { role: "user", content: messages.user },
+      ],
+      max_completion_tokens: 700,
+    }),
+  });
+
+  if (!resp.ok) {
+    const message = openRouterErrorMessage(await resp.text(), resp.status, opts.modelId);
+    await db.insert(generationLogs).values({
+      userId: opts.userId,
+      postId: opts.postId,
+      usageType: "text",
+      modelId: opts.modelId,
+      provider: opts.modelId.split("/")[0],
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      sessionId: opts.jobId,
+      responseData: { error: message, task: "manual_image_prompt" },
+    });
+    throw new Error(message);
+  }
+
+  const data = await resp.json() as any;
+  const prompt = cleanManualImagePrompt(data.choices?.[0]?.message?.content || "");
+  if (!prompt) throw new Error("Manual image prompt could not be drafted");
+
+  const usage = data.usage;
+  const openRouterUsage = await getOpenRouterCost(opts.openRouterKey, data);
+  await db.insert(generationLogs).values({
+    userId: opts.userId,
+    postId: opts.postId,
+    usageType: "text",
+    modelId: opts.modelId,
+    provider: opts.modelId.split("/")[0],
+    status: "success",
+    promptTokens: Number(usage?.prompt_tokens || 0) || undefined,
+    completionTokens: Number(usage?.completion_tokens || 0) || undefined,
+    totalTokens: Number(usage?.total_tokens || 0) || undefined,
+    cost: openRouterUsage.cost,
+    latencyMs: Date.now() - startedAt,
+    sessionId: opts.jobId,
+    responseData: { id: data.id, generation: openRouterUsage.stats, task: "manual_image_prompt" },
+  });
+
+  const [request] = await db.insert(imageGenerationRequests).values({
+    userId: opts.userId,
+    postId: opts.postId,
+    jobId: opts.jobId,
+    provider: opts.provider,
+    modelId: opts.modelId,
+    prompt,
+    altText: `Featured image for ${opts.title}`.slice(0, 180),
+    type: "cover",
+    position: 0,
+    aspectRatio: "16:9",
+    status: "pending",
+  }).returning({ id: imageGenerationRequests.id });
+
+  return { requestId: request?.id || null, prompt, cost: openRouterUsage.cost };
 }
 
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {

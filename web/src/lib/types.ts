@@ -186,6 +186,8 @@ export interface UserSettings {
   image_model: string | null;
   inline_image_model?: string | null;
   inline_image_source?: "ai" | "stock" | null;
+  image_delivery_mode?: "generate" | "manual_prompt" | null;
+  manual_image_provider?: "midjourney" | null;
   cover_image_resolution?: "512" | "1K" | null;
   inline_image_resolution?: "512" | "1K" | null;
   image_style_prompt: string | null;

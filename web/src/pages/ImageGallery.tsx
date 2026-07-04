@@ -229,12 +229,13 @@ export default function ImageGallery() {
     [images, selectedIds]
   );
   const requestCounts = useMemo(() => {
-    const counts = { queued: 0, processing: 0, failed: 0, done: 0 };
+    const counts = { queued: 0, processing: 0, failed: 0, done: 0, aiQueued: 0 };
     for (const request of imageRequests) {
       if (request.status === "pending" || request.status === "queued") counts.queued += 1;
       else if (request.status === "processing") counts.processing += 1;
       else if (request.status === "failed") counts.failed += 1;
       else if (request.status === "done") counts.done += 1;
+      if (request.provider === "ai-deferred" && (request.status === "pending" || request.status === "queued")) counts.aiQueued += 1;
     }
     return counts;
   }, [imageRequests]);
@@ -326,7 +327,7 @@ export default function ImageGallery() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">{visibleRequests.length} active request{visibleRequests.length === 1 ? "" : "s"}</span>
-              <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.queued < 1}>
+              <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.aiQueued < 1}>
                 {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Process
               </Button>
