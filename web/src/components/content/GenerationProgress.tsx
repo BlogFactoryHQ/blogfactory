@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { DraftProgressList, DraftProgressItem } from "@/components/content/DraftProgressList";
 
-export type GenerationStep = "idle" | "extracting" | "generating" | "images" | "complete" | "error";
+export type GenerationStep = "idle" | "extracting" | "generating" | "images" | "prompts" | "complete" | "error";
 export type SourceType = "article_keyword" | "article_title" | "url" | "raw_text" | "youtube" | "pdf";
 
 export interface DraftProgress {
@@ -21,10 +21,13 @@ interface GenerationProgressProps {
 }
 
 // Define steps for each source type
-const getStepsForSourceType = (sourceType: SourceType = "url") => {
+const getStepsForSourceType = (sourceType: SourceType = "url", currentStep: GenerationStep = "idle") => {
+  const mediaStep = currentStep === "prompts"
+    ? { key: "prompts", label: "Creating manual prompts" }
+    : { key: "images", label: "Creating images" };
   const baseGenerationSteps = [
     { key: "generating", label: "Generating blog post with AI" },
-    { key: "images", label: "Creating images" },
+    mediaStep,
     { key: "complete", label: "Complete" },
   ];
 
@@ -34,7 +37,7 @@ const getStepsForSourceType = (sourceType: SourceType = "url") => {
       return [
         { key: "extracting", label: "Planning article" },
         { key: "generating", label: "Generating article with AI" },
-        { key: "images", label: "Creating images" },
+        mediaStep,
         { key: "complete", label: "Complete" },
       ];
     case "url":
@@ -107,6 +110,7 @@ const stepOrder: Record<GenerationStep, number> = {
   extracting: 0,
   generating: 1,
   images: 2,
+  prompts: 2,
   complete: 3,
   error: -1,
 };
@@ -114,7 +118,7 @@ const stepOrder: Record<GenerationStep, number> = {
 export function GenerationProgress({ currentStep, sourceType = "url", error, draftProgress }: GenerationProgressProps) {
   if (currentStep === "idle") return null;
 
-  const steps = getStepsForSourceType(sourceType);
+  const steps = getStepsForSourceType(sourceType, currentStep);
   const currentIndex = stepOrder[currentStep];
   
   // Calculate progress considering draft progress for multi-draft jobs

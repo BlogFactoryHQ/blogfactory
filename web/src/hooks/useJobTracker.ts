@@ -43,7 +43,7 @@ export const parseDraftProgress = (step: string, plan: JobPlan | null | undefine
     const completed = (resultPostIds || []).length;
     return { current, total: parseInt(match[2], 10), completed, failedDrafts };
   }
-  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft)_(\d+)/);
+  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft|creating_manual_prompts_for_draft)_(\d+)/);
   if (draftOnlyMatch) {
     return {
       current: parseInt(draftOnlyMatch[1], 10),
@@ -101,6 +101,7 @@ export function useJobTracker(onJobComplete?: () => void) {
 
           let genStep: GenerationStep = "generating";
           if (step.startsWith("fetching") || step === "starting") genStep = "extracting";
+          else if (step.startsWith("creating_manual_prompts")) genStep = "prompts";
           else if (step.startsWith("generating_images") || step.startsWith("resolving_images")) genStep = "images";
           else if (step.startsWith("generating") || step.startsWith("repairing") || step.startsWith("completed") || step.startsWith("retrying")) genStep = "generating";
 

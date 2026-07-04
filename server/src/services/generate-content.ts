@@ -1835,7 +1835,11 @@ export async function generateContent(opts: GenerateOpts) {
         // Resolve images after the draft exists. Small AI batches run now if the function budget is still safe.
         if (opts.generateImages && opts.imageConfig) {
           try {
-            await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+            await db.update(jobs).set({
+              currentStep: imageMode === "manual_prompt"
+                ? `creating_manual_prompts_for_draft_${i + 1}`
+                : `resolving_images_for_draft_${i + 1}`,
+            }).where(eq(jobs.id, jobId));
             if (imageMode === "manual_prompt") {
               const manualRequest = await createManualImagePromptRequest({
                 content: genContent,

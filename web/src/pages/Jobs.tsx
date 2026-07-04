@@ -100,6 +100,7 @@ type ImageResolutionEntry = {
 
 export const imageResolutionStatus = (item: Pick<ImageResolutionSlot, "status" | "provider" | "error">) => {
   if (item.status === "queued" && item.provider === "ai-deferred") return "Waiting for AI";
+  if (item.status === "queued" && item.provider === "midjourney") return "Prompt queued";
   if (item.status === "failed" && /stock/i.test(item.error || "")) return "Stock provider unavailable";
   if (item.status === "failed") return item.error || "Image failed";
   if (item.status === "attached" || item.status === "done") return "Done";
@@ -248,7 +249,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   const totalMatch = step?.match(/_of_(\d+)$/);
   const total = totalMatch ? parseInt(totalMatch[1]) : (generationPlan?.totalDrafts || 0);
   const currentMatch = step?.match(/_(\d+)_of_/);
-  const draftOnlyMatch = step?.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft)_(\d+)/);
+  const draftOnlyMatch = step?.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft|creating_manual_prompts_for_draft)_(\d+)/);
   const current = currentMatch ? parseInt(currentMatch[1]) : draftOnlyMatch ? parseInt(draftOnlyMatch[1]) : Math.min(postsCompleted + 1, total || 1);
 
   if (!step || step === "pending") {
@@ -260,8 +261,11 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
 
   const effectiveTotal = total || Math.max(postsCompleted + failedDrafts.length + 1, 1);
   const isImageStep = step.startsWith("generating_images") || step.startsWith("resolving_images");
+  const isManualPromptStep = step.startsWith("creating_manual_prompts");
   if (step.startsWith("resolving_images") && generationPlan?.imagesEnabled) {
     steps.push({ label: "Resolve cover AI and inline images", done: false, active: true });
+  } else if (isManualPromptStep) {
+    steps.push({ label: "Create Midjourney prompt slots", done: false, active: true });
   }
 
   for (let i = 0; i < effectiveTotal; i++) {
@@ -277,7 +281,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
       const isRepair = step.startsWith("repairing_length") || step.startsWith("repairing_language");
       const isFailed = step.startsWith("failed_post");
       steps.push({
-        label: `Draft ${draftNum}${isImageStep ? (generationPlan?.imagesEnabled ? " (images)" : " (finding images)") : isGen || isDraftGen || isRepair ? " (writing)" : isFailed ? " (failed)" : ""}`,
+        label: `Draft ${draftNum}${isManualPromptStep ? " (manual prompts)" : isImageStep ? (generationPlan?.imagesEnabled ? " (images)" : " (finding images)") : isGen || isDraftGen || isRepair ? " (writing)" : isFailed ? " (failed)" : ""}`,
         done: false,
         active: !isFailed,
         failed: isFailed,
@@ -295,9 +299,9 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
     let pct = 10;
     pct += (postsCompleted + failedDrafts.length) * perPost;
     if (step.startsWith("generating_draft") || step.startsWith("generating_post") || step.startsWith("repairing_length")) pct += perPost * 0.3;
-    if (isImageStep) pct += perPost * 0.7;
+    if (isImageStep || isManualPromptStep) pct += perPost * 0.7;
     return {
-      label: isImageStep ? `Finding images for draft ${current} of ${effectiveTotal}` : `Draft ${current} of ${effectiveTotal}`,
+      label: isManualPromptStep ? `Creating manual prompts for draft ${current} of ${effectiveTotal}` : isImageStep ? `Finding images for draft ${current} of ${effectiveTotal}` : `Draft ${current} of ${effectiveTotal}`,
       percent: Math.min(Math.round(pct), 99),
       steps,
     };
@@ -316,6 +320,7 @@ const generationStepForJob = (job: Job): GenerationStep => {
   if (job.status === "failed") return "error";
   const step = job.current_step || "";
   if (!step || step === "queued" || step === "pending" || step === "starting" || step.startsWith("fetching")) return "extracting";
+  if (step.startsWith("creating_manual_prompts")) return "prompts";
   if (step.startsWith("generating_images") || step.startsWith("resolving_images")) return "images";
   return "generating";
 };
@@ -325,7 +330,7 @@ const draftProgressForJob = (job: Job): DraftProgress | null => {
   if (!Number.isFinite(total) || total <= 1) return null;
   const step = job.current_step || "";
   const match = step.match(/_(\d+)_of_(\d+)$/);
-  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|resolving_images_for_draft|creating_manual_prompts_for_draft)_(\d+)/);
   const current = match ? Number(match[1]) : draftOnlyMatch ? Number(draftOnlyMatch[1]) : Math.min((job.result_post_ids?.length || 0) + 1, total);
   return {
     current,
@@ -688,6 +693,7 @@ export default function Jobs() {
                 const failedDrafts: Array<{index: number, error: string}> = plan?.failedDrafts || [];
                 const seoQa: SeoQaResult[] = Array.isArray(plan?.seoQa) ? plan.seoQa : [];
                 const imageResolution: ImageResolutionEntry[] = Array.isArray(plan?.imageResolution) ? plan.imageResolution : [];
+                const manualPromptMode = plan?.imageDeliveryMode === "manual_prompt";
                 const draftStats = draftStatsFor(selectedJob);
                 const isPartial = draftStats.partial;
 
@@ -770,7 +776,7 @@ export default function Jobs() {
                     )}
                     {imageResolution.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border space-y-3">
-                        <p className="text-xs font-medium text-muted-foreground">Images</p>
+                        <p className="text-xs font-medium text-muted-foreground">{manualPromptMode ? "Manual image prompts" : "Images"}</p>
                         {imageResolution.map((item) => (
                           <div key={item.postId} className="rounded-lg border border-border bg-card p-3">
                             <p className="truncate text-sm font-medium">{item.title}</p>
@@ -787,7 +793,8 @@ export default function Jobs() {
                                   )}
                                   <span className="flex-1">
                                     {image.type === "inline" ? `Inline ${Number(image.position ?? index) + 1}` : "Cover"}: {imageResolutionStatus(image)}
-                                    {image.provider && image.provider !== "ai-deferred" ? <span className="text-muted-foreground"> via {image.provider}</span> : null}
+                                    {image.provider && image.provider !== "ai-deferred" && !manualPromptMode ? <span className="text-muted-foreground"> via {image.provider}</span> : null}
+                                    {image.provider === "midjourney" && manualPromptMode ? <span className="text-muted-foreground"> for Midjourney</span> : null}
                                     {image.query ? <span className="text-muted-foreground"> - {image.query}</span> : null}
                                   </span>
                                 </div>
