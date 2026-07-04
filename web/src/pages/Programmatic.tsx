@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Grid2X2,
   HelpCircle,
+  History,
   Link as LinkIcon,
   ListChecks,
   Loader2,
@@ -1065,10 +1066,11 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           </div>
         </BywordCard>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-4">
           <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
           <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
-          <FlowCard icon={Database} title="Your Datasets" description="Manage saved data you can reuse across campaigns and templates" onClick={() => setView("campaign")} />
+          <FlowCard icon={Upload} title="Import Excel / CSV" description="Create a campaign from spreadsheet rows and auto-build a template" onClick={() => setView("campaign")} />
+          <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/campaigns")} />
         </div>
 
         <BywordCard>
