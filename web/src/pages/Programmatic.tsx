@@ -430,7 +430,6 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         personaId: personaId === "none" ? null : personaId,
         modelId,
         customInstructions,
-        generateImages: false,
       });
       if (startNow) await api.post(`/campaigns/${result.campaign.id}/start`);
       return result;
