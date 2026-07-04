@@ -109,6 +109,10 @@ function plainText(markdown: string) {
     .trim();
 }
 
+function markdownTitle(content: string) {
+  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+}
+
 function markdownSection(content: string, heading: string) {
   const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
   return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
@@ -126,12 +130,14 @@ function parseMarkdownMeta(content: string) {
 
 export function buildPublishDefaults(title: string, content: string, summary?: string | null) {
   const meta = parseMarkdownMeta(content);
+  const articleTitle = markdownTitle(content);
+  const titleFallback = articleTitle || title;
   const bodyText = plainText(content.replace(/^#\s+.+\n*/m, ""));
   const fallbackDescription = summary || bodyText;
   return {
-    slug: slugify(meta.slug || title),
+    slug: slugify(meta.slug || titleFallback),
     tags: explicitTags(content),
-    metaTitle: truncate(meta.metaTitle || title, SEO_LIMITS.metaTitle),
+    metaTitle: truncate(meta.metaTitle || titleFallback, SEO_LIMITS.metaTitle),
     metaDescription: truncate(meta.metaDescription || fallbackDescription, SEO_LIMITS.metaDescription),
   };
 }

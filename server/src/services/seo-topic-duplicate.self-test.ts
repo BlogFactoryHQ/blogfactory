@@ -26,6 +26,14 @@ assert.match(
   anchorGeneratedTitleToSource("# Mythos Preview exploit benchmark sonuçları\n\nBody", "Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklar"),
   /^# Mythos Preview exploit benchmark sonuçları/
 );
+assert.match(
+  anchorGeneratedTitleToSource(
+    "# İnternetin gerçek mucitleri kimlerdi?\n\nİnterneti kim buldu sorusuna genellikle tek bir isim verildiğini düşünürsünüz.",
+    "Who really invented the internet...?",
+    "Turkish"
+  ),
+  /^# İnternetin gerçek mucitleri kimlerdi\?/
+);
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı - Swipeline"), "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı");

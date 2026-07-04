@@ -774,9 +774,12 @@ function titleMatchesSourceTitle(title: string, sourceTitle: string) {
   return sourceTokens.filter((token) => titleSet.has(token)).length >= Math.min(2, sourceTokens.length);
 }
 
-export function anchorGeneratedTitleToSource(content: string, sourceTitle?: string) {
+export function anchorGeneratedTitleToSource(content: string, sourceTitle?: string, requestedLanguage?: string) {
   const title = cleanPostTitle(sourceTitle || "");
   if (!title) return content;
+  if (requestedLanguage && looksLikeRequestedLanguage(content, requestedLanguage) && !looksLikeRequestedLanguage(title, requestedLanguage)) {
+    return content;
+  }
   const h1 = content.match(/^#\s+(.+)$/m);
   if (h1 && titleMatchesSourceTitle(h1[1], title)) return content;
   if (h1) return content.replace(/^#\s+.+$/m, `# ${title}`);
@@ -1691,7 +1694,7 @@ export async function generateContent(opts: GenerateOpts) {
           topic: opts.articleTitleOverride || article.title || opts.sourceValue,
           settings: promptSettings,
         });
-        genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
+        genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
         const usage = aiData.usage;
         const openRouterUsage = await getOpenRouterCost(openRouterKey, aiData);
         const usageTotals = {
@@ -1721,7 +1724,7 @@ export async function generateContent(opts: GenerateOpts) {
                 topic: opts.articleTitleOverride || article.title || opts.sourceValue,
                 settings: promptSettings,
               });
-              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
+              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
               usageTotals.prompt += Number(repairedLanguage.usage?.prompt_tokens || 0);
               usageTotals.completion += Number(repairedLanguage.usage?.completion_tokens || 0);
               usageTotals.total += Number(repairedLanguage.usage?.total_tokens || 0);
@@ -1750,7 +1753,7 @@ export async function generateContent(opts: GenerateOpts) {
                 topic: opts.articleTitleOverride || article.title || opts.sourceValue,
                 settings: promptSettings,
               });
-              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
+              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
               usageTotals.prompt += Number(repaired.usage?.prompt_tokens || 0);
               usageTotals.completion += Number(repaired.usage?.completion_tokens || 0);
               usageTotals.total += Number(repaired.usage?.total_tokens || 0);

@@ -17,6 +17,20 @@ describe("publish defaults", () => {
     expect(defaults.metaDescription).toMatch(/Biyolojik veri platformları/);
   });
 
+  it("prefers the generated article H1 over an English source title", () => {
+    const defaults = buildPublishDefaults(
+      "Who really invented the internet...?",
+      [
+        "# İnterneti Gerçekten Kim İcat Etti?",
+        "",
+        "İnternetin hikayesi tek bir mucidin değil, farklı dönemlerde çalışan araştırmacıların ortak çabasının sonucudur.",
+      ].join("\n")
+    );
+
+    expect(defaults.slug).toBe("interneti-gercekten-kim-icat-etti");
+    expect(defaults.metaTitle).toBe("İnterneti Gerçekten Kim İcat Etti?");
+  });
+
   it("uses generated SEO metadata limits", () => {
     const defaults = buildPublishDefaults(
       "Fallback title",
