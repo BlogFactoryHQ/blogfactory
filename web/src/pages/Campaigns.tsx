@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -179,6 +180,11 @@ function CampaignList() {
 function CampaignDetail({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [integrationId, setIntegrationId] = useState("");
+  const [autoRunBatches, setAutoRunBatches] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(`campaign:auto-run:${id}`) === "true";
+  });
+  const autoRunRequestKey = useRef("");
   const { integrations } = useIntegrations();
   const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const { data, isLoading } = useQuery({
@@ -226,6 +232,29 @@ function CampaignDetail({ id }: { id: string }) {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Push failed"),
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(`campaign:auto-run:${id}`, String(autoRunBatches));
+  }, [autoRunBatches, id]);
+
+  const campaignForAutoRun = data?.campaign;
+  const itemsForAutoRun = data?.items ?? [];
+  const autoQueuedCount = itemsForAutoRun.filter((item) => item.status === "queued").length;
+  const autoRunningCount = itemsForAutoRun.filter((item) => item.status === "running" || item.jobStatus === "running").length;
+
+  useEffect(() => {
+    if (!campaignForAutoRun || !autoRunBatches || action.isPending) return;
+    if (campaignForAutoRun.status !== "running" || autoQueuedCount === 0 || autoRunningCount > 0) {
+      autoRunRequestKey.current = "";
+      return;
+    }
+
+    const requestKey = `${campaignForAutoRun.id}:${campaignForAutoRun.completedItems}:${autoQueuedCount}`;
+    if (autoRunRequestKey.current === requestKey) return;
+    autoRunRequestKey.current = requestKey;
+    action.mutate(`/campaigns/${campaignForAutoRun.id}/run-next`);
+  }, [action, autoQueuedCount, autoRunBatches, autoRunningCount, campaignForAutoRun]);
 
   if (isLoading || !data) {
     return (
@@ -279,6 +308,18 @@ function CampaignDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {campaign.status === "running" && queuedCount > 0 && (
+        <BywordCard className="mb-6 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="auto-run-batches" className="text-sm font-semibold">Auto-run batches</Label>
+              <p className="mt-1 text-sm text-muted-foreground">Start the next 3 items when the current batch finishes.</p>
+            </div>
+            <Switch id="auto-run-batches" checked={autoRunBatches} onCheckedChange={setAutoRunBatches} />
+          </div>
+        </BywordCard>
+      )}
 
       {completedPostIds.length > 0 && connectedIntegrations.length > 0 && (
         <BywordCard className="mb-6 p-4">
