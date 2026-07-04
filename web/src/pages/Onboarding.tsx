@@ -123,10 +123,10 @@ export default function Onboarding() {
                         type="button"
                         onClick={() => setProfileType(type.id)}
                         className={cn(
-                          "flex h-14 items-center gap-3 rounded-md border px-4 text-left transition-calm",
+                          "flex h-14 items-center gap-3 rounded-md border px-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
                           profileType === type.id
-                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
-                            : "border-byword-border bg-card hover:border-byword-blue/40"
+                            ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
+                            : "border-byword-border bg-card hover:border-byword-blue/40 hover:bg-byword-blue-soft/35"
                         )}
                       >
                         <IconTile icon={type.icon} className="h-8 w-8" />

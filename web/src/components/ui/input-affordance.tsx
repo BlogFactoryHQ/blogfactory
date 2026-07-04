@@ -19,7 +19,7 @@ const InputAffordance = React.forwardRef<HTMLInputElement, InputAffordanceProps>
     return (
       <div
         className={cn(
-          "flex h-9 w-full items-center rounded-sm border border-input bg-card text-base shadow-[inset_0_1px_2px_hsl(210_5%_20%/0.07)] ring-offset-background focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 md:text-sm",
+          "flex h-9 w-full items-center rounded-sm border border-input bg-card text-base shadow-[inset_0_1px_2px_hsl(210_5%_20%/0.07)] ring-offset-background transition-calm hover:border-foreground/30 focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/35 focus-within:ring-offset-1 md:text-sm",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}

@@ -61,8 +61,8 @@ export function FeedPreviewItem({ item, index, showFullTextColumn }: FeedPreview
   const statusBadge = () => {
     if (!item.status) return null;
     const config = {
-      new: { label: "New", variant: "default" as const, className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30" },
-      duplicate: { label: "Duplicate", variant: "outline" as const, className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" },
+      new: { label: "New", variant: "default" as const, className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30" },
+      duplicate: { label: "Duplicate", variant: "outline" as const, className: "bg-amber-500/15 text-amber-700 border-amber-500/30" },
       filtered: { label: "Filtered", variant: "outline" as const, className: "bg-muted text-muted-foreground border-border" },
     };
     const c = config[item.status];

@@ -247,12 +247,12 @@ export function PersonaTestTab({ personaId, personaName }: PersonaTestTabProps) 
 
           {/* Output Preview */}
           {result.output && (
-            <div className="border border-border rounded-lg">
+            <div className="rounded-md border border-border bg-card factory-panel">
               <div className="p-3 border-b border-border bg-muted/30">
                 <h4 className="font-medium">Generated Output</h4>
               </div>
               <ScrollArea className="h-64">
-                <div className="p-4 prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm max-w-none p-4">
                   <ReactMarkdown>{result.output}</ReactMarkdown>
                 </div>
               </ScrollArea>

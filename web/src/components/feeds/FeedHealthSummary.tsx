@@ -24,7 +24,7 @@ export function FeedHealthSummary({ items, fetchedAt, platform }: FeedHealthSumm
   }
 
   return (
-    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
       {/* Stats row */}
       <div className="flex items-center gap-4 flex-wrap text-xs">
         <div className="flex items-center gap-1.5">
@@ -32,12 +32,12 @@ export function FeedHealthSummary({ items, fetchedAt, platform }: FeedHealthSumm
           <span className="font-medium">{total} fetched</span>
         </div>
         {newCount > 0 && (
-          <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs">
+          <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 text-xs">
             {newCount} new
           </Badge>
         )}
         {dupCount > 0 && (
-          <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 text-xs">
+          <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-xs">
             {dupCount} duplicate
           </Badge>
         )}
@@ -62,7 +62,7 @@ export function FeedHealthSummary({ items, fetchedAt, platform }: FeedHealthSumm
 
       {/* Warnings */}
       {warnings.map((w, i) => (
-        <div key={i} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <div key={i} className="flex items-start gap-1.5 text-xs text-amber-600">
           <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
           <span>{w}</span>
         </div>

@@ -116,7 +116,7 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
 
   return (
     <>
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border border-border shadow-lg rounded-lg px-4 py-3 flex items-center gap-3">
+      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-3 factory-panel">
         <span className="text-sm font-medium text-foreground">
           {selectedImages.length} selected
         </span>
