@@ -28,7 +28,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, FileText } from "lucide-react";
-import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS, type SourcePlatform } from "@/lib/source-options";
+import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS, sourceTypeForPlatform, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { toast } from "sonner";
@@ -264,7 +264,7 @@ export default function RSSFeedNew() {
         // Trigger content generation immediately
         try {
           await api.post("/content/generate", {
-            sourceType: platform === "rss" ? "rss_feed" : platform === "youtube" ? "rss_feed" : platform,
+            sourceType: sourceTypeForPlatform(platform),
             sourceValue: feedSourceUrl,
             personaId,
             modelId,
@@ -673,7 +673,7 @@ export default function RSSFeedNew() {
                   <Label htmlFor="filterValue">
                     {filterType === "score" && "Minimum Score"}
                     {filterType === "threshold" && "Threshold %"}
-                    {filterType === "posts_per_day" && "Posts Per Day"}
+                    {filterType === "posts_per_day" && "Posts Per Run"}
                   </Label>
                   <Input
                     id="filterValue"
