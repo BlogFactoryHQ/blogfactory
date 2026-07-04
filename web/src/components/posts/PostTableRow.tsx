@@ -1,5 +1,4 @@
 import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone } from "lucide-react";
-import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { safeFormatDate } from "@/lib/date-format";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -123,7 +123,7 @@ export function PostTableRow({
         />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {format(new Date(post.created_at), "MMM d, yyyy")}
+        {safeFormatDate(post.created_at, "MMM d, yyyy")}
       </TableCell>
       <TableCell className="w-24">
         <div className="flex items-center gap-1">

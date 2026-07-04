@@ -1,6 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { DailyUsage } from "@/hooks/useUsageAnalytics";
-import { format, parseISO } from "date-fns";
+import { safeFormatIsoDate } from "@/lib/date-format";
 
 interface Props {
   data: DailyUsage[];
@@ -22,7 +22,7 @@ export function UsageCostChart({ data }: Props) {
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="date"
-            tickFormatter={(val) => format(parseISO(val), "MMM d")}
+            tickFormatter={(val) => safeFormatIsoDate(val, "MMM d")}
             className="text-xs fill-muted-foreground"
             tick={{ fontSize: 11 }}
           />
@@ -38,7 +38,7 @@ export function UsageCostChart({ data }: Props) {
               borderRadius: "0.5rem",
               fontSize: "0.75rem",
             }}
-            labelFormatter={(val) => format(parseISO(val as string), "MMM d, yyyy")}
+            labelFormatter={(val) => safeFormatIsoDate(val, "MMM d, yyyy")}
             formatter={(value: number) => [`$${value.toFixed(4)}`, "Cost"]}
           />
           <Bar dataKey="cost" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />

@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
 import { api } from "@/lib/api";
+import { safeFormatDate } from "@/lib/date-format";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -553,7 +553,7 @@ export default function Posts() {
             <StatusBadge status={status.type} label={status.label} showIcon={false} />
           </TableCell>
           <TableCell className="text-muted-foreground">
-            {format(new Date(row.post.created_at), "MMM d, yyyy")}
+            {safeFormatDate(row.post.created_at, "MMM d, yyyy")}
           </TableCell>
           <TableCell className="w-24" />
         </TableRow>

@@ -8,7 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatDistanceToNow, addHours, addDays, addWeeks, isPast } from "date-fns";
+import { addHours, addDays, addWeeks, isPast } from "date-fns";
+import { safeFormatDistanceToNow, safeLocaleString } from "@/lib/date-format";
 import {
   Table,
   TableBody,
@@ -468,7 +469,7 @@ export default function RSSFeeds() {
           <Clock className="h-4 w-4" />
           <span>Last scheduler check:</span>
           <span className="font-medium text-foreground">
-            {formatDistanceToNow(new Date(lastSchedulerRun.triggered_at), { addSuffix: true })}
+            {safeFormatDistanceToNow(lastSchedulerRun.triggered_at)}
           </span>
           {lastSchedulerRun.feeds_triggered > 0 && (
             <Badge variant="secondary" className="text-xs gap-1">
@@ -660,11 +661,11 @@ export default function RSSFeeds() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-sm text-muted-foreground cursor-help">
-                            {formatDistanceToNow(new Date(feed.last_run_at), { addSuffix: true })}
+                            {safeFormatDistanceToNow(feed.last_run_at)}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {new Date(feed.last_run_at).toLocaleString()}
+                          {safeLocaleString(feed.last_run_at)}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
@@ -682,11 +683,11 @@ export default function RSSFeeds() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-sm text-muted-foreground cursor-help">
-                            {formatDistanceToNow(nextRun, { addSuffix: true })}
+                            {safeFormatDistanceToNow(nextRun)}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {nextRun.toLocaleString()}
+                          {safeLocaleString(nextRun)}
                         </TooltipContent>
                       </Tooltip>
                     ) : (

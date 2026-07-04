@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import {
   type LucideIcon,
@@ -20,6 +19,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { safeFormatIsoDate } from "@/lib/date-format";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
@@ -241,7 +241,7 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => v
 
 function SearchPulseCard({ siteDomain, insights }: { siteDomain: string; insights: SearchConsoleInsights }) {
   const rangeLabel = insights.range.latestStart && insights.range.latestEnd
-    ? `${format(parseISO(insights.range.latestStart), "MMM d")} - ${format(parseISO(insights.range.latestEnd), "MMM d")}`
+    ? `${safeFormatIsoDate(insights.range.latestStart, "MMM d")} - ${safeFormatIsoDate(insights.range.latestEnd, "MMM d")}`
     : "Latest sync";
 
   return (
@@ -358,7 +358,7 @@ function PerformanceCard({ insights }: { insights: SearchConsoleInsights }) {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={insights.daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" />
-              <XAxis dataKey="date" tickFormatter={(value) => format(parseISO(String(value)), "MMM d")} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="date" tickFormatter={(value) => safeFormatIsoDate(value, "MMM d")} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis yAxisId="impressions" tickFormatter={(value) => formatCompactNumber(Number(value))} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis yAxisId="line" orientation="right" tickFormatter={(value) => chartValueLabel(Number(value), lineMetric)} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <ChartTooltip
@@ -368,7 +368,7 @@ function PerformanceCard({ insights }: { insights: SearchConsoleInsights }) {
                   borderRadius: "0.5rem",
                   fontSize: "0.75rem",
                 }}
-                labelFormatter={(value) => format(parseISO(String(value)), "MMM d, yyyy")}
+                labelFormatter={(value) => safeFormatIsoDate(value, "MMM d, yyyy")}
                 formatter={(value, name) => [chartValueLabel(Number(value), String(name) as typeof lineMetric | "impressions"), chartName(String(name), lineMetric)]}
               />
               <Bar yAxisId="impressions" dataKey="impressions" fill="hsl(202 84% 38% / 0.18)" radius={[4, 4, 0, 0]} />

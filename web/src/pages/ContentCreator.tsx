@@ -46,7 +46,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
-import { formatDistanceToNow } from "date-fns";
+import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { useAuth } from "@/hooks/useAuth";
 import { SourceType } from "@/components/content/GenerationProgress";
 import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
@@ -1447,7 +1447,7 @@ export default function ContentCreator() {
                       </p>
                     </div>
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                      {safeFormatDistanceToNow(post.created_at)}
                     </span>
                   </Link>
                 ))}

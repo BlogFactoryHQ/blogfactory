@@ -21,9 +21,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatCompactCurrency, formatCompactNumber, safePercent, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
+import { safeFormatDistanceToNow } from "@/lib/date-format";
 
 interface DashboardStats {
   totalPosts: number;
@@ -232,7 +232,7 @@ export default function Dashboard() {
                       {modelId.split("/").pop()}
                     </span>
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : "—"}
+                      {safeFormatDistanceToNow(createdAt)}
                     </span>
                   </div>
                 );
@@ -298,7 +298,7 @@ export default function Dashboard() {
                         {log.feeds_checked} feed{log.feeds_checked !== 1 ? "s" : ""} checked
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(log.triggered_at), { addSuffix: true })}
+                        {safeFormatDistanceToNow(log.triggered_at)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

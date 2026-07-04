@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { safeFormatDate, safeFormatDistanceToNow } from "@/lib/date-format";
 import { GenerationProgress, type DraftProgress, type GenerationStep, type SourceType } from "@/components/content/GenerationProgress";
 import {
   formatCompactCurrency,
@@ -722,7 +722,7 @@ export default function Jobs() {
                         <div>
                           <p className="text-sm font-medium truncate max-w-[250px]">{post.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            {post.status} • {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                            {post.status} • {safeFormatDistanceToNow(post.created_at)}
                           </p>
                         </div>
                       </Link>
@@ -965,7 +965,7 @@ export default function Jobs() {
                           {selectedJob.status === "completed" ? "Completed" : "Failed"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(selectedJob.completed_at), "h:mm:ss a")}
+                          {safeFormatDate(selectedJob.completed_at, "h:mm:ss a")}
                         </p>
                       </div>
                     </div>
@@ -975,7 +975,7 @@ export default function Jobs() {
                     <div>
                       <p className="text-sm font-medium">Job Created</p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(selectedJob.created_at), "h:mm:ss a")}
+                        {safeFormatDate(selectedJob.created_at, "h:mm:ss a")}
                       </p>
                     </div>
                   </div>

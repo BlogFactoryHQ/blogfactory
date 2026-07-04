@@ -18,6 +18,7 @@ import {
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { safeLocaleString } from "@/lib/date-format";
 
 type ZipEntry = JSZip.JSZipObject;
 
@@ -94,8 +95,6 @@ function parseMarkdownMeta(content: string): MarkdownMeta {
     tags: keywords ? keywords.split(",").map((tag) => tag.trim()).filter(Boolean) : [],
   };
 }
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 export default function BatchImport() {
   const [items, setItems] = useState<ImportItem[]>([]);
@@ -425,7 +424,7 @@ export default function BatchImport() {
                 ) : (
                   batchImports.map((post) => (
                     <tr key={post.id} className="border-t border-byword-border">
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{dateFormatter.format(new Date(post.created_at))}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{safeLocaleString(post.created_at)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{post.source_ref_id || "root"}</td>
                       <td className="max-w-[420px] truncate px-4 py-3 font-medium">{post.title}</td>
                       <td className="px-4 py-3">{(post.cover_image_url ? 1 : 0) + (post.inline_images?.length || 0)}</td>

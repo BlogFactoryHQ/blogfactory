@@ -17,7 +17,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { safeFormatDate } from "@/lib/date-format";
 import type { ImageAsset } from "@/hooks/useImageAssets";
 import { resolveSignedUrl } from "@/hooks/useSignedUrl";
 import { imageSourceLabel } from "@/lib/image-labels";
@@ -148,7 +148,7 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
             {image.post_status}
           </Badge>
         )}
-        <p className="text-white/70 text-[10px]">{format(new Date(image.created_at), "MMM d, yyyy")}</p>
+        <p className="text-white/70 text-[10px]">{safeFormatDate(image.created_at, "MMM d, yyyy")}</p>
         <div className="flex items-center gap-1.5 mt-1.5">
           <Badge title={sourceLabel} variant="outline" className="max-w-[calc(100%-2rem)] truncate text-[10px] bg-background/80 border-white/20 text-white">
             {sourceLabel}

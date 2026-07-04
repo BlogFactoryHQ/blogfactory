@@ -36,7 +36,7 @@ import {
 import { FREQUENCIES, GITHUB_PERIODS, HN_TYPES, filterTypesForPlatform, platformLabel, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
-import { format } from "date-fns";
+import { safeFormatDate } from "@/lib/date-format";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import {
   SplitImageGenerationSettings,
@@ -804,7 +804,7 @@ export function FeedEditorDialog({
                     <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Created</p>
                       <p className="font-medium mt-1">
-                        {format(new Date(editedFeed.created_at), "MMM d, yyyy")}
+                        {safeFormatDate(editedFeed.created_at, "MMM d, yyyy")}
                       </p>
                     </div>
 
@@ -812,7 +812,7 @@ export function FeedEditorDialog({
                       <p className="text-sm text-muted-foreground">Last Run</p>
                       <p className="font-medium mt-1">
                         {editedFeed.last_run_at
-                          ? format(new Date(editedFeed.last_run_at), "MMM d, h:mm a")
+                          ? safeFormatDate(editedFeed.last_run_at, "MMM d, h:mm a")
                           : "Never"}
                       </p>
                     </div>
@@ -825,7 +825,7 @@ export function FeedEditorDialog({
                           : nextRun
                             ? isPast
                               ? "Due now"
-                              : format(nextRun, "MMM d, h:mm a")
+                              : safeFormatDate(nextRun, "MMM d, h:mm a")
                             : "On next cycle"}
                       </p>
                     </div>
