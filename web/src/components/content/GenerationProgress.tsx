@@ -23,7 +23,7 @@ interface GenerationProgressProps {
 // Define steps for each source type
 const getStepsForSourceType = (sourceType: SourceType = "url", currentStep: GenerationStep = "idle") => {
   const mediaStep = currentStep === "prompts"
-    ? { key: "prompts", label: "Creating manual prompts" }
+    ? { key: "prompts", label: "Creating manual prompt slots" }
     : { key: "images", label: "Creating images" };
   const baseGenerationSteps = [
     { key: "generating", label: "Generating blog post with AI" },

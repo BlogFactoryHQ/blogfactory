@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { feedDraftQueueLabel, queueFeedDraftJobs } from "@/lib/feed-generation";
 import { FREQUENCIES } from "@/lib/source-options";
 import { matchSportsMatrixRow, newsRuleLabel, parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
 import { useAuth } from "@/hooks/useAuth";
@@ -324,17 +325,12 @@ export default function News() {
         platformConfig: feed.platform_config || { url: feed.source_url, editorialMode: "news" },
         generateImages: false,
       });
-      const results = await Promise.allSettled(
-        Array.from({ length: postsPerRun }, (_, index) => api.post("/content/generate", buildGenerationPayload(index)))
-      );
-      const failed = results.filter((result) => result.status === "rejected").length;
-      if (failed) throw new Error(`${failed}/${postsPerRun} news draft jobs failed to start`);
-      return results;
+      return queueFeedDraftJobs(postsPerRun, (index) => api.post("/content/generate", buildGenerationPayload(index)));
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("News source run queued");
+      toast.success(`News source run queued: ${feedDraftQueueLabel(result.queued)}.`);
       setRunningFeedId(null);
     },
     onError: (err: Error) => {

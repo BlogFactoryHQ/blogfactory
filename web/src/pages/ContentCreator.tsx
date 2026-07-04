@@ -689,8 +689,9 @@ export default function ContentCreator() {
   };
   const imagePlanLabel = imageDeliveryMode === "manual_prompt"
     ? [
-      imageConfig.cover.enabled ? "Cover Midjourney prompt" : "",
-      imageConfig.inline.enabled && imageConfig.inline.count > 0 ? `${imageConfig.inline.count} inline prompt${imageConfig.inline.count === 1 ? "" : "s"}` : "",
+      imageConfig.cover.enabled ? "Cover prompt slot" : "",
+      imageConfig.inline.enabled && imageConfig.inline.count > 0 ? `${imageConfig.inline.count} inline prompt slot${imageConfig.inline.count === 1 ? "" : "s"}` : "",
+      "$0 image generation",
     ].filter(Boolean).join(" · ") || "Off"
     : imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0)
     ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`

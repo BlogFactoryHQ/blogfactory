@@ -125,19 +125,22 @@ export function SplitImageGenerationSettings({
   const inlineCostLabel = !config.inline.enabled || config.inline.count === 0
     ? "Off"
     : imageDeliveryMode === "manual_prompt"
-    ? "Manual prompts"
+    ? "Manual prompt slots"
     : inlineImageSource === "stock"
     ? "Stock providers"
     : "AI";
   const imagesEnabled = config.cover.enabled || (config.inline.enabled && config.inline.count > 0);
+  const manualSlotCount = (config.cover.enabled ? 1 : 0) + (config.inline.enabled ? config.inline.count : 0);
+  const manualSlotSummary = `${manualSlotCount} Midjourney prompt slot${manualSlotCount === 1 ? "" : "s"}`;
   const inlineSummary = config.inline.enabled && config.inline.count > 0
-    ? `${config.inline.count} inline ${imageDeliveryMode === "manual_prompt" ? "prompt" : inlineImageSource === "stock" ? "stock" : "AI"}${imageDeliveryMode === "manual_prompt" && config.inline.count !== 1 ? "s" : ""}`
+    ? `${config.inline.count} inline ${imageDeliveryMode === "manual_prompt" ? "prompt slot" : inlineImageSource === "stock" ? "stock" : "AI"}${imageDeliveryMode === "manual_prompt" && config.inline.count !== 1 ? "s" : ""}`
     : "";
   const summary = imageDeliveryMode === "manual_prompt"
-    ? [
+    ? imagesEnabled ? [
       config.cover.enabled ? `Cover ${manualImageProvider === "midjourney" ? "Midjourney" : "manual"} prompt` : "",
       inlineSummary,
-    ].filter(Boolean).join(" · ") || "No images"
+      `$0 image generation`,
+    ].filter(Boolean).join(" · ") : "No prompt slots"
     : [
     config.cover.enabled ? "Cover AI" : "",
     inlineSummary,
@@ -171,7 +174,7 @@ export function SplitImageGenerationSettings({
         <div>
           <Label>{imageDeliveryMode === "manual_prompt" ? "Cover Prompt" : "Cover Image"}</Label>
           <p className="text-xs text-muted-foreground">
-            {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "Midjourney prompt" : `${config.cover.resolution || "1K"} AI` : "Off"}
+            {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "1 Midjourney prompt slot" : `${config.cover.resolution || "1K"} AI` : "Off"}
           </p>
         </div>
         <Switch checked={config.cover.enabled} onCheckedChange={(enabled) => updateCover({ enabled })} />
@@ -182,7 +185,9 @@ export function SplitImageGenerationSettings({
         <div className="flex items-center justify-between">
           <div>
             <Label>{imageDeliveryMode === "manual_prompt" ? "Inline Prompts" : "Inline Images"}</Label>
-            <p className="text-xs text-muted-foreground">{inlineCostLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              {imageDeliveryMode === "manual_prompt" && config.inline.enabled ? `${config.inline.count} Midjourney slot${config.inline.count === 1 ? "" : "s"}` : inlineCostLabel}
+            </p>
           </div>
           <Switch checked={config.inline.enabled} onCheckedChange={(enabled) => updateInline({ enabled })} />
         </div>
@@ -191,7 +196,7 @@ export function SplitImageGenerationSettings({
           <div className="space-y-2">
             {imageDeliveryMode !== "manual_prompt" && inlineImageSource === "ai" && resolutionButtons(config.inline.resolution, inlineResolutions, (resolution) => updateInline({ resolution }))}
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Count</span>
+              <span className="text-muted-foreground">{imageDeliveryMode === "manual_prompt" ? "Prompt slots" : "Count"}</span>
               <span className="font-medium">{config.inline.count}</span>
             </div>
             <Slider
@@ -219,7 +224,9 @@ export function SplitImageGenerationSettings({
           </div>
           <div>
             <p className="text-sm font-medium">Images</p>
-            <p className="text-xs text-muted-foreground">{summary}</p>
+            <p className="text-xs text-muted-foreground">
+              {imageDeliveryMode === "manual_prompt" && imagesEnabled ? `${manualSlotSummary} · $0 image generation` : summary}
+            </p>
           </div>
         </div>
         {imagesEnabled && compact && (
@@ -232,7 +239,7 @@ export function SplitImageGenerationSettings({
               </TooltipTrigger>
               <TooltipContent>
                 <div className="space-y-1 text-xs">
-                  <p>Cover: {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "Manual prompt" : "AI" : "Off"}</p>
+                  <p>Cover: {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "Midjourney prompt slot" : "AI" : "Off"}</p>
                   <p>Inline: {inlineCostLabel}</p>
                 </div>
               </TooltipContent>
@@ -244,7 +251,7 @@ export function SplitImageGenerationSettings({
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="sm" className="w-full justify-between">
-            <span className="text-sm">Image options</span>
+            <span className="text-sm">{imageDeliveryMode === "manual_prompt" ? "Prompt slot options" : "Image options"}</span>
             {settingsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         </CollapsibleTrigger>

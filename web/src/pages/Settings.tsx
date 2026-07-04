@@ -1877,7 +1877,7 @@ export default function Settings() {
                 <SectionHeader
                   icon={ImagePlus}
                   title="Image Generation"
-                  description="Generate images automatically, or create one Midjourney prompt for manual image creation."
+                  description="Generate images automatically, or queue Midjourney prompt slots for manual image creation."
                   action={
                     <Button
                       size="sm"

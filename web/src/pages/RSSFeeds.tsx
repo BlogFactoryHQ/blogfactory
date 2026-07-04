@@ -37,6 +37,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { platformLabel, sourceTypeForPlatform } from "@/lib/source-options";
+import { feedDraftQueueLabel, queueFeedDraftJobs } from "@/lib/feed-generation";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -304,18 +305,12 @@ export default function RSSFeeds() {
           } : null,
         } : undefined,
       });
-      const results = await Promise.allSettled(
-        Array.from({ length: postsPerRun }, (_, index) => api.post<any>("/content/generate", buildGenerationPayload(index)))
-      );
-      const failed = results.filter((result) => result.status === "rejected").length;
-      if (failed) throw new Error(`${failed}/${postsPerRun} feed draft jobs failed to start`);
-
-      return results;
+      return queueFeedDraftJobs(postsPerRun, (index) => api.post<any>("/content/generate", buildGenerationPayload(index)));
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Job queued. Check the Job Queue for progress.");
+      toast.success(`${feedDraftQueueLabel(result.queued)} queued. Check the Job Queue for progress.`);
       setRunningFeedId(null);
     },
     onError: (error) => {

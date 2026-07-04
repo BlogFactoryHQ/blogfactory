@@ -36,6 +36,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FeedPreview } from "@/components/feeds/FeedPreview";
 import { normalizeHttpUrl, stripHttpProtocol, validateSourceUrl, validatePlatformInput } from "@/lib/url-validation";
+import { feedDraftQueueLabel, queueFeedDraftJobs } from "@/lib/feed-generation";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -128,6 +129,7 @@ export default function RSSFeedNew() {
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
   const fallbackTextModelId = textModels[0]?.id;
   const availableFilterTypes = filterTypesForPlatform(platform, filterType);
+  const imageSectionTitle = imageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
@@ -291,15 +293,11 @@ export default function RSSFeedNew() {
               } : null,
             } : undefined,
           });
-          const results = await Promise.allSettled(
-            Array.from({ length: postsPerRun }, (_, index) => api.post("/content/generate", buildGenerationPayload(index)))
-          );
-          const failed = results.filter((result) => result.status === "rejected").length;
-          if (failed) throw new Error(`${failed}/${postsPerRun} feed draft jobs failed to start`);
-          return { feed, ranNow: true };
+          const queueResult = await queueFeedDraftJobs(postsPerRun, (index) => api.post("/content/generate", buildGenerationPayload(index)));
+          return { feed, ranNow: true, queuedJobs: queueResult.queued };
         } catch (genErr) {
           console.error("Generation error:", genErr);
-          toast.warning("Feed saved, but failed to start generation: " + (genErr instanceof Error ? genErr.message : "Unknown error"));
+          toast.warning("Feed saved, but generation queueing had a problem: " + (genErr instanceof Error ? genErr.message : "Unknown error"));
           return { feed, ranNow: false };
         }
       }
@@ -311,7 +309,7 @@ export default function RSSFeedNew() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
       if (result.ranNow) {
-        toast.success("Feed saved and job queued. Check the Job Queue for progress.");
+        toast.success(`Feed saved and ${feedDraftQueueLabel(result.queuedJobs || 1)} queued. Check the Job Queue for progress.`);
         navigate("/jobs");
       } else {
         toast.success("Feed saved. Scheduler will run this feed on the next cycle.");
@@ -790,7 +788,7 @@ export default function RSSFeedNew() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Image Generation</h2>
+              <h2 className="text-lg font-semibold">{imageSectionTitle}</h2>
             </div>
             <div className="pl-3">
               <SplitImageGenerationSettings

@@ -73,7 +73,7 @@ export function estimateGenerationCost(input: {
   const assumptions = [
     avgTokens > 0 ? "Text estimate uses recent average tokens per post." : "Text estimate uses article word count heuristic.",
     manualPromptMode
-      ? "Manual image mode creates one prompt at $0 image generation cost."
+      ? "Manual image mode creates Midjourney prompt slots at $0 image generation cost."
       : input.imageConfig.cover.enabled ? "Cover uses the OpenRouter image model." : "Cover image is off.",
     manualPromptMode
       ? "Cover and inline image generation are skipped until a manual image is imported."

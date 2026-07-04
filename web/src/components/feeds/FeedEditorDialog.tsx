@@ -216,6 +216,7 @@ export function FeedEditorDialog({
   const platform = normalizePlatform(editedFeed.platform);
   const platformConfig = editedFeed.platform_config || {};
   const availableFilterTypes = filterTypesForPlatform(platform, editedFeed.filter_type);
+  const imageSectionTitle = activeImageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
 
   const setPlatformConfig = (updates: Record<string, unknown>) => {
     setEditedFeed({
@@ -674,7 +675,7 @@ export function FeedEditorDialog({
             <section className="space-y-4">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                 <ImageIcon className="h-4 w-4" />
-                Image Generation
+                {imageSectionTitle}
               </h3>
               <SplitImageGenerationSettings
                 config={imageConfig}
@@ -869,7 +870,7 @@ export function FeedEditorDialog({
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                Run Now
+                {activeImageDeliveryMode === "manual_prompt" ? "Run + Prompts" : "Run Now"}
               </Button>
 
               <Button variant="outline" onClick={onClose}>
