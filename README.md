@@ -2,6 +2,12 @@
 
 AI-assisted content operations for generating, managing, scheduling, and publishing blog posts across sites.
 
+## Product UI Direction
+
+BlogFactory is styled as a white Device Console SaaS for content operations. The interface uses off-white workspaces, white hardware-like panels, graphite text, pale gray hairlines, orange primary action controls, blue links/navigation emphasis, black secondary controls, and restrained green/red/yellow status accents.
+
+The app should feel like a dense blog factory control surface, not a landing page or decorative game UI. Shared UI decisions live in `UI_UX.md`; agents and contributors should read it before changing frontend styling.
+
 ## Stack
 
 | Layer    | Tech                                         |
@@ -34,6 +40,8 @@ AI-assisted content operations for generating, managing, scheduling, and publish
 │
 ├── vercel.json           # Vercel build, functions, and routing config
 ├── wrangler.cron.jsonc   # Cloudflare Worker cron config
+├── UI_UX.md              # Product UI direction and frontend UX rules
+├── AGENTS.md             # Agent working context and implementation rules
 ├── package.json          # Root npm workspaces and scripts
 └── .env.example          # Copy to .env and fill in local values
 ```
@@ -87,6 +95,9 @@ npm run dev --workspace=server
 # Build frontend
 npm run build
 
+# Run frontend tests
+npm run test --workspace=web
+
 # Generate a migration from schema changes
 npm run db:generate
 
@@ -124,6 +135,14 @@ OpenRouter, Google Gemini, and publishing integration credentials are stored per
 Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through the single serverless entrypoint at `api/index.ts`, which loads the Hono backend from `server/src/index.ts`.
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
+
+## Contributor Notes
+
+- Keep API shapes, route behavior, and database schema stable unless the change explicitly needs them.
+- Prefer shared surfaces and shadcn-style primitives before adding page-specific UI.
+- URL/domain inputs should use `InputAffordance` and helpers from `web/src/lib/url-validation.ts`.
+- For frontend work, run `npm run build`, `npm run test --workspace=web`, and `git diff --check`.
+- If local `/api/*` calls return `HTTP 500` because the backend environment is unavailable, do not block UI-only work on that.
 
 ## Background Cron
 

@@ -5,8 +5,9 @@ This repo is BlogFactory: an AI-assisted content operations platform for generat
 ## Read First
 
 - `README.md` has setup, stack, environment variables, and deployment notes.
-- `UI_UX.md` has the current product UX rules and the input-affordance direction.
+- `UI_UX.md` has the current product UX rules, white device-console direction, and input-affordance rules.
 - Prefer the existing app patterns over new abstractions. Keep diffs small.
+- When the user asks to push, ship, merge, or otherwise finish GitHub work, do it directly instead of asking whether to open a PR, push a branch, or merge. Only stop for missing credentials, failing checks that need product judgment, or destructive operations that were not requested.
 
 ## Stack
 
@@ -47,10 +48,14 @@ web/src/lib/url-validation.ts URL helpers and source validation
 ## UI Rules
 
 - Use `BywordPageShell`, `BywordCard`, `SectionHeader`, and existing shadcn-style primitives before adding new surfaces.
+- The default app theme is white BlogFactory Device Console: off-white workspace, white panels, graphite text, pale gray hairlines, TE-style blue links, orange primary actions, black secondary controls, and green/red/yellow status accents.
+- Keep the factory identity subtle through assembly labels, rails, panel dividers, status language, dense tables, and technical drawing textures. Do not bring back the dark retro/pixel theme unless explicitly requested.
 - URL/domain fields should use `InputAffordance` and helpers from `web/src/lib/url-validation.ts`.
 - Prefer affordance and short helper text over long instructions.
 - Do not add fake controls. If a search/command/control is visible, it must work.
 - Keep operational screens dense, calm, and task-focused. No landing-page treatment inside the app.
+- UI-only theme work should stay mostly in `web/src/index.css`, Tailwind tokens, shadcn-style primitives, and `web/src/components/layout/BywordSurface.tsx`; touch page-specific classes only when they bypass the shared system.
+- Maintain compact radii, crisp borders, readable focus states, and responsive long-text wrapping.
 
 ## Commands
 
@@ -77,3 +82,4 @@ npm run db:generate --workspace=server
 - Use existing routes, hooks, and API client patterns.
 - For frontend changes, verify `npm run build` and the smallest relevant test command.
 - For non-trivial helper logic, leave a focused test.
+- If local API proxy calls return `HTTP 500` because the backend or environment is unavailable, do not block UI-only work on that. Verify build/tests and note backend-dependent routes separately.
