@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ import { GalleryBulkActions } from "@/components/gallery/GalleryBulkActions";
 import { ImageDetailDrawer } from "@/components/gallery/ImageDetailDrawer";
 import { imageProviderName, isStockProvider } from "@/lib/image-labels";
 import { toast } from "sonner";
+
+const REQUESTS_PER_PAGE = 6;
 
 function providerUrl(provider: string) {
   if (provider.includes("midjourney")) return "https://www.midjourney.com/imagine";
@@ -206,6 +208,7 @@ export default function ImageGallery() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailImage, setDetailImage] = useState<ImageAsset | null>(null);
   const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
+  const [requestPage, setRequestPage] = useState(1);
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
@@ -239,15 +242,26 @@ export default function ImageGallery() {
     }
     return counts;
   }, [imageRequests]);
-  const visibleRequests = useMemo(
+  const activeRequests = useMemo(
     () => imageRequests.filter((request) => request.status !== "done"),
     [imageRequests]
   );
+  const requestPageCount = Math.max(1, Math.ceil(imageRequests.length / REQUESTS_PER_PAGE));
+  const paginatedRequests = useMemo(() => {
+    const start = (requestPage - 1) * REQUESTS_PER_PAGE;
+    return imageRequests.slice(start, start + REQUESTS_PER_PAGE);
+  }, [imageRequests, requestPage]);
+  const requestRangeStart = imageRequests.length ? (requestPage - 1) * REQUESTS_PER_PAGE + 1 : 0;
+  const requestRangeEnd = imageRequests.length ? Math.min(requestPage * REQUESTS_PER_PAGE, imageRequests.length) : 0;
   const stockProviderUnavailable = useMemo(
-    () => visibleRequests.some((request) => request.status === "failed" && request.provider !== "ai-deferred"),
-    [visibleRequests]
+    () => activeRequests.some((request) => request.status === "failed" && request.provider !== "ai-deferred"),
+    [activeRequests]
   );
   const emptyState = galleryEmptyState(filters, requestCounts, stockProviderUnavailable);
+
+  useEffect(() => {
+    setRequestPage((page) => Math.min(page, requestPageCount));
+  }, [requestPageCount]);
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -312,7 +326,7 @@ export default function ImageGallery() {
       </div>
 
       {/* Filters */}
-      {visibleRequests.length > 0 && (
+      {imageRequests.length > 0 && (
         <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between">
             <div>
@@ -326,7 +340,9 @@ export default function ImageGallery() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">{visibleRequests.length} active request{visibleRequests.length === 1 ? "" : "s"}</span>
+              <span className="text-xs text-muted-foreground">
+                {activeRequests.length} active · {imageRequests.length} total
+              </span>
               <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.aiQueued < 1}>
                 {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Process
@@ -334,7 +350,7 @@ export default function ImageGallery() {
             </div>
           </div>
           <div className="mt-3 grid gap-2">
-            {visibleRequests.map((request) => (
+            {paginatedRequests.map((request) => (
               <ImageRequestCard
                 key={request.id}
                 request={request}
@@ -349,6 +365,34 @@ export default function ImageGallery() {
               />
             ))}
           </div>
+          {requestPageCount > 1 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+              <p className="text-xs text-muted-foreground">
+                Showing {requestRangeStart}-{requestRangeEnd} of {imageRequests.length} requests
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRequestPage((page) => Math.max(1, page - 1))}
+                  disabled={requestPage === 1}
+                >
+                  Previous
+                </Button>
+                <Badge variant="outline" className="text-[10px]">
+                  Page {requestPage} of {requestPageCount}
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRequestPage((page) => Math.min(requestPageCount, page + 1))}
+                  disabled={requestPage === requestPageCount}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
