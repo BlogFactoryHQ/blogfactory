@@ -45,3 +45,16 @@ export function sourceTypeForPlatform(platform?: string) {
 export function platformLabel(platform?: string) {
   return PLATFORMS.find((item) => item.id === platform)?.name || "RSS Feed";
 }
+
+export function filterTypesForPlatform(platform?: string, currentFilterType?: string) {
+  const supportsScoreFilters = platform === "reddit" || platform === "hackernews" || platform === "github";
+  const visible = FILTER_TYPES.filter((item) => {
+    if (item.id === "posts_per_day") return item.id === currentFilterType;
+    return item.id === "none" || supportsScoreFilters;
+  });
+  if (currentFilterType && !visible.some((item) => item.id === currentFilterType)) {
+    const current = FILTER_TYPES.find((item) => item.id === currentFilterType);
+    if (current) return [...visible, current];
+  }
+  return visible;
+}

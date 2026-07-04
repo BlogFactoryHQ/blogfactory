@@ -26,6 +26,10 @@ interface GenerateOpts {
   modelId?: string;
   personaId?: string | null;
   variations?: number;
+  postsPerRun?: number;
+  filterType?: string;
+  filterValue?: number | null;
+  keywords?: string[] | string | null;
   draftBatchId?: string;
   draftVariationIndex?: number;
   draftVariationCount?: number;
@@ -76,7 +80,7 @@ interface GenerateOpts {
 
 type UserSettingsRecord = typeof userSettings.$inferSelect;
 type GenerationSettings = Partial<UserSettingsRecord> & Record<string, any>;
-type SourceArticle = { title: string; content: string; url?: string; hash?: string; sportsDecision?: SportsNewsDecision; variationIndex?: number; variationCount?: number };
+type SourceArticle = { title: string; content: string; url?: string; hash?: string; pubDate?: string; sportsDecision?: SportsNewsDecision; variationIndex?: number; variationCount?: number };
 type SeoQaCheck = { label: string; ok: boolean | null; detail: string };
 type GenerationContract = ReturnType<typeof resolveGenerationContract>;
 export type SeoPackage = {
@@ -138,6 +142,7 @@ const SEO_META_TITLE_LIMIT = 60;
 const SEO_META_DESCRIPTION_LIMIT = 145;
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"]);
+const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
 const FAQ_TARGET: [number, number] = [3, 5];
 const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
   minimal: [1, 2],
@@ -356,9 +361,22 @@ function supportsDraftVariations(sourceType: string) {
   return ["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf"].includes(sourceType);
 }
 
+function isFeedSource(sourceType: string) {
+  return FEED_SOURCE_TYPES.has(sourceType);
+}
+
 function variationCount(value: unknown) {
   const count = Math.round(Number(value));
   return Number.isFinite(count) ? Math.max(1, Math.min(count, 5)) : 1;
+}
+
+export function feedSourceItemCount(value: unknown) {
+  const count = Math.round(Number(value));
+  return Number.isFinite(count) ? Math.max(1, Math.min(count, 20)) : 5;
+}
+
+export function feedCandidateItemCount(requested: number) {
+  return Math.max(requested, Math.min(50, requested * 4));
 }
 
 export function expandDraftVariations(
@@ -407,6 +425,84 @@ function settingNumber(settings: GenerationSettings | undefined, camel: string, 
   const value = settingValue(settings, camel, snake);
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function feedArticleContentHash(article: SourceArticle, effectiveOpts: GenerateOpts) {
+  return hashContent(article.content + article.title + buildArticleExtras(effectiveOpts));
+}
+
+async function filterNewFeedArticles(
+  userId: string,
+  articles: SourceArticle[],
+  effectiveOpts: GenerateOpts,
+  requestedCount: number
+) {
+  const selected: SourceArticle[] = [];
+  const skipped: Array<{ title: string; url?: string; reason: string }> = [];
+  const seenHashes = new Set<string>();
+
+  for (const article of articles) {
+    const contentHash = feedArticleContentHash(article, effectiveOpts);
+    if (seenHashes.has(contentHash)) {
+      skipped.push({ title: article.title || "Untitled", url: article.url, reason: "Duplicate in fetched source batch" });
+      continue;
+    }
+    seenHashes.add(contentHash);
+
+    if (article.url) {
+      const existingByUrl = await db.select({ id: posts.id }).from(posts)
+        .where(and(eq(posts.userId, userId), eq(posts.sourceRefId, article.url)))
+        .limit(1);
+      if (existingByUrl.length > 0) {
+        skipped.push({ title: article.title || "Untitled", url: article.url, reason: "Source URL already generated" });
+        continue;
+      }
+    }
+
+    const existing = await db.select({ id: posts.id }).from(posts)
+      .where(and(eq(posts.userId, userId), eq(posts.sourceContentHash, contentHash)))
+      .limit(1);
+    if (existing.length > 0) {
+      skipped.push({ title: article.title || "Untitled", url: article.url, reason: "Already generated" });
+      continue;
+    }
+
+    selected.push(article);
+    if (selected.length >= requestedCount) break;
+  }
+
+  return { articles: selected, skipped };
+}
+
+async function hydrateFeedArticlesWithFullText(userId: string, articles: SourceArticle[], modelId: string) {
+  const hydrated: SourceArticle[] = [];
+
+  for (const article of articles) {
+    if (!article.url || !/^https?:\/\//i.test(article.url)) {
+      hydrated.push(article);
+      continue;
+    }
+
+    try {
+      const extracted = await extractContent({
+        userId,
+        sourceType: "url",
+        sourceValue: article.url,
+        extractModel: modelId,
+      });
+      const extractedContent = (extracted.content || "").trim();
+      hydrated.push({
+        ...article,
+        title: extracted.title || article.title,
+        content: extractedContent.length > article.content.length ? extractedContent : article.content,
+      });
+    } catch (error) {
+      console.warn("[generate] Full-text extraction failed for feed item:", article.url, error instanceof Error ? error.message : error);
+      hydrated.push(article);
+    }
+  }
+
+  return hydrated;
 }
 
 function imageAdvancedOptions(settings?: GenerationSettings) {
@@ -1187,6 +1283,18 @@ export async function generateContent(opts: GenerateOpts) {
     const modelId = opts.modelId || personaModel;
     await assertOpenRouterModelAvailable(openRouterKey, modelId);
 
+    const [feedRecord] = opts.feedId
+      ? await db.select().from(feeds).where(and(eq(feeds.id, opts.feedId), eq(feeds.userId, userId))).limit(1)
+      : [];
+
+    const sourceValue = opts.sourceValue || feedRecord?.sourceUrl || "";
+    const feedFilterType = opts.filterType ?? feedRecord?.filterType ?? "none";
+    const feedFilterValue = opts.filterValue ?? feedRecord?.filterValue ?? undefined;
+    const feedKeywords = normalizeList(opts.keywords ?? feedRecord?.keywords, 25);
+    const feedPlatformConfig = { ...(feedRecord?.platformConfig && typeof feedRecord.platformConfig === "object" ? feedRecord.platformConfig as Record<string, unknown> : {}), ...(opts.platformConfig || {}) };
+    const feedFilterOldPostsDays = opts.filterOldPostsDays ?? feedRecord?.filterOldPostsDays ?? undefined;
+    const feedExtractFullContent = opts.extractFullContent ?? feedRecord?.extractFullContent ?? false;
+
     // Update feed last_run_at
     if (opts.feedId) {
       await db.update(feeds).set({ lastRunAt: new Date() }).where(eq(feeds.id, opts.feedId));
@@ -1196,17 +1304,26 @@ export async function generateContent(opts: GenerateOpts) {
 
     // Fetch source content
     let articles: SourceArticle[] = [];
+    const requestedSourceItems = isFeedSource(opts.sourceType)
+      ? feedSourceItemCount(opts.postsPerRun ?? feedRecord?.postsPerRun ?? opts.variations)
+      : null;
+    const feedCandidateLimit = requestedSourceItems ? feedCandidateItemCount(requestedSourceItems) : 0;
+    let fetchedSourceItemCount = 0;
+    let skippedSourceItems: Array<{ title: string; url?: string; reason: string }> = [];
 
     if (opts.sourceType === "rss_feed") {
       // Fetch and parse RSS feed
-      articles = await fetchRssArticles(opts.sourceValue, opts.variations || 5, opts.filterOldPostsDays);
+      articles = await fetchRssArticles(sourceValue, feedCandidateLimit, feedFilterOldPostsDays, feedKeywords);
     } else if (opts.sourceType === "reddit" || opts.sourceType === "hackernews" || opts.sourceType === "github") {
       const social = await fetchSocialContent({
-        sourceUrl: opts.sourceValue,
+        sourceUrl: sourceValue,
         platform: opts.sourceType,
-        platformConfig: opts.platformConfig || {},
-        limit: opts.variations || 5,
-        filterOldPostsDays: opts.filterOldPostsDays,
+        platformConfig: feedPlatformConfig,
+        limit: feedCandidateLimit,
+        filterOldPostsDays: feedFilterOldPostsDays,
+        filterType: feedFilterType,
+        filterValue: feedFilterValue ?? undefined,
+        keywords: feedKeywords,
       });
       articles = social.items.map((item) => ({
         title: item.title,
@@ -1233,6 +1350,21 @@ export async function generateContent(opts: GenerateOpts) {
         title: opts.campaignArticle.title || opts.campaignArticle.keyword || "",
         content: buildCampaignUserMessage(opts.campaignArticle),
       }];
+    }
+    fetchedSourceItemCount = isFeedSource(opts.sourceType) ? articles.length : 0;
+
+    if (requestedSourceItems) {
+      const filtered = await filterNewFeedArticles(userId, articles, effectiveOpts, requestedSourceItems);
+      articles = filtered.articles;
+      skippedSourceItems = filtered.skipped;
+    }
+
+    if (feedExtractFullContent && isFeedSource(opts.sourceType) && articles.length) {
+      await db.update(jobs).set({ currentStep: "extracting_full_text" }).where(eq(jobs.id, jobId));
+      articles = await hydrateFeedArticlesWithFullText(userId, articles, modelId);
+      const filtered = await filterNewFeedArticles(userId, articles, effectiveOpts, requestedSourceItems || articles.length);
+      articles = filtered.articles;
+      skippedSourceItems = [...skippedSourceItems, ...filtered.skipped];
     }
 
     if (isArticleSource(opts.sourceType) && !opts.draftVariationCount) {
@@ -1261,20 +1393,31 @@ export async function generateContent(opts: GenerateOpts) {
     });
 
     if (!articles.length) {
-      await db.update(jobs).set({ status: "completed", currentStep: "done", completedAt: new Date() }).where(eq(jobs.id, jobId));
+      await db.update(jobs).set({
+        status: "completed",
+        currentStep: "done",
+        generationPlan: {
+          totalDrafts: 0,
+          articles: [],
+          requestedSourceItems,
+          fetchedSourceItems: fetchedSourceItemCount,
+          skippedSourceItems,
+        },
+        completedAt: new Date(),
+      }).where(eq(jobs.id, jobId));
       return { jobId, status: "completed", posts: [] };
     }
 
     const sportsSkipped: Array<{ title: string; url?: string; reason?: string; sourceName?: string }> = [];
-    if (isSportsNewsMode(opts.platformConfig)) {
+    if (isSportsNewsMode(feedPlatformConfig)) {
       const matrixRows = sportsMatrixRowsFromSettings(promptSettings);
       articles = articles.flatMap((article) => {
         const decision = classifySportsNews({
           title: article.title,
           content: article.content,
           url: article.url,
-          sourceValue: opts.sourceValue,
-          platformConfig: opts.platformConfig,
+          sourceValue,
+          platformConfig: feedPlatformConfig,
           matrixRows,
         });
         if (!decision.allowed) {
@@ -1295,19 +1438,35 @@ export async function generateContent(opts: GenerateOpts) {
         ? sportsSkipped.map((item) => item.reason).filter(Boolean)[0] || "No news items matched the matrix."
         : "No drafts were created from this source.";
       await db.update(jobs).set({
-        status: "failed",
+        status: skippedSourceItems.length && !sportsSkipped.length ? "completed" : "failed",
         currentStep: "done",
-        errorMessage: message,
-        generationPlan: { totalDrafts: 0, articles: [], skippedSportsNews: sportsSkipped },
+        errorMessage: skippedSourceItems.length && !sportsSkipped.length ? null : message,
+        generationError: skippedSourceItems.length && !sportsSkipped.length ? null : message,
+        generationPlan: {
+          totalDrafts: 0,
+          articles: [],
+          requestedSourceItems,
+          fetchedSourceItems: fetchedSourceItemCount,
+          skippedSourceItems,
+          skippedSportsNews: sportsSkipped,
+        },
         resultPostIds: [],
         completedAt: new Date(),
       }).where(eq(jobs.id, jobId));
-      return { jobId, status: "failed", error: message, postIds: [] };
+      return {
+        jobId,
+        status: skippedSourceItems.length && !sportsSkipped.length ? "completed" : "failed",
+        error: skippedSourceItems.length && !sportsSkipped.length ? undefined : message,
+        postIds: [],
+      };
     }
 
     const generationPlan = {
       totalDrafts: articles.length,
       articles: articles.map(a => ({ title: a.title || "Untitled", url: a.url, sportsLabel: a.sportsDecision?.label })),
+      requestedSourceItems,
+      fetchedSourceItems: fetchedSourceItemCount,
+      skippedSourceItems,
       batchId: opts.draftBatchId || null,
       variationIndex: opts.draftVariationIndex || null,
       variationCount: opts.draftVariationCount || null,
@@ -1626,13 +1785,13 @@ export async function generateContent(opts: GenerateOpts) {
   }
 }
 
-async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: number) {
+async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: number, keywords: string[] = []) {
   try {
     const resp = await fetch(feedUrl, { signal: AbortSignal.timeout(RSS_FETCH_TIMEOUT_MS) });
     const text = await resp.text();
 
     // Simple RSS/Atom parsing
-    const items: Array<{ title: string; content: string; url?: string; hash?: string; pubDate?: Date }> = [];
+    const items: SourceArticle[] = [];
 
     // Extract items from RSS
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -1640,13 +1799,22 @@ async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: 
 
     let match;
     const regex = text.includes("<entry>") ? entryRegex : itemRegex;
+    const keywordNeedles = keywords.map((keyword) => keyword.toLowerCase()).filter(Boolean);
+    let scanned = 0;
+    const maxScan = Math.max(50, Math.min(200, limit * 5));
 
-    while ((match = regex.exec(text)) !== null && items.length < limit) {
+    while ((match = regex.exec(text)) !== null && scanned < maxScan) {
+      scanned += 1;
       const itemXml = match[1];
       const title = extractTag(itemXml, "title");
       const link = extractTag(itemXml, "link") || extractAttr(itemXml, "link", "href");
       const description = extractTag(itemXml, "description") || extractTag(itemXml, "summary") || extractTag(itemXml, "content:encoded") || extractTag(itemXml, "content");
       const pubDate = extractTag(itemXml, "pubDate") || extractTag(itemXml, "published") || extractTag(itemXml, "updated");
+      const content = stripHtml(description || "");
+      if (keywordNeedles.length) {
+        const searchable = `${title} ${content}`.toLowerCase();
+        if (!keywordNeedles.some((keyword) => searchable.includes(keyword))) continue;
+      }
       if (filterOldDays && pubDate) {
         const articleDate = new Date(pubDate);
         const cutoff = new Date(Date.now() - filterOldDays * 24 * 60 * 60 * 1000);
@@ -1655,12 +1823,18 @@ async function fetchRssArticles(feedUrl: string, limit: number, filterOldDays?: 
 
       items.push({
         title: title || "Untitled",
-        content: stripHtml(description || ""),
+        content,
         url: link || undefined,
+        pubDate: pubDate || undefined,
       });
     }
 
-    return items;
+    return items
+      .sort((a, b) => {
+        if (!a.pubDate || !b.pubDate) return 0;
+        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      })
+      .slice(0, limit);
   } catch (err) {
     console.error("[generate] RSS fetch error:", err);
     return [];
