@@ -152,10 +152,10 @@
   .factory-grid-bg {
     background-color: hsl(var(--background));
     background-image:
-      linear-gradient(hsl(210 5% 20% / 0.038) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(210 5% 20% / 0.038) 1px, transparent 1px),
+      linear-gradient(hsl(210 5% 20% / 0.026) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(210 5% 20% / 0.026) 1px, transparent 1px),
       radial-gradient(circle at 50% 0, hsl(0 0% 100% / 0.9), transparent 32rem);
-    background-size: 36px 36px, 36px 36px, auto;
+    background-size: 40px 40px, 40px 40px, auto;
   }
 
   .factory-scanlines {

@@ -120,7 +120,7 @@ export function OptionCard({
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
-      <div className="absolute inset-x-0 top-0 h-1 pixel-edge text-primary opacity-60" aria-hidden="true" />
+      <div className="absolute inset-x-0 top-0 h-1 pixel-edge text-foreground/25" aria-hidden="true" />
       {badge && (
         <span className="absolute right-5 top-5 rounded-sm border border-byword-border bg-muted px-2 py-1 font-mono text-[10px] font-bold uppercase text-muted-foreground">
           {badge}

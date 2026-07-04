@@ -133,89 +133,105 @@ export function AppSidebar() {
           </div>
           {!isCollapsed && (
             <DropdownMenu>
-            <DropdownMenuTrigger asChild disabled={isCollapsed}>
-              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
-                  <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold leading-tight text-foreground">{workspaceName}</p>
-                  <p className="truncate text-[10px] leading-tight text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
-                </div>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-md border-byword-border p-3">
-              {activeSite && (
-                <>
-                  <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                    Current domain
-                  </DropdownMenuLabel>
-                  <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft p-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue">
-                      <span className="text-sm font-bold">{workspaceInitial}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-foreground">{activeSite.domain}</p>
-                      <p className="text-sm text-muted-foreground">Active</p>
-                    </div>
-                    <Check className="h-5 w-5 text-byword-blue" />
+              <DropdownMenuTrigger asChild disabled={isCollapsed}>
+                <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
+                    <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                   </div>
-                </>
-              )}
-
-              <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Switch to
-              </DropdownMenuLabel>
-              <div className="max-h-64 overflow-y-auto">
-                {sites.filter((site) => site.id !== activeSiteId).map((site) => (
-                  <DropdownMenuItem
-                    key={site.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-3"
-                    onClick={() => activateSite(site.id)}
-                  >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border text-byword-blue">
-                      <span className="text-xs font-bold">{site.name.charAt(0).toUpperCase()}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold leading-tight text-foreground">{workspaceName}</p>
+                    <p className="truncate text-[10px] leading-tight text-sidebar-muted">{activeSite ? "Active site" : "BlogFactory"}</p>
+                  </div>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-md border-byword-border p-3">
+                {activeSite && (
+                  <>
+                    <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                      Current domain
+                    </DropdownMenuLabel>
+                    <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft p-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue">
+                        <span className="text-sm font-bold">{workspaceInitial}</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-foreground">{activeSite.domain}</p>
+                        <p className="text-sm text-muted-foreground">Active</p>
+                      </div>
+                      <Check className="h-5 w-5 text-byword-blue" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{site.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{site.domain}</p>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-                {sites.length <= 1 && (
-                  <p className="px-3 py-3 text-sm text-muted-foreground">No other sites connected yet.</p>
+                  </>
                 )}
-              </div>
-              <DropdownMenuSeparator />
-              <div className="grid grid-cols-2 gap-2 p-1">
-                <DropdownMenuItem
-                  className="cursor-pointer justify-center gap-2 rounded-sm border border-transparent py-2"
-                  onClick={() => navigate("/sites")}
-                >
-                  <Settings className="h-4 w-4" />
-                  Manage
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer justify-center gap-2 rounded-sm border border-dashed border-byword-border py-2"
-                  onClick={() => navigate("/sites")}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add
-                </DropdownMenuItem>
-              </div>
-            </DropdownMenuContent>
+
+                <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Switch to
+                </DropdownMenuLabel>
+                <div className="max-h-64 overflow-y-auto">
+                  {sites.filter((site) => site.id !== activeSiteId).map((site) => (
+                    <DropdownMenuItem
+                      key={site.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-3"
+                      onClick={() => activateSite(site.id)}
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border text-byword-blue">
+                        <span className="text-xs font-bold">{site.name.charAt(0).toUpperCase()}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{site.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{site.domain}</p>
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                  {sites.length <= 1 && (
+                    <p className="px-3 py-3 text-sm text-muted-foreground">No other sites connected yet.</p>
+                  )}
+                </div>
+                <DropdownMenuSeparator />
+                <div className="grid grid-cols-2 gap-2 p-1">
+                  <DropdownMenuItem
+                    className="cursor-pointer justify-center gap-2 rounded-sm border border-transparent py-2"
+                    onClick={() => navigate("/sites")}
+                  >
+                    <Settings className="h-4 w-4" />
+                    Manage
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer justify-center gap-2 rounded-sm border border-dashed border-byword-border py-2"
+                    onClick={() => navigate("/sites")}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </DropdownMenuItem>
+                </div>
+              </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <button
-            type="button"
-            onClick={openSearch}
-            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1", isCollapsed && "hidden")}
-          >
-            <Search className="h-4 w-4" />
-            <span className="flex-1">Search</span>
-            <span className="text-[11px] text-muted-foreground/60">⌘K</span>
-          </button>
+          {isCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={openSearch}
+                  className="flex h-10 w-10 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+                  aria-label="Search pages"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">Search</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={openSearch}
+              className="flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+            >
+              <Search className="h-4 w-4" />
+              <span className="flex-1">Search</span>
+              <span className="text-[11px] text-muted-foreground/60">⌘K</span>
+            </button>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
@@ -332,18 +348,21 @@ function SidebarSection({
           const inner = (
             <div
               className={cn(
-                "flex h-8 items-center overflow-hidden rounded-sm border-l-2 transition-calm",
+                "flex items-center overflow-hidden rounded-sm transition-calm",
+                isCollapsed ? "h-10 justify-center border" : "h-8 border-l-2",
                 isActive
                   ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
                   : "border-transparent text-sidebar-foreground hover:border-sidebar-border hover:bg-card/85 hover:text-sidebar-accent-foreground"
               )}
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+              <div className={cn("flex shrink-0 items-center justify-center", isCollapsed ? "h-10 w-10" : "h-8 w-8")}>
                 <item.icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.5} />
               </div>
-              <span className="shrink-0 whitespace-nowrap pr-2 text-[13px] font-medium">
-                {item.name}
-              </span>
+              {!isCollapsed && (
+                <span className="shrink-0 whitespace-nowrap pr-2 text-[13px] font-medium">
+                  {item.name}
+                </span>
+              )}
             </div>
           );
 
