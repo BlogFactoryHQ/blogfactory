@@ -226,6 +226,20 @@ campaignsRoutes.post("/:id/start", async (c) => {
   return c.json({ campaign });
 });
 
+campaignsRoutes.post("/:id/run-next", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const [existing] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
+  if (!existing) return c.json({ error: "Campaign not found" }, 404);
+  if (existing.status !== "running") {
+    return c.json({ error: "Campaign must be running to process the next batch" }, 409);
+  }
+
+  const processed = await runCampaign(id, { maxItems: 3 });
+  const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
+  return c.json({ campaign, processed: processed || 0 });
+});
+
 campaignsRoutes.post("/:id/stop", async (c) => {
   const userId = getUserId(c);
   const stopped = await stopCampaign(c.req.param("id"), userId);

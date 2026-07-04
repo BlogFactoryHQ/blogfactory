@@ -237,6 +237,7 @@ function CampaignDetail({ id }: { id: string }) {
 
   const { campaign, items, history = [] } = data;
   const failedCount = items.filter((item) => item.status === "failed").length;
+  const queuedCount = items.filter((item) => item.status === "queued").length;
   const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
   const resumableCount = items.filter((item) => item.status === "stopped").length;
 
@@ -255,9 +256,16 @@ function CampaignDetail({ id }: { id: string }) {
             </Button>
           )}
           {campaign.status === "running" && (
-            <Button variant="outline" onClick={() => action.mutate(`/campaigns/${campaign.id}/stop`)} disabled={action.isPending}>
-              <StopCircle className="mr-2 h-4 w-4" />Stop
-            </Button>
+            <>
+              {queuedCount > 0 && (
+                <Button onClick={() => action.mutate(`/campaigns/${campaign.id}/run-next`)} disabled={action.isPending}>
+                  <Play className="mr-2 h-4 w-4" />Run Next Batch
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => action.mutate(`/campaigns/${campaign.id}/stop`)} disabled={action.isPending}>
+                <StopCircle className="mr-2 h-4 w-4" />Stop
+              </Button>
+            </>
           )}
           {failedCount > 0 && (
             <Button variant="outline" onClick={() => action.mutate(`/campaigns/${campaign.id}/retry-failed`)} disabled={action.isPending}>
