@@ -81,7 +81,7 @@ interface FeedEditorDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (feed: Feed) => void;
-  onRunNow: (feed: Feed, imageConfig?: SplitImageConfig) => void;
+  onRunNow: (feed: Feed, imageConfig?: SplitImageConfig, imageDeliveryMode?: ImageDeliveryMode) => void;
   onDelete: (feed: Feed) => void;
   isSaving: boolean;
   isRunning: boolean;
@@ -188,6 +188,7 @@ export function FeedEditorDialog({
   const { data: textModels = [] } = useTextModels();
   const [editedFeed, setEditedFeed] = useState<Feed | null>(null);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
+  const [activeImageDeliveryMode, setActiveImageDeliveryMode] = useState<ImageDeliveryMode>(imageDeliveryMode);
   const [keywordInput, setKeywordInput] = useState("");
 
   // Sync local state when dialog opens with a feed
@@ -202,12 +203,13 @@ export function FeedEditorDialog({
         platform_config: normalizedConfigFor(platform, feed),
       });
       setImageConfig(defaultImageConfig ?? DEFAULT_SPLIT_CONFIG);
+      setActiveImageDeliveryMode(imageDeliveryMode);
       setKeywordInput("");
     } else if (!isOpen) {
       setEditedFeed(null);
       setKeywordInput("");
     }
-  }, [isOpen, feed?.id, defaultImageConfig]);
+  }, [isOpen, feed?.id, defaultImageConfig, imageDeliveryMode]);
 
   if (!editedFeed) return null;
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
@@ -269,7 +271,7 @@ export function FeedEditorDialog({
 
   const handleRunNow = () => {
     if (selectedModelUnavailable || validationError) return;
-    onRunNow(buildPersistedFeed(), imageConfig);
+    onRunNow(buildPersistedFeed(), imageConfig, activeImageDeliveryMode);
   };
 
   return (
@@ -679,8 +681,9 @@ export function FeedEditorDialog({
                 onConfigChange={setImageConfig}
                 compact
                 inlineImageSource={inlineImageSource}
-                imageDeliveryMode={imageDeliveryMode}
+                imageDeliveryMode={activeImageDeliveryMode}
                 manualImageProvider={manualImageProvider}
+                onImageDeliveryModeChange={setActiveImageDeliveryMode}
               />
             </section>
 

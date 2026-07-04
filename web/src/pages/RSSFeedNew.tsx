@@ -263,6 +263,8 @@ export default function RSSFeedNew() {
       if (runNow && personaId) {
         // Trigger content generation immediately
         try {
+          const inlineEnabled = imageConfig.inline.enabled && imageConfig.inline.count > 0;
+          const imagesEnabled = imageConfig.cover.enabled || inlineEnabled;
           await api.post("/content/generate", {
             sourceType: sourceTypeForPlatform(platform),
             sourceValue: feedSourceUrl,
@@ -277,12 +279,12 @@ export default function RSSFeedNew() {
             keywords: keywords.length > 0 ? keywords : undefined,
             extractFullContent,
             filterOldPostsDays: filterOldPostsDays || undefined,
-            generateImages: imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0),
+            generateImages: imagesEnabled,
             imageDeliveryMode,
             manualImageProvider,
-            imageConfig: (imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0)) ? {
+            imageConfig: imagesEnabled ? {
               cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
-              inline: imageConfig.inline.enabled ? {
+              inline: inlineEnabled ? {
                 count: imageConfig.inline.count,
                 resolution: imageConfig.inline.resolution || "1K",
               } : null,

@@ -270,7 +270,7 @@ export default function RSSFeeds() {
 
   // Run feed now mutation
   const runFeedMutation = useMutation({
-    mutationFn: async ({ feed, imgConfig }: { feed: Feed; imgConfig?: SplitImageConfig }) => {
+    mutationFn: async ({ feed, imgConfig, imageMode }: { feed: Feed; imgConfig?: SplitImageConfig; imageMode?: ImageDeliveryMode }) => {
       setRunningFeedId(feed.id);
 
       const ic = imgConfig ?? defaultImageConfig;
@@ -292,7 +292,7 @@ export default function RSSFeeds() {
         filterOldPostsDays: feed.filter_old_posts_days || undefined,
         platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
-        imageDeliveryMode: defaultImageDeliveryMode,
+        imageDeliveryMode: imageMode ?? defaultImageDeliveryMode,
         manualImageProvider: defaultManualImageProvider,
         imageConfig: imagesEnabled ? {
           cover: ic.cover.enabled ? { resolution: ic.cover.resolution || "1K" } : null,
@@ -373,8 +373,8 @@ export default function RSSFeeds() {
     updateFeedMutation.mutate(feed);
   };
 
-  const handleRunNow = (feed: Feed, imgConfig?: SplitImageConfig) => {
-    runFeedMutation.mutate({ feed, imgConfig });
+  const handleRunNow = (feed: Feed, imgConfig?: SplitImageConfig, imageDeliveryMode?: ImageDeliveryMode) => {
+    runFeedMutation.mutate({ feed, imgConfig, imageMode: imageDeliveryMode });
   };
 
   const handleDelete = (feed: Feed) => {
