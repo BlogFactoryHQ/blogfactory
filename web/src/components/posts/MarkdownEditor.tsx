@@ -350,8 +350,8 @@ export function MarkdownEditor({
     <div
       ref={editorRef}
       className={cn(
-        "flex flex-col rounded-lg border border-border bg-background overflow-hidden",
-        isFullscreen && "fixed inset-4 z-50 shadow-2xl",
+        "flex flex-col overflow-hidden rounded-md border border-border bg-background factory-panel",
+        isFullscreen && "fixed inset-4 z-50 shadow-[0_24px_60px_hsl(210_5%_20%/0.18)]",
         className
       )}
     >
@@ -535,7 +535,7 @@ export function MarkdownEditor({
               viewMode === "split" && "bg-muted/20"
             )}
           >
-            <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-p:leading-relaxed prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-muted prose-pre:border prose-pre:border-border">
+            <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-p:leading-relaxed prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border prose-pre:bg-muted">
               {value ? (
                 <ReactMarkdown
                   skipHtml={true}

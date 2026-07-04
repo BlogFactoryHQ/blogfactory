@@ -245,7 +245,7 @@ export function FeedEditorDialog({
                     const selectedPersona = personas.find((p) => p.id === editedFeed.persona_id);
                     if (selectedPersona && editedFeed.model_id !== selectedPersona.base_model) {
                       return (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                        <p className="text-xs text-amber-600">
                           Custom model selected (overrides persona default)
                         </p>
                       );
@@ -347,9 +347,9 @@ export function FeedEditorDialog({
 
               <div className="space-y-4">
                 {/* Freshness Filter - Context-specific label */}
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                <div className="rounded-md border border-border bg-muted/50 p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/10">
                       <Clock className="h-4 w-4 text-primary" />
                     </div>
                     <div>
@@ -380,9 +380,9 @@ export function FeedEditorDialog({
 
                 {editedFeed.platform === "rss" && (
                   <>
-                    <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/10">
                           <FileText className="h-4 w-4 text-primary" />
                         </div>
                         <div>
@@ -403,9 +403,9 @@ export function FeedEditorDialog({
                   </>
                 )}
 
-                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-status-success/10 flex items-center justify-center">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-status-success/10">
                       <Zap className="h-4 w-4 text-status-success" />
                     </div>
                     <div>
@@ -449,14 +449,14 @@ export function FeedEditorDialog({
 
                 return (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Created</p>
                       <p className="font-medium mt-1">
                         {format(new Date(editedFeed.created_at), "MMM d, yyyy")}
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Last Run</p>
                       <p className="font-medium mt-1">
                         {editedFeed.last_run_at
@@ -465,9 +465,9 @@ export function FeedEditorDialog({
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Next Run</p>
-                      <p className={`font-medium mt-1 ${isPast ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                      <p className={`font-medium mt-1 ${isPast ? "text-amber-600" : ""}`}>
                         {!editedFeed.is_active
                           ? "Paused"
                           : nextRun
@@ -478,7 +478,7 @@ export function FeedEditorDialog({
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Total Articles</p>
                       <p className="font-medium mt-1">
                         {editedFeed.total_articles?.toLocaleString() ?? 0}

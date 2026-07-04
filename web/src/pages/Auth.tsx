@@ -18,8 +18,8 @@ function AuthShell({ children }: { children: ReactNode }) {
         <div className="mb-5 flex justify-center">
           <FactoryMark />
         </div>
-        <div className="relative overflow-hidden rounded-md border border-byword-border bg-card p-6 factory-panel">
-          <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-80" aria-hidden="true" />
+        <div className="relative overflow-hidden rounded-md border border-byword-border bg-card p-5 factory-panel sm:p-6">
+          <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-60" aria-hidden="true" />
           {children}
         </div>
         <p className="mt-5 text-center font-mono text-[10px] uppercase text-muted-foreground">
@@ -151,7 +151,7 @@ export default function Auth() {
           <button
             type="button"
             onClick={() => setView("signin")}
-            className="mt-4 text-sm text-muted-foreground hover:text-foreground w-full text-center"
+            className="mt-4 w-full rounded-sm text-center text-sm text-muted-foreground transition-calm hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           >
             Back to Sign In
           </button>
@@ -197,7 +197,7 @@ export default function Auth() {
           <button
             type="button"
             onClick={() => setView("signin")}
-            className="mt-4 text-sm text-muted-foreground hover:text-foreground w-full text-center"
+            className="mt-4 w-full rounded-sm text-center text-sm text-muted-foreground transition-calm hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           >
             Back to Sign In
           </button>
@@ -233,7 +233,7 @@ export default function Auth() {
                   <button
                     type="button"
                     onClick={() => setView("forgot-password")}
-                    className="text-xs text-muted-foreground hover:text-foreground"
+                    className="rounded-sm text-xs text-muted-foreground transition-calm hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                   >
                     Forgot password?
                   </button>

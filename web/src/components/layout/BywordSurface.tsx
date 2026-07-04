@@ -22,7 +22,7 @@ export function BywordPageShell({ children, className }: { children: ReactNode; 
 
 export function BywordCard({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-md border border-byword-border bg-card factory-panel", className)}>
+    <div className={cn("overflow-hidden rounded-md border border-byword-border bg-card factory-panel", className)}>
       {children}
     </div>
   );
@@ -70,23 +70,23 @@ export function SectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="relative flex items-start justify-between gap-4 border-b border-byword-border bg-card px-6 py-5">
+    <div className="relative flex flex-col gap-4 border-b border-byword-border bg-card px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
       <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-45" aria-hidden="true" />
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <IconTile icon={Icon} />
-        <div>
+        <div className="min-w-0">
           <h2 className="font-mono text-sm font-semibold uppercase text-foreground">{title}</h2>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
 
 export function IconTile({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
   return (
-    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue factory-panel", className)}>
+    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-card text-byword-blue factory-panel transition-calm", className)}>
       <Icon className="h-5 w-5" strokeWidth={1.8} />
     </div>
   );
@@ -115,8 +115,8 @@ export function OptionCard({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "group relative flex min-h-[150px] flex-col items-start overflow-hidden rounded-md border bg-card p-6 text-left transition-calm",
-        selected ? "border-byword-blue bg-byword-blue-soft text-byword-blue factory-panel" : "border-byword-border hover:border-byword-blue/60 hover:bg-byword-blue-soft/50",
+        "group relative flex min-h-[150px] flex-col items-start overflow-hidden rounded-md border bg-card p-6 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
+        selected ? "border-byword-blue bg-byword-blue-soft text-byword-blue factory-panel" : "border-byword-border hover:-translate-y-0.5 hover:border-byword-blue/60 hover:bg-byword-blue-soft/50 hover:shadow-[0_12px_28px_hsl(210_5%_20%/0.07)]",
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
@@ -153,8 +153,8 @@ export function SettingNavItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-4 border-l-2 px-5 py-4 text-left transition-calm",
-        active ? "border-byword-blue bg-byword-blue-soft text-byword-blue" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+        "flex w-full items-center gap-4 border-l-2 px-5 py-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
+        active ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]" : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground"
       )}
     >
       <Icon className="h-5 w-5 shrink-0" strokeWidth={1.8} />

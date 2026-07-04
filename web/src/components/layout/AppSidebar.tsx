@@ -122,7 +122,7 @@ export function AppSidebar() {
       <aside
         onClick={handleSidebarClick}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar",
+          "device-hairline-bg fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar",
           "transition-[width] duration-200 ease-out",
           isCollapsed ? "w-[60px] cursor-pointer" : "w-[224px]"
         )}
@@ -133,7 +133,7 @@ export function AppSidebar() {
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={isCollapsed}>
-              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left transition-calm hover:border-byword-blue/60">
+              <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
                   <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                 </div>
@@ -218,7 +218,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={openSearch}
-            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue", isCollapsed && "hidden")}
+            className={cn("flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1", isCollapsed && "hidden")}
           >
             <Search className="h-4 w-4" />
             <span className="flex-1">Search</span>
@@ -293,7 +293,7 @@ export function AppSidebar() {
                   key={item.href}
                   type="button"
                   onClick={() => goTo(item.href)}
-                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-byword-blue-soft hover:text-byword-blue"
+                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                 >
                   <item.icon className="h-4 w-4 text-sidebar-muted" />
                   <span>{item.name}</span>
@@ -342,8 +342,8 @@ function SidebarSection({
               className={cn(
                 "flex h-8 items-center overflow-hidden rounded-sm border-l-2 transition-calm",
                 isActive
-                  ? "border-byword-blue bg-byword-blue-soft/80 text-byword-blue"
-                  : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
+                  : "border-transparent text-sidebar-foreground hover:border-sidebar-border hover:bg-card/85 hover:text-sidebar-accent-foreground"
               )}
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center">
