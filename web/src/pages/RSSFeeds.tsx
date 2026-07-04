@@ -22,7 +22,6 @@ import {
   Plus,
   Rss,
   Loader2,
-  Globe,
   Github,
   MessageSquare,
   FileText,
@@ -37,7 +36,7 @@ import {
   CalendarClock,
   ArrowRight,
 } from "lucide-react";
-import { PLATFORMS } from "@/lib/mock-data";
+import { platformLabel, sourceTypeForPlatform } from "@/lib/source-options";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -58,6 +57,9 @@ import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
   type InlineImageSource,
+  type ImageDeliveryMode,
+  type ImageResolution,
+  type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 import { cn } from "@/lib/utils";
 import {
@@ -94,6 +96,10 @@ interface Persona {
   name: string;
   status: string;
   base_model: string;
+}
+
+function normalizeImageResolution(value?: string | null): ImageResolution {
+  return value === "512" ? "512" : "1K";
 }
 
 export default function RSSFeeds() {
@@ -143,14 +149,18 @@ export default function RSSFeeds() {
     return {
       cover: {
         enabled: userSettings.cover_enabled ?? true,
+        resolution: normalizeImageResolution(userSettings.cover_image_resolution),
       },
       inline: {
         enabled: userSettings.inline_enabled ?? true,
         count: userSettings.inline_count ?? 2,
+        resolution: normalizeImageResolution(userSettings.inline_image_resolution),
       },
     };
   }, [userSettings]);
   const defaultInlineImageSource: InlineImageSource = userSettings?.inline_image_source === "stock" ? "stock" : "ai";
+  const defaultImageDeliveryMode: ImageDeliveryMode = userSettings?.image_delivery_mode === "manual_prompt" ? "manual_prompt" : "generate";
+  const defaultManualImageProvider: ManualImageProvider = "midjourney";
 
   // Fetch latest scheduler log
   const { data: lastSchedulerRun } = useQuery({
@@ -168,10 +178,13 @@ export default function RSSFeeds() {
       await api.put(`/feeds/${feed.id}`, {
         name: feed.name,
         source_url: feed.source_url,
+        keywords: feed.keywords,
         persona_id: feed.persona_id,
         model_id: feed.model_id,
         frequency: feed.frequency,
         is_active: feed.is_active,
+        filter_type: feed.filter_type,
+        filter_value: feed.filter_value,
         extract_full_content: feed.extract_full_content,
         posts_per_run: feed.posts_per_run,
         filter_old_posts_days: feed.filter_old_posts_days,
@@ -199,10 +212,13 @@ export default function RSSFeeds() {
       await Promise.all(selected.map((feed) => api.put(`/feeds/${feed.id}`, {
         name: feed.name,
         source_url: feed.source_url,
+        keywords: feed.keywords,
         persona_id: feed.persona_id,
         model_id: feed.model_id,
         frequency: feed.frequency,
         is_active: isActive,
+        filter_type: feed.filter_type,
+        filter_value: feed.filter_value,
         extract_full_content: feed.extract_full_content,
         posts_per_run: feed.posts_per_run,
         filter_old_posts_days: feed.filter_old_posts_days,
@@ -261,7 +277,7 @@ export default function RSSFeeds() {
       const imagesEnabled = ic.cover.enabled || ic.inline.enabled;
 
       const data = await api.post<any>("/content/generate", {
-        sourceType: "rss_feed",
+        sourceType: sourceTypeForPlatform(feed.platform),
         sourceValue: feed.source_url,
         personaId: feed.persona_id,
         modelId: feed.model_id,
@@ -271,6 +287,8 @@ export default function RSSFeeds() {
         filterOldPostsDays: feed.filter_old_posts_days || undefined,
         platformConfig: feed.platform_config || {},
         generateImages: imagesEnabled,
+        imageDeliveryMode: defaultImageDeliveryMode,
+        manualImageProvider: defaultManualImageProvider,
         imageConfig: imagesEnabled ? {
           cover: ic.cover.enabled ? { resolution: ic.cover.resolution || "1K" } : null,
           inline: ic.inline.enabled ? {
@@ -374,9 +392,6 @@ export default function RSSFeeds() {
         return <span className="text-orange-500 font-bold text-xs">Y</span>;
       case "github":
         return <Github className="h-4 w-4" />;
-      case "lemmy":
-      case "lobsters":
-        return <Globe className="h-4 w-4 text-blue-500" />;
       case "rss":
       default:
         return <Rss className="h-4 w-4 text-primary" />;
@@ -384,8 +399,7 @@ export default function RSSFeeds() {
   };
 
   const getPlatformLabel = (platform?: string) => {
-    const p = PLATFORMS.find((pl) => pl.id === platform);
-    return p?.name || "RSS Feed";
+    return platformLabel(platform);
   };
 
   const getNextRun = (feed: Feed) => {
@@ -755,6 +769,8 @@ export default function RSSFeeds() {
         isDeleting={deleteFeedMutation.isPending}
         defaultImageConfig={defaultImageConfig}
         inlineImageSource={defaultInlineImageSource}
+        imageDeliveryMode={defaultImageDeliveryMode}
+        manualImageProvider={defaultManualImageProvider}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -14,7 +14,13 @@ export function fetchSocialSourceUrl(body: Record<string, any>) {
   if (body.platform === "youtube" && config.channelId) {
     return `https://www.youtube.com/feeds/videos.xml?channel_id=${config.channelId}`;
   }
-  return config.url || config.channelUrl || config.subredditUrl || config.instanceUrl || "";
+  if (body.platform === "reddit" && config.subreddit) {
+    const domain = typeof config.redditDomain === "string" && config.redditDomain ? config.redditDomain : "www.reddit.com";
+    return `https://${domain}/r/${String(config.subreddit).replace(/^r\//, "")}/`;
+  }
+  if (body.platform === "hackernews") return "https://news.ycombinator.com/";
+  if (body.platform === "github") return "https://github.com/trending";
+  return config.url || config.channelUrl || config.subredditUrl || "";
 }
 
 contentRoutes.post("/generate", async (c) => {

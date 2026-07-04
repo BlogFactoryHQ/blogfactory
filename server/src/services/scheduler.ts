@@ -97,9 +97,12 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
 
       // Call generate-content directly (no HTTP round-trip)
       const { generateContent } = await import("./generate-content.js");
+      const sourceType = feed.platform === "reddit" || feed.platform === "hackernews" || feed.platform === "github"
+        ? feed.platform
+        : "rss_feed";
       const generation = generateContent({
         userId: feed.userId,
-        sourceType: "rss_feed",
+        sourceType,
         sourceValue: feed.sourceUrl || "",
         personaId: feed.personaId,
         modelId: feed.modelId,

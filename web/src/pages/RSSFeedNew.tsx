@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -27,8 +27,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, Eye, FileText } from "lucide-react";
-import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS } from "@/lib/mock-data";
+import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, FileText } from "lucide-react";
+import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { toast } from "sonner";
@@ -41,9 +41,46 @@ import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
   type InlineImageSource,
+  type ImageDeliveryMode,
+  type ImageResolution,
+  type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 
-type Platform = "rss" | "youtube" | "reddit" | "hackernews" | "github" | "lemmy" | "lobsters";
+type Platform = SourcePlatform;
+
+interface PersonaOption {
+  id: string;
+  name: string;
+  status: string;
+  base_model: string;
+}
+
+interface RssUserSettings {
+  cover_enabled?: boolean | null;
+  inline_enabled?: boolean | null;
+  inline_count?: number | null;
+  cover_image_resolution?: ImageResolution | null;
+  inline_image_resolution?: ImageResolution | null;
+  inline_image_source?: InlineImageSource | null;
+  image_delivery_mode?: ImageDeliveryMode | null;
+  manual_image_provider?: ManualImageProvider | null;
+}
+
+function normalizeImageResolution(value?: string | null): ImageResolution {
+  return value === "512" ? "512" : "1K";
+}
+
+function normalizeInlineImageSource(value?: string | null): InlineImageSource {
+  return value === "stock" ? "stock" : "ai";
+}
+
+function normalizeImageDeliveryMode(value?: string | null): ImageDeliveryMode {
+  return value === "manual_prompt" ? "manual_prompt" : "generate";
+}
+
+function normalizeManualImageProvider(value?: string | null): ManualImageProvider {
+  return value === "midjourney" ? "midjourney" : "midjourney";
+}
 
 export default function RSSFeedNew() {
   const navigate = useNavigate();
@@ -62,9 +99,6 @@ export default function RSSFeedNew() {
   const [githubLanguage, setGithubLanguage] = useState("");
   const [githubTopic, setGithubTopic] = useState("");
   const [githubPeriod, setGithubPeriod] = useState("daily");
-  const [lemmyInstance, setLemmyInstance] = useState("lemmy.world");
-  const [lemmyCommunity, setLemmyCommunity] = useState("");
-  const [lobstersTag, setLobstersTag] = useState("");
   const [youtubeChannelId, setYoutubeChannelId] = useState("");
   const [youtubeChannelUrl, setYoutubeChannelUrl] = useState("");
 
@@ -85,7 +119,7 @@ export default function RSSFeedNew() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [personaId, setPersonaId] = useState("");
-  const [modelId, setModelId] = useState("anthropic/claude-3.5-sonnet");
+  const [modelId, setModelId] = useState("");
   const [frequency, setFrequency] = useState("daily");
   const [isActive, setIsActive] = useState(true);
 
@@ -93,15 +127,18 @@ export default function RSSFeedNew() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [inlineImageSource, setInlineImageSource] = useState<InlineImageSource>("ai");
+  const [imageDeliveryMode, setImageDeliveryMode] = useState<ImageDeliveryMode>("generate");
+  const [manualImageProvider, setManualImageProvider] = useState<ManualImageProvider>("midjourney");
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
+  const fallbackTextModelId = textModels[0]?.id;
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      const all = await api.get<any[]>("/personas");
-      return all.filter((p: any) => p.status === "active");
+      const all = await api.get<PersonaOption[]>("/personas");
+      return all.filter((p) => p.status === "active");
     },
     enabled: !!user,
   });
@@ -110,7 +147,7 @@ export default function RSSFeedNew() {
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
     queryFn: async () => {
-      return api.get<any>("/settings");
+      return api.get<RssUserSettings>("/settings");
     },
     enabled: !!user,
   });
@@ -121,15 +158,42 @@ export default function RSSFeedNew() {
       setImageConfig({
         cover: {
           enabled: userSettings.cover_enabled ?? true,
+          resolution: normalizeImageResolution(userSettings.cover_image_resolution),
         },
         inline: {
           enabled: userSettings.inline_enabled ?? true,
           count: userSettings.inline_count ?? 2,
+          resolution: normalizeImageResolution(userSettings.inline_image_resolution),
         },
       });
-      setInlineImageSource(userSettings.inline_image_source === "stock" ? "stock" : "ai");
+      setInlineImageSource(normalizeInlineImageSource(userSettings.inline_image_source));
+      setImageDeliveryMode(normalizeImageDeliveryMode(userSettings.image_delivery_mode));
+      setManualImageProvider(normalizeManualImageProvider(userSettings.manual_image_provider));
     }
   }, [userSettings]);
+
+  const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
+    if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
+      return preferredModelId;
+    }
+    return fallbackTextModelId || preferredModelId || modelId;
+  }, [fallbackTextModelId, modelId, textModels]);
+
+  const handlePersonaChange = (nextPersonaId: string) => {
+    setPersonaId(nextPersonaId);
+    const selectedPersona = personas.find((persona) => persona.id === nextPersonaId);
+    setModelId(resolveLiveModelId(selectedPersona?.base_model));
+  };
+
+  useEffect(() => {
+    if (!modelId && fallbackTextModelId) setModelId(fallbackTextModelId);
+  }, [fallbackTextModelId, modelId]);
+
+  useEffect(() => {
+    if (!selectedModelUnavailable || !fallbackTextModelId) return;
+    const selectedPersona = personas.find((persona) => persona.id === personaId);
+    if (!personaId || selectedPersona?.base_model === modelId) setModelId(fallbackTextModelId);
+  }, [fallbackTextModelId, modelId, personaId, personas, selectedModelUnavailable]);
 
   // Build platform config object
   const buildPlatformConfig = () => {
@@ -140,10 +204,6 @@ export default function RSSFeedNew() {
         return { type: hnType };
       case "github":
         return { language: githubLanguage, topic: githubTopic, since: githubPeriod };
-      case "lemmy":
-        return { instance: lemmyInstance, community: lemmyCommunity };
-      case "lobsters":
-        return { tag: lobstersTag };
       case "youtube":
         return { channelId: youtubeChannelId, channelUrl: youtubeChannelUrl ? normalizeHttpUrl(youtubeChannelUrl) : "" };
       case "rss":
@@ -158,10 +218,16 @@ export default function RSSFeedNew() {
       case "youtube":
         // YouTube's built-in RSS feed for channels
         return `https://www.youtube.com/feeds/videos.xml?channel_id=${youtubeChannelId}`;
+      case "reddit":
+        return `https://${redditDomain}/r/${subreddit}/`;
+      case "hackernews":
+        return "https://news.ycombinator.com/";
+      case "github":
+        return "https://github.com/trending";
       case "rss":
         return normalizeHttpUrl(sourceUrl);
       default:
-        return `${platform}://${JSON.stringify(buildPlatformConfig())}`;
+        return normalizeHttpUrl(sourceUrl);
     }
   };
 
@@ -178,7 +244,7 @@ export default function RSSFeedNew() {
         source_url: feedSourceUrl,
         keywords: keywords.length > 0 ? keywords : null,
         persona_id: personaId || null,
-        model_id: modelId,
+        model_id: modelId || undefined,
         frequency,
         is_active: isActive,
         platform,
@@ -208,6 +274,8 @@ export default function RSSFeedNew() {
             extractFullContent,
             filterOldPostsDays: filterOldPostsDays || undefined,
             generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
+            imageDeliveryMode,
+            manualImageProvider,
             imageConfig: (imageConfig.cover.enabled || imageConfig.inline.enabled) ? {
               cover: imageConfig.cover.enabled ? { resolution: imageConfig.cover.resolution || "1K" } : null,
               inline: imageConfig.inline.enabled ? {
@@ -280,15 +348,8 @@ export default function RSSFeedNew() {
         return redditValidation.valid;
       }
       case "hackernews":
-      case "lobsters":
-        return true;
       case "github":
         return true;
-      case "lemmy": {
-        if (!lemmyInstance) return false;
-        const lemmyValidation = validatePlatformInput("lemmy", lemmyInstance);
-        return lemmyValidation.valid;
-      }
       default:
         return false;
     }
@@ -316,12 +377,6 @@ export default function RSSFeedNew() {
         if (!redditValidation.valid) return redditValidation.error || "Invalid subreddit";
         break;
       }
-      case "lemmy": {
-        if (!lemmyInstance) return "Please enter a Lemmy instance.";
-        const lemmyValidation = validatePlatformInput("lemmy", lemmyInstance);
-        if (!lemmyValidation.valid) return lemmyValidation.error || "Invalid Lemmy instance";
-        break;
-      }
     }
     return null;
   };
@@ -347,6 +402,10 @@ export default function RSSFeedNew() {
     }
     if (!personaId) {
       toast.error("Please select a persona to run the feed.");
+      return;
+    }
+    if (!modelId) {
+      toast.error("Please select an OpenRouter text model.");
       return;
     }
     if (selectedModelUnavailable) {
@@ -388,7 +447,7 @@ export default function RSSFeedNew() {
 
       <PageHeader
         title="Add Content Source"
-        description="Configure a new content source from RSS feeds, Reddit, Hacker News, GitHub, Lemmy, or Lobsters. Set up filtering and AI generation preferences."
+        description="Configure a new content source from RSS feeds, YouTube channels, Reddit, Hacker News, or GitHub. Set up filtering and AI generation preferences."
       />
 
       <div className="max-w-3xl">
@@ -580,40 +639,6 @@ export default function RSSFeedNew() {
                 </>
               )}
 
-              {platform === "lemmy" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="lemmyInstance">Lemmy Instance</Label>
-                    <Input
-                      id="lemmyInstance"
-                      placeholder="lemmy.world"
-                      value={lemmyInstance}
-                      onChange={(e) => setLemmyInstance(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lemmyCommunity">Community (optional)</Label>
-                    <Input
-                      id="lemmyCommunity"
-                      placeholder="technology"
-                      value={lemmyCommunity}
-                      onChange={(e) => setLemmyCommunity(e.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-
-              {platform === "lobsters" && (
-                <div className="space-y-2">
-                  <Label htmlFor="lobstersTag">Tag (optional)</Label>
-                  <Input
-                    id="lobstersTag"
-                    placeholder="e.g., programming, security"
-                    value={lobstersTag}
-                    onChange={(e) => setLobstersTag(e.target.value)}
-                  />
-                </div>
-              )}
             </div>
           </section>
 
@@ -711,7 +736,7 @@ export default function RSSFeedNew() {
             <div className="grid grid-cols-2 gap-4 pl-3">
               <div className="space-y-2">
                 <Label>Writer Persona</Label>
-                <Select value={personaId} onValueChange={setPersonaId}>
+                <Select value={personaId} onValueChange={handlePersonaChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select persona..." />
                   </SelectTrigger>
@@ -736,6 +761,12 @@ export default function RSSFeedNew() {
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
                 )}
+                {personaId && !selectedModelUnavailable && personas.find((persona) => persona.id === personaId)?.base_model === modelId && (
+                  <p className="text-xs text-muted-foreground">Defaulted from selected persona.</p>
+                )}
+                {personaId && !selectedModelUnavailable && personas.find((persona) => persona.id === personaId)?.base_model !== modelId && (
+                  <p className="text-xs text-amber-600">Custom model selected; this overrides the persona default for this feed.</p>
+                )}
               </div>
             </div>
           </section>
@@ -752,6 +783,8 @@ export default function RSSFeedNew() {
                 onConfigChange={setImageConfig}
                 compact
                 inlineImageSource={inlineImageSource}
+                imageDeliveryMode={imageDeliveryMode}
+                manualImageProvider={manualImageProvider}
               />
             </div>
           </section>
@@ -805,7 +838,7 @@ export default function RSSFeedNew() {
                   </div>
                 )}
 
-                {(platform === "reddit" || platform === "hackernews" || platform === "lemmy" || platform === "lobsters") && (
+                {(platform === "reddit" || platform === "hackernews") && (
                   <div className="space-y-2">
                     <Label htmlFor="includeComments">Include Comments</Label>
                     <Input
@@ -912,7 +945,7 @@ export default function RSSFeedNew() {
             <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
               Cancel
             </Button>
-          <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || selectedModelUnavailable}>
+          <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable}>
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (

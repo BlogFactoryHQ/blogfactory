@@ -109,9 +109,6 @@ export function validatePlatformInput(
 ): { valid: boolean; error?: string } {
   // Alphanumeric with underscores/hyphens for identifiers
   const identifierPattern = /^[a-zA-Z0-9_-]+$/;
-  // Domain pattern
-  const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/;
-
   switch (platform) {
     case "reddit":
       // Subreddit names: 3-21 chars, alphanumeric with underscores
@@ -120,15 +117,7 @@ export function validatePlatformInput(
       }
       return { valid: true };
 
-    case "lemmy":
-      // Lemmy instance should be a valid domain
-      if (!domainPattern.test(value)) {
-        return { valid: false, error: "Invalid Lemmy instance domain" };
-      }
-      return { valid: true };
-
     case "github":
-    case "lobsters":
     case "hackernews":
       // These use safe identifiers or predefined values
       if (value && !identifierPattern.test(value)) {

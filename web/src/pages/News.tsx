@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { FREQUENCIES } from "@/lib/mock-data";
+import { FREQUENCIES } from "@/lib/source-options";
 import { matchSportsMatrixRow, newsRuleLabel, parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
 import { useAuth } from "@/hooks/useAuth";
 import { useTextModels } from "@/hooks/useTextModels";

@@ -31,8 +31,9 @@ import {
   Clock,
   FileText,
   Image as ImageIcon,
+  X,
 } from "lucide-react";
-import { FREQUENCIES } from "@/lib/mock-data";
+import { FILTER_TYPES, FREQUENCIES, GITHUB_PERIODS, HN_TYPES, platformLabel, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { format } from "date-fns";
@@ -42,6 +43,8 @@ import {
   SplitImageConfig,
   DEFAULT_SPLIT_CONFIG,
   type InlineImageSource,
+  type ImageDeliveryMode,
+  type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 
 interface Feed {
@@ -85,9 +88,86 @@ interface FeedEditorDialogProps {
   isDeleting: boolean;
   defaultImageConfig?: SplitImageConfig;
   inlineImageSource?: InlineImageSource;
+  imageDeliveryMode?: ImageDeliveryMode;
+  manualImageProvider?: ManualImageProvider;
 }
 
 const POSTS_PER_RUN_OPTIONS = [1, 3, 5, 10, 15, 20];
+const REDDIT_DOMAINS = ["www.reddit.com", "old.reddit.com", "new.reddit.com"];
+
+function normalizePlatform(platform?: string): SourcePlatform {
+  return platform === "youtube" || platform === "reddit" || platform === "hackernews" || platform === "github"
+    ? platform
+    : "rss";
+}
+
+function extractChannelId(sourceUrl?: string) {
+  if (!sourceUrl) return "";
+  try {
+    const parsed = new URL(sourceUrl);
+    return parsed.searchParams.get("channel_id") || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractSubreddit(sourceUrl?: string) {
+  return sourceUrl?.match(/\/r\/([^/?#]+)/)?.[1] || "";
+}
+
+function extractHost(sourceUrl?: string) {
+  if (!sourceUrl) return "";
+  try {
+    return new URL(sourceUrl).host;
+  } catch {
+    return "";
+  }
+}
+
+function normalizedConfigFor(platform: SourcePlatform, feed: Feed): Record<string, unknown> {
+  const config = feed.platform_config || {};
+  switch (platform) {
+    case "youtube":
+      return {
+        channelId: String(config.channelId || extractChannelId(feed.source_url) || ""),
+        channelUrl: config.channelUrl ? stripHttpProtocol(String(config.channelUrl)) : "",
+      };
+    case "reddit":
+      return {
+        subreddit: String(config.subreddit || extractSubreddit(feed.source_url) || ""),
+        redditDomain: String(config.redditDomain || extractHost(feed.source_url) || "www.reddit.com"),
+      };
+    case "hackernews":
+      return { type: String(config.type || "front_page") };
+    case "github":
+      return {
+        language: String(config.language || ""),
+        topic: String(config.topic || ""),
+        since: String(config.since || config.period || "daily"),
+      };
+    case "rss":
+    default:
+      return { url: normalizeHttpUrl(feed.source_url) };
+  }
+}
+
+function feedSourceUrlFor(platform: SourcePlatform, sourceUrl: string, config: Record<string, any>) {
+  switch (platform) {
+    case "youtube":
+      return `https://www.youtube.com/feeds/videos.xml?channel_id=${String(config.channelId || "").trim()}`;
+    case "reddit": {
+      const domain = REDDIT_DOMAINS.includes(config.redditDomain) ? config.redditDomain : "www.reddit.com";
+      return `https://${domain}/r/${String(config.subreddit || "").replace(/^r\//, "").trim()}/`;
+    }
+    case "hackernews":
+      return "https://news.ycombinator.com/";
+    case "github":
+      return "https://github.com/trending";
+    case "rss":
+    default:
+      return normalizeHttpUrl(sourceUrl);
+  }
+}
 
 export function FeedEditorDialog({
   feed,
@@ -102,32 +182,93 @@ export function FeedEditorDialog({
   isDeleting,
   defaultImageConfig,
   inlineImageSource = "ai",
+  imageDeliveryMode = "generate",
+  manualImageProvider = "midjourney",
 }: FeedEditorDialogProps) {
   const { data: textModels = [] } = useTextModels();
   const [editedFeed, setEditedFeed] = useState<Feed | null>(null);
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
+  const [keywordInput, setKeywordInput] = useState("");
 
   // Sync local state when dialog opens with a feed
   useEffect(() => {
     if (isOpen && feed) {
-      setEditedFeed({ ...feed, source_url: stripHttpProtocol(feed.source_url) });
+      const platform = normalizePlatform(feed.platform);
+      setEditedFeed({
+        ...feed,
+        platform,
+        source_url: platform === "rss" ? stripHttpProtocol(feed.source_url) : feed.source_url,
+        filter_type: feed.filter_type || "none",
+        platform_config: normalizedConfigFor(platform, feed),
+      });
       setImageConfig(defaultImageConfig ?? DEFAULT_SPLIT_CONFIG);
+      setKeywordInput("");
     } else if (!isOpen) {
       setEditedFeed(null);
+      setKeywordInput("");
     }
   }, [isOpen, feed?.id, defaultImageConfig]);
 
   if (!editedFeed) return null;
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
+  const platform = normalizePlatform(editedFeed.platform);
+  const platformConfig = editedFeed.platform_config || {};
+
+  const setPlatformConfig = (updates: Record<string, unknown>) => {
+    setEditedFeed({
+      ...editedFeed,
+      platform_config: { ...platformConfig, ...updates },
+    });
+  };
+
+  const addKeyword = () => {
+    const keyword = keywordInput.trim();
+    if (!keyword || editedFeed.keywords?.includes(keyword)) return;
+    setEditedFeed({ ...editedFeed, keywords: [...(editedFeed.keywords || []), keyword] });
+    setKeywordInput("");
+  };
+
+  const removeKeyword = (keyword: string) => {
+    const nextKeywords = (editedFeed.keywords || []).filter((item) => item !== keyword);
+    setEditedFeed({ ...editedFeed, keywords: nextKeywords.length ? nextKeywords : null });
+  };
+
+  const validationError = (() => {
+    if (!editedFeed.name.trim()) return "Feed name is required.";
+    if (platform === "rss" && !editedFeed.source_url.trim()) return "RSS source URL is required.";
+    if (platform === "youtube" && !/^UC[\w-]{22}$/.test(String(platformConfig.channelId || ""))) {
+      return "YouTube channel ID must start with UC and be 24 characters.";
+    }
+    if (platform === "reddit" && !/^[A-Za-z0-9_]{2,21}$/.test(String(platformConfig.subreddit || ""))) {
+      return "Subreddit name must be 2-21 letters, numbers, or underscores.";
+    }
+    return null;
+  })();
+
+  const buildPersistedFeed = () => {
+    const sourceUrl = feedSourceUrlFor(platform, editedFeed.source_url, platformConfig);
+    return {
+      ...editedFeed,
+      platform,
+      source_url: sourceUrl,
+      filter_type: editedFeed.filter_type || "none",
+      filter_value: editedFeed.filter_type === "none" ? undefined : editedFeed.filter_value,
+      platform_config: normalizedConfigFor(platform, {
+        ...editedFeed,
+        source_url: sourceUrl,
+        platform_config: platformConfig,
+      }),
+    };
+  };
 
   const handleSave = () => {
-    if (selectedModelUnavailable) return;
-    onSave({ ...editedFeed, source_url: normalizeHttpUrl(editedFeed.source_url) });
+    if (selectedModelUnavailable || validationError) return;
+    onSave(buildPersistedFeed());
   };
 
   const handleRunNow = () => {
-    if (selectedModelUnavailable) return;
-    onRunNow({ ...editedFeed, source_url: normalizeHttpUrl(editedFeed.source_url) }, imageConfig);
+    if (selectedModelUnavailable || validationError) return;
+    onRunNow(buildPersistedFeed(), imageConfig);
   };
 
   return (
@@ -166,7 +307,17 @@ export function FeedEditorDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="sourceUrl">Source URL</Label>
+                  <Label>Source Type</Label>
+                  <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3 text-sm font-medium">
+                    {platformLabel(platform)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Source type is set when the feed is created.</p>
+                </div>
+              </div>
+
+              {platform === "rss" && (
+                <div className="space-y-2">
+                  <Label htmlFor="sourceUrl">RSS Source URL</Label>
                   <InputAffordance
                     id="sourceUrl"
                     type="text"
@@ -180,11 +331,202 @@ export function FeedEditorDialog({
                     placeholder="example.com/feed.xml"
                     help="Paste the feed URL. BlogFactory adds HTTPS when you omit it."
                     onClear={() => setEditedFeed({ ...editedFeed, source_url: "" })}
-                    clearLabel="Clear source URL"
+                    clearLabel="Clear RSS source URL"
                   />
                 </div>
+              )}
+
+              {platform === "youtube" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="youtubeChannelId">Channel ID</Label>
+                    <Input
+                      id="youtubeChannelId"
+                      value={String(platformConfig.channelId || "")}
+                      onChange={(event) => setPlatformConfig({ channelId: event.target.value.trim() })}
+                      placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <p className="text-xs text-muted-foreground">Used to build the YouTube RSS feed URL.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="youtubeChannelUrl">Channel URL</Label>
+                    <InputAffordance
+                      id="youtubeChannelUrl"
+                      type="text"
+                      inputMode="url"
+                      prefix="https://"
+                      value={String(platformConfig.channelUrl || "")}
+                      onChange={(event) => setPlatformConfig({ channelUrl: stripHttpProtocol(event.target.value) })}
+                      placeholder="youtube.com/@channelname"
+                      help="Reference only. The channel ID controls fetching."
+                      onClear={() => setPlatformConfig({ channelUrl: "" })}
+                      clearLabel="Clear YouTube channel URL"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {platform === "reddit" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="subreddit">Subreddit</Label>
+                    <Input
+                      id="subreddit"
+                      value={String(platformConfig.subreddit || "")}
+                      onChange={(event) => setPlatformConfig({ subreddit: event.target.value.replace(/^r\//, "") })}
+                      placeholder="technology"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Reddit Domain</Label>
+                    <Select
+                      value={String(platformConfig.redditDomain || "www.reddit.com")}
+                      onValueChange={(value) => setPlatformConfig({ redditDomain: value })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {REDDIT_DOMAINS.map((domain) => (
+                          <SelectItem key={domain} value={domain}>{domain}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {platform === "hackernews" && (
+                <div className="space-y-2">
+                  <Label>Story Type</Label>
+                  <Select
+                    value={String(platformConfig.type || "front_page")}
+                    onValueChange={(value) => setPlatformConfig({ type: value })}
+                  >
+                    <SelectTrigger className="max-w-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {HN_TYPES.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {platform === "github" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="githubLanguage">Language</Label>
+                    <Input
+                      id="githubLanguage"
+                      value={String(platformConfig.language || "")}
+                      onChange={(event) => setPlatformConfig({ language: event.target.value })}
+                      placeholder="typescript"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="githubTopic">Topic</Label>
+                    <Input
+                      id="githubTopic"
+                      value={String(platformConfig.topic || "")}
+                      onChange={(event) => setPlatformConfig({ topic: event.target.value })}
+                      placeholder="machine-learning"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Time Period</Label>
+                    <Select
+                      value={String(platformConfig.since || platformConfig.period || "daily")}
+                      onValueChange={(value) => setPlatformConfig({ since: value, period: undefined })}
+                    >
+                      <SelectTrigger className="max-w-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {GITHUB_PERIODS.map((period) => (
+                          <SelectItem key={period.id} value={period.id}>{period.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {validationError && <p className="text-xs text-destructive">{validationError}</p>}
+            </section>
+
+            <Separator />
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Filtering & Scope
+              </h3>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Filter Type</Label>
+                  <Select
+                    value={editedFeed.filter_type || "none"}
+                    onValueChange={(value) => setEditedFeed({
+                      ...editedFeed,
+                      filter_type: value,
+                      filter_value: value === "none" ? undefined : editedFeed.filter_value,
+                    })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {FILTER_TYPES.map((filter) => (
+                        <SelectItem key={filter.id} value={filter.id}>{filter.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {editedFeed.filter_type && editedFeed.filter_type !== "none" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="filterValue">
+                      {editedFeed.filter_type === "score" && "Minimum Score"}
+                      {editedFeed.filter_type === "threshold" && "Threshold %"}
+                      {editedFeed.filter_type === "posts_per_day" && "Posts Per Run"}
+                    </Label>
+                    <Input
+                      id="filterValue"
+                      type="number"
+                      value={editedFeed.filter_value ?? ""}
+                      onChange={(event) => setEditedFeed({
+                        ...editedFeed,
+                        filter_value: event.target.value ? Number(event.target.value) : undefined,
+                      })}
+                    />
+                  </div>
+                )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="keywordInput">Target Keywords / Categories</Label>
+                <div className="flex flex-wrap gap-2">
+                  {(editedFeed.keywords || []).map((keyword) => (
+                    <span
+                      key={keyword}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-byword-blue/30 bg-byword-blue-soft px-2.5 py-1 text-xs text-byword-blue"
+                    >
+                      {keyword}
+                      <button type="button" onClick={() => removeKeyword(keyword)} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <Input
+                  id="keywordInput"
+                  value={keywordInput}
+                  onChange={(event) => setKeywordInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addKeyword();
+                    }
+                  }}
+                  placeholder="Type and press Enter..."
+                />
+              </div>
             </section>
 
             <Separator />
@@ -333,6 +675,8 @@ export function FeedEditorDialog({
                 onConfigChange={setImageConfig}
                 compact
                 inlineImageSource={inlineImageSource}
+                imageDeliveryMode={imageDeliveryMode}
+                manualImageProvider={manualImageProvider}
               />
             </section>
 
@@ -510,7 +854,7 @@ export function FeedEditorDialog({
               <Button
                 variant="outline"
                 onClick={handleRunNow}
-                disabled={isRunning || !editedFeed.persona_id || selectedModelUnavailable}
+                disabled={isRunning || !editedFeed.persona_id || selectedModelUnavailable || Boolean(validationError)}
                 className="gap-2"
               >
                 {isRunning ? (
@@ -525,7 +869,7 @@ export function FeedEditorDialog({
                 Cancel
               </Button>
 
-              <Button onClick={handleSave} disabled={isSaving || selectedModelUnavailable}>
+              <Button onClick={handleSave} disabled={isSaving || selectedModelUnavailable || Boolean(validationError)}>
                 {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save Changes
               </Button>

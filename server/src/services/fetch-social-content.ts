@@ -71,12 +71,6 @@ export async function fetchSocialContent(opts: FetchOpts): Promise<{ items: Feed
     case "github":
       items = await fetchGithub(opts.platformConfig, limit);
       break;
-    case "lemmy":
-      items = await fetchLemmy(opts.sourceUrl, opts.platformConfig, limit);
-      break;
-    case "lobsters":
-      items = await fetchLobsters(limit);
-      break;
     default:
       items = await fetchRss(opts.sourceUrl, limit);
   }
@@ -152,7 +146,10 @@ async function fetchYoutube(channelUrl: string, limit: number): Promise<FeedItem
 
 async function fetchReddit(subredditUrl: string, config: any, limit: number): Promise<FeedItem[]> {
   const sort = config?.sort || "hot";
-  let url = subredditUrl;
+  const subreddit = typeof config?.subreddit === "string" ? config.subreddit.replace(/^r\//, "").trim() : "";
+  const domain = typeof config?.redditDomain === "string" && config.redditDomain ? config.redditDomain : "www.reddit.com";
+  let url = subredditUrl && /^https?:\/\//i.test(subredditUrl) ? subredditUrl : "";
+  if (!url && subreddit) url = `https://${domain}/r/${subreddit}/`;
   if (!url.endsWith(".json") && !url.endsWith("/")) url += "/";
   if (!url.endsWith(".json")) url += `${sort}.json?limit=${limit}`;
 
@@ -207,15 +204,7 @@ async function fetchHackerNews(config: any, limit: number): Promise<FeedItem[]> 
 }
 
 async function fetchGithub(config: any, limit: number): Promise<FeedItem[]> {
-  const language = config?.language || "";
-  const period = config?.period || "daily";
-  const since = period === "weekly" ? "weekly" : period === "monthly" ? "monthly" : "daily";
-
-  const dateOffset = since === "weekly" ? 7 : since === "monthly" ? 30 : 1;
-  const sinceDate = new Date(Date.now() - dateOffset * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-  let query = `created:>${sinceDate}`;
-  if (language) query += ` language:${language}`;
+  const query = buildGithubSearchQuery(config);
 
   const resp = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`, {
     headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "BlogFactory/1.0" },
@@ -233,43 +222,30 @@ async function fetchGithub(config: any, limit: number): Promise<FeedItem[]> {
   }));
 }
 
-async function fetchLemmy(instanceUrl: string, config: any, limit: number): Promise<FeedItem[]> {
-  const community = config?.community || "";
-  const sort = config?.sort || "Hot";
-
-  let apiUrl = `${instanceUrl}/api/v3/post/list?sort=${sort}&limit=${limit}`;
-  if (community) apiUrl += `&community_name=${community}`;
-
-  const resp = await fetch(apiUrl);
-  if (!resp.ok) throw new Error("Lemmy fetch failed");
-  const data = await resp.json() as any;
-
-  return (data.posts || []).map((p: any) => ({
-    title: p.post.name,
-    url: p.post.ap_id || p.post.url || "",
-    content: p.post.body || "",
-    pubDate: p.post.published,
-    score: p.counts?.score,
-    comments: p.counts?.comments,
-    author: p.creator?.name,
-    platform: "lemmy",
-  }));
+export function githubPeriod(value: unknown) {
+  return value === "weekly" || value === "monthly" ? value : "daily";
 }
 
-async function fetchLobsters(limit: number): Promise<FeedItem[]> {
-  const resp = await fetch("https://lobste.rs/hottest.json");
-  const data = await resp.json() as any[];
+export function githubSinceDate(period: string, now = new Date()) {
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (period === "monthly") {
+    date.setUTCDate(1);
+  } else if (period === "weekly") {
+    const utcDay = date.getUTCDay();
+    const daysSinceMonday = (utcDay + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  }
+  return date.toISOString().split("T")[0];
+}
 
-  return data.slice(0, limit).map((item) => ({
-    title: item.title,
-    url: item.url || item.short_id_url,
-    content: item.description || "",
-    pubDate: item.created_at,
-    score: item.score,
-    comments: item.comment_count,
-    author: item.submitter_user?.username,
-    platform: "lobsters",
-  }));
+export function buildGithubSearchQuery(config: any = {}, now = new Date()) {
+  const period = githubPeriod(config?.period ?? config?.since);
+  const parts = [`created:>=${githubSinceDate(period, now)}`];
+  const language = typeof config?.language === "string" ? config.language.trim() : "";
+  const topic = typeof config?.topic === "string" ? config.topic.trim() : "";
+  if (language) parts.push(`language:${language}`);
+  if (topic) parts.push(`topic:${topic}`);
+  return parts.join(" ");
 }
 
 function applyFilter(items: FeedItem[], filterType: string, filterValue: number): FeedItem[] {

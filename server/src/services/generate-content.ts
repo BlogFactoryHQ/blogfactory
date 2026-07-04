@@ -17,6 +17,7 @@ import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
+import { fetchSocialContent } from "./fetch-social-content.js";
 
 interface GenerateOpts {
   userId: string;
@@ -136,7 +137,7 @@ const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
 const SEO_META_TITLE_LIMIT = 60;
 const SEO_META_DESCRIPTION_LIMIT = 145;
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
-const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "campaign"]);
+const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"]);
 const FAQ_TARGET: [number, number] = [3, 5];
 const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
   minimal: [1, 2],
@@ -1192,6 +1193,19 @@ export async function generateContent(opts: GenerateOpts) {
     if (opts.sourceType === "rss_feed") {
       // Fetch and parse RSS feed
       articles = await fetchRssArticles(opts.sourceValue, opts.variations || 5, opts.filterOldPostsDays);
+    } else if (opts.sourceType === "reddit" || opts.sourceType === "hackernews" || opts.sourceType === "github") {
+      const social = await fetchSocialContent({
+        sourceUrl: opts.sourceValue,
+        platform: opts.sourceType,
+        platformConfig: opts.platformConfig || {},
+        limit: opts.variations || 5,
+        filterOldPostsDays: opts.filterOldPostsDays,
+      });
+      articles = social.items.map((item) => ({
+        title: item.title,
+        content: [item.content, item.summary].filter(Boolean).join("\n\n") || item.title,
+        url: item.url,
+      }));
     } else if (opts.sourceType === "article_keyword") {
       const keyword = opts.sourceValue.trim();
       articles = [{ title: keyword, content: keyword }];
