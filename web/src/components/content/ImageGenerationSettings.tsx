@@ -210,6 +210,18 @@ export function SplitImageGenerationSettings({
         )}
       </div>
 
+      <div className="rounded-lg border border-border bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label>Placement</Label>
+          <span className="rounded-sm border border-[hsl(var(--status-success)/0.25)] bg-[hsl(var(--status-success)/0.12)] px-2 py-0.5 font-mono text-[10px] font-semibold text-status-success">
+            Auto (Recommended)
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Smart placement adapts to your image count. With a single image, it is used as the featured image. With multiple images, the first becomes the featured image and remaining images are distributed between sections.
+        </p>
+      </div>
+
     </div>
   );
 
