@@ -708,6 +708,7 @@ export function buildArticleExtras(opts: GenerateOpts) {
   if (contract.targetWords && contract.minWords && contract.maxWords) {
     lines.push(`Target article length: about ${contract.targetWords} words; acceptable range ${contract.minWords}-${contract.maxWords} words.`);
   }
+  lines.push("If the topic has realistic reader follow-up questions, include a concise FAQ with specific answers; skip FAQ rather than adding generic filler.");
   if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
   if (opts.enableResearch === true) lines.push("Add useful research context, examples, and clearly explained claims.");
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
@@ -722,7 +723,6 @@ export function enforceGeneratedArticleContracts(content: string, opts: { source
   next = stripInternalSeoSections(next);
   if (isBlogDraftSource(opts.sourceType)) next = ensureSectionHeadings(next, opts.topic, opts.settings);
   next = ensureInternalMarkdownLinks(next, opts.settings);
-  if (isBlogDraftSource(opts.sourceType)) next = ensureFaqSection(next, opts.topic, opts.settings);
   return next;
 }
 
@@ -929,44 +929,6 @@ function linkFirstPlainMention(content: string, title: string, url: string) {
     return lines.join("\n");
   }
   return content;
-}
-
-function ensureFaqSection(content: string, topic: string, settings?: GenerationSettings) {
-  if (hasFaqSection(content) && faqCount(content) >= 3) return content;
-
-  const turkish = isTurkishContent(content, settings);
-  const title = truncateAtWord(cleanPostTitle(content.match(/^#\s+(.+)$/m)?.[1] || topic || "this topic"), 72);
-  const sentences = plainArticleText(content)
-    .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
-    ?.map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length >= 40 && !/\?$/.test(sentence))
-    .slice(0, 8) || [];
-  const answer = (index: number) => sentences[index] || sentences.at(-1) || (
-    turkish
-      ? "Yazıdaki ana noktalar, konunun pratik etkisini ve takip edilmesi gereken gelişmeleri özetliyor."
-      : "The article summarizes the practical impact and the developments worth watching next."
-  );
-  const faqs = turkish
-    ? [
-        [`${title} neden önemli?`, answer(0)],
-        [`${title} kimleri etkiliyor?`, answer(Math.floor(sentences.length / 2))],
-        [`${title} için bundan sonra ne beklenebilir?`, answer(sentences.length - 1)],
-      ]
-    : [
-        [`Why does ${title} matter?`, answer(0)],
-        [`Who is affected by ${title}?`, answer(Math.floor(sentences.length / 2))],
-        [`What should readers watch next for ${title}?`, answer(sentences.length - 1)],
-      ];
-
-  return [
-    content.trim(),
-    turkish ? "## Sık Sorulan Sorular" : "## FAQs",
-    ...faqs.flatMap(([question, faqAnswer]) => [`### ${question}`, faqAnswer, ""]),
-  ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function hasFaqSection(content: string) {
-  return /^##\s+(?:FAQs?|Sıkça Sorulan Sorular|Sık Sorulan Sorular|SSS|Frequently Asked Questions)\s*$/im.test(content);
 }
 
 function escapeRegExp(value: string) {
