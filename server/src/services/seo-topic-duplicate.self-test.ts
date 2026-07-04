@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { anchorGeneratedTitleToSource, applyGenerationOverrides, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, feedCandidateItemCount, feedSourceItemCount, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
-import { cleanPostTitle } from "./post-cleanup.js";
+import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
 const match = findIndexedTopicDuplicate({
@@ -37,6 +37,39 @@ assert.match(
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı - Swipeline"), "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı");
+const cleanedRepeatedConclusion = cleanGeneratedPostContent(`# İnternet Gerçekten Kimin İşi?
+
+## Sonuç
+
+İnternet, onlarca yıl süren işbirlikçi bir çabanın ürünüdür. Vint Cerf ve Bob Kahn, TCP/IP protokolünü geliştirerek internetin temel iletişim altyapısını oluşturmuştur.
+
+İnternet, onlarca yıl süren işbirlikçi bir çabanın ürünüdür. Bu bağlamda, internetin doğuşu tek bir mucidin eseri değildir. İnternet, onlarca yıl süren işbirlikçi bir çabanın ürünüdür.
+
+Not: Bu içerik, internetin doğuşuna dair tarihsel gerçekleri sunarak okuyucuyu internetin tek bir mucidin eseri olmadığını anlamaya yönlendirmek için hazırlanmıştır.
+
+Bu yazı, internetin doğuşuna dair yaygın inanışları irdeleyerek okuyucuyu internetin tek bir mucidin eseri olmadığını anlamaya yönlendirmiştir.
+`);
+assert.equal((cleanedRepeatedConclusion.match(/İnternet, onlarca yıl süren işbirlikçi bir çabanın ürünüdür/g) || []).length, 1);
+assert.doesNotMatch(cleanedRepeatedConclusion, /^Not: Bu içerik/m);
+assert.doesNotMatch(cleanedRepeatedConclusion, /hazırlanmıştır/);
+assert.doesNotMatch(cleanedRepeatedConclusion, /okuyucuyu.*yönlendirmiştir/);
+const cleanedCutoffSection = cleanGeneratedPostContent(`# Rust
+
+## Rust'ın Güvenlik Modeli
+
+Rust'ın en belirgin özellikleri, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu göstermesidir. Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir. Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir.
+
+Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir. Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir.
+
+## Rust'ın 2020'lerin Yeni Dili Olması
+
+Rust, 2020'lerin yeni dili olarak kabul ed
+
+## Sık Sorulan Sorular
+`);
+assert.equal((cleanedCutoffSection.match(/Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir/g) || []).length, 1);
+assert.doesNotMatch(cleanedCutoffSection, /kabul ed\s*(?:\n|$)/);
+assert.match(cleanedCutoffSection, /## Sık Sorulan Sorular/);
 assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 1, { index: 4, count: 5 }).map((article) => [article.variationIndex, article.variationCount]),
   [[4, 5]]

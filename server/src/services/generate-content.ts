@@ -709,6 +709,7 @@ export function buildArticleExtras(opts: GenerateOpts) {
     lines.push(`Target article length: about ${contract.targetWords} words; acceptable range ${contract.minWords}-${contract.maxWords} words.`);
   }
   lines.push("If the topic has realistic reader follow-up questions, include a concise FAQ with specific answers; skip FAQ rather than adding generic filler.");
+  lines.push("Do not pad the article with repeated sentences or meta notes about the content. Every paragraph must end with a complete sentence.");
   if (opts.includeTableOfContents === true) lines.push("Include a concise table of contents near the beginning.");
   if (opts.enableResearch === true) lines.push("Add useful research context, examples, and clearly explained claims.");
   if (outline) lines.push(`Use this outline as the article structure:\n${outline}`);
@@ -1012,7 +1013,7 @@ Keep the title unchanged, then write the article in markdown with a clear intro,
 
 function completionTokenBudget(contract: GenerationContract) {
   if (!contract.maxWords) return 4096;
-  return Math.min(8192, Math.max(4096, Math.round(contract.maxWords * 2)));
+  return Math.min(12_000, Math.max(4096, Math.round(contract.maxWords * 3)));
 }
 
 async function repairShortArticle(opts: {
@@ -1037,7 +1038,7 @@ async function repairShortArticle(opts: {
         { role: "system", content: opts.draftSystemPrompt },
         {
           role: "user",
-          content: `The draft below is too short. Expand it to at least ${opts.contract.minWords} words and aim for about ${opts.contract.targetWords} words. Preserve the H1 title, language, markdown links, FAQ section, brand rules, and factual meaning. Return only the finished markdown article.\n\n${opts.content}`,
+          content: `The draft below is too short. Expand it to at least ${opts.contract.minWords} words and aim for about ${opts.contract.targetWords} words. Preserve the H1 title, language, markdown links, FAQ section, brand rules, and factual meaning. Add new useful detail instead of repeating existing sentences. Do not include meta notes about the content. End every paragraph with a complete sentence. Return only the finished markdown article.\n\n${opts.content}`,
         },
       ],
       max_completion_tokens: completionTokenBudget(opts.contract),
