@@ -43,7 +43,7 @@ export const parseDraftProgress = (step: string, plan: JobPlan | null | undefine
     const completed = (resultPostIds || []).length;
     return { current, total: parseInt(match[2], 10), completed, failedDrafts };
   }
-  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  const draftOnlyMatch = step.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft)_(\d+)/);
   if (draftOnlyMatch) {
     return {
       current: parseInt(draftOnlyMatch[1], 10),

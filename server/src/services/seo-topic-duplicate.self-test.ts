@@ -38,6 +38,8 @@ assert.equal(feedSourceItemCount(3), 3);
 assert.equal(feedSourceItemCount(999), 20);
 assert.equal(feedCandidateItemCount(3), 12);
 assert.equal(feedCandidateItemCount(20), 50);
+assert.match(buildSettingsInstructions({ articleLanguage: "US English" }), /Write in US English/);
+assert.doesNotMatch(buildSettingsInstructions({ articleLanguage: "US English" }, "", { includeArticleLanguage: false }), /Write in US English/);
 
 const wordContract = resolveGenerationContract({ articleWordCount: 1500 });
 assert.equal(wordContract.targetWords, 1500);

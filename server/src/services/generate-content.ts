@@ -313,13 +313,59 @@ function lexicalInternalLinkPages(pages: InternalLinkPromptPage[], sourceText: s
     .map(({ page }) => page);
 }
 
-export function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "") {
+function promptSpecifiesLanguage(prompt: string) {
+  return /\b(?:write|respond|answer)\s+in\b|(?:language|dil)\s*:|t[üu]rk[çc]e|turkish|english|ingilizce|spanish|espa[ñn]ol|french|fran[çc]ais|german|deutsch|italian|italiano|portuguese|portugu[eê]s|arabic|العربية/i.test(prompt);
+}
+
+function languageFromPrompt(prompt: string) {
+  if (/t[üu]rk[çc]e|turkish/i.test(prompt)) return "Turkish";
+  if (/us english|american english/i.test(prompt)) return "US English";
+  if (/uk english|british english/i.test(prompt)) return "UK English";
+  if (/english|ingilizce/i.test(prompt)) return "English";
+  if (/german|deutsch/i.test(prompt)) return "German";
+  if (/french|fran[çc]ais/i.test(prompt)) return "French";
+  if (/spanish|espa[ñn]ol/i.test(prompt)) return "Spanish";
+  return "";
+}
+
+function requestedOutputLanguage(personaPrompt: string, settings?: GenerationSettings) {
+  const personaLanguage = languageFromPrompt(personaPrompt);
+  if (personaLanguage) return personaLanguage;
+  return String(settingValue(settings, "articleLanguage", "article_language") || "").trim();
+}
+
+function outputLanguageInstruction(language: string) {
+  if (!language) return "";
+  if (/turkish|türkçe/i.test(language)) {
+    return "Output language: Turkish. Write the entire article in natural Turkish, including the H1, headings, body, conclusion, and FAQ text.";
+  }
+  return `Output language: ${language}. Write the entire article in ${language}, including headings and FAQ text.`;
+}
+
+function looksLikeRequestedLanguage(content: string, language: string) {
+  if (!language) return true;
+  if (/turkish|türkçe/i.test(language)) {
+    const text = plainText(content, 20_000).toLowerCase();
+    const hasTurkishChars = /[ğüşöçıİĞÜŞÖÇ]/.test(content);
+    const turkishWords = text.match(/\b(ve|bir|bu|için|ile|olarak|daha|gibi|de|da|olan|sonra|önemli|neden|nasıl)\b/g)?.length || 0;
+    const englishWords = text.match(/\b(the|and|with|for|this|that|from|what|why|how|should|will|can)\b/g)?.length || 0;
+    return hasTurkishChars || (turkishWords >= 8 && turkishWords >= englishWords);
+  }
+  return true;
+}
+
+function personaLanguagePriorityInstruction(personaPrompt: string) {
+  if (!promptSpecifiesLanguage(personaPrompt)) return "";
+  return "\n\nPersona language priority: The selected writer persona explicitly defines the output language. Follow that persona language instruction exactly, even if global article settings have a different default language.";
+}
+
+export function buildSettingsInstructions(settings?: GenerationSettings, sourceText = "", opts: { includeArticleLanguage?: boolean } = {}) {
   if (!settings) return "";
 
   const instructions: string[] = [];
 
   const articleLanguage = String(settingValue(settings, "articleLanguage", "article_language") || "").trim();
-  if (articleLanguage) instructions.push(`Write in ${articleLanguage}.`);
+  if (articleLanguage && opts.includeArticleLanguage !== false) instructions.push(`Write in ${articleLanguage}.`);
   instructions.push(...buildVoiceContentInstructions(settings));
   const customInstructions = String(settingValue(settings, "customInstructions", "custom_instructions") || settingValue(settings, "customArticleInstructions", "custom_article_instructions") || "").trim();
   if (customInstructions) instructions.push(`Campaign instructions: ${truncatePromptText(customInstructions, 1000)}.`);
@@ -1022,6 +1068,53 @@ async function repairShortArticle(opts: {
   };
 }
 
+async function repairArticleLanguage(opts: {
+  content: string;
+  language: string;
+  draftSystemPrompt: string;
+  modelId: string;
+  openRouterKey: string;
+  contract: GenerationContract;
+}) {
+  if (!opts.language || looksLikeRequestedLanguage(opts.content, opts.language)) return null;
+
+  const instruction = outputLanguageInstruction(opts.language);
+  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${opts.openRouterKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: opts.modelId,
+      messages: [
+        { role: "system", content: `${opts.draftSystemPrompt}\n\n${instruction}` },
+        {
+          role: "user",
+          content: `The draft below is in the wrong language. Rewrite it fully in ${opts.language}. Preserve the H1 meaning, markdown structure, factual claims, links, FAQ section, and brand voice. Return only the finished markdown article.\n\n${opts.content}`,
+        },
+      ],
+      max_completion_tokens: completionTokenBudget(opts.contract),
+    }),
+  });
+
+  if (!resp.ok) {
+    const message = openRouterErrorMessage(await resp.text(), resp.status, opts.modelId);
+    throw new Error(message);
+  }
+
+  const data = await resp.json() as any;
+  const usage = data.usage;
+  const openRouterUsage = await getOpenRouterCost(opts.openRouterKey, data);
+  return {
+    content: data.choices?.[0]?.message?.content || "",
+    usage,
+    cost: openRouterUsage.cost,
+    responseData: { id: data.id, generation: openRouterUsage.stats },
+  };
+}
+
 function cleanSeoValue(value: unknown, maxChars = 220) {
   return truncateAtWord(String(value || "").replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim(), maxChars);
 }
@@ -1522,10 +1615,16 @@ export async function generateContent(opts: GenerateOpts) {
       try {
         // Generate blog post via AI
         const genStart = Date.now();
-        const settingsInstructions = buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`);
+        const personaHasLanguageInstruction = promptSpecifiesLanguage(systemPrompt);
+        const draftLanguage = requestedOutputLanguage(systemPrompt, promptSettings);
+        const languageInstruction = outputLanguageInstruction(draftLanguage);
+        const settingsInstructions = buildSettingsInstructions(promptSettings, `${article.title}\n${article.url || ""}\n${article.content}`, {
+          includeArticleLanguage: !personaHasLanguageInstruction,
+        });
         const sportsNewsInstructions = article.sportsDecision ? buildSportsNewsInstructions(article.sportsDecision) : "";
-        const draftSystemPrompt = `${systemPrompt}${settingsInstructions}${sportsNewsInstructions}`;
-        const userMessage = buildDraftUserMessage(article, opts.sourceType, effectiveOpts);
+        const draftSystemPrompt = `${systemPrompt}${settingsInstructions}${sportsNewsInstructions}${languageInstruction ? `\n\n${languageInstruction}` : ""}${personaLanguagePriorityInstruction(systemPrompt)}`;
+        const baseUserMessage = buildDraftUserMessage(article, opts.sourceType, effectiveOpts);
+        const userMessage = languageInstruction ? `${languageInstruction}\n\n${baseUserMessage}` : baseUserMessage;
 
         const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -1568,6 +1667,37 @@ export async function generateContent(opts: GenerateOpts) {
         let requestCost = openRouterUsage.cost;
         const responseData: Record<string, unknown> = { id: aiData.id, generation: openRouterUsage.stats };
         let lengthRepaired = false;
+        let languageRepaired = false;
+
+        if (isBlogDraftSource(opts.sourceType) && draftLanguage && !looksLikeRequestedLanguage(genContent, draftLanguage)) {
+          try {
+            await db.update(jobs).set({ currentStep: `repairing_language_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+            const repairedLanguage = await repairArticleLanguage({
+              content: genContent,
+              language: draftLanguage,
+              draftSystemPrompt,
+              modelId,
+              openRouterKey,
+              contract: generationContract,
+            });
+            if (repairedLanguage?.content) {
+              genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(repairedLanguage.content), {
+                sourceType: opts.sourceType,
+                topic: opts.articleTitleOverride || article.title || opts.sourceValue,
+                settings: promptSettings,
+              });
+              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title);
+              usageTotals.prompt += Number(repairedLanguage.usage?.prompt_tokens || 0);
+              usageTotals.completion += Number(repairedLanguage.usage?.completion_tokens || 0);
+              usageTotals.total += Number(repairedLanguage.usage?.total_tokens || 0);
+              requestCost += repairedLanguage.cost;
+              responseData.languageRepair = repairedLanguage.responseData;
+              languageRepaired = true;
+            }
+          } catch (languageErr) {
+            console.warn("[generate] Language repair failed:", languageErr instanceof Error ? languageErr.message : languageErr);
+          }
+        }
 
         if (isBlogDraftSource(opts.sourceType) && generationContract.minWords && wordCount(genContent) < generationContract.minWords) {
           try {
@@ -1624,7 +1754,11 @@ export async function generateContent(opts: GenerateOpts) {
           modelId,
         }).returning();
 
-        const contractMetadata = buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired);
+        const contractMetadata = {
+          ...buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired),
+          requestedLanguage: draftLanguage || null,
+          languageRepaired,
+        };
         contractResults.push({ postId: post.id, title: postTitle, contract: contractMetadata });
 
         if (isArticleSource(opts.sourceType)) {

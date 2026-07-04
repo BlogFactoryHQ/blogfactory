@@ -248,7 +248,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
   const totalMatch = step?.match(/_of_(\d+)$/);
   const total = totalMatch ? parseInt(totalMatch[1]) : (generationPlan?.totalDrafts || 0);
   const currentMatch = step?.match(/_(\d+)_of_/);
-  const draftOnlyMatch = step?.match(/(?:repairing_length_for_draft|resolving_images_for_draft)_(\d+)/);
+  const draftOnlyMatch = step?.match(/(?:repairing_length_for_draft|repairing_language_for_draft|resolving_images_for_draft)_(\d+)/);
   const current = currentMatch ? parseInt(currentMatch[1]) : draftOnlyMatch ? parseInt(draftOnlyMatch[1]) : Math.min(postsCompleted + 1, total || 1);
 
   if (!step || step === "pending") {
@@ -274,7 +274,7 @@ export const parseStepProgress = (step: string, resultPostIds: string[] | null, 
     } else if (draftNum === current) {
       const isGen = step.startsWith("generating_post");
       const isDraftGen = step.startsWith("generating_draft");
-      const isRepair = step.startsWith("repairing_length");
+      const isRepair = step.startsWith("repairing_length") || step.startsWith("repairing_language");
       const isFailed = step.startsWith("failed_post");
       steps.push({
         label: `Draft ${draftNum}${isImageStep ? (generationPlan?.imagesEnabled ? " (images)" : " (finding images)") : isGen || isDraftGen || isRepair ? " (writing)" : isFailed ? " (failed)" : ""}`,
