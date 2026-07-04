@@ -1020,7 +1020,7 @@ export default function Settings() {
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Other Defaults</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
-                      { label: "Images", value: imageConfig.cover.enabled || imageConfig.inline.enabled ? "On" : "Off", icon: ImageIcon, section: "images" },
+                      { label: "Images", value: imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0) ? "On" : "Off", icon: ImageIcon, section: "images" },
                       { label: "Links", value: enableInternalLinks ? "On" : "Off", icon: LinkIcon, section: "internal" },
                       { label: "Research", value: enableResearch ? "On" : "Off", icon: Globe2, section: "advanced" },
                       { label: "TOC", value: includeTableOfContents ? "On" : "Off", icon: ListChecks, section: "advanced" },

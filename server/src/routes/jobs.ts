@@ -95,13 +95,15 @@ function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | un
   if (settings?.coverEnabled) {
     imageConfig.cover = { resolution: coverResolution };
   }
-  if (settings?.inlineEnabled) {
+  const inlineCount = Math.max(0, Number(settings?.inlineCount ?? 2) || 0);
+  const inlineEnabled = Boolean(settings?.inlineEnabled && inlineCount > 0);
+  if (inlineEnabled) {
     imageConfig.inline = {
-      count: settings.inlineCount ?? 2,
+      count: inlineCount,
       resolution: inlineResolution,
     };
   }
-  const generateImages = Boolean(settings?.coverEnabled || settings?.inlineEnabled);
+  const generateImages = Boolean(settings?.coverEnabled || inlineEnabled);
   return { generateImages, imageConfig: generateImages ? imageConfig : undefined };
 }
 

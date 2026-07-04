@@ -639,6 +639,9 @@ export default function RSSFeedNew() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      GitHub returns repositories created in this period, sorted by total stars.
+                    </p>
                   </div>
                 </>
               )}

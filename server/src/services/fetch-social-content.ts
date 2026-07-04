@@ -178,7 +178,7 @@ async function fetchReddit(subredditUrl: string, config: any, limit: number): Pr
 
 async function fetchHackerNews(config: any, limit: number): Promise<FeedItem[]> {
   const hnType = config?.type || "front_page";
-  const endpoint = hnType === "best" ? "beststories" : hnType === "new" ? "newstories" : "topstories";
+  const endpoint = hackerNewsEndpoint(hnType);
 
   const resp = await fetch(`https://hacker-news.firebaseio.com/v0/${endpoint}.json`);
   const ids = (await resp.json() as number[]).slice(0, limit);
@@ -209,6 +209,7 @@ async function fetchGithub(config: any, limit: number): Promise<FeedItem[]> {
   const resp = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`, {
     headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "BlogFactory/1.0" },
   });
+  if (!resp.ok) throw new Error(`GitHub search failed: ${resp.status}`);
 
   const data = await resp.json() as any;
   return (data.items || []).map((repo: any) => ({
@@ -216,10 +217,27 @@ async function fetchGithub(config: any, limit: number): Promise<FeedItem[]> {
     url: repo.html_url,
     content: repo.description || "",
     summary: `★${repo.stargazers_count} | ${repo.language || "Unknown"} | ${repo.forks_count} forks`,
+    pubDate: repo.created_at,
     score: repo.stargazers_count,
     author: repo.owner?.login,
     platform: "github",
   }));
+}
+
+export function hackerNewsEndpoint(value: unknown) {
+  switch (value) {
+    case "best":
+      return "beststories";
+    case "new":
+      return "newstories";
+    case "ask":
+      return "askstories";
+    case "show":
+      return "showstories";
+    case "front_page":
+    default:
+      return "topstories";
+  }
 }
 
 export function githubPeriod(value: unknown) {

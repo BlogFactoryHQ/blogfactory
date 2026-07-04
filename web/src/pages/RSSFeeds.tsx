@@ -274,7 +274,8 @@ export default function RSSFeeds() {
       setRunningFeedId(feed.id);
 
       const ic = imgConfig ?? defaultImageConfig;
-      const imagesEnabled = ic.cover.enabled || ic.inline.enabled;
+      const inlineEnabled = ic.inline.enabled && ic.inline.count > 0;
+      const imagesEnabled = ic.cover.enabled || inlineEnabled;
 
       const data = await api.post<any>("/content/generate", {
         sourceType: sourceTypeForPlatform(feed.platform),
@@ -295,7 +296,7 @@ export default function RSSFeeds() {
         manualImageProvider: defaultManualImageProvider,
         imageConfig: imagesEnabled ? {
           cover: ic.cover.enabled ? { resolution: ic.cover.resolution || "1K" } : null,
-          inline: ic.inline.enabled ? {
+          inline: inlineEnabled ? {
             count: ic.inline.count,
             resolution: ic.inline.resolution || "1K",
           } : null,

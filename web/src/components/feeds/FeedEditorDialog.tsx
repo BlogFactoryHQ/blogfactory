@@ -445,6 +445,9 @@ export function FeedEditorDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      GitHub returns repositories created in this period, sorted by total stars.
+                    </p>
                   </div>
                 </div>
               )}
