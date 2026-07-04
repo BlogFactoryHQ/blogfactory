@@ -105,6 +105,7 @@ interface UserSettings {
   inline_image_source?: InlineImageSource | null;
   image_delivery_mode?: ImageDeliveryMode | null;
   manual_image_provider?: ManualImageProvider | null;
+  manual_prompt_suffix?: string | null;
   cover_enabled?: boolean | null;
   inline_enabled?: boolean | null;
   inline_count?: number | null;
@@ -286,6 +287,10 @@ function normalizeManualImageProvider(value?: string | null): ManualImageProvide
   return value === "midjourney" ? "midjourney" : "midjourney";
 }
 
+function normalizeManualPromptSuffix(value?: string | null) {
+  return value?.trim() || "";
+}
+
 function imageCost(model: LiveImageModel | null | undefined, resolution?: "512" | "1K") {
   if (!model || model.isFree) return 0;
   const byResolution = model.rawPricing.imageByResolution?.[resolution || "1K"];
@@ -310,6 +315,7 @@ export default function Settings() {
   const [inlineImageSource, setInlineImageSource] = useState<InlineImageSource>("ai");
   const [imageDeliveryMode, setImageDeliveryMode] = useState<ImageDeliveryMode>("generate");
   const [manualImageProvider, setManualImageProvider] = useState<ManualImageProvider>("midjourney");
+  const [manualPromptSuffix, setManualPromptSuffix] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -429,6 +435,7 @@ export default function Settings() {
   );
   const savedImageDeliveryMode = normalizeImageDeliveryMode(userSettings?.image_delivery_mode);
   const savedManualImageProvider = normalizeManualImageProvider(userSettings?.manual_image_provider);
+  const savedManualPromptSuffix = normalizeManualPromptSuffix(userSettings?.manual_prompt_suffix);
 
   const basicsDirty: DirtyState = userSettings && (
     articleWordCount !== (userSettings.article_word_count ?? 1500) ||
@@ -456,6 +463,7 @@ export default function Settings() {
     inlineImageSource !== savedInlineImageSource ||
     imageDeliveryMode !== savedImageDeliveryMode ||
     manualImageProvider !== savedManualImageProvider ||
+    manualPromptSuffix !== savedManualPromptSuffix ||
     imageConfig.cover.enabled !== (userSettings.cover_enabled ?? true) ||
     imageConfig.inline.enabled !== (userSettings.inline_enabled ?? true) ||
     imageConfig.inline.count !== (userSettings.inline_count ?? 2) ||
@@ -497,6 +505,7 @@ export default function Settings() {
       setInlineImageSource(normalizeInlineImageSource(userSettings.inline_image_source));
       setImageDeliveryMode(normalizeImageDeliveryMode(userSettings.image_delivery_mode));
       setManualImageProvider(normalizeManualImageProvider(userSettings.manual_image_provider));
+      setManualPromptSuffix(normalizeManualPromptSuffix(userSettings.manual_prompt_suffix));
       setArticleWordCount(userSettings.article_word_count ?? 1500);
       setArticleLanguage(userSettings.article_language || "US English");
       setArticleVoice(userSettings.article_voice || "Natural");
@@ -660,6 +669,7 @@ export default function Settings() {
         inline_image_source: inlineImageSource,
         image_delivery_mode: imageDeliveryMode,
         manual_image_provider: manualImageProvider,
+        manual_prompt_suffix: manualPromptSuffix,
         cover_image_resolution: imageConfig.cover.resolution || "1K",
         inline_image_resolution: imageConfig.inline.resolution || "1K",
         cover_enabled: imageConfig.cover.enabled,
@@ -1886,11 +1896,25 @@ export default function Settings() {
                 />
                 <div className="space-y-5 p-6">
                   {manualPromptMode ? (
-                    <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
-                      <p className="text-sm font-medium">Manual provider</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge variant="secondary">Midjourney</Badge>
-                        <Badge variant="outline">$0 image generation</Badge>
+                    <div className="space-y-4 rounded-lg border border-byword-border bg-muted/20 p-4">
+                      <div>
+                        <p className="text-sm font-medium">Manual provider</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Badge variant="secondary">Midjourney</Badge>
+                          <Badge variant="outline">$0 image generation</Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="manualPromptSuffix">Midjourney suffix</Label>
+                        <Input
+                          id="manualPromptSuffix"
+                          value={manualPromptSuffix}
+                          onChange={(event) => setManualPromptSuffix(event.target.value)}
+                          placeholder="--ar 16:9 --profile 376a42y g7qoxps"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Appended exactly at the end of every manual Midjourney prompt.
+                        </p>
                       </div>
                     </div>
                   ) : (
