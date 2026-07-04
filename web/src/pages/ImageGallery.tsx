@@ -4,6 +4,13 @@ import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -38,6 +45,8 @@ import { imageProviderName, isStockProvider } from "@/lib/image-labels";
 import { toast } from "sonner";
 
 const REQUESTS_PER_PAGE = 6;
+type RequestStatusFilter = "active" | "all" | "pending" | "processing" | "failed" | "done";
+type RequestTypeFilter = "all" | "cover" | "inline";
 
 function providerUrl(provider: string) {
   if (provider.includes("midjourney")) return "https://www.midjourney.com/imagine";
@@ -69,6 +78,13 @@ function galleryEmptyState(filters: GalleryFiltersType, counts: { queued: number
   if (counts.processing > 0 || counts.queued > 0) return { title: "Waiting for AI", detail: "Images are queued or processing. They will appear here when generation finishes." };
   if (counts.failed > 0) return { title: "No images yet", detail: "Image generation failed. Review the failed request above and retry or change model." };
   return { title: "No images yet", detail: "Generate content with images enabled to see them here." };
+}
+
+function requestMatchesStatus(request: ImageGenerationRequest, status: RequestStatusFilter) {
+  if (status === "all") return true;
+  if (status === "active") return request.status !== "done";
+  if (status === "pending") return request.status === "pending" || request.status === "queued";
+  return request.status === status;
 }
 
 function ImageRequestCard({
@@ -209,6 +225,8 @@ export default function ImageGallery() {
   const [detailImage, setDetailImage] = useState<ImageAsset | null>(null);
   const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
   const [requestPage, setRequestPage] = useState(1);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("active");
+  const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>("all");
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
@@ -246,13 +264,20 @@ export default function ImageGallery() {
     () => imageRequests.filter((request) => request.status !== "done"),
     [imageRequests]
   );
-  const requestPageCount = Math.max(1, Math.ceil(imageRequests.length / REQUESTS_PER_PAGE));
+  const filteredRequests = useMemo(
+    () => imageRequests.filter((request) =>
+      requestMatchesStatus(request, requestStatusFilter)
+      && (requestTypeFilter === "all" || request.type === requestTypeFilter)
+    ),
+    [imageRequests, requestStatusFilter, requestTypeFilter]
+  );
+  const requestPageCount = Math.max(1, Math.ceil(filteredRequests.length / REQUESTS_PER_PAGE));
   const paginatedRequests = useMemo(() => {
     const start = (requestPage - 1) * REQUESTS_PER_PAGE;
-    return imageRequests.slice(start, start + REQUESTS_PER_PAGE);
-  }, [imageRequests, requestPage]);
-  const requestRangeStart = imageRequests.length ? (requestPage - 1) * REQUESTS_PER_PAGE + 1 : 0;
-  const requestRangeEnd = imageRequests.length ? Math.min(requestPage * REQUESTS_PER_PAGE, imageRequests.length) : 0;
+    return filteredRequests.slice(start, start + REQUESTS_PER_PAGE);
+  }, [filteredRequests, requestPage]);
+  const requestRangeStart = filteredRequests.length ? (requestPage - 1) * REQUESTS_PER_PAGE + 1 : 0;
+  const requestRangeEnd = filteredRequests.length ? Math.min(requestPage * REQUESTS_PER_PAGE, filteredRequests.length) : 0;
   const stockProviderUnavailable = useMemo(
     () => activeRequests.some((request) => request.status === "failed" && request.provider !== "ai-deferred"),
     [activeRequests]
@@ -262,6 +287,10 @@ export default function ImageGallery() {
   useEffect(() => {
     setRequestPage((page) => Math.min(page, requestPageCount));
   }, [requestPageCount]);
+
+  useEffect(() => {
+    setRequestPage(1);
+  }, [requestStatusFilter, requestTypeFilter]);
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -333,9 +362,11 @@ export default function ImageGallery() {
               <h2 className="text-sm font-semibold">Image Requests</h2>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {(["queued", "processing", "failed", "done"] as const).map((status) => (
-                  <Badge key={status} variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
+                  <button key={status} type="button" onClick={() => setRequestStatusFilter(status === "queued" ? "pending" : status)}>
+                    <Badge variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
                     {status} {requestCounts[status]}
-                  </Badge>
+                    </Badge>
+                  </button>
                 ))}
               </div>
             </div>
@@ -349,8 +380,48 @@ export default function ImageGallery() {
               </Button>
             </div>
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <Select value={requestStatusFilter} onValueChange={(value) => setRequestStatusFilter(value as RequestStatusFilter)}>
+              <SelectTrigger className="h-8 w-[150px] bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active only</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={requestTypeFilter} onValueChange={(value) => setRequestTypeFilter(value as RequestTypeFilter)}>
+              <SelectTrigger className="h-8 w-[130px] bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="cover">Cover</SelectItem>
+                <SelectItem value="inline">Inline</SelectItem>
+              </SelectContent>
+            </Select>
+            {(requestStatusFilter !== "active" || requestTypeFilter !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRequestStatusFilter("active");
+                  setRequestTypeFilter("all");
+                }}
+              >
+                Reset
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground">
+              Showing {filteredRequests.length} of {imageRequests.length}
+            </span>
+          </div>
           <div className="mt-3 grid gap-2">
-            {paginatedRequests.map((request) => (
+            {paginatedRequests.length ? paginatedRequests.map((request) => (
               <ImageRequestCard
                 key={request.id}
                 request={request}
@@ -363,12 +434,16 @@ export default function ImageGallery() {
                 processing={processQueue.isPending}
                 retrying={retryRequest.isPending}
               />
-            ))}
+            )) : (
+              <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
+                No image requests match these filters.
+              </div>
+            )}
           </div>
           {requestPageCount > 1 && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
               <p className="text-xs text-muted-foreground">
-                Showing {requestRangeStart}-{requestRangeEnd} of {imageRequests.length} requests
+                Showing {requestRangeStart}-{requestRangeEnd} of {filteredRequests.length} requests
               </p>
               <div className="flex items-center gap-2">
                 <Button
