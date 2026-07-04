@@ -33,9 +33,10 @@ import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { UsageTokenChart } from "@/components/usage/UsageTokenChart";
 import { ModelBreakdownTable } from "@/components/usage/ModelBreakdownTable";
 import { BudgetCard } from "@/components/usage/BudgetCard";
-import { startOfMonth, format, parseISO } from "date-fns";
+import { startOfMonth, format } from "date-fns";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
+import { safeFormatDate, safeFormatIsoDate } from "@/lib/date-format";
 import {
   formatCompactCurrency,
   formatCompactNumber,
@@ -371,7 +372,7 @@ export default function UsageAnalytics() {
                   <TableBody>
                     {recentCalls.slice(0, 25).map((call) => (
                       <TableRow key={call.id}>
-                        <TableCell className="whitespace-nowrap text-xs">{call.created_at ? format(new Date(call.created_at), "MMM d HH:mm") : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">{safeFormatDate(call.created_at, "MMM d HH:mm")}</TableCell>
                         <TableCell>{call.usage_type}</TableCell>
                         <TableCell>
                           <div className="text-sm">{call.provider}</div>
@@ -417,7 +418,7 @@ function SpendStackChart({ data }: { data: Array<{ date: string; textCost: numbe
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="date"
-            tickFormatter={(val) => format(parseISO(val), "MMM d")}
+            tickFormatter={(val) => safeFormatIsoDate(val, "MMM d")}
             className="text-xs fill-muted-foreground"
             tick={{ fontSize: 11 }}
           />
@@ -433,7 +434,7 @@ function SpendStackChart({ data }: { data: Array<{ date: string; textCost: numbe
               borderRadius: "0.5rem",
               fontSize: "0.75rem",
             }}
-            labelFormatter={(val) => format(parseISO(val as string), "MMM d, yyyy")}
+            labelFormatter={(val) => safeFormatIsoDate(val, "MMM d, yyyy")}
             formatter={(value: number, name: string) => [
               formatCompactCurrency(value),
               name === "textCost" ? "Text cost" : "Image cost",

@@ -23,8 +23,8 @@ import {
   ImageOff,
   Sparkles,
 } from "lucide-react";
-import { format } from "date-fns";
 import { Link } from "react-router-dom";
+import { safeFormatDate } from "@/lib/date-format";
 import { resolveSignedUrl } from "@/hooks/useSignedUrl";
 import type { ImageAsset } from "@/hooks/useImageAssets";
 import { imageProviderName, imageSourceLabel, isStockProvider } from "@/lib/image-labels";
@@ -109,7 +109,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-4 w-4 shrink-0" />
-              <span>{format(new Date(image.created_at), "MMM d, yyyy HH:mm")}</span>
+              <span>{safeFormatDate(image.created_at, "MMM d, yyyy HH:mm")}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">Type:</span>

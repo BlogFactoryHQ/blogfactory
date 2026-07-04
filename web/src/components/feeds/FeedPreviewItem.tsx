@@ -16,7 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { safeFormatDate, safeFormatDistanceToNow } from "@/lib/date-format";
 import { stripHtml, wordCount, detectMedia } from "@/lib/html-utils";
 
 export type ItemStatus = "new" | "duplicate" | "filtered";
@@ -157,11 +157,11 @@ export function FeedPreviewItem({ item, index, showFullTextColumn }: FeedPreview
                 <TooltipTrigger asChild>
                   <span className="flex items-center gap-1 text-xs text-muted-foreground cursor-default">
                     <Clock className="h-3 w-3" />
-                    {formatDistanceToNow(new Date(item.pubDate), { addSuffix: true })}
+                    {safeFormatDistanceToNow(item.pubDate)}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {format(new Date(item.pubDate), "PPpp")}
+                  {safeFormatDate(item.pubDate, "PPpp")}
                 </TooltipContent>
               </Tooltip>
             )}

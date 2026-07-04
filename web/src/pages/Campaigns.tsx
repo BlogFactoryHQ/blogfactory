@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -161,7 +161,7 @@ function CampaignList() {
                   </div>
                 </TableCell>
                 <TableCell>{campaign.totalCost ? `$${campaign.totalCost.toFixed(4)}` : "-"}</TableCell>
-                <TableCell>{formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true })}</TableCell>
+                <TableCell>{safeFormatDistanceToNow(campaign.createdAt)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -335,7 +335,7 @@ function CampaignDetail({ id }: { id: string }) {
                 <TableCell className="text-sm text-muted-foreground">{job.currentStep || "-"}</TableCell>
                 <TableCell>{job.resultPostIds?.length || 0}</TableCell>
                 <TableCell>{job.totalCost ? `$${job.totalCost.toFixed(4)}` : "-"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{safeFormatDistanceToNow(job.createdAt)}</TableCell>
                 <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{job.errorMessage || "-"}</TableCell>
               </TableRow>
             ))}
