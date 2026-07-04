@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
+import { ExternalLink, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
@@ -119,14 +119,19 @@ function CampaignList() {
       <div className="mb-8 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-          <p className="mt-2 text-muted-foreground">Batch article generation with shared voice and settings.</p>
+          <p className="mt-2 text-muted-foreground">All campaign and programmatic SEO runs with progress, drafts, and item status.</p>
           <p className="mt-1 text-sm text-muted-foreground">
             More than a flat keyword list? <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
           </p>
         </div>
-        <Button asChild>
-          <Link to="/content-creator?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/content-creator?mode=programmatic"><Grid2X2 className="mr-2 h-4 w-4" />New Programmatic Run</Link>
+          </Button>
+          <Button asChild>
+            <Link to="/content-creator?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
+          </Button>
+        </div>
       </div>
 
       <BywordCard>
