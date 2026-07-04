@@ -5,6 +5,18 @@ const MODEL_FETCH_TIMEOUT_MS = 10_000;
 
 export const OPENROUTER_MODEL_UNAVAILABLE_MESSAGE =
   "Selected model is no longer available on OpenRouter. Pick a live model in settings/persona/feed.";
+export const OPENROUTER_AUTO_MODEL_MESSAGE =
+  "OpenRouter Auto is disabled for article writing. Pick a specific high-quality text model.";
+export const PREFERRED_TEXT_MODEL_IDS = [
+  "anthropic/claude-sonnet-5",
+  "anthropic/claude-sonnet-4.6",
+  "openai/gpt-5.4",
+  "openai/gpt-5.5",
+  "google/gemini-3.5-flash",
+  "openai/gpt-4o",
+  "anthropic/claude-3.5-sonnet",
+  "openai/gpt-4o-mini",
+];
 export const OPENROUTER_IMAGE_MODEL_ID = "x-ai/grok-imagine-image-quality";
 const OPENROUTER_IMAGE_MODEL_RESOLUTIONS: Record<string, string[]> = {
   "google/gemini-3.1-flash-image": ["512", "1K"],
@@ -118,6 +130,29 @@ function modelDescription(model: any): string {
   return typeof description === "string" ? description : "";
 }
 
+function isOpenRouterAutoModel(modelId: string | null | undefined) {
+  return modelId?.trim().toLowerCase() === "openrouter/auto";
+}
+
+function textModelScore(model: NormalizedOpenRouterModel) {
+  let score = 0;
+  if (PREFERRED_TEXT_MODEL_IDS.includes(model.id)) score += 1000 - PREFERRED_TEXT_MODEL_IDS.indexOf(model.id);
+  if (["anthropic", "openai", "google"].includes(model.provider)) score += 80;
+  if (model.pricing === "medium") score += 30;
+  if (model.pricing === "high") score += 25;
+  if (model.pricing === "low") score -= 15;
+  if (model.pricing === "free") score -= 80;
+  if (/preview|experimental|free|lite|flash-lite/i.test(`${model.id} ${model.name}`)) score -= 25;
+  if ((model.contextLength || 0) >= 128_000) score += 5;
+  return score;
+}
+
+export function preferredTextModelId(models: NormalizedOpenRouterModel[]) {
+  const preferred = PREFERRED_TEXT_MODEL_IDS.find((id) => models.some((model) => model.id === id));
+  if (preferred) return preferred;
+  return [...models].sort((a, b) => textModelScore(b) - textModelScore(a))[0]?.id || "";
+}
+
 export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
   const dynamicPricing = hasDynamicPricing(model.pricing);
   const prompt = dollarsPerMillion(model.pricing?.prompt);
@@ -163,6 +198,7 @@ export function normalizeOpenRouterModel(model: any, kind: ModelKind) {
 export function catalogFromOpenRouterPayload(data: any, kind: ModelKind) {
   return (data.data || [])
     .filter((model: any) => model.architecture?.output_modalities?.includes(kind))
+    .filter((model: any) => kind !== "text" || !isOpenRouterAutoModel(model.id))
     .filter((model: any) => kind !== "image" || supportsApprovedImage(model))
     .map((model: any) => normalizeOpenRouterModel(model, kind));
 }
@@ -220,7 +256,7 @@ export async function getOpenRouterModels(apiKey: string, kind: ModelKind, refre
 
   const url = new URL(OPENROUTER_MODELS_URL);
   url.searchParams.set("output_modalities", kind);
-  url.searchParams.set("sort", kind === "text" ? "pricing-low-to-high" : "most-popular");
+  url.searchParams.set("sort", "most-popular");
   const payload = kind === "image"
     ? await getOpenRouterImageModels(apiKey)
     : await fetchOpenRouterJson(url, apiKey);
@@ -230,8 +266,23 @@ export async function getOpenRouterModels(apiKey: string, kind: ModelKind, refre
 }
 
 export async function assertOpenRouterModelAvailable(apiKey: string, modelId: string, kind: ModelKind = "text") {
+  if (kind === "text" && isOpenRouterAutoModel(modelId)) {
+    throw new Error(OPENROUTER_AUTO_MODEL_MESSAGE);
+  }
   const models = await getOpenRouterModels(apiKey, kind);
   if (!models.some((model: NormalizedOpenRouterModel) => model.id === modelId)) {
     throw new Error(OPENROUTER_MODEL_UNAVAILABLE_MESSAGE);
   }
+}
+
+export async function resolveOpenRouterTextModel(apiKey: string, modelId: string | null | undefined) {
+  const requested = modelId?.trim() || "";
+  const models = await getOpenRouterModels(apiKey, "text");
+  if (requested && !isOpenRouterAutoModel(requested)) {
+    if (models.some((model: NormalizedOpenRouterModel) => model.id === requested)) return requested;
+    throw new Error(OPENROUTER_MODEL_UNAVAILABLE_MESSAGE);
+  }
+  const fallback = preferredTextModelId(models);
+  if (fallback) return fallback;
+  throw new Error(requested ? OPENROUTER_AUTO_MODEL_MESSAGE : OPENROUTER_MODEL_UNAVAILABLE_MESSAGE);
 }

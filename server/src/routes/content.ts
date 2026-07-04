@@ -5,6 +5,7 @@ import { db } from "../db/index.js";
 import { jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { getOpenRouterKey } from "../services/api-keys.js";
+import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 
 export const contentRoutes = new Hono();
 
@@ -30,19 +31,20 @@ contentRoutes.post("/generate", async (c) => {
   try {
     const openRouterKey = await getOpenRouterKey(userId);
     if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
+    const modelId = await resolveOpenRouterTextModel(openRouterKey, body.modelId || "openai/gpt-4o");
 
     const [job] = await db.insert(jobs).values({
       userId,
       sourceType: body.sourceType,
       sourceValue: body.sourceValue,
-      modelId: body.modelId || "openai/gpt-4o",
+      modelId,
       personaId: body.personaId || null,
       status: "running",
       currentStep: "starting",
     }).returning();
 
     const { generateContent } = await import("../services/generate-content.js");
-    waitUntil(generateContent({ ...body, userId, jobId: job.id }).catch(async (err) => {
+    waitUntil(generateContent({ ...body, userId, jobId: job.id, modelId }).catch(async (err) => {
       console.error("generate background error:", err);
       await db.update(jobs).set({
         status: "failed",

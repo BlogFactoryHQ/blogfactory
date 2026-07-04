@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { catalogFromOpenRouterPayload, OPENROUTER_MODEL_UNAVAILABLE_MESSAGE } from "./openrouter-models.js";
+import { catalogFromOpenRouterPayload, OPENROUTER_AUTO_MODEL_MESSAGE, OPENROUTER_MODEL_UNAVAILABLE_MESSAGE, preferredTextModelId } from "./openrouter-models.js";
 
 const payload = {
   data: [
@@ -61,9 +61,9 @@ const payload = {
 const text = catalogFromOpenRouterPayload(payload, "text");
 const image = catalogFromOpenRouterPayload(payload, "image");
 
-assert.deepEqual(text.map((model: { id: string }) => model.id), ["openai/gpt-4o-mini", "openrouter/auto"]);
-assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.costInfo, "Dynamic pricing");
-assert.equal(text.find((model: { id: string }) => model.id === "openrouter/auto")?.isFree, false);
+assert.deepEqual(text.map((model: { id: string }) => model.id), ["openai/gpt-4o-mini"]);
+assert.equal(preferredTextModelId(text), "openai/gpt-4o-mini");
+assert.match(OPENROUTER_AUTO_MODEL_MESSAGE, /Auto is disabled/);
 assert.deepEqual(image.map((model: { id: string }) => model.id), ["x-ai/grok-imagine-image-quality", "google/gemini-3.1-flash-image-preview"]);
 assert.deepEqual(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.constraints.resolutions, ["1K"]);
 assert.equal(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.rawPricing.imageByResolution["1K"], 0.05);

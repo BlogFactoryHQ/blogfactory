@@ -40,7 +40,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
+import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import { useTextModels } from "@/hooks/useTextModels";
 import { estimateGenerationCost, shouldWarnForCost } from "@/lib/cost-estimator";
 import { analyzeProgrammaticFit, type TopicFitResult } from "@/lib/topic-fit";
@@ -296,7 +296,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   }, [selectedTemplateId, templates]);
 
   useEffect(() => {
-    const fallback = textModels[0]?.id;
+    const fallback = preferredTextModelId(textModels);
     if (fallback && selectedModelUnavailable) setModelId(fallback);
   }, [selectedModelUnavailable, textModels]);
 

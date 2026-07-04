@@ -49,7 +49,7 @@ import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { SourceType } from "@/components/content/GenerationProgress";
-import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
+import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -477,7 +477,7 @@ export default function ContentCreator() {
   const { data: textModels = [] } = useTextModels();
   const { data: imageModels = [] } = useImageModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
-  const fallbackTextModelId = textModels[0]?.id;
+  const fallbackTextModelId = preferredTextModelId(textModels);
   const selectedPersona = activePersonas.find((persona) => persona.id === personaId);
   const selectedTextModel = textModels.find((model) => model.id === modelId);
   const selectedImageModelId = normalizeCoverImageModelId(userSettings?.image_model);
@@ -502,7 +502,7 @@ export default function ContentCreator() {
     if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
       return preferredModelId;
     }
-    return fallbackTextModelId || preferredModelId || modelId;
+    return preferredTextModelId(textModels, preferredModelId) || fallbackTextModelId || preferredModelId || modelId;
   }, [fallbackTextModelId, modelId, textModels]);
 
   const handlePersonaChange = (nextPersonaId: string) => {

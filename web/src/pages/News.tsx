@@ -18,7 +18,7 @@ import { FREQUENCIES } from "@/lib/source-options";
 import { matchSportsMatrixRow, newsRuleLabel, parseSportsMatrixFile, sportsMatrixStats, type SportsMatrixRow } from "@/lib/sports-news";
 import { useAuth } from "@/hooks/useAuth";
 import { useTextModels } from "@/hooks/useTextModels";
-import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
+import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 
 interface UserSettings {
   content_rules?: {
@@ -182,13 +182,14 @@ export default function News() {
   }, [matrixRows]);
 
   useEffect(() => {
-    if (!modelId && textModels[0]?.id) setModelId(textModels[0].id);
+    const fallback = preferredTextModelId(textModels);
+    if (!modelId && fallback) setModelId(fallback);
   }, [modelId, textModels]);
 
   useEffect(() => {
     if (!personaId && activePersonas[0]) {
       setPersonaId(activePersonas[0].id);
-      setModelId(activePersonas[0].base_model || textModels[0]?.id || "");
+      setModelId(preferredTextModelId(textModels, activePersonas[0].base_model));
     }
   }, [activePersonas, personaId, textModels]);
 

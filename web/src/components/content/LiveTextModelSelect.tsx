@@ -7,6 +7,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
 import { cn } from "@/lib/utils";
 
+const PREFERRED_TEXT_MODEL_IDS = [
+  "anthropic/claude-sonnet-5",
+  "anthropic/claude-sonnet-4.6",
+  "openai/gpt-5.4",
+  "openai/gpt-5.5",
+  "google/gemini-3.5-flash",
+  "openai/gpt-4o",
+  "anthropic/claude-3.5-sonnet",
+  "openai/gpt-4o-mini",
+];
+
 function priceBadge(model: LiveTextModel) {
   if (model.pricing === "free") return { text: "FREE", className: "text-primary" };
   if (model.pricing === "low") return { text: "$", className: "text-green-600" };
@@ -21,6 +32,26 @@ function formatContext(length: number | null) {
 
 export function isUnavailableModel(modelId: string | null | undefined, models: LiveTextModel[]) {
   return Boolean(modelId && models.length > 0 && !models.some((model) => model.id === modelId));
+}
+
+function modelScore(model: LiveTextModel) {
+  let score = 0;
+  if (PREFERRED_TEXT_MODEL_IDS.includes(model.id)) score += 1000 - PREFERRED_TEXT_MODEL_IDS.indexOf(model.id);
+  if (["anthropic", "openai", "google"].includes(model.provider)) score += 80;
+  if (model.pricing === "medium") score += 30;
+  if (model.pricing === "high") score += 25;
+  if (model.pricing === "low") score -= 15;
+  if (model.pricing === "free") score -= 80;
+  if (/preview|experimental|free|lite|flash-lite/i.test(`${model.id} ${model.name}`)) score -= 25;
+  if ((model.contextLength || 0) >= 128_000) score += 5;
+  return score;
+}
+
+export function preferredTextModelId(models: LiveTextModel[], preferredModelId?: string | null) {
+  if (preferredModelId && models.some((model) => model.id === preferredModelId)) return preferredModelId;
+  const preferred = PREFERRED_TEXT_MODEL_IDS.find((id) => models.some((model) => model.id === id));
+  if (preferred) return preferred;
+  return [...models].sort((a, b) => modelScore(b) - modelScore(a))[0]?.id || preferredModelId || "";
 }
 
 export function LiveTextModelSelect({

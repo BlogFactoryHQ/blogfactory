@@ -30,7 +30,7 @@ import {
 import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, FileText } from "lucide-react";
 import { FREQUENCIES, PLATFORMS, HN_TYPES, GITHUB_PERIODS, filterTypesForPlatform, sourceTypeForPlatform, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
-import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
+import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -127,7 +127,7 @@ export default function RSSFeedNew() {
   const [manualImageProvider, setManualImageProvider] = useState<ManualImageProvider>("midjourney");
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
-  const fallbackTextModelId = textModels[0]?.id;
+  const fallbackTextModelId = preferredTextModelId(textModels);
   const availableFilterTypes = filterTypesForPlatform(platform, filterType);
   const imageSectionTitle = imageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
 
@@ -174,7 +174,7 @@ export default function RSSFeedNew() {
     if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {
       return preferredModelId;
     }
-    return fallbackTextModelId || preferredModelId || modelId;
+    return preferredTextModelId(textModels, preferredModelId) || fallbackTextModelId || preferredModelId || modelId;
   }, [fallbackTextModelId, modelId, textModels]);
 
   const handlePersonaChange = (nextPersonaId: string) => {

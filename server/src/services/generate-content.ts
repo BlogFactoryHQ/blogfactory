@@ -10,6 +10,7 @@ import {
   getOpenRouterModels,
   normalizeOpenRouterImageModelId,
   openRouterImageResolution,
+  resolveOpenRouterTextModel,
 } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
@@ -1247,8 +1248,8 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
     }
   }
 
-  const modelId = opts.modelId || personaModel;
-  await assertOpenRouterModelAvailable(openRouterKey, modelId);
+  const requestedModelId = opts.modelId || personaModel;
+  const modelId = await resolveOpenRouterTextModel(openRouterKey, requestedModelId);
 
   const relatedKeywords = normalizeList(opts.relatedKeywords);
   const wordCount = Number(opts.articleWordCount);
@@ -1366,8 +1367,8 @@ export async function generateContent(opts: GenerateOpts) {
       }
     }
 
-    const modelId = opts.modelId || personaModel;
-    await assertOpenRouterModelAvailable(openRouterKey, modelId);
+    const requestedModelId = opts.modelId || personaModel;
+    const modelId = await resolveOpenRouterTextModel(openRouterKey, requestedModelId);
 
     const [feedRecord] = opts.feedId
       ? await db.select().from(feeds).where(and(eq(feeds.id, opts.feedId), eq(feeds.userId, userId))).limit(1)
@@ -1666,7 +1667,7 @@ export async function generateContent(opts: GenerateOpts) {
           total: Number(usage?.total_tokens || 0),
         };
         let requestCost = openRouterUsage.cost;
-        const responseData: Record<string, unknown> = { id: aiData.id, generation: openRouterUsage.stats };
+        const responseData: Record<string, unknown> = { id: aiData.id, model: aiData.model, requestedModelId, generation: openRouterUsage.stats };
         let lengthRepaired = false;
         let languageRepaired = false;
 
