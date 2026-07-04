@@ -438,6 +438,12 @@ export function manualImageProvider(settings?: GenerationSettings): ManualImageP
   return value === "midjourney" ? "midjourney" : "midjourney";
 }
 
+export function manualPromptSuffix(settings?: GenerationSettings) {
+  const value = settingValue(settings, "manualPromptSuffix", "manual_prompt_suffix")
+    || imageAdvancedOptions(settings).manualPromptSuffix;
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function isBlogDraftSource(sourceType: string) {
   return BLOG_DRAFT_SOURCE_TYPES.has(sourceType);
 }
@@ -1164,6 +1170,7 @@ export async function generateContent(opts: GenerateOpts) {
     const generationContract = resolveGenerationContract(promptSettings, effectiveOpts);
     const imageMode = imageDeliveryMode(promptSettings || settings || undefined);
     const manualProvider = manualImageProvider(promptSettings || settings || undefined);
+    const manualSuffix = manualPromptSuffix(promptSettings || settings || undefined);
 
     // Load persona if set
     let systemPrompt = "You are a senior blog writer. Return only the finished article body in clean Markdown. Do not include process notes, SEO metadata sections, image suggestions, or internal-link summaries.";
@@ -1511,6 +1518,7 @@ export async function generateContent(opts: GenerateOpts) {
                 modelId,
                 openRouterKey,
                 stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+                manualPromptSuffix: manualSuffix,
                 provider: manualProvider,
               });
               imageResolutionResults.push({
@@ -1802,6 +1810,12 @@ function cleanManualImagePrompt(value: string) {
     .slice(0, 2500);
 }
 
+export function appendManualPromptSuffix(prompt: string, suffix?: string | null) {
+  const cleanedPrompt = cleanManualImagePrompt(prompt);
+  const cleanedSuffix = typeof suffix === "string" ? suffix.trim() : "";
+  return cleanedSuffix ? `${cleanedPrompt} ${cleanedSuffix}`.trim() : cleanedPrompt;
+}
+
 export function buildManualImagePromptMessages(opts: {
   title: string;
   content: string;
@@ -1836,6 +1850,7 @@ async function createManualImagePromptRequest(opts: {
   title: string;
   content: string;
   stylePrompt?: string | null;
+  manualPromptSuffix?: string | null;
   provider: ManualImageProvider;
 }) {
   const startedAt = Date.now();
@@ -1878,7 +1893,7 @@ async function createManualImagePromptRequest(opts: {
   }
 
   const data = await resp.json() as any;
-  const prompt = cleanManualImagePrompt(data.choices?.[0]?.message?.content || "");
+  const prompt = appendManualPromptSuffix(data.choices?.[0]?.message?.content || "", opts.manualPromptSuffix);
   if (!prompt) throw new Error("Manual image prompt could not be drafted");
 
   const usage = data.usage;

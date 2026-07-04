@@ -66,6 +66,10 @@ function normalizeManualImageProvider(value: unknown) {
   return value === "midjourney" ? "midjourney" : "midjourney";
 }
 
+function normalizeManualPromptSuffix(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function normalizeImageAdvancedOptions(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const options = value as Record<string, unknown>;
@@ -75,6 +79,7 @@ function normalizeImageAdvancedOptions(value: unknown) {
   const inlineResolution = options.inlineResolution;
   const imageDeliveryMode = options.imageDeliveryMode;
   const manualImageProvider = options.manualImageProvider;
+  const manualPromptSuffix = options.manualPromptSuffix;
   return {
     ...(inlineModel !== undefined ? { inlineImageModel: normalizeInlineImageModelId(inlineModel) } : {}),
     ...(inlineSource !== undefined ? { inlineImageSource: normalizeInlineImageSource(inlineSource) } : {}),
@@ -82,6 +87,7 @@ function normalizeImageAdvancedOptions(value: unknown) {
     ...(inlineResolution !== undefined ? { inlineResolution: normalizeImageResolution(inlineResolution) } : {}),
     ...(imageDeliveryMode !== undefined ? { imageDeliveryMode: normalizeImageDeliveryMode(imageDeliveryMode) } : {}),
     ...(manualImageProvider !== undefined ? { manualImageProvider: normalizeManualImageProvider(manualImageProvider) } : {}),
+    ...(manualPromptSuffix !== undefined ? { manualPromptSuffix: normalizeManualPromptSuffix(manualPromptSuffix) } : {}),
   };
 }
 
@@ -173,6 +179,7 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
   const inlineImageResolution = normalizeImageResolution(imageAdvancedOptions.inlineResolution);
   const imageDeliveryMode = normalizeImageDeliveryMode(imageAdvancedOptions.imageDeliveryMode);
   const manualImageProvider = normalizeManualImageProvider(imageAdvancedOptions.manualImageProvider);
+  const manualPromptSuffix = normalizeManualPromptSuffix(imageAdvancedOptions.manualPromptSuffix);
 
   return {
     id: settings.id,
@@ -194,6 +201,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     imageDeliveryMode,
     manual_image_provider: manualImageProvider,
     manualImageProvider,
+    manual_prompt_suffix: manualPromptSuffix,
+    manualPromptSuffix,
     image_style_prompt: settings.imageStylePrompt,
     imageStylePrompt: settings.imageStylePrompt,
     cover_enabled: settings.coverEnabled,
@@ -343,6 +352,16 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
       ? update.imageAdvancedOptions as Record<string, unknown>
       : {};
     update.imageAdvancedOptions = { ...imageAdvancedOptions, manualImageProvider } as never;
+  }
+  const manualPromptSuffix = body.manual_prompt_suffix ?? body.manualPromptSuffix;
+  if (manualPromptSuffix !== undefined) {
+    if (typeof manualPromptSuffix !== "string") throw new Error("Invalid manual prompt suffix");
+    const imageAdvancedOptions = update.imageAdvancedOptions
+      && typeof update.imageAdvancedOptions === "object"
+      && !Array.isArray(update.imageAdvancedOptions)
+      ? update.imageAdvancedOptions as Record<string, unknown>
+      : {};
+    update.imageAdvancedOptions = { ...imageAdvancedOptions, manualPromptSuffix: normalizeManualPromptSuffix(manualPromptSuffix) } as never;
   }
   const coverImageResolution = body.cover_image_resolution ?? body.coverImageResolution;
   const inlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
@@ -835,7 +854,8 @@ settingsRoutes.put("/", async (c) => {
   const directInlineImageResolution = body.inline_image_resolution ?? body.inlineImageResolution;
   const directImageDeliveryMode = body.image_delivery_mode ?? body.imageDeliveryMode;
   const directManualImageProvider = body.manual_image_provider ?? body.manualImageProvider;
-  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined || directImageDeliveryMode !== undefined || directManualImageProvider !== undefined) {
+  const directManualPromptSuffix = body.manual_prompt_suffix ?? body.manualPromptSuffix;
+  if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined || directImageDeliveryMode !== undefined || directManualImageProvider !== undefined || directManualPromptSuffix !== undefined) {
     const [existing] = await db
       .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
       .from(userSettings)
@@ -850,6 +870,7 @@ settingsRoutes.put("/", async (c) => {
       ...(directInlineImageResolution !== undefined ? { inlineResolution: normalizeImageResolution(directInlineImageResolution) } : {}),
       ...(directImageDeliveryMode !== undefined ? { imageDeliveryMode: normalizeImageDeliveryMode(directImageDeliveryMode) } : {}),
       ...(directManualImageProvider !== undefined ? { manualImageProvider: normalizeManualImageProvider(directManualImageProvider) } : {}),
+      ...(directManualPromptSuffix !== undefined ? { manualPromptSuffix: normalizeManualPromptSuffix(directManualPromptSuffix) } : {}),
     } as never;
   }
 
