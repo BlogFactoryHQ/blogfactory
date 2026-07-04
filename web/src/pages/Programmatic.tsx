@@ -59,6 +59,7 @@ import {
   type ProgrammaticSection,
   type ProgrammaticTemplate,
 } from "@/lib/programmatic";
+import { parseProgrammaticImportFile } from "@/lib/programmatic-import";
 import type { SplitImageConfig } from "@/components/content/ImageGenerationSettings";
 
 type ProgrammaticView = "home" | "library" | "campaign" | "editor";
@@ -486,8 +487,24 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   }
 
   async function handleFile(file: File) {
-    const parsed = parseCsv(await file.text());
-    applyRows(parsed.rows);
+    try {
+      const imported = await parseProgrammaticImportFile(file);
+      setSelectedTemplateId(imported.template.id);
+      setDraftTemplate(imported.template);
+      setRows(imported.rows.length ? imported.rows : [{}]);
+      setDataMode("match_rows");
+      setVariableValues({});
+      setCampaignName(imported.campaignName);
+      setDatasetName(imported.datasetName);
+      setPreviewIndex(0);
+      setShowPreview(true);
+      setView("campaign");
+      toast.success(`${imported.rows.length} row${imported.rows.length === 1 ? "" : "s"} imported; template prepared`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not import file");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   function handlePasteImport() {
@@ -719,7 +736,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               <div className="flex items-center justify-between gap-4">
                 <SectionHeader icon={Database} title="Your Data" description={`Needs: ${variables.map(variableLabel).join(", ")}`} />
                 <div className="flex flex-wrap gap-2">
-                  <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => event.target.files?.[0] && handleFile(event.target.files[0])} />
+                  <input ref={fileInputRef} type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => event.target.files?.[0] && handleFile(event.target.files[0])} />
                   <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />Import</Button>
                   <Button variant="outline" onClick={() => navigator.clipboard.readText().then((text) => { setPasteText(text); applyRows(parseCsv(text).rows); }).catch(() => toast.error("Clipboard is not available"))}>
                     <Copy className="mr-2 h-4 w-4" />Paste
@@ -807,7 +824,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     <Button variant="ghost" onClick={() => setRows((current) => [...(current.length ? current : []), {}])}>
                       <Plus className="mr-2 h-4 w-4" />Add row
                     </Button>
-                    <p className="text-sm text-muted-foreground">Paste data or drag a CSV here</p>
+                    <p className="text-sm text-muted-foreground">Paste data or import CSV/XLSX</p>
                   </div>
                 </BywordCard>
               )}
