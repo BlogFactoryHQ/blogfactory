@@ -99,6 +99,7 @@ const formatModelName = (modelId: string) => {
 };
 
 const cleanDraftTitle = (title: string) => title.replace(/\s+\(Draft\s+\d+\)$/i, "");
+const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
 
 const draftIndex = (post: Post) => {
   const match = post.title.match(/\(Draft\s+(\d+)\)$/i);
@@ -116,6 +117,7 @@ const statusFromParam = (value: string | null): StatusFilter =>
 
 export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
   if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
+  if (FEED_SOURCE_TYPES.has(post.source_type)) return "";
   const total = draftTotalForPlan(post.generation_plan);
   if (total <= 1) return "";
   if (!post.job_id) return "";

@@ -25,4 +25,12 @@ describe("draftGroupKey", () => {
     const second = draftGroupKey({ ...basePost, job_id: "job-2", generation_plan: { totalDrafts: 1, variationCount: 5 } });
     expect(first).toBe(second);
   });
+
+  it("does not group feed posts as draft variations", () => {
+    expect(draftGroupKey({
+      ...basePost,
+      source_type: "rss_feed",
+      generation_plan: { totalDrafts: 3 },
+    })).toBe("");
+  });
 });
