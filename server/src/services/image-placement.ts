@@ -37,6 +37,11 @@ export function removeInlineImagePath(markdown: string, path?: string | null) {
     .trim();
 }
 
+function inlineImageAltText(markdown: string, path: string) {
+  const match = markdown.match(new RegExp(`!\\[([^\\]\\n]*)\\]\\(${escapeRegExp(path)}\\)`));
+  return match?.[1]?.trim() || undefined;
+}
+
 function imageBlocks(images: PlacementImage[]) {
   return images.map((image) => imageFigureMarkdown(image.url, image.altText)).join("\n\n");
 }
@@ -80,4 +85,17 @@ export function placeInlineImages(markdown: string, images: PlacementImage[], pl
   if (placement === "between_sections") return insertBetweenSections(markdown, missingImages);
   if (placement === "auto" && missingImages.length > 1) return insertBetweenSections(markdown, missingImages);
   return insertAfterIntro(markdown, missingImages);
+}
+
+export function reflowInlineImages(markdown: string, images: PlacementImage[], placement: ImagePlacement) {
+  if (!images.length || placement === "featured_only") return markdown;
+  const normalizedImages = images.map((image) => ({
+    ...image,
+    altText: image.altText || inlineImageAltText(markdown, image.url),
+  }));
+  const contentWithoutImages = normalizedImages.reduce(
+    (content, image) => removeInlineImagePath(content, image.url),
+    markdown
+  );
+  return placeInlineImages(contentWithoutImages, normalizedImages, placement);
 }

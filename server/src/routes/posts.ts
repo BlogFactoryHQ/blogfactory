@@ -6,6 +6,7 @@ import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
+import { reflowInlineImages } from "../services/image-placement.js";
 
 export const postsRoutes = new Hono();
 
@@ -263,6 +264,9 @@ postsRoutes.get("/:id", async (c) => {
     : [];
   return c.json({
     ...result,
+    content: inlineImages.length > 1
+      ? reflowInlineImages(result.content || "", inlineImages.map((url) => ({ url })), "auto")
+      : result.content,
     inline_images: inlineImages,
     image_assets: attachedAssets,
     personas: persona_name ? { name: persona_name } : null,

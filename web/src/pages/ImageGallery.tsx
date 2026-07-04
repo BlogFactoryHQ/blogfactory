@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,17 @@ import { toast } from "sonner";
 const REQUESTS_PER_PAGE = 6;
 type RequestStatusFilter = "active" | "all" | "pending" | "processing" | "failed" | "done";
 type RequestTypeFilter = "all" | "cover" | "inline";
+type BulkImportState = Record<string, { total: number; completed: number; failed: number; uploading: boolean }>;
+type ManualImportGroup = {
+  id: string;
+  title: string;
+  postId: string | null;
+  provider: string;
+  requests: ImageGenerationRequest[];
+  importableRequests: ImageGenerationRequest[];
+  doneCount: number;
+  totalCount: number;
+};
 
 function providerUrl(provider: string) {
   if (provider.includes("midjourney")) return "https://www.midjourney.com/imagine";
@@ -85,6 +97,32 @@ function requestMatchesStatus(request: ImageGenerationRequest, status: RequestSt
   if (status === "active") return request.status !== "done";
   if (status === "pending") return request.status === "pending" || request.status === "queued";
   return request.status === status;
+}
+
+function isManualImportRequest(request: ImageGenerationRequest) {
+  return request.provider.toLowerCase().includes("midjourney");
+}
+
+function canImportRequest(request: ImageGenerationRequest) {
+  return isManualImportRequest(request) && request.status !== "done" && request.status !== "cancelled";
+}
+
+function requestSlotRank(request: ImageGenerationRequest) {
+  const position = request.position ?? 0;
+  return request.type === "cover" ? position : 100 + position;
+}
+
+function sortSlotRequests(requests: ImageGenerationRequest[]) {
+  return [...requests].sort((a, b) => requestSlotRank(a) - requestSlotRank(b));
+}
+
+function slotLabel(request: ImageGenerationRequest) {
+  const index = (request.position ?? 0) + 1;
+  return `${request.type === "cover" ? "Cover" : "Inline"} ${index}`;
+}
+
+function safeDomId(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function ImageRequestCard({
@@ -219,6 +257,116 @@ function ImageRequestCard({
   );
 }
 
+function ManualImportGroupCard({
+  group,
+  progress,
+  dragging,
+  onDragStateChange,
+  onImportFiles,
+}: {
+  group: ManualImportGroup;
+  progress?: BulkImportState[string];
+  dragging: boolean;
+  onDragStateChange: (dragging: boolean) => void;
+  onImportFiles: (group: ManualImportGroup, files: FileList | File[]) => void;
+}) {
+  const fileInputId = `manual-import-${safeDomId(group.id)}`;
+  const uploading = Boolean(progress?.uploading);
+  const liveDone = Math.min(group.totalCount, group.doneCount + (progress?.completed || 0));
+  const progressValue = group.totalCount ? Math.round((liveDone / group.totalCount) * 100) : 0;
+  const importLabel = group.importableRequests.length === 1 ? "Import image" : `Import ${group.importableRequests.length} images`;
+  const copyPrompts = async () => {
+    await navigator.clipboard.writeText(sortSlotRequests(group.requests).map((request) => `${slotLabel(request)}\n${request.prompt}`).join("\n\n"));
+    toast.success("Prompts copied");
+  };
+
+  return (
+    <div
+      className={`rounded-lg border bg-background px-3 py-3 transition-calm ${dragging ? "border-primary bg-primary/5" : "border-border"}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!uploading) onDragStateChange(true);
+      }}
+      onDragLeave={() => onDragStateChange(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDragStateChange(false);
+        if (!uploading && event.dataTransfer.files.length) onImportFiles(group, event.dataTransfer.files);
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-medium">{group.title}</p>
+            <Badge variant="outline" className="text-[10px]">
+              {liveDone}/{group.totalCount} imported
+            </Badge>
+            {liveDone === group.totalCount && (
+              <Badge variant="outline" className={`text-[10px] ${statusBadgeClass("done")}`}>
+                Done
+              </Badge>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Manual set: {sortSlotRequests(group.requests).map(slotLabel).join(" · ")}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {sortSlotRequests(group.requests).map((request) => (
+              <Badge
+                key={request.id}
+                variant="outline"
+                className={`text-[10px] ${request.status === "done" ? statusBadgeClass("done") : statusBadgeClass("pending")}`}
+              >
+                {slotLabel(request)} · {request.status === "done" ? "Done" : "Pending"}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={copyPrompts}>
+            <Copy className="h-4 w-4" />
+            Copy prompts
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={providerUrl(group.provider) || "#"} target="_blank" rel="noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              Open
+            </a>
+          </Button>
+          <input
+            id={fileInputId}
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={uploading || group.importableRequests.length === 0}
+            className="hidden"
+            onChange={(event) => {
+              if (event.target.files?.length) onImportFiles(group, event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
+          <Button variant="default" size="sm" asChild disabled={uploading || group.importableRequests.length === 0}>
+            <label htmlFor={fileInputId}>
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {uploading ? "Uploading" : importLabel}
+            </label>
+          </Button>
+        </div>
+      </div>
+      <div className="mt-3 space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{dragging ? `Drop up to ${group.importableRequests.length} image${group.importableRequests.length === 1 ? "" : "s"}` : "Drop images here or use Import"}</span>
+          <span>{liveDone}/{group.totalCount}</span>
+        </div>
+        <Progress value={progressValue} className="h-2" />
+        {progress?.failed ? (
+          <p className="text-xs text-destructive">{progress.failed} upload{progress.failed === 1 ? "" : "s"} failed. Try those slots again.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function ImageGallery() {
   const [filters, setFilters] = useState<GalleryFiltersType>(defaultFilters);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -227,6 +375,8 @@ export default function ImageGallery() {
   const [requestPage, setRequestPage] = useState(1);
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("active");
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>("all");
+  const [bulkImportState, setBulkImportState] = useState<BulkImportState>({});
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
 
   const { data: images, isLoading } = useImageAssets(filters);
   const { data: stats } = useImageAssetStats();
@@ -271,13 +421,60 @@ export default function ImageGallery() {
     ),
     [imageRequests, requestStatusFilter, requestTypeFilter]
   );
-  const requestPageCount = Math.max(1, Math.ceil(filteredRequests.length / REQUESTS_PER_PAGE));
+  const manualImportGroups = useMemo(() => {
+    const visibleIds = new Set(filteredRequests.map((request) => request.id));
+    const groups = new Map<string, ManualImportGroup>();
+
+    for (const request of imageRequests) {
+      if (!isManualImportRequest(request)) continue;
+      const groupId = request.post_id || request.job_id || request.post_title || request.id;
+      const existing = groups.get(groupId);
+      if (existing) {
+        existing.requests.push(request);
+      } else {
+        groups.set(groupId, {
+          id: groupId,
+          title: request.post_title || "Untitled post",
+          postId: request.post_id,
+          provider: request.provider,
+          requests: [request],
+          importableRequests: [],
+          doneCount: 0,
+          totalCount: 0,
+        });
+      }
+    }
+
+    return Array.from(groups.values()).map((group) => {
+      const activeRequestsForGroup = group.requests.filter((request) => request.status !== "cancelled");
+      return {
+        ...group,
+        requests: sortSlotRequests(activeRequestsForGroup),
+        importableRequests: sortSlotRequests(activeRequestsForGroup.filter(canImportRequest)),
+        doneCount: activeRequestsForGroup.filter((request) => request.status === "done").length,
+        totalCount: activeRequestsForGroup.length,
+      };
+    }).filter((group) =>
+      group.totalCount > 0
+      && group.importableRequests.length > 0
+      && group.requests.some((request) => visibleIds.has(request.id))
+    );
+  }, [filteredRequests, imageRequests]);
+  const groupedRequestIds = useMemo(
+    () => new Set(manualImportGroups.flatMap((group) => group.requests.map((request) => request.id))),
+    [manualImportGroups]
+  );
+  const individualRequests = useMemo(
+    () => filteredRequests.filter((request) => !groupedRequestIds.has(request.id)),
+    [filteredRequests, groupedRequestIds]
+  );
+  const requestPageCount = Math.max(1, Math.ceil(individualRequests.length / REQUESTS_PER_PAGE));
   const paginatedRequests = useMemo(() => {
     const start = (requestPage - 1) * REQUESTS_PER_PAGE;
-    return filteredRequests.slice(start, start + REQUESTS_PER_PAGE);
-  }, [filteredRequests, requestPage]);
-  const requestRangeStart = filteredRequests.length ? (requestPage - 1) * REQUESTS_PER_PAGE + 1 : 0;
-  const requestRangeEnd = filteredRequests.length ? Math.min(requestPage * REQUESTS_PER_PAGE, filteredRequests.length) : 0;
+    return individualRequests.slice(start, start + REQUESTS_PER_PAGE);
+  }, [individualRequests, requestPage]);
+  const requestRangeStart = individualRequests.length ? (requestPage - 1) * REQUESTS_PER_PAGE + 1 : 0;
+  const requestRangeEnd = individualRequests.length ? Math.min(requestPage * REQUESTS_PER_PAGE, individualRequests.length) : 0;
   const stockProviderUnavailable = useMemo(
     () => activeRequests.some((request) => request.status === "failed" && request.provider !== "ai-deferred"),
     [activeRequests]
@@ -314,6 +511,60 @@ export default function ImageGallery() {
     if (orphanedIds.length > 0) deleteImages.mutate(orphanedIds);
     setShowOrphanCleanup(false);
   };
+
+  const handleBulkManualImport = useCallback(async (group: ManualImportGroup, selectedFiles: FileList | File[]) => {
+    const files = Array.from(selectedFiles).filter((file) => file.type.startsWith("image/"));
+    if (!files.length) {
+      toast.error("No image files selected");
+      return;
+    }
+
+    const slots = group.importableRequests;
+    if (!slots.length) {
+      toast.info("All slots are already imported");
+      return;
+    }
+
+    const assignments = slots.slice(0, files.length).map((request, index) => ({ request, file: files[index] }));
+    if (!assignments.length) return;
+    if (files.length > slots.length) {
+      toast.info(`Using first ${slots.length} image${slots.length === 1 ? "" : "s"} for the remaining slots`);
+    }
+
+    setBulkImportState((prev) => ({
+      ...prev,
+      [group.id]: { total: assignments.length, completed: 0, failed: 0, uploading: true },
+    }));
+
+    const results = await Promise.allSettled(assignments.map(async ({ request, file }) => {
+      await importRequest.mutateAsync({ id: request.id, file, postId: request.post_id, quiet: true });
+      setBulkImportState((prev) => {
+        const current = prev[group.id] || { total: assignments.length, completed: 0, failed: 0, uploading: true };
+        return {
+          ...prev,
+          [group.id]: { ...current, completed: current.completed + 1 },
+        };
+      });
+    }));
+
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setBulkImportState((prev) => {
+      const current = prev[group.id] || { total: assignments.length, completed: assignments.length - failed, failed: 0, uploading: true };
+      return {
+        ...prev,
+        [group.id]: { ...current, failed, uploading: false },
+      };
+    });
+
+    const imported = assignments.length - failed;
+    if (imported > 0) {
+      const nextImported = Math.min(group.totalCount, group.doneCount + imported);
+      toast.success(`${nextImported}/${group.totalCount} images imported`, {
+        description: nextImported === group.totalCount ? "Manual image set complete." : `${group.totalCount - nextImported} slot${group.totalCount - nextImported === 1 ? "" : "s"} still pending.`,
+      });
+    }
+    if (failed > 0) toast.error(`${failed} upload${failed === 1 ? "" : "s"} failed`);
+  }, [importRequest]);
 
   const orphanedCount = stats?.orphaned || 0;
 
@@ -420,6 +671,20 @@ export default function ImageGallery() {
               Showing {filteredRequests.length} of {imageRequests.length}
             </span>
           </div>
+          {manualImportGroups.length > 0 && (
+            <div className="mt-3 grid gap-2 border-t border-border pt-3">
+              {manualImportGroups.map((group) => (
+                <ManualImportGroupCard
+                  key={group.id}
+                  group={group}
+                  progress={bulkImportState[group.id]}
+                  dragging={draggingGroupId === group.id}
+                  onDragStateChange={(dragging) => setDraggingGroupId(dragging ? group.id : null)}
+                  onImportFiles={handleBulkManualImport}
+                />
+              ))}
+            </div>
+          )}
           <div className="mt-3 grid gap-2">
             {paginatedRequests.length ? paginatedRequests.map((request) => (
               <ImageRequestCard
@@ -436,14 +701,14 @@ export default function ImageGallery() {
               />
             )) : (
               <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
-                No image requests match these filters.
+                {manualImportGroups.length ? "Individual manual slots are grouped above." : "No image requests match these filters."}
               </div>
             )}
           </div>
-          {requestPageCount > 1 && (
+          {requestPageCount > 1 && individualRequests.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
               <p className="text-xs text-muted-foreground">
-                Showing {requestRangeStart}-{requestRangeEnd} of {filteredRequests.length} requests
+                Showing {requestRangeStart}-{requestRangeEnd} of {individualRequests.length} individual requests
               </p>
               <div className="flex items-center gap-2">
                 <Button

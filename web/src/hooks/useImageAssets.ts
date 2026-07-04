@@ -188,7 +188,7 @@ export function useCancelImageGenerationRequest() {
 export function useImportImageGenerationRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, file, postId }: { id: string; file: File; postId?: string | null }) => {
+    mutationFn: async ({ id, file, postId }: { id: string; file: File; postId?: string | null; quiet?: boolean }) => {
       const formData = new FormData();
       formData.append("file", file);
       const result = await api.upload<{
@@ -205,9 +205,10 @@ export function useImportImageGenerationRequest() {
       if (result.postId) {
         queryClient.invalidateQueries({ queryKey: ["post", result.postId] });
       }
-      toast.success("Image imported");
+      if (!variables.quiet) toast.success("Image imported");
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, variables) => {
+      if (variables.quiet) return;
       const message = err instanceof Error ? err.message : "Unable to import image.";
       toast.error("Import failed", { description: message });
     },

@@ -5,7 +5,7 @@ import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
-import { normalizeImagePlacement, placeInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
+import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
@@ -392,7 +392,7 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
   const coverImageUrl = post.coverImageUrl || autoPromotedCover?.url || null;
   const coverAltText = coverImageUrl ? altByPath.get(coverImageUrl) || autoPromotedCover?.altText || fallbackImageAlt(title, "cover") : fallbackImageAlt(title, "cover");
   const inlineImages = autoPromotedCover ? [] : storedInlineImages;
-  const placedMarkdown = placeInlineImages(body, inlineImages, imagePlacement);
+  const placedMarkdown = reflowInlineImages(body, inlineImages, imagePlacement);
 
   return {
     title,

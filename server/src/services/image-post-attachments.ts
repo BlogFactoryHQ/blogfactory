@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageGenerationRequests, posts } from "../db/schema.js";
-import { normalizeImagePlacement, placeInlineImages, removeInlineImagePath } from "./image-placement.js";
+import { normalizeImagePlacement, reflowInlineImages, removeInlineImagePath } from "./image-placement.js";
 import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
 
 async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null, position?: number | null, userId?: string) {
@@ -17,20 +17,25 @@ async function attachInlineImage(postId: string, path: string, placement: unknow
     }).where(and(...conditions));
     return;
   }
-  const alreadyTracked = inlineImages.includes(path);
   const nextInlineImages = inlineImages.filter(Boolean);
-  if (!alreadyTracked) {
+  if (!inlineImages.includes(path)) {
     const insertAt = typeof position === "number" && position >= 0
       ? Math.min(position, nextInlineImages.length)
       : nextInlineImages.length;
     nextInlineImages.splice(insertAt, 0, path);
   }
   const previousContent = post.content || "";
-  const content = alreadyTracked || previousContent.includes(path)
-      ? previousContent
-      : placeInlineImages(previousContent, [{ url: path, altText }], normalizeImagePlacement(placement));
+  const placementMode = normalizeImagePlacement(placement);
+  const uniqueInlineImages = Array.from(new Set(nextInlineImages));
+  const content = placementMode === "featured_only"
+    ? previousContent
+    : reflowInlineImages(
+      previousContent,
+      uniqueInlineImages.map((url) => ({ url, altText: url === path ? altText : undefined })),
+      placementMode
+    );
   await db.update(posts).set({
-    inlineImages: Array.from(new Set(nextInlineImages)),
+    inlineImages: uniqueInlineImages,
     content,
   }).where(and(...conditions));
 }
