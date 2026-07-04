@@ -33,7 +33,7 @@ import {
   Image as ImageIcon,
   X,
 } from "lucide-react";
-import { FILTER_TYPES, FREQUENCIES, GITHUB_PERIODS, HN_TYPES, platformLabel, type SourcePlatform } from "@/lib/source-options";
+import { FREQUENCIES, GITHUB_PERIODS, HN_TYPES, filterTypesForPlatform, platformLabel, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { format } from "date-fns";
@@ -213,6 +213,7 @@ export function FeedEditorDialog({
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
   const platform = normalizePlatform(editedFeed.platform);
   const platformConfig = editedFeed.platform_config || {};
+  const availableFilterTypes = filterTypesForPlatform(platform, editedFeed.filter_type);
 
   const setPlatformConfig = (updates: Record<string, unknown>) => {
     setEditedFeed({
@@ -472,7 +473,7 @@ export function FeedEditorDialog({
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {FILTER_TYPES.map((filter) => (
+                      {availableFilterTypes.map((filter) => (
                         <SelectItem key={filter.id} value={filter.id}>{filter.name}</SelectItem>
                       ))}
                     </SelectContent>

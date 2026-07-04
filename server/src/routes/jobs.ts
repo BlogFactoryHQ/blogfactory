@@ -105,6 +105,13 @@ function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | un
   return { generateImages, imageConfig: generateImages ? imageConfig : undefined };
 }
 
+function requestedSourceItemsFromPlan(plan: unknown) {
+  if (!plan || typeof plan !== "object") return undefined;
+  const value = (plan as Record<string, unknown>).requestedSourceItems;
+  const count = Math.round(Number(value));
+  return Number.isFinite(count) && count > 0 ? count : undefined;
+}
+
 async function markStaleRunningJobs(userId: string, jobId?: string) {
   const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
   const staleClauses = [
@@ -287,6 +294,8 @@ jobsRoutes.post("/:id/retry", async (c) => {
     sourceValue: updated.sourceValue,
     modelId: updated.modelId,
     personaId: updated.personaId,
+    postsPerRun: requestedSourceItemsFromPlan(updated.generationPlan),
+    variations: requestedSourceItemsFromPlan(updated.generationPlan),
     generateImages: imageSettings.generateImages,
     imageConfig: imageSettings.imageConfig,
   }).catch((err) => console.error("[retry] Generation error:", err));

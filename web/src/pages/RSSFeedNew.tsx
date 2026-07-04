@@ -28,7 +28,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, FileText } from "lucide-react";
-import { FREQUENCIES, PLATFORMS, FILTER_TYPES, HN_TYPES, GITHUB_PERIODS, sourceTypeForPlatform, type SourcePlatform } from "@/lib/source-options";
+import { FREQUENCIES, PLATFORMS, HN_TYPES, GITHUB_PERIODS, filterTypesForPlatform, sourceTypeForPlatform, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import { toast } from "sonner";
@@ -106,11 +106,6 @@ export default function RSSFeedNew() {
   const [filterType, setFilterType] = useState("none");
   const [filterValue, setFilterValue] = useState<number | undefined>();
 
-  // Content options
-  const [includeContent, setIncludeContent] = useState(false);
-  const [includeSummary, setIncludeSummary] = useState(false);
-  const [includeComments, setIncludeComments] = useState(0);
-  const [blurNsfw, setBlurNsfw] = useState(true);
   const [filterOldPostsDays, setFilterOldPostsDays] = useState<number | undefined>();
   const [extractFullContent, setExtractFullContent] = useState(false);
   const [postsPerRun, setPostsPerRun] = useState(5);
@@ -132,6 +127,7 @@ export default function RSSFeedNew() {
   const { data: textModels = [] } = useTextModels();
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
   const fallbackTextModelId = textModels[0]?.id;
+  const availableFilterTypes = filterTypesForPlatform(platform, filterType);
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
@@ -195,6 +191,14 @@ export default function RSSFeedNew() {
     if (!personaId || selectedPersona?.base_model === modelId) setModelId(fallbackTextModelId);
   }, [fallbackTextModelId, modelId, personaId, personas, selectedModelUnavailable]);
 
+  useEffect(() => {
+    const nextFilterTypes = filterTypesForPlatform(platform, filterType);
+    if (!nextFilterTypes.some((item) => item.id === filterType)) {
+      setFilterType("none");
+      setFilterValue(undefined);
+    }
+  }, [filterType, platform]);
+
   // Build platform config object
   const buildPlatformConfig = () => {
     switch (platform) {
@@ -250,11 +254,7 @@ export default function RSSFeedNew() {
         platform,
         filter_type: filterType,
         filter_value: filterValue || null,
-        include_content: includeContent,
-        include_summary: includeSummary,
-        include_comments: includeComments,
         platform_config: platformConfig,
-        blur_nsfw: blurNsfw,
         filter_old_posts_days: filterOldPostsDays || null,
         extract_full_content: extractFullContent,
         posts_per_run: postsPerRun,
@@ -269,8 +269,12 @@ export default function RSSFeedNew() {
             personaId,
             modelId,
             variations: postsPerRun,
+            postsPerRun,
             feedId: feed.id,
             platformConfig,
+            filterType,
+            filterValue,
+            keywords: keywords.length > 0 ? keywords : undefined,
             extractFullContent,
             filterOldPostsDays: filterOldPostsDays || undefined,
             generateImages: imageConfig.cover.enabled || imageConfig.inline.enabled,
@@ -657,7 +661,7 @@ export default function RSSFeedNew() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {FILTER_TYPES.map((ft) => (
+                    {availableFilterTypes.map((ft) => (
                       <SelectItem key={ft.id} value={ft.id}>
                         <div>
                           <div>{ft.name}</div>
@@ -812,48 +816,6 @@ export default function RSSFeedNew() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border">
-                  <div>
-                    <p className="font-medium text-sm">Include Content</p>
-                    <p className="text-xs text-muted-foreground">Extract full article content</p>
-                  </div>
-                  <Switch checked={includeContent} onCheckedChange={setIncludeContent} />
-                </div>
-
-                <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border">
-                  <div>
-                    <p className="font-medium text-sm">AI Summary</p>
-                    <p className="text-xs text-muted-foreground">Generate AI summaries</p>
-                  </div>
-                  <Switch checked={includeSummary} onCheckedChange={setIncludeSummary} />
-                </div>
-
-                {platform === "reddit" && (
-                  <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border">
-                    <div>
-                      <p className="font-medium text-sm">Blur NSFW</p>
-                      <p className="text-xs text-muted-foreground">Blur NSFW content</p>
-                    </div>
-                    <Switch checked={blurNsfw} onCheckedChange={setBlurNsfw} />
-                  </div>
-                )}
-
-                {(platform === "reddit" || platform === "hackernews") && (
-                  <div className="space-y-2">
-                    <Label htmlFor="includeComments">Include Comments</Label>
-                    <Input
-                      id="includeComments"
-                      type="number"
-                      min="0"
-                      max="50"
-                      placeholder="0"
-                      value={includeComments || ""}
-                      onChange={(e) => setIncludeComments(parseInt(e.target.value) || 0)}
-                    />
-                    <p className="text-xs text-muted-foreground">Number of top comments (0 = none)</p>
-                  </div>
-                )}
-
                 {/* Freshness filter - context-specific label */}
                 <div className="space-y-2">
                   <Label htmlFor="filterOldPosts">
@@ -940,6 +902,7 @@ export default function RSSFeedNew() {
             platformConfig={buildPlatformConfig()}
             filterType={filterType}
             filterValue={filterValue}
+            keywords={keywords}
           />
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>

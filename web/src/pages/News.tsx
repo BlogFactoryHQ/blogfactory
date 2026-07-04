@@ -42,6 +42,9 @@ interface Feed {
   persona_id?: string | null;
   model_id?: string | null;
   posts_per_run?: number | null;
+  keywords?: string[] | null;
+  filter_type?: string | null;
+  filter_value?: number | null;
   extract_full_content?: boolean | null;
   filter_old_posts_days?: number | null;
   platform_config?: Record<string, unknown> | null;
@@ -309,7 +312,11 @@ export default function News() {
         personaId: feed.persona_id,
         modelId: feed.model_id,
         variations: feed.posts_per_run ?? 5,
+        postsPerRun: feed.posts_per_run ?? 5,
         feedId: feed.id,
+        filterType: feed.filter_type || undefined,
+        filterValue: feed.filter_value ?? undefined,
+        keywords: feed.keywords || undefined,
         extractFullContent: feed.extract_full_content ?? false,
         filterOldPostsDays: feed.filter_old_posts_days || undefined,
         platformConfig: feed.platform_config || { url: feed.source_url, editorialMode: "news" },

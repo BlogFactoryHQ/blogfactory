@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { anchorGeneratedTitleToSource, applyGenerationOverrides, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
+import { anchorGeneratedTitleToSource, applyGenerationOverrides, applySeoPackage, articleTemplateInstructions, buildArticleExtras, buildGenerationContractMetadata, buildSettingsInstructions, enforceGeneratedArticleContracts, evaluateSeoQa, expandDraftVariations, feedCandidateItemCount, feedSourceItemCount, findIndexedTopicDuplicate, openRouterErrorMessage, resolveGenerationContract } from "./generate-content.js";
 import { cleanPostTitle } from "./post-cleanup.js";
 import { publishTags, publishTitle, slugify, truncateAtWord } from "./publishing.js";
 
@@ -34,6 +34,10 @@ assert.deepEqual(
   [[4, 5]]
 );
 assert.equal(expandDraftVariations([{ title: "RSS", content: "Content" }], "rss_feed", 3).length, 1);
+assert.equal(feedSourceItemCount(3), 3);
+assert.equal(feedSourceItemCount(999), 20);
+assert.equal(feedCandidateItemCount(3), 12);
+assert.equal(feedCandidateItemCount(20), 50);
 
 const wordContract = resolveGenerationContract({ articleWordCount: 1500 });
 assert.equal(wordContract.targetWords, 1500);

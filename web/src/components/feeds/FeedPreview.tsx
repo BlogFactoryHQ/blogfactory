@@ -25,11 +25,12 @@ interface FeedPreviewProps {
   filterType: string;
   filterValue?: number;
   feedSourceUrl?: string;
+  keywords?: string[];
 }
 
 type SortMode = "newest" | "oldest";
 
-export function FeedPreview({ platform, platformConfig, filterType, filterValue, feedSourceUrl }: FeedPreviewProps) {
+export function FeedPreview({ platform, platformConfig, filterType, filterValue, feedSourceUrl, keywords = [] }: FeedPreviewProps) {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,6 +60,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
         config: apiConfig,
         filterType,
         filterValue,
+        keywords,
         limit: parseInt(itemLimit),
       });
 
@@ -110,7 +112,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
     } finally {
       setIsLoading(false);
     }
-  }, [platform, platformConfig, filterType, filterValue, itemLimit, user, feedSourceUrl]);
+  }, [platform, platformConfig, filterType, filterValue, keywords, itemLimit, user, feedSourceUrl]);
 
   const handleOpen = () => {
     setIsOpen(true);
