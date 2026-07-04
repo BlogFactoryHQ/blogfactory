@@ -116,6 +116,11 @@ function sortSlotRequests(requests: ImageGenerationRequest[]) {
   return [...requests].sort((a, b) => requestSlotRank(a) - requestSlotRank(b));
 }
 
+function coverPromptRequest(requests: ImageGenerationRequest[]) {
+  const sortedRequests = sortSlotRequests(requests);
+  return sortedRequests.find((request) => request.type === "cover") || sortedRequests[0];
+}
+
 function slotLabel(request: ImageGenerationRequest) {
   const index = (request.position ?? 0) + 1;
   return `${request.type === "cover" ? "Cover" : "Inline"} ${index}`;
@@ -275,9 +280,14 @@ function ManualImportGroupCard({
   const liveDone = Math.min(group.totalCount, group.doneCount + (progress?.completed || 0));
   const progressValue = group.totalCount ? Math.round((liveDone / group.totalCount) * 100) : 0;
   const importLabel = group.importableRequests.length === 1 ? "Import image" : `Import ${group.importableRequests.length} images`;
-  const copyPrompts = async () => {
-    await navigator.clipboard.writeText(sortSlotRequests(group.requests).map((request) => `${slotLabel(request)}\n${request.prompt}`).join("\n\n"));
-    toast.success("Prompts copied");
+  const canonicalPromptRequest = coverPromptRequest(group.requests);
+  const copyCoverPrompt = async () => {
+    if (!canonicalPromptRequest?.prompt) {
+      toast.error("No prompt to copy");
+      return;
+    }
+    await navigator.clipboard.writeText(canonicalPromptRequest.prompt);
+    toast.success(`${slotLabel(canonicalPromptRequest)} prompt copied`);
   };
 
   return (
@@ -323,9 +333,9 @@ function ManualImportGroupCard({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={copyPrompts}>
+          <Button variant="outline" size="sm" onClick={copyCoverPrompt}>
             <Copy className="h-4 w-4" />
-            Copy prompts
+            Copy cover prompt
           </Button>
           <Button variant="outline" size="sm" asChild>
             <a href={providerUrl(group.provider) || "#"} target="_blank" rel="noreferrer">
