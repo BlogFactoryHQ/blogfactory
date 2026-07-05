@@ -87,6 +87,7 @@ interface WixImportedImage {
 }
 
 type WixImageSource = "id" | "url" | "none";
+type WixCoverSource = "both" | "media" | "hero" | "none";
 
 export function isPublishingProvider(value: string): value is IntegrationProvider {
   return (PUBLISHING_PROVIDERS as string[]).includes(value);
@@ -988,8 +989,18 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
     status: "draft",
     externalId: draftId,
     externalUrl: createResponse.draftPost?.url || null,
-    responseData: { draftId },
+    responseData: {
+      draftId,
+      imageVariant: createResponse.blogFactoryImageVariant,
+      coverImported: Boolean(coverMedia),
+      inlineImported: importedImages.size,
+    },
   };
+}
+
+interface WixDraftCreateResponse {
+  draftPost?: { id?: string; url?: string };
+  blogFactoryImageVariant?: string;
 }
 
 async function createWixDraftPost(
@@ -998,11 +1009,15 @@ async function createWixDraftPost(
   coverMedia: WixImportedImage | null,
   importedImages: Map<string, WixImportedImage>,
 ) {
-  const payload = (imageSource: WixImageSource) => ({
-    draftPost: {
+  const hasImages = Boolean(coverMedia || importedImages.size);
+  const payload = (imageSource: WixImageSource, coverSource: WixCoverSource) => {
+    const cover = coverMedia ? wixCoverData(coverMedia, article.coverAltText) : null;
+    return {
+      draftPost: {
       title: article.title,
       richContent: markdownToWixRichContent(article.markdown, null, importedImages, imageSource),
-      ...(coverMedia && imageSource !== "none" ? { media: wixCoverMedia(coverMedia, article.coverAltText) } : {}),
+      ...(cover && (coverSource === "both" || coverSource === "media") ? { media: wixCoverMedia(cover) } : {}),
+      ...(cover && (coverSource === "both" || coverSource === "hero") ? { heroImage: cover.image } : {}),
       memberId: credentials.memberId,
       slug: article.slug,
       excerpt: article.excerpt,
@@ -1014,32 +1029,45 @@ async function createWixDraftPost(
         ],
       },
     },
+    };
+  };
+
+  const allVariants = [
+    { label: "rich-id-cover-both", imageSource: "id", coverSource: "both" },
+    { label: "rich-id-cover-media", imageSource: "id", coverSource: "media" },
+    { label: "rich-id-cover-hero", imageSource: "id", coverSource: "hero" },
+    { label: "rich-id-no-cover", imageSource: "id", coverSource: "none" },
+    { label: "rich-url-no-cover", imageSource: "url", coverSource: "none" },
+    { label: "no-rich-cover-media", imageSource: "none", coverSource: "media" },
+    { label: "no-rich-cover-hero", imageSource: "none", coverSource: "hero" },
+  ] satisfies Array<{ label: string; imageSource: WixImageSource; coverSource: WixCoverSource }>;
+  const variants = allVariants.filter((variant) => {
+    if (!coverMedia && variant.coverSource !== "none") return false;
+    if (!importedImages.size && variant.imageSource !== "none") return false;
+    return true;
   });
 
-  try {
-    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("id")) as { draftPost?: { id?: string; url?: string } };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    const canRetryWithUrl = [coverMedia, ...importedImages.values()].some((image) => image?.url);
-    if (!isWixMediaReferenceError(message)) throw error;
-
-    await sleep(1500);
+  let lastMediaError = "";
+  for (let index = 0; index < variants.length; index += 1) {
+    const variant = variants[index];
     try {
-      return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("id")) as { draftPost?: { id?: string; url?: string } };
-    } catch (retryError) {
-      const retryMessage = retryError instanceof Error ? retryError.message : "";
-      if (!isWixMediaReferenceError(retryMessage)) throw retryError;
-      if (canRetryWithUrl) {
-        try {
-          return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("url")) as { draftPost?: { id?: string; url?: string } };
-        } catch (urlError) {
-          const urlMessage = urlError instanceof Error ? urlError.message : "";
-          if (!isWixMediaReferenceError(urlMessage)) throw urlError;
-        }
-      }
-      return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("none")) as { draftPost?: { id?: string; url?: string } };
+      const response = await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload(variant.imageSource, variant.coverSource)) as WixDraftCreateResponse;
+      response.blogFactoryImageVariant = variant.label;
+      return response;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!isWixMediaReferenceError(message)) throw error;
+      lastMediaError = message;
+      console.warn(`[wix] Draft media variant failed: ${variant.label}: ${message}`);
+      if (index === 0) await sleep(1500);
     }
   }
+
+  if (!hasImages) {
+    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("none", "none")) as WixDraftCreateResponse;
+  }
+
+  throw new Error(`Wix rejected imported media for this draft. No text-only draft was created. Last Wix error: ${lastMediaError || "unknown media error"}`);
 }
 
 async function wixApi(credentials: WixCredentials, method: string, path: string, body?: unknown) {
@@ -1132,19 +1160,25 @@ function wixImageNode(image: WixImportedImage, altText: string, imageSource: "id
   };
 }
 
-function wixCoverMedia(image: WixImportedImage, altText: string) {
+function wixCoverMedia(cover: ReturnType<typeof wixCoverData>) {
   return {
     displayed: true,
     custom: true,
     wixMedia: {
-      image: {
-        id: image.id,
-        ...(image.url ? { url: image.url } : {}),
-        ...(image.filename ? { filename: image.filename } : {}),
-        width: image.width,
-        height: image.height,
-        altText: altText.slice(0, 180),
-      },
+      image: cover.image,
+    },
+  };
+}
+
+function wixCoverData(image: WixImportedImage, altText: string) {
+  return {
+    image: {
+      id: image.id,
+      ...(image.url ? { url: image.url } : {}),
+      ...(image.filename ? { filename: image.filename } : {}),
+      width: image.width,
+      height: image.height,
+      altText: altText.slice(0, 180),
     },
   };
 }
