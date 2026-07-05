@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -495,7 +496,7 @@ export default function Jobs() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Job Queue"
         description={`Monitoring generation pipeline. ${statusCounts.running} active job${statusCounts.running !== 1 ? "s" : ""} running.`}
@@ -521,47 +522,50 @@ export default function Jobs() {
         stopping={stopJobMutation.isPending}
       />
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search Job ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 w-64"
-          />
+      <BywordCard className="mb-6">
+        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as StatusFilter)}>
+            <TabsList className="h-auto flex-wrap justify-start">
+              <TabsTrigger value="all" className="gap-2">
+                All Jobs
+                <span className="text-xs opacity-70">{statusCounts.all}</span>
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="gap-2">
+                Pending
+                <span className="text-xs text-status-pending">{statusCounts.pending}</span>
+              </TabsTrigger>
+              <TabsTrigger value="running" className="gap-2">
+                Running
+                <span className="text-xs text-status-running">{statusCounts.running}</span>
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="gap-2">
+                Completed
+                <span className="text-xs text-status-success">{statusCounts.completed}</span>
+              </TabsTrigger>
+              <TabsTrigger value="failed" className="gap-2">
+                Failed
+                <span className="text-xs text-status-error">{statusCounts.failed}</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="relative w-full lg:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search Job ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
-      </div>
+      </BywordCard>
 
-      {/* Status Tabs */}
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as StatusFilter)} className="mb-6">
-        <TabsList>
-          <TabsTrigger value="all" className="gap-2">
-            All Jobs
-            <span className="text-xs opacity-70">{statusCounts.all}</span>
-          </TabsTrigger>
-          <TabsTrigger value="pending" className="gap-2">
-            Pending
-            <span className="text-xs text-status-pending">{statusCounts.pending}</span>
-          </TabsTrigger>
-          <TabsTrigger value="running" className="gap-2">
-            Running
-            <span className="text-xs text-status-running">{statusCounts.running}</span>
-          </TabsTrigger>
-          <TabsTrigger value="completed" className="gap-2">
-            Completed
-            <span className="text-xs text-status-success">{statusCounts.completed}</span>
-          </TabsTrigger>
-          <TabsTrigger value="failed" className="gap-2">
-            Failed
-            <span className="text-xs text-status-error">{statusCounts.failed}</span>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* Table */}
-      <div className="calm-card overflow-hidden">
+      <BywordCard>
+        <SectionHeader
+          icon={BarChart3}
+          title="Queue table"
+          description={`${formatCompactNumber(filteredJobs.length)} visible job${filteredJobs.length === 1 ? "" : "s"}. Select a row for progress, cost, and recovery controls.`}
+        />
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -569,19 +573,21 @@ export default function Jobs() {
               <TableHead>Source Type</TableHead>
               <TableHead>Persona</TableHead>
               <TableHead>Model</TableHead>
+              <TableHead>Step</TableHead>
+              <TableHead>Created</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredJobs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                   No jobs found. Generate content to see jobs here.
                 </TableCell>
               </TableRow>
@@ -619,6 +625,14 @@ export default function Jobs() {
                         {formatModelName(job.model_id)}
                       </span>
                     </TableCell>
+                    <TableCell className="max-w-[220px]">
+                      <span className="line-clamp-1 text-xs text-muted-foreground">
+                        {(job.current_step || "queued").replace(/_/g, " ")}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {safeFormatDistanceToNow(job.created_at)}
+                    </TableCell>
                     <TableCell>
                       <StatusBadge status={statusBadge.status} label={statusBadge.label} />
                     </TableCell>
@@ -628,11 +642,11 @@ export default function Jobs() {
             )}
           </TableBody>
         </Table>
-      </div>
+      </BywordCard>
 
       {/* Job Detail Sheet */}
       <Sheet open={!!selectedJob} onOpenChange={(open) => !open && setSelectedJob(null)}>
-        <SheetContent className="w-[450px] sm:max-w-[450px] overflow-y-auto">
+        <SheetContent className="overflow-y-auto sm:max-w-2xl">
           {selectedJob && (
             <>
               <SheetHeader className="mb-6">
@@ -1001,7 +1015,7 @@ export default function Jobs() {
           )}
         </SheetContent>
       </Sheet>
-    </div>
+    </BywordPageShell>
   );
 }
 
@@ -1045,71 +1059,72 @@ function JobReliabilityInsights({
   const priciest = expensiveJobs[0];
 
   return (
-    <div className="mb-6 rounded-md border border-byword-border bg-card p-4 factory-panel">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Generation reliability</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Queue health, recovery work, and the jobs that cost or waited the most.</p>
+    <BywordCard className="mb-6">
+      <SectionHeader
+        icon={RefreshCw}
+        title="Generation reliability"
+        description="Queue health, recovery work, and the jobs that cost or waited the most."
+        action={<Badge variant="outline">{formatCompactNumber(statusCounts.all)} total jobs</Badge>}
+      />
+      <div className="p-4 sm:p-5 lg:p-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {metrics.map((metric) => (
+            <button
+              key={metric.label}
+              type="button"
+              onClick={() => {
+                if (metric.label === "Failed" || metric.label === "Partial batches") onFilter("failed");
+                else if (metric.label === "Running") onFilter("running");
+                else if (metric.label === "Completed") onFilter("completed");
+                else onFilter("all");
+              }}
+              className={cn("rounded-md border p-4 text-left transition-calm hover:border-byword-blue/45 hover:bg-byword-blue-soft/30", semanticToneClass(metric.tone))}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold uppercase opacity-75">{metric.label}</p>
+                <metric.icon className={cn("h-4 w-4 opacity-70", metric.label === "Running" && statusCounts.running > 0 && "animate-spin")} />
+              </div>
+              <p className="text-2xl font-semibold text-foreground">
+                {metric.currency ? formatCompactCurrency(metric.value) : formatCompactNumber(metric.value)}
+              </p>
+            </button>
+          ))}
         </div>
-        <Badge variant="outline">{formatCompactNumber(statusCounts.all)} total jobs</Badge>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <ReliabilityLane
+            title="Failed drafts"
+            value={retryableJob ? retryableJob.id.slice(0, 8) : "Clear"}
+            detail={retryableJob ? (failedDraftsFor(retryableJob)[0]?.error || retryableJob.error_message || "Review and retry the failed generation.") : "No failed jobs need action."}
+            tone={retryableJob ? "risk" : "success"}
+            action={retrying ? "Retrying..." : "Retry first failure"}
+            disabled={!retryableJob || retrying}
+            icon={RefreshCw}
+            onClick={() => retryableJob && onRetry(retryableJob)}
+            onSecondary={retryableJob ? () => onSelectJob(retryableJob) : undefined}
+          />
+          <ReliabilityLane
+            title="Expensive jobs"
+            value={priciest ? formatCompactCurrency(Number(priciest.total_cost) || 0) : "—"}
+            detail={priciest ? `${formatModelNameForInsight(priciest.model_id)} · ${priciest.source_type.replace(/_/g, " ")}` : "Cost data appears after completed calls."}
+            tone={priciest ? "opportunity" : "neutral"}
+            action="Open job"
+            disabled={!priciest}
+            icon={DollarSign}
+            onClick={() => priciest && onSelectJob(priciest)}
+          />
+          <ReliabilityLane
+            title="Slow jobs"
+            value={slowest ? formatDuration(slowest.duration) : "—"}
+            detail={slowest ? `${formatModelNameForInsight(slowest.job.model_id)} completed ${formatDuration(slowest.duration)} after start.` : "No completed duration signal yet."}
+            tone={slowest && slowest.duration > 120_000 ? "opportunity" : "neutral"}
+            action={runningJobs.length ? (stopping ? "Stopping..." : "Stop active jobs") : "Open slowest"}
+            disabled={runningJobs.length ? stopping : !slowest}
+            icon={runningJobs.length ? StopCircle : Timer}
+            onClick={() => runningJobs.length ? onStop(runningJobs) : slowest && onSelectJob(slowest.job)}
+          />
+        </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {metrics.map((metric) => (
-          <button
-            key={metric.label}
-            type="button"
-            onClick={() => {
-              if (metric.label === "Failed" || metric.label === "Partial batches") onFilter("failed");
-              else if (metric.label === "Running") onFilter("running");
-              else if (metric.label === "Completed") onFilter("completed");
-              else onFilter("all");
-            }}
-            className={cn("rounded-md border p-4 text-left transition-calm hover:border-foreground/15", semanticToneClass(metric.tone))}
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
-              <metric.icon className={cn("h-4 w-4 opacity-70", metric.label === "Running" && statusCounts.running > 0 && "animate-spin")} />
-            </div>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">
-              {metric.currency ? formatCompactCurrency(metric.value) : formatCompactNumber(metric.value)}
-            </p>
-          </button>
-        ))}
-      </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <ReliabilityLane
-          title="Failed drafts"
-          value={retryableJob ? retryableJob.id.slice(0, 8) : "Clear"}
-          detail={retryableJob ? (failedDraftsFor(retryableJob)[0]?.error || retryableJob.error_message || "Review and retry the failed generation.") : "No failed jobs need action."}
-          tone={retryableJob ? "risk" : "success"}
-          action={retrying ? "Retrying..." : "Retry first failure"}
-          disabled={!retryableJob || retrying}
-          icon={RefreshCw}
-          onClick={() => retryableJob && onRetry(retryableJob)}
-          onSecondary={retryableJob ? () => onSelectJob(retryableJob) : undefined}
-        />
-        <ReliabilityLane
-          title="Expensive jobs"
-          value={priciest ? formatCompactCurrency(Number(priciest.total_cost) || 0) : "—"}
-          detail={priciest ? `${formatModelNameForInsight(priciest.model_id)} · ${priciest.source_type.replace(/_/g, " ")}` : "Cost data appears after completed calls."}
-          tone={priciest ? "opportunity" : "neutral"}
-          action="Open job"
-          disabled={!priciest}
-          icon={DollarSign}
-          onClick={() => priciest && onSelectJob(priciest)}
-        />
-        <ReliabilityLane
-          title="Slow jobs"
-          value={slowest ? formatDuration(slowest.duration) : "—"}
-          detail={slowest ? `${formatModelNameForInsight(slowest.job.model_id)} completed ${formatDuration(slowest.duration)} after start.` : "No completed duration signal yet."}
-          tone={slowest && slowest.duration > 120_000 ? "opportunity" : "neutral"}
-          action={runningJobs.length ? (stopping ? "Stopping..." : "Stop active jobs") : "Open slowest"}
-          disabled={runningJobs.length ? stopping : !slowest}
-          icon={runningJobs.length ? StopCircle : Timer}
-          onClick={() => runningJobs.length ? onStop(runningJobs) : slowest && onSelectJob(slowest.job)}
-        />
-      </div>
-    </div>
+    </BywordCard>
   );
 }
 

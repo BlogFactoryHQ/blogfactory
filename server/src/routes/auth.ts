@@ -1,13 +1,136 @@
 import { Hono } from "hono";
 import { hash, compare } from "bcryptjs";
 import { db } from "../db/index.js";
-import { users } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { personas, sites, userSettings, users } from "../db/schema.js";
+import { and, eq } from "drizzle-orm";
 import { signJwt, getUserId } from "../middleware/auth.js";
 import { randomBytes } from "crypto";
 import { bootstrapUserAccess, isAdminEmail, publicUser } from "../services/access-control.js";
 
 export const authRoutes = new Hono();
+
+const LOCAL_DEV_EMAIL = "local@blogfactory.dev";
+
+async function ensureLocalDevWorkspace(userId: string) {
+  const now = new Date();
+  const [existingSite] = await db
+    .select()
+    .from(sites)
+    .where(and(eq(sites.userId, userId), eq(sites.domain, "blogfactory.local")))
+    .limit(1);
+
+  const site = existingSite || (await db
+    .insert(sites)
+    .values({
+      userId,
+      name: "Local BlogFactory",
+      domain: "blogfactory.local",
+      sitemapUrl: "https://blogfactory.local/sitemap.xml",
+      status: "active",
+      pageCount: 4,
+      vectorCount: 0,
+      topics: ["content", "publishing", "seo"],
+      language: "en",
+      cta: "Start publishing",
+      updatedAt: now,
+    } as never)
+    .returning())[0];
+
+  await db
+    .insert(userSettings)
+    .values({
+      userId,
+      activeSiteId: site.id,
+      articleWordCount: 1200,
+      articleLanguage: "en",
+      enableInternalLinks: false,
+      internalLinkStatus: "disconnected",
+      internalLinkMode: "all",
+      internalLinkDensity: "balanced",
+      brandCompanyName: "BlogFactory Local",
+      brandDescription: "Local development workspace for testing BlogFactory.",
+      monthlyBudget: 25,
+      updatedAt: now,
+    } as never)
+    .onConflictDoUpdate({
+      target: userSettings.userId,
+      set: {
+        activeSiteId: site.id,
+        updatedAt: now,
+      } as never,
+    });
+
+  const [existingPersona] = await db
+    .select({ id: personas.id })
+    .from(personas)
+    .where(and(eq(personas.userId, userId), eq(personas.name, "Local Editorial Voice")))
+    .limit(1);
+
+  if (!existingPersona) {
+    await db.insert(personas).values({
+      userId,
+      name: "Local Editorial Voice",
+      baseModel: "openai/gpt-5-mini",
+      systemPrompt: "Write clear, practical, SEO-aware blog posts with concise examples and confident editorial judgment.",
+      status: "active",
+      language: "en",
+      category: "default",
+      updatedAt: now,
+    } as never);
+  }
+}
+
+authRoutes.post("/dev-login", async (c) => {
+  if (process.env.NODE_ENV === "production") {
+    return c.json({ error: "Development login is disabled in production" }, 404);
+  }
+
+  const passwordHash = await hash(randomBytes(24).toString("hex"), 10);
+  const [existing] = await db.select().from(users).where(eq(users.email, LOCAL_DEV_EMAIL)).limit(1);
+  const user = existing || (await db
+    .insert(users)
+    .values({
+      email: LOCAL_DEV_EMAIL,
+      passwordHash,
+      displayName: "Local Developer",
+      role: "admin",
+      approvalStatus: "approved",
+      approvedAt: new Date(),
+      emailVerified: true,
+      consentAcceptedAt: new Date(),
+      marketingOptIn: false,
+    } as never)
+    .returning())[0];
+
+  if (existing && (existing.role !== "admin" || existing.approvalStatus !== "approved" || !existing.emailVerified)) {
+    await db
+      .update(users)
+      .set({
+        role: "admin",
+        approvalStatus: "approved",
+        approvedAt: new Date(),
+        rejectedAt: null,
+        rejectedReason: null,
+        emailVerified: true,
+      } as never)
+      .where(eq(users.id, existing.id));
+  }
+
+  await ensureLocalDevWorkspace(user.id);
+  await db.update(users).set({ lastLoginAt: new Date() } as never).where(eq(users.id, user.id));
+
+  const token = await signJwt(user.id, true);
+  return c.json({
+    token,
+    user: publicUser({
+      ...user,
+      role: "admin",
+      approvalStatus: "approved",
+      emailVerified: true,
+      displayName: user.displayName || "Local Developer",
+    }),
+  });
+});
 
 authRoutes.post("/signup", async (c) => {
   const { email, password, displayName, consent, marketingOptIn } = await c.req.json();

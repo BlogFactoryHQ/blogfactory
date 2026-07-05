@@ -54,16 +54,16 @@ export function BulkActionsBar({
   const isLoading = isDeleting || isPublishing || isDrafting || isPushingIntegration;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border border-primary/20 rounded-lg mb-4 animate-in fade-in slide-in-from-top-2 duration-200">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">
+    <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[12px] font-semibold uppercase text-foreground">
           {selectedCount} post{selectedCount > 1 ? "s" : ""} selected
         </span>
         <Button variant="ghost" size="sm" onClick={onClear} disabled={isLoading}>
           Clear
         </Button>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -93,7 +93,7 @@ export function BulkActionsBar({
         {integrations.length > 0 && (
           <>
             <Select value={integrationId || integrations[0]?.id} onValueChange={onIntegrationChange} disabled={isLoading}>
-              <SelectTrigger className="h-9 w-40">
+              <SelectTrigger className="h-8 w-full min-w-[180px] sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

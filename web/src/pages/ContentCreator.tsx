@@ -989,6 +989,8 @@ export default function ContentCreator() {
 
         {creationMode === "article" && (
           <>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)] xl:items-start">
+          <div className="min-w-0">
         <BywordCard>
           <SectionHeader
             icon={Sparkles}
@@ -1294,7 +1296,9 @@ export default function ContentCreator() {
             </Tabs>
           </div>
         </BywordCard>
+          </div>
 
+          <div className="min-w-0 space-y-6 xl:sticky xl:top-6">
         <BywordCard>
           <SectionHeader
             icon={SlidersHorizontal}
@@ -1417,6 +1421,8 @@ export default function ContentCreator() {
             )}
           </div>
         </BywordCard>
+          </div>
+        </div>
 
         <BywordCard>
           <SectionHeader
