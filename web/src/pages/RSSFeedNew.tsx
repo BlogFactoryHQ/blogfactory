@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, Globe, FileText } from "lucide-react";
+import { Link as LinkIcon, X, Play, Save, Loader2, ChevronDown, Rss, FileText } from "lucide-react";
 import { FREQUENCIES, PLATFORMS, HN_TYPES, GITHUB_PERIODS, filterTypesForPlatform, sourceTypeForPlatform, type SourcePlatform } from "@/lib/source-options";
 import { useTextModels } from "@/hooks/useTextModels";
 import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
@@ -427,17 +428,8 @@ export default function RSSFeedNew() {
 
   const isSubmitting = createFeedMutation.isPending;
 
-  const getPlatformIcon = () => {
-    switch (platform) {
-      case "rss":
-        return <Rss className="h-4 w-4" />;
-      default:
-        return <Globe className="h-4 w-4" />;
-    }
-  };
-
   return (
-    <div className="p-8 max-w-6xl">
+    <BywordPageShell className="max-w-6xl">
       {/* Breadcrumb */}
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
@@ -460,33 +452,39 @@ export default function RSSFeedNew() {
         description="Configure a new content source from RSS feeds, YouTube channels, Reddit, Hacker News, or GitHub. Set up filtering and AI generation preferences."
       />
 
-      <div className="max-w-3xl">
-        <div className="calm-card p-6 space-y-8">
-          {/* Platform Selection */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Platform</h2>
-            </div>
+      <div className="max-w-4xl">
+        <BywordCard>
+          <SectionHeader
+            icon={Rss}
+            title="Source intake"
+            description="Define where BlogFactory should look, what should qualify, and how drafts should be generated."
+          />
+          <div className="space-y-8 p-4 sm:p-6">
+            {/* Platform Selection */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 bg-primary rounded-full" />
+                <h2 className="text-lg font-semibold">Platform</h2>
+              </div>
 
-            <div className="grid grid-cols-3 gap-3 pl-3">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPlatform(p.id as Platform)}
-                  className={`p-4 rounded-lg border-2 text-left transition-all ${
-                    platform === p.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{p.description}</div>
-                </button>
-              ))}
-            </div>
-          </section>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {PLATFORMS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPlatform(p.id as Platform)}
+                    className={`rounded-md border p-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40 ${
+                      platform === p.id
+                        ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
+                        : "border-byword-border bg-background hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
+                    }`}
+                  >
+                    <div className="font-medium">{p.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{p.description}</div>
+                  </button>
+                ))}
+              </div>
+            </section>
 
           {/* Feed Information */}
           <section className="space-y-4">
@@ -495,7 +493,7 @@ export default function RSSFeedNew() {
               <h2 className="text-lg font-semibold">Source Configuration</h2>
             </div>
 
-            <div className="space-y-4 pl-3">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="feedName">Feed Name</Label>
                 <Input
@@ -611,7 +609,7 @@ export default function RSSFeedNew() {
 
               {platform === "github" && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="githubLanguage">Language (optional)</Label>
                       <Input
@@ -662,7 +660,7 @@ export default function RSSFeedNew() {
               <h2 className="text-lg font-semibold">Filtering</h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pl-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Filter Type</Label>
                 <Select value={filterType} onValueChange={setFilterType}>
@@ -707,7 +705,7 @@ export default function RSSFeedNew() {
               <h2 className="text-lg font-semibold">Content Scope</h2>
             </div>
 
-            <div className="space-y-4 pl-3">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Target Keywords / Categories</Label>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -746,7 +744,7 @@ export default function RSSFeedNew() {
               <h2 className="text-lg font-semibold">AI Configuration</h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pl-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Writer Persona</Label>
                 <Select value={personaId} onValueChange={handlePersonaChange}>
@@ -790,7 +788,7 @@ export default function RSSFeedNew() {
               <div className="w-1 h-5 bg-primary rounded-full" />
               <h2 className="text-lg font-semibold">{imageSectionTitle}</h2>
             </div>
-            <div className="pl-3">
+            <div>
               <SplitImageGenerationSettings
                 config={imageConfig}
                 onConfigChange={setImageConfig}
@@ -811,10 +809,10 @@ export default function RSSFeedNew() {
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-4 pl-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 {/* Platform-specific content options */}
                 {platform === "rss" && (
-                  <div className="flex items-center justify-between py-3 px-4 rounded-lg border-2 border-primary/20 bg-primary/5">
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/40 px-4 py-3">
                     <div className="flex items-center gap-3">
                       <FileText className="h-5 w-5 text-primary" />
                       <div>
@@ -856,8 +854,8 @@ export default function RSSFeedNew() {
               <h2 className="text-lg font-semibold">Scheduling</h2>
             </div>
 
-            <div className="space-y-4 pl-3">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Fetch Frequency</Label>
                   <Select value={frequency} onValueChange={setFrequency}>
@@ -892,7 +890,7 @@ export default function RSSFeedNew() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-byword-border bg-background px-4 py-3">
                 <div>
                   <p className="font-medium">Active</p>
                   <p className="text-sm text-muted-foreground">
@@ -903,40 +901,43 @@ export default function RSSFeedNew() {
               </div>
             </div>
           </section>
-        </div>
+          </div>
+        </BywordCard>
 
         {/* Actions */}
-        <div className="flex items-center justify-between mt-6">
-          <FeedPreview
-            platform={platform}
-            platformConfig={buildPlatformConfig()}
-            filterType={filterType}
-            filterValue={filterValue}
-            keywords={keywords}
-          />
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
-              Cancel
-            </Button>
-          <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable}>
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 mr-2" />
-            )}
-            Save & Run Now
-          </Button>
-          <Button onClick={handleSave} disabled={isSubmitting || selectedModelUnavailable}>
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-              Save Feed
-            </Button>
+        <BywordCard className="sticky bottom-4 z-20 mt-6 p-3 shadow-[0_-10px_24px_hsl(210_5%_20%/0.06)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <FeedPreview
+              platform={platform}
+              platformConfig={buildPlatformConfig()}
+              filterType={filterType}
+              filterValue={filterValue}
+              keywords={keywords}
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable}>
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                Save & Run Now
+              </Button>
+              <Button onClick={handleSave} disabled={isSubmitting || selectedModelUnavailable}>
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save Feed
+              </Button>
+            </div>
           </div>
-        </div>
+        </BywordCard>
       </div>
-    </div>
+    </BywordPageShell>
   );
 }

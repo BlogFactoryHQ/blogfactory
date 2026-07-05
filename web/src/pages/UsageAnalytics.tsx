@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import {
   Table,
   TableBody,
@@ -180,7 +180,7 @@ export default function UsageAnalytics() {
   }, [imageSummary, modelBreakdown, summary.failedCalls, summary.imageCost, summary.totalCost]);
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Usage Analytics"
         description="Track your AI generation costs, tokens, and model performance."
@@ -199,68 +199,59 @@ export default function UsageAnalytics() {
       </PageHeader>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
+        <BywordCard className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        </BywordCard>
       ) : (
         <>
-          <div className="mb-8 rounded-md border border-byword-border bg-card p-4 factory-panel">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold">Spend pulse</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Cost, reliability, and remaining credits for the selected window.</p>
-              </div>
-              <div className="min-w-[220px] rounded-md border border-byword-border bg-muted/20 p-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Month-to-date</span>
-                  <span>{openRouterCapacity ? `${Math.round(openRouterUsedPercent)}% of visible credits` : "Budget tracked below"}</span>
+          <BywordCard className="mb-8">
+            <SectionHeader
+              icon={DollarSign}
+              title="Spend pulse"
+              description="Cost, reliability, and remaining credits for the selected window."
+              action={
+                <div className="min-w-[220px] rounded-md border border-byword-border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>Month-to-date</span>
+                    <span>{openRouterCapacity ? `${Math.round(openRouterUsedPercent)}% of visible credits` : "Budget tracked below"}</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-byword-blue" style={{ width: `${openRouterUsedPercent}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs font-medium">{formatCompactCurrency(currentMonthSpend)} spent this month</p>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-byword-blue" style={{ width: `${openRouterUsedPercent}%` }} />
-                </div>
-                <p className="mt-2 text-xs font-medium">{formatCompactCurrency(currentMonthSpend)} spent this month</p>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              }
+            />
+            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:p-6 xl:grid-cols-6">
               {pulseMetrics.map((stat) => (
                 <div key={stat.title} className={cn("rounded-md border p-4", semanticToneClass(stat.tone))}>
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{stat.title}</p>
+                    <p className="text-[11px] font-bold uppercase opacity-75">{stat.title}</p>
                     <stat.icon className="h-4 w-4 opacity-70" />
                   </div>
-                  <p className="text-2xl font-semibold tracking-tight text-foreground">{stat.value}</p>
+                  <p className="text-2xl font-semibold text-foreground">{stat.value}</p>
                   <p className="mt-1 text-xs opacity-75">{stat.description}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </BywordCard>
 
           <div className="mb-8 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-byword-blue" />
-                  Daily cost stack
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <BywordCard>
+              <SectionHeader icon={BarChart3} title="Daily cost stack" description="Text and image spend by day." />
+              <div className="p-4 sm:p-5 lg:p-6">
                 <SpendStackChart data={dailyCostBreakdown} />
-              </CardContent>
-            </Card>
+              </div>
+            </BywordCard>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-[hsl(var(--status-warning))]" />
-                  Cost drivers
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3">
+            <BywordCard>
+              <SectionHeader icon={TrendingUp} title="Cost drivers" description="Models and retries most likely to move spend." />
+              <div className="grid gap-3 p-4 sm:p-5 lg:p-6">
                 {costDrivers.map((driver) => (
                   <div key={driver.title} className={cn("rounded-md border p-3", semanticToneClass(driver.tone))}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{driver.title}</p>
+                        <p className="text-xs font-bold uppercase opacity-75">{driver.title}</p>
                         <p className="mt-1 truncate text-sm font-medium text-foreground">{driver.label}</p>
                       </div>
                       <p className="shrink-0 text-lg font-semibold text-foreground">{driver.value}</p>
@@ -268,16 +259,14 @@ export default function UsageAnalytics() {
                     <p className="mt-2 text-xs opacity-75">{driver.detail}</p>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </BywordCard>
           </div>
 
-          <div className="grid gap-4 mb-8 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">OpenRouter Key</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
+          <div className="mb-8 grid gap-4 lg:grid-cols-3">
+            <BywordCard>
+              <SectionHeader icon={Zap} title="OpenRouter key" />
+              <div className="grid gap-3 p-4 text-sm sm:p-5">
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Remaining</span>
                   <span className="font-medium">{openRouterRemaining ? formatCurrency(openRouterRemaining) : "—"}</span>
@@ -290,28 +279,24 @@ export default function UsageAnalytics() {
                   <span className="text-muted-foreground">Monthly usage</span>
                   <span className="font-medium">{formatCurrency(Number(openRouterData.usage_monthly || 0))}</span>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Calls</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
+              </div>
+            </BywordCard>
+            <BywordCard>
+              <SectionHeader icon={Hash} title="Calls" />
+              <div className="grid gap-3 p-4 text-sm sm:p-5">
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Requests</span><span className="font-medium">{formatNumber(summary.totalRequests)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Failed</span><span className="font-medium">{formatNumber(summary.failedCalls)}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Avg latency</span><span className="font-medium">{summary.avgLatency ? `${formatNumber(summary.avgLatency)}ms` : "—"}</span></div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Images</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
+              </div>
+            </BywordCard>
+            <BywordCard>
+              <SectionHeader icon={Image} title="Images" />
+              <div className="grid gap-3 p-4 text-sm sm:p-5">
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Cover / inline</span><span className="font-medium">{imageSummary ? `${imageSummary.cover} / ${imageSummary.inline}` : "—"}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Queued / failed</span><span className="font-medium">{imageSummary ? `${imageSummary.queued} / ${imageSummary.failed}` : "—"}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted-foreground">Retries</span><span className="font-medium">{imageSummary ? formatNumber(imageSummary.retries) : "—"}</span></div>
-              </CardContent>
-            </Card>
+              </div>
+            </BywordCard>
           </div>
 
           <Tabs defaultValue="tokens" className="mb-8">
@@ -322,17 +307,12 @@ export default function UsageAnalytics() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="tokens" className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    Daily Token Usage
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <BywordCard>
+                <SectionHeader icon={Zap} title="Daily token usage" />
+                <div className="p-4 sm:p-5 lg:p-6">
                   <UsageTokenChart data={dailyUsage} />
-                </CardContent>
-              </Card>
+                </div>
+              </BywordCard>
             </TabsContent>
           </Tabs>
 
@@ -342,20 +322,16 @@ export default function UsageAnalytics() {
           </div>
 
           {/* Model Breakdown */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Model Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <BywordCard>
+            <SectionHeader icon={BarChart3} title="Model breakdown" />
+            <div className="p-4 sm:p-5 lg:p-6">
               <ModelBreakdownTable data={modelBreakdown} />
-            </CardContent>
-          </Card>
+            </div>
+          </BywordCard>
 
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle className="text-base">Recent Provider Calls</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <BywordCard className="mt-8">
+            <SectionHeader icon={Clock} title="Recent provider calls" description="Latest API activity in this reporting window." />
+            <div className="overflow-x-auto p-4 sm:p-5 lg:p-6">
               {recentCalls.length ? (
                 <Table>
                   <TableHeader>
@@ -389,8 +365,8 @@ export default function UsageAnalytics() {
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">No provider calls in this range.</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </BywordCard>
 
           {/* Image Generation Costs */}
           <div className="mt-8">
@@ -398,7 +374,7 @@ export default function UsageAnalytics() {
           </div>
         </>
       )}
-    </div>
+    </BywordPageShell>
   );
 }
 
