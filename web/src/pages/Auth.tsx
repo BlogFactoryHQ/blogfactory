@@ -22,7 +22,7 @@ function AuthShell({ children }: { children: ReactNode }) {
           <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-60" aria-hidden="true" />
           {children}
         </div>
-        <p className="mt-5 text-center font-mono text-[10px] uppercase text-muted-foreground">
+        <p className="type-kicker mt-5 text-center">
           Content assembly line ready
         </p>
       </div>
@@ -142,8 +142,8 @@ export default function Auth() {
   if (view === "forgot-password") {
     return (
       <AuthShell>
-          <h2 className="mb-1 font-mono text-lg font-semibold uppercase">Forgot Password</h2>
-          <p className="text-sm text-muted-foreground mb-6">Enter your email to receive a reset link.</p>
+          <h2 className="type-panel-title mb-1 text-lg">Forgot password</h2>
+          <p className="type-body mb-6">Enter your email to receive a reset link.</p>
 
           <form onSubmit={handleForgotPassword} className="space-y-5">
             <div className="space-y-1.5">
@@ -158,7 +158,7 @@ export default function Auth() {
               />
             </div>
             <Button type="submit" className="w-full h-10" disabled={isLoading}>
-              {isLoading ? "Sending..." : "Send Reset Link"}
+              {isLoading ? "Sending..." : "Send reset link"}
             </Button>
           </form>
 
@@ -167,7 +167,7 @@ export default function Auth() {
             onClick={() => setView("signin")}
             className="mt-4 w-full rounded-sm text-center text-sm text-muted-foreground transition-calm hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           >
-            Back to Sign In
+            Back to sign in
           </button>
       </AuthShell>
     );
@@ -176,12 +176,12 @@ export default function Auth() {
   if (view === "reset-password") {
     return (
       <AuthShell>
-          <h2 className="mb-1 font-mono text-lg font-semibold uppercase">Reset Password</h2>
-          <p className="text-sm text-muted-foreground mb-6">Enter the reset token from your email and a new password.</p>
+          <h2 className="type-panel-title mb-1 text-lg">Reset password</h2>
+          <p className="type-body mb-6">Enter the reset token from your email and a new password.</p>
 
           <form onSubmit={handleResetPassword} className="space-y-5">
             <div className="space-y-1.5">
-              <Label htmlFor="reset-token" className="text-xs">Reset Token</Label>
+              <Label htmlFor="reset-token" className="text-xs">Reset token</Label>
               <Input
                 id="reset-token"
                 type="text"
@@ -192,11 +192,11 @@ export default function Auth() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="new-password" className="text-xs">New Password</Label>
+              <Label htmlFor="new-password" className="text-xs">New password</Label>
               <Input
                 id="new-password"
                 type="password"
-                placeholder="Min. 6 characters"
+                placeholder="Minimum 6 characters"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 minLength={6}
@@ -204,7 +204,7 @@ export default function Auth() {
               />
             </div>
             <Button type="submit" className="w-full h-10" disabled={isLoading}>
-              {isLoading ? "Resetting..." : "Reset Password"}
+              {isLoading ? "Resetting..." : "Reset password"}
             </Button>
           </form>
 
@@ -213,7 +213,7 @@ export default function Auth() {
             onClick={() => setView("signin")}
             className="mt-4 w-full rounded-sm text-center text-sm text-muted-foreground transition-calm hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           >
-            Back to Sign In
+            Back to sign in
           </button>
       </AuthShell>
     );
@@ -223,8 +223,8 @@ export default function Auth() {
     <AuthShell>
         <Tabs defaultValue="signin" className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-8">
-            <TabsTrigger value="signin">Sign In</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsTrigger value="signin">Sign in</TabsTrigger>
+            <TabsTrigger value="signup">Sign up</TabsTrigger>
           </TabsList>
 
           <TabsContent value="signin">
@@ -274,12 +274,12 @@ export default function Auth() {
               </div>
 
               <Button type="submit" className="w-full h-10" disabled={isLoading}>
-                {isLoading ? "Signing in..." : "Sign In"}
+                {isLoading ? "Signing in..." : "Sign in"}
               </Button>
 
               {import.meta.env.DEV && (
                 <div className="rounded-md border border-byword-border bg-muted/35 p-3">
-                  <p className="mb-2 font-mono text-[10px] font-semibold uppercase text-muted-foreground">
+                  <p className="type-kicker mb-2">
                     Local development
                   </p>
                   <Button
@@ -303,7 +303,7 @@ export default function Auth() {
           <TabsContent value="signup">
             <form onSubmit={handleSignUp} className="space-y-5">
               <div className="space-y-1.5">
-                <Label htmlFor="signup-name" className="text-xs">Display Name</Label>
+                <Label htmlFor="signup-name" className="text-xs">Display name</Label>
                 <Input
                   id="signup-name"
                   type="text"
@@ -369,7 +369,7 @@ export default function Auth() {
               </div>
 
               <Button type="submit" className="w-full h-10" disabled={isLoading || !consent}>
-                {isLoading ? "Creating account..." : "Create Account"}
+                {isLoading ? "Creating account..." : "Create account"}
               </Button>
 
             </form>

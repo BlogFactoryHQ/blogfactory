@@ -50,7 +50,7 @@ export function FactoryMark({
         </div>
       </div>
       {showText && (
-        <span className="font-mono text-[11px] font-semibold uppercase text-foreground">
+        <span className="type-meta font-semibold uppercase text-foreground">
           BlogFactory
         </span>
       )}
@@ -75,8 +75,8 @@ export function SectionHeader({
       <div className="flex min-w-0 items-start gap-3">
         <IconTile icon={Icon} />
         <div className="min-w-0">
-          <h2 className="font-mono text-sm font-semibold uppercase text-foreground">{title}</h2>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+          <h2 className="type-panel-title">{title}</h2>
+          {description && <p className="type-body mt-1">{description}</p>}
         </div>
       </div>
       {action && <div className="shrink-0">{action}</div>}
@@ -122,14 +122,14 @@ export function OptionCard({
     >
       <div className="absolute inset-x-0 top-0 h-1 pixel-edge text-foreground/25" aria-hidden="true" />
       {badge && (
-        <span className="absolute right-5 top-5 rounded-sm border border-byword-border bg-muted px-2 py-1 font-mono text-[10px] font-bold uppercase text-muted-foreground">
+        <span className="type-kicker absolute right-5 top-5 rounded-sm border border-byword-border bg-muted px-2 py-1">
           {badge}
         </span>
       )}
       <IconTile icon={Icon} className={selected ? "border-byword-blue bg-byword-blue text-white" : "group-hover:border-byword-blue group-hover:bg-byword-blue-soft"} />
       <div className="mt-7">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+        <h3 className="text-lg font-semibold leading-snug text-foreground">{title}</h3>
+        <p className="type-body mt-2">{description}</p>
       </div>
     </button>
   );
@@ -159,8 +159,8 @@ export function SettingNavItem({
     >
       <Icon className="h-5 w-5 shrink-0" strokeWidth={1.8} />
       <span>
-        <span className="block text-sm font-semibold">{title}</span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
+        <span className="type-object-title block">{title}</span>
+        <span className="type-meta mt-0.5 block">{description}</span>
       </span>
     </button>
   );

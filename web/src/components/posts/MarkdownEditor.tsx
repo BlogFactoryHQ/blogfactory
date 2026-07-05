@@ -498,7 +498,7 @@ export function MarkdownEditor({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            {isFullscreen ? "Exit full screen" : "Full screen"}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -535,7 +535,7 @@ export function MarkdownEditor({
               viewMode === "split" && "bg-muted/20"
             )}
           >
-            <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-p:leading-relaxed prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border prose-pre:bg-muted">
+            <div className="type-editorial prose prose-sm max-w-none prose-headings:font-semibold prose-p:leading-7 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-pre:border-border prose-pre:bg-muted">
               {value ? (
                 <ReactMarkdown
                   skipHtml={true}
