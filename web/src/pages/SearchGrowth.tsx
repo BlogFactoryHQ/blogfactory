@@ -146,7 +146,7 @@ function SearchGrowthOverview({
     queryFn: () => api.get<InternalLinkSettings>("/settings"),
   });
 
-  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected").length;
+  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected" && integration.provider !== "google").length;
   const internalStatus = internalLinks?.internal_link_status || (internalLinks?.internal_link_index ? "connected" : "disconnected");
   const internalPageCount = internalLinks?.internal_link_index?.pageCount || 0;
   const supportCards = (

@@ -254,7 +254,8 @@ export async function submitUrlsForSite(userId: string, siteId: string, rawUrls:
     .from(indexingIntegrations)
     .where(and(eq(indexingIntegrations.userId, userId), eq(indexingIntegrations.siteId, siteId), eq(indexingIntegrations.status, "connected")));
 
-  const integrations = autoOnly ? rows.filter((row) => row.autoSubmit) : rows;
+  const integrations = (autoOnly ? rows.filter((row) => row.autoSubmit) : rows)
+    .filter((row) => row.provider !== "google");
   if (integrations.length === 0) return { submitted: 0, submissions: [] };
 
   const created: Array<ReturnType<typeof serializeIndexingSubmission>> = [];

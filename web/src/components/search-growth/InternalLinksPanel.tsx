@@ -92,6 +92,7 @@ export function InternalLinksPanel() {
   const { activeSite } = useSites();
   const { integration: searchConsoleIntegration } = useSearchConsole();
   const { integrations: indexingIntegrations } = useIndexing();
+  const articleIndexingIntegrations = indexingIntegrations.filter((integration) => integration.provider !== "google");
   const previousStatus = useRef<string | null>(null);
   const [enableInternalLinks, setEnableInternalLinks] = useState(false);
   const [sitemapUrl, setSitemapUrl] = useState("");
@@ -238,9 +239,9 @@ export function InternalLinksPanel() {
           },
           {
             label: "Indexing",
-            value: indexingIntegrations.some((item) => item.status === "connected") ? "Provider ready" : "Not connected",
-            detail: indexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect Bing Webmaster or IndexNow to close the edit-submit loop.",
-            state: indexingIntegrations.some((item) => item.status === "connected") ? "ready" : "idle",
+            value: articleIndexingIntegrations.some((item) => item.status === "connected") ? "Provider ready" : "Not connected",
+            detail: articleIndexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect Bing Webmaster or IndexNow to close the edit-submit loop.",
+            state: articleIndexingIntegrations.some((item) => item.status === "connected") ? "ready" : "idle",
           },
         ]}
       />

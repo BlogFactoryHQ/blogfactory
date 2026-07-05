@@ -94,7 +94,7 @@ const providerDetails: Record<IndexingProvider, {
   },
 };
 
-const providers: IndexingProvider[] = ["indexnow", "bing", "google"];
+const providers: IndexingProvider[] = ["indexnow", "bing"];
 
 export function IndexingPanel() {
   const { activeSite } = useSites();
@@ -105,6 +105,14 @@ export function IndexingPanel() {
   const [bulkUrls, setBulkUrls] = useState("");
 
   const byProvider = useMemo(() => new Map(integrations.map((integration) => [integration.provider, integration])), [integrations]);
+  const articleIntegrations = useMemo(() => integrations.filter((integration) => integration.provider !== "google"), [integrations]);
+  const articleSubmissions = useMemo(() => submissions.filter((submission) => submission.provider !== "google"), [submissions]);
+  const articleStats = useMemo(() => ({
+    accepted: articleSubmissions.filter((submission) => submission.status === "accepted").length,
+    queued: articleSubmissions.filter((submission) => submission.status === "queued").length,
+    skipped: articleSubmissions.filter((submission) => submission.status === "skipped").length,
+    failed: articleSubmissions.filter((submission) => submission.status === "failed").length,
+  }), [articleSubmissions]);
   const parsedUrls = useMemo(() => bulkUrls.split(/\r?\n/).map((url) => url.trim()).filter(Boolean), [bulkUrls]);
 
   const handleSubmit = async () => {
@@ -146,10 +154,10 @@ export function IndexingPanel() {
         <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-5">
           {[
             ["Site", activeSite?.domain || "No site selected"],
-            ["Accepted", String(stats.accepted)],
-            ["Queued", String(stats.queued)],
-            ["Skipped", String(stats.skipped)],
-            ["Failed", String(stats.failed)],
+            ["Accepted", String(articleStats.accepted)],
+            ["Queued", String(articleStats.queued)],
+            ["Skipped", String(articleStats.skipped)],
+            ["Failed", String(articleStats.failed)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
@@ -176,16 +184,16 @@ export function IndexingPanel() {
             },
             {
               label: "Indexing providers",
-              value: integrations.length ? `${integrations.length} configured` : "Not connected",
-              detail: integrations.length ? `${stats.accepted} accepted, ${stats.queued} queued, ${stats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal article URLs.",
-              state: integrations.some((item) => item.status === "connected") ? "ready" : "warning",
+              value: articleIntegrations.length ? `${articleIntegrations.length} configured` : "Not connected",
+              detail: articleIntegrations.length ? `${articleStats.accepted} accepted, ${articleStats.queued} queued, ${articleStats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal article URLs.",
+              state: articleIntegrations.some((item) => item.status === "connected") ? "ready" : "warning",
             },
           ]}
         />
 
         <BywordCard>
-          <SectionHeader icon={CheckCircle2} title="Providers" description="Use Bing Webmaster for Bing-only submissions, IndexNow for multi-engine, and Google only for eligible structured-data pages." />
-          <div className="grid gap-4 p-6 xl:grid-cols-3">
+          <SectionHeader icon={CheckCircle2} title="Providers" description="Use Bing Webmaster for Bing-only article submissions, or IndexNow for multi-engine article discovery." />
+          <div className="grid gap-4 p-6 lg:grid-cols-2">
             {providers.map((provider) => {
               const details = providerDetails[provider];
               const integration = byProvider.get(provider);
@@ -266,7 +274,7 @@ export function IndexingPanel() {
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">{parsedUrls.length} URL{parsedUrls.length === 1 ? "" : "s"} ready</p>
-              <Button onClick={handleSubmit} disabled={!parsedUrls.length || submitUrls.isPending || integrations.length === 0}>
+              <Button onClick={handleSubmit} disabled={!parsedUrls.length || submitUrls.isPending || articleIntegrations.length === 0}>
                 {submitUrls.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
                 Submit URLs
               </Button>
@@ -281,7 +289,7 @@ export function IndexingPanel() {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading submissions
             </div>
-          ) : submissions.length === 0 ? (
+          ) : articleSubmissions.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
               <p>No indexing submissions yet.</p>
               <p className="mt-2 text-sm">Connect Bing Webmaster or IndexNow before publishing large batches.</p>
@@ -299,7 +307,7 @@ export function IndexingPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {submissions.map((submission) => (
+                {articleSubmissions.map((submission) => (
                   <TableRow key={submission.id}>
                     <TableCell className="font-medium">{providerLabel(submission.provider)}</TableCell>
                     <TableCell className="max-w-[340px] truncate">{submission.url}</TableCell>

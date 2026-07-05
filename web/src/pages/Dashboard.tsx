@@ -52,7 +52,7 @@ export default function Dashboard() {
   const { integrations } = useIntegrations();
   const { integrations: indexingIntegrations } = useIndexing();
   const connectedIntegrations = integrations.filter((integration) => integration.status === "connected");
-  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected");
+  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected" && integration.provider !== "google");
   const internalLinksReady = Boolean(activeSite?.internalLinkIndex?.pages?.length || activeSite?.vectorCount);
 
   const { data: recentJobs = [], isLoading: isLoadingJobs } = useQuery({
