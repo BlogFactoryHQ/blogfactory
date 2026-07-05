@@ -84,6 +84,8 @@ interface WixImportedImage {
   height: number;
 }
 
+type WixImageSource = "id" | "url" | "none";
+
 export function isPublishingProvider(value: string): value is IntegrationProvider {
   return (PUBLISHING_PROVIDERS as string[]).includes(value);
 }
@@ -994,7 +996,7 @@ async function createWixDraftPost(
   coverMedia: WixImportedImage | null,
   importedImages: Map<string, WixImportedImage>,
 ) {
-  const payload = (imageSource: "id" | "url") => ({
+  const payload = (imageSource: WixImageSource) => ({
     draftPost: {
       title: article.title,
       richContent: markdownToWixRichContent(article.markdown, coverMedia, importedImages, imageSource),
@@ -1016,8 +1018,24 @@ async function createWixDraftPost(
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const canRetryWithUrl = [coverMedia, ...importedImages.values()].some((image) => image?.url);
-    if (!canRetryWithUrl || !message.includes("id not found")) throw error;
-    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("url")) as { draftPost?: { id?: string; url?: string } };
+    if (!isWixMediaReferenceError(message)) throw error;
+
+    await sleep(1500);
+    try {
+      return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("id")) as { draftPost?: { id?: string; url?: string } };
+    } catch (retryError) {
+      const retryMessage = retryError instanceof Error ? retryError.message : "";
+      if (!isWixMediaReferenceError(retryMessage)) throw retryError;
+      if (canRetryWithUrl) {
+        try {
+          return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("url")) as { draftPost?: { id?: string; url?: string } };
+        } catch (urlError) {
+          const urlMessage = urlError instanceof Error ? urlError.message : "";
+          if (!isWixMediaReferenceError(urlMessage)) throw urlError;
+        }
+      }
+      return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("none")) as { draftPost?: { id?: string; url?: string } };
+    }
   }
 }
 
@@ -1047,7 +1065,7 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
     mimeType,
     displayName: `${slugify(title)}.${extensionForMime(mimeType)}`,
   }) as { file?: { id?: string; url?: string; width?: number; height?: number; image?: { width?: number; height?: number } } };
-  const id = normalizeWixMediaId(response.file?.id || response.file?.url || "");
+  const id = normalizeWixMediaId(response.file?.id || "");
   if (!id) return null;
   return {
     id,
@@ -1061,10 +1079,10 @@ export function markdownToWixRichContent(
   markdown: string,
   coverImage: WixImportedImage | null,
   importedImages = new Map<string, WixImportedImage>(),
-  imageSource: "id" | "url" = "id",
+  imageSource: WixImageSource = "id",
 ) {
   const nodes: unknown[] = [];
-  if (coverImage) {
+  if (coverImage && imageSource !== "none") {
     nodes.push(wixImageNode(coverImage, "Featured image", imageSource));
   }
   for (const line of markdown.split(/\r?\n/)) {
@@ -1073,7 +1091,7 @@ export function markdownToWixRichContent(
     const image = trimmed.match(/^!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/);
     if (image) {
       const imported = importedImages.get(image[2]);
-      if (imported) nodes.push(wixImageNode(imported, image[1] || "Article image", imageSource));
+      if (imported && imageSource !== "none") nodes.push(wixImageNode(imported, image[1] || "Article image", imageSource));
       continue;
     }
     const h1 = trimmed.match(/^# (.+)/);
@@ -1105,6 +1123,14 @@ function wixImageNode(image: WixImportedImage, altText: string, imageSource: "id
       altText: altText.slice(0, 180),
     },
   };
+}
+
+function isWixMediaReferenceError(message: string) {
+  return /media image|id not found|provided .* not found/i.test(message);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function externalImageUrl(pathOrUrl: string) {

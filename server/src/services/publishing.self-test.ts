@@ -61,5 +61,13 @@ const wixRichContentWithUrls = markdownToWixRichContent(
   "url",
 ) as { nodes: Array<{ type: string; imageData?: { image?: { src?: { url?: string } } } }> };
 assert.equal(wixRichContentWithUrls.nodes[0].imageData?.image?.src?.url, "https://static.wixstatic.com/media/wix-media-id");
+const wixRichContentWithoutImages = markdownToWixRichContent(
+  "Intro\n\n![Article image](stored/image.webp)\n\nAfter",
+  { id: "cover-media-id", url: "https://static.wixstatic.com/media/cover", width: 1200, height: 675 },
+  new Map([["stored/image.webp", { id: "wix-media-id", url: "https://static.wixstatic.com/media/wix-media-id", width: 1200, height: 675 }]]),
+  "none",
+) as { nodes: Array<{ type: string }> };
+assert.equal(wixRichContentWithoutImages.nodes.some((node) => node.type === "IMAGE"), false);
+assert.equal(JSON.stringify(wixRichContentWithoutImages).includes("![Article image]"), false);
 
 console.log("publishing self-check passed");

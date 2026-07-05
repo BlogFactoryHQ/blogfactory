@@ -80,14 +80,15 @@ const providerDetails: Record<IntegrationProvider, {
     badge: "CMS",
     icon: ExternalLink,
     guide: [
-      "Open the Wix API Keys Manager and create a key for the target site with Blog and Media access.",
-      "Copy the site ID from the Wix dashboard URL after /dashboard/.",
-      "Paste the API key, site ID, and Wix author/member ID. Wix requires a post owner for blog drafts.",
+      "Open Wix Headless Settings > API Keys and create a key for the target site with Blog and Media Manager access.",
+      "Copy the token from Generated keys. Use the key for the site you are publishing into, not an account-wide key for a different site.",
+      "Copy the site ID from the Wix dashboard URL after /dashboard/. Do not paste the Account ID unless Wix specifically asks for account-level APIs.",
+      "Paste the Wix author/member ID for the post owner. Blog draft creation requires this value even though other API calls do not.",
     ],
     fields: [
       { key: "apiKey", label: "Wix API key", placeholder: "Wix API key", type: "password" },
       { key: "siteId", label: "Wix site ID", placeholder: "site-id" },
-      { key: "memberId", label: "Author/member ID", placeholder: "Wix member ID for the post author" },
+      { key: "memberId", label: "Author/member ID", placeholder: "Required Wix member ID for the post owner" },
     ],
   },
   framer: {
