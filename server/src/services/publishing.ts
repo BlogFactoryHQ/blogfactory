@@ -80,6 +80,8 @@ interface PublishResult {
 interface WixImportedImage {
   id: string;
   url?: string;
+  filename?: string;
+  operationStatus?: string;
   width: number;
   height: number;
 }
@@ -999,7 +1001,8 @@ async function createWixDraftPost(
   const payload = (imageSource: WixImageSource) => ({
     draftPost: {
       title: article.title,
-      richContent: markdownToWixRichContent(article.markdown, coverMedia, importedImages, imageSource),
+      richContent: markdownToWixRichContent(article.markdown, null, importedImages, imageSource),
+      ...(coverMedia && imageSource !== "none" ? { media: wixCoverMedia(coverMedia, article.coverAltText) } : {}),
       memberId: credentials.memberId,
       slug: article.slug,
       excerpt: article.excerpt,
@@ -1064,15 +1067,19 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
     mediaType: "IMAGE",
     mimeType,
     displayName: `${slugify(title)}.${extensionForMime(mimeType)}`,
-  }) as { file?: { id?: string; url?: string; width?: number; height?: number; image?: { width?: number; height?: number } } };
+  }) as { file?: WixFileInfo };
   const id = normalizeWixMediaId(response.file?.id || "");
   if (!id) return null;
-  return {
+  const image = await waitForWixImage(credentials, {
     id,
     url: response.file?.url,
-    width: Number(response.file?.width || response.file?.image?.width || 1200),
-    height: Number(response.file?.height || response.file?.image?.height || 675),
-  };
+    filename: response.file?.displayName || filenameFromUrl(response.file?.url),
+    operationStatus: response.file?.operationStatus,
+    width: wixImageWidth(response.file),
+    height: wixImageHeight(response.file),
+  });
+  if (image.operationStatus === "FAILED") return null;
+  return image;
 }
 
 export function markdownToWixRichContent(
@@ -1123,6 +1130,78 @@ function wixImageNode(image: WixImportedImage, altText: string, imageSource: "id
       altText: altText.slice(0, 180),
     },
   };
+}
+
+function wixCoverMedia(image: WixImportedImage, altText: string) {
+  return {
+    displayed: true,
+    custom: true,
+    wixMedia: {
+      image: {
+        id: image.id,
+        ...(image.url ? { url: image.url } : {}),
+        ...(image.filename ? { filename: image.filename } : {}),
+        width: image.width,
+        height: image.height,
+        altText: altText.slice(0, 180),
+      },
+    },
+  };
+}
+
+interface WixFileInfo {
+  id?: string;
+  url?: string;
+  displayName?: string;
+  filename?: string;
+  operationStatus?: string;
+  width?: number;
+  height?: number;
+  image?: { width?: number; height?: number };
+  media?: { image?: { width?: number; height?: number; image?: { width?: number; height?: number } } };
+}
+
+async function waitForWixImage(credentials: WixCredentials, image: WixImportedImage): Promise<WixImportedImage> {
+  let latest = image;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (latest.operationStatus === "READY" && latest.width > 0 && latest.height > 0) return latest;
+    if (latest.operationStatus === "FAILED") return latest;
+    await sleep(attempt === 0 ? 500 : 1000);
+    try {
+      const response = await wixApi(credentials, "GET", `/site-media/v1/files/get-file-by-id?fileId=${encodeURIComponent(image.id)}`) as { file?: WixFileInfo; files?: WixFileInfo[] };
+      const file = response.file || response.files?.[0];
+      if (!file) continue;
+      latest = {
+        ...latest,
+        id: normalizeWixMediaId(file.id || latest.id) || latest.id,
+        url: file.url || latest.url,
+        filename: file.displayName || file.filename || latest.filename || filenameFromUrl(file.url),
+        operationStatus: file.operationStatus || latest.operationStatus,
+        width: wixImageWidth(file) || latest.width,
+        height: wixImageHeight(file) || latest.height,
+      };
+    } catch {
+      return latest;
+    }
+  }
+  return latest;
+}
+
+function wixImageWidth(file?: WixFileInfo) {
+  return Number(file?.width || file?.image?.width || file?.media?.image?.width || file?.media?.image?.image?.width || 1200);
+}
+
+function wixImageHeight(file?: WixFileInfo) {
+  return Number(file?.height || file?.image?.height || file?.media?.image?.height || file?.media?.image?.image?.height || 675);
+}
+
+function filenameFromUrl(value?: string) {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(new URL(value).pathname.split("/").pop() || "") || undefined;
+  } catch {
+    return value.split(/[/?#]/).filter(Boolean).pop();
+  }
 }
 
 function isWixMediaReferenceError(message: string) {
