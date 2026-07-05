@@ -82,12 +82,12 @@ const providerDetails: Record<IntegrationProvider, {
     guide: [
       "Open the Wix API Keys Manager and create a key for the target site with Blog and Media access.",
       "Copy the site ID from the Wix dashboard URL after /dashboard/.",
-      "Paste the API key and site ID here; add a member ID only when drafts should use a specific author.",
+      "Paste the API key, site ID, and Wix author/member ID. Wix requires a post owner for blog drafts.",
     ],
     fields: [
       { key: "apiKey", label: "Wix API key", placeholder: "Wix API key", type: "password" },
       { key: "siteId", label: "Wix site ID", placeholder: "site-id" },
-      { key: "memberId", label: "Member ID (optional)", placeholder: "author/member id" },
+      { key: "memberId", label: "Author/member ID", placeholder: "Wix member ID for the post author" },
     ],
   },
   framer: {
@@ -379,7 +379,9 @@ function IntegrationSetupDialog({
           </div>
           {integration && (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-              Credentials are encrypted and cannot be shown again. Leave credential fields blank to keep the saved values.
+              {activeProvider === "wix"
+                ? "Credentials are encrypted and cannot be shown again. Enter the Wix fields you want to change; saved values are kept for fields left blank."
+                : "Credentials are encrypted and cannot be shown again. Leave credential fields blank to keep the saved values."}
             </p>
           )}
           <div className="grid gap-4">

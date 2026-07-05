@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/blogfactory";
+process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
-const { articleBody, markdownToHtml } = await import("./publishing.js");
+const { encryptSecret } = await import("./api-keys.js");
+const { articleBody, encryptProviderCredentials, markdownToHtml, markdownToWixRichContent } = await import("./publishing.js");
 
 const html = markdownToHtml([
   "# Agentik Kodlama",
@@ -33,5 +35,24 @@ assert.match(html, /<li><p><strong>Agentik kodlama araçları kodlama bilmeyenle
 assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına ulaşıyor\.<\/li><li>Fark daha çok uzmanlık derinliğinde ortaya çıkıyor\.<\/li><\/ul>/);
 assert.match(html, /<h2>Sonuç<\/h2>/);
 assert.equal(articleBody("# Başlık\n\n# Başlık\n\n## Başlık\n\nGövde"), "Gövde");
+assert.throws(
+  () => encryptProviderCredentials("wix", { apiKey: "token", siteId: "site" }),
+  /Wix API key, site ID, and author\/member ID are required/,
+);
+assert.doesNotThrow(() => encryptProviderCredentials("wix", { apiKey: "token", siteId: "site", memberId: "member" }));
+assert.doesNotThrow(() =>
+  encryptProviderCredentials(
+    "wix",
+    { memberId: "member" },
+    { credentialsEncrypted: encryptSecret(JSON.stringify({ apiKey: "token", siteId: "site" })) } as never,
+  ),
+);
+const wixRichContent = markdownToWixRichContent(
+  "Intro paragraph\n\n![Article image](stored/image.webp)\n\n## Details",
+  null,
+  new Map([["stored/image.webp", { id: "wix-media-id", width: 1200, height: 675 }]]),
+) as { nodes: Array<{ type: string; imageData?: { image?: { src?: { id?: string } } }; nodes?: Array<{ textData?: { text?: string } }> }> };
+assert.equal(wixRichContent.nodes.some((node) => node.type === "IMAGE" && node.imageData?.image?.src?.id === "wix-media-id"), true);
+assert.equal(JSON.stringify(wixRichContent).includes("![Article image]"), false);
 
 console.log("publishing self-check passed");

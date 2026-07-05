@@ -63,8 +63,9 @@ integrationsRoutes.put("/:id", async (c) => {
   if (!existing) return c.json({ error: "Integration not found" }, 404);
 
   try {
+    const provider = existing.provider as "wordpress" | "ghost" | "wix" | "framer";
     const credentials = body.credentials
-      ? encryptProviderCredentials(existing.provider as "wordpress" | "ghost" | "wix" | "framer", body.credentials)
+      ? encryptProviderCredentials(provider, body.credentials, existing)
       : null;
     const [updated] = await db
       .update(siteIntegrations)

@@ -6,7 +6,7 @@ import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
-import { getObject } from "./s3-client.js";
+import { getObject, getPublicUrl } from "./s3-client.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
 export type PublishMode = "draft" | "publish";
@@ -30,7 +30,7 @@ interface GhostCredentials {
 interface WixCredentials {
   apiKey: string;
   siteId: string;
-  memberId?: string;
+  memberId: string;
 }
 
 interface FramerCredentials {
@@ -75,6 +75,13 @@ interface PublishResult {
   externalUrl: string | null;
   externalEditUrl?: string | null;
   responseData?: Record<string, unknown>;
+}
+
+interface WixImportedImage {
+  id: string;
+  url?: string;
+  width: number;
+  height: number;
 }
 
 export function isPublishingProvider(value: string): value is IntegrationProvider {
@@ -144,8 +151,8 @@ export function serializePublication(row: typeof postPublications.$inferSelect) 
   };
 }
 
-export function encryptProviderCredentials(provider: IntegrationProvider, input: unknown) {
-  const credentials = validateCredentials(provider, input);
+export function encryptProviderCredentials(provider: IntegrationProvider, input: unknown, existing?: IntegrationRow) {
+  const credentials = validateCredentials(provider, mergeCredentialInput(input, existing));
   return {
     encrypted: encryptSecret(JSON.stringify(credentials)),
     hint: credentialHint(provider, credentials),
@@ -323,9 +330,11 @@ function validateCredentials(provider: IntegrationProvider, input: unknown): Pro
     const credentials = {
       apiKey: stringValue("apiKey"),
       siteId: stringValue("siteId"),
-      memberId: stringValue("memberId") || undefined,
+      memberId: stringValue("memberId"),
     };
-    if (!credentials.apiKey || !credentials.siteId) throw new Error("Wix API key and site ID are required");
+    if (!credentials.apiKey || !credentials.siteId || !credentials.memberId) {
+      throw new Error("Wix API key, site ID, and author/member ID are required");
+    }
     return credentials;
   }
 
@@ -338,6 +347,24 @@ function validateCredentials(provider: IntegrationProvider, input: unknown): Pro
     throw new Error("Framer project URL, API key, and collection ID/name are required");
   }
   return credentials;
+}
+
+function mergeCredentialInput(input: unknown, existing?: IntegrationRow) {
+  if (!existing) return input;
+
+  const current = JSON.parse(decryptSecret(existing.credentialsEncrypted)) as unknown;
+  if (!current || typeof current !== "object" || !input || typeof input !== "object") return input;
+
+  const merged: Record<string, unknown> = { ...(current as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) merged[key] = trimmed;
+    } else if (value !== null && value !== undefined) {
+      merged[key] = value;
+    }
+  }
+  return merged;
 }
 
 function credentialHint(provider: IntegrationProvider, credentials: ProviderCredentials) {
@@ -931,12 +958,17 @@ async function testWix(credentials: WixCredentials) {
 }
 
 async function publishWix(credentials: WixCredentials, article: ArticlePayload, mode: PublishMode): Promise<PublishResult> {
-  const coverMedia = article.coverImageUrl ? await importWixImage(credentials, article.coverImageUrl, article.title).catch(() => null) : null;
+  const coverMedia = article.coverImageUrl ? await importWixImage(credentials, article.coverImageUrl, article.title) : null;
+  const importedImages = new Map<string, WixImportedImage>();
+  await Promise.all(article.inlineImages.map(async (image, index) => {
+    const imported = await importWixImage(credentials, image.url, `${article.title}-${index + 1}`);
+    if (imported) importedImages.set(image.url, imported);
+  }));
   const createResponse = await wixApi(credentials, "POST", "/blog/v3/draft-posts", {
     draftPost: {
       title: article.title,
-      richContent: markdownToWixRichContent(article.baseMarkdown, coverMedia),
-      ...(credentials.memberId ? { memberId: credentials.memberId } : {}),
+      richContent: markdownToWixRichContent(article.markdown, coverMedia, importedImages),
+      memberId: credentials.memberId,
       slug: article.slug,
       excerpt: article.excerpt,
       tagIds: [],
@@ -946,7 +978,7 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
           { type: "meta", props: { name: "description", content: article.metaDescription } },
         ],
       },
-      ...(coverMedia ? { coverMedia: { image: coverMedia, displayed: true } } : {}),
+      ...(coverMedia ? { media: { wixMedia: { image: { id: coverMedia.id } }, displayed: true, custom: true } } : {}),
     },
   }) as { draftPost?: { id?: string; url?: string } };
 
@@ -985,25 +1017,42 @@ async function wixApi(credentials: WixCredentials, method: string, path: string,
   return response.json();
 }
 
-async function importWixImage(credentials: WixCredentials, imageUrl: string, title: string) {
-  if (!imageUrl.startsWith("http")) return null;
+async function importWixImage(credentials: WixCredentials, imageUrl: string, title: string): Promise<WixImportedImage | null> {
+  const url = externalImageUrl(imageUrl);
+  if (!url) {
+    throw new Error("Wix image publishing needs public image URLs. Set S3_PUBLIC_URL or deploy with VERCEL_URL/BLOGFACTORY_BASE_URL so stored images can be imported.");
+  }
+  const mimeType = mimeForPath(imageUrl);
   const response = await wixApi(credentials, "POST", "/site-media/v1/files/import", {
-    importFileRequest: {
-      url: imageUrl,
-      displayName: `${slugify(title)}.webp`,
-    },
-  }) as { file?: { id?: string; url?: string } };
-  return response.file?.url || response.file?.id || null;
+    url,
+    mediaType: "IMAGE",
+    mimeType,
+    displayName: `${slugify(title)}.${extensionForMime(mimeType)}`,
+  }) as { file?: { id?: string; url?: string; width?: number; height?: number; image?: { width?: number; height?: number } } };
+  const id = normalizeWixMediaId(response.file?.id || response.file?.url || "");
+  if (!id) return null;
+  return {
+    id,
+    url: response.file?.url,
+    width: Number(response.file?.width || response.file?.image?.width || 1200),
+    height: Number(response.file?.height || response.file?.image?.height || 675),
+  };
 }
 
-function markdownToWixRichContent(markdown: string, coverImage: string | null) {
+export function markdownToWixRichContent(markdown: string, coverImage: WixImportedImage | null, importedImages = new Map<string, WixImportedImage>()) {
   const nodes: unknown[] = [];
   if (coverImage) {
-    nodes.push({ type: "IMAGE", imageData: { image: { src: { url: coverImage } } } });
+    nodes.push(wixImageNode(coverImage, "Featured image"));
   }
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    const image = trimmed.match(/^!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/);
+    if (image) {
+      const imported = importedImages.get(image[2]);
+      if (imported) nodes.push(wixImageNode(imported, image[1] || "Article image"));
+      continue;
+    }
     const h1 = trimmed.match(/^# (.+)/);
     const h2 = trimmed.match(/^## (.+)/);
     if (h1 || h2) {
@@ -1013,6 +1062,46 @@ function markdownToWixRichContent(markdown: string, coverImage: string | null) {
     }
   }
   return { nodes };
+}
+
+function wixImageNode(image: WixImportedImage, altText: string) {
+  return {
+    type: "IMAGE",
+    nodes: [],
+    imageData: {
+      containerData: {
+        width: { size: "CONTENT" },
+        alignment: "CENTER",
+      },
+      image: {
+        src: { id: image.id },
+        width: image.width,
+        height: image.height,
+      },
+      altText: altText.slice(0, 180),
+    },
+  };
+}
+
+function externalImageUrl(pathOrUrl: string) {
+  if (pathOrUrl.startsWith("http")) return pathOrUrl;
+
+  const publicUrl = getPublicUrl(pathOrUrl);
+  if (publicUrl) return publicUrl;
+
+  const base = process.env.BLOGFACTORY_BASE_URL || process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.VERCEL_URL;
+  if (!base) return null;
+
+  const normalizedBase = base.startsWith("http") ? base : `https://${base}`;
+  const encodedPath = pathOrUrl.split("/").map(encodeURIComponent).join("/");
+  return `${normalizedBase.replace(/\/$/, "")}/api/storage/${encodedPath}`;
+}
+
+function normalizeWixMediaId(value: string) {
+  if (!value) return "";
+  const withoutPrefix = value.replace(/^wix:image:\/\/v1\//, "");
+  const staticMatch = withoutPrefix.match(/\/media\/([^/?]+)/);
+  return (staticMatch?.[1] || withoutPrefix.split(/[?#]/)[0]).trim();
 }
 
 async function testFramer(credentials: FramerCredentials) {
