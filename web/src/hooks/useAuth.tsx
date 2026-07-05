@@ -17,6 +17,7 @@ interface AuthContextType {
   isLoading: boolean;
   signOut: () => void;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  devLogin: () => Promise<void>;
   signup: (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean) => Promise<void>;
 }
 
@@ -64,13 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   };
 
+  const devLogin = async () => {
+    const { token, user: u } = await api.post<{ token: string; user: AuthUser }>("/auth/dev-login");
+    api.setToken(token);
+    setUser(u);
+  };
+
   const signOut = () => {
     api.setToken(null);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signOut, login, signup }}>
+    <AuthContext.Provider value={{ user, isLoading, signOut, login, devLogin, signup }}>
       {children}
     </AuthContext.Provider>
   );

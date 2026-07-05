@@ -10,9 +10,43 @@ export function isCronAuthorized(header: string | undefined, secret = process.en
   return Boolean(secret) && header === `Bearer ${secret}`;
 }
 
-function positiveInt(value: unknown, fallback: number) {
+function positiveInt(value: unknown, fallback: number, max?: number) {
   const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+  const parsed = Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+  return max ? Math.min(parsed, max) : parsed;
+}
+
+function queryInt(
+  query: (name: string) => string | undefined,
+  names: string[],
+  fallback: string | undefined,
+  defaultValue: number,
+  max: number,
+) {
+  for (const name of names) {
+    const value = query(name);
+    if (value) return positiveInt(value, defaultValue, max);
+  }
+  return positiveInt(fallback, defaultValue, max);
+}
+
+export function readCronDrainConfig(query: (name: string) => string | undefined, env: Record<string, string | undefined> = process.env) {
+  return {
+    feeds: {
+      maxFeeds: queryInt(query, ["maxFeeds"], env.RSS_CRON_MAX_FEEDS, 1, 10),
+      maxPostsPerFeed: queryInt(query, ["maxPostsPerFeed"], env.RSS_CRON_MAX_POSTS_PER_FEED, 1, 5),
+    },
+    campaigns: {
+      maxCampaigns: queryInt(query, ["maxCampaigns"], undefined, 5, 10),
+      maxItemsPerCampaign: queryInt(query, ["maxItemsPerCampaign"], undefined, 3, 10),
+    },
+    indexing: {
+      limit: queryInt(query, ["indexingLimit", "limit"], undefined, 50, 100),
+    },
+    searchConsole: {
+      limit: queryInt(query, ["searchConsoleLimit", "maxSites", "limit"], env.GSC_CRON_MAX_SITES, 10, 10),
+    },
+  };
 }
 
 cronRoutes.get("/drain", async (c) => {
@@ -21,26 +55,27 @@ cronRoutes.get("/drain", async (c) => {
   }
 
   const task = c.req.query("task") || "all";
+  const config = readCronDrainConfig((name) => c.req.query(name));
   const { runScheduler } = await import("../services/scheduler.js");
   const runFeeds = () => runScheduler(undefined, {
     awaitGeneration: true,
-    maxFeeds: positiveInt(process.env.RSS_CRON_MAX_FEEDS, 1),
-    maxPostsPerFeed: positiveInt(process.env.RSS_CRON_MAX_POSTS_PER_FEED, 1),
+    maxFeeds: config.feeds.maxFeeds,
+    maxPostsPerFeed: config.feeds.maxPostsPerFeed,
   });
   const runImages = async () => {
     return drainDeferredImages();
   };
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
-  if (task === "campaigns") return c.json({ ok: true, campaigns: await drainCampaignQueue() });
-  if (task === "indexing") return c.json({ ok: true, google: await drainQueuedGoogleIndexing() });
-  if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(positiveInt(process.env.GSC_CRON_MAX_SITES, 10)) });
+  if (task === "campaigns") return c.json({ ok: true, campaigns: await drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign) });
+  if (task === "indexing") return c.json({ ok: true, google: await drainQueuedGoogleIndexing(config.indexing.limit) });
+  if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(config.searchConsole.limit) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });
 
   const [campaigns, google, searchConsole, feeds, images] = await Promise.all([
-    drainCampaignQueue(),
-    drainQueuedGoogleIndexing(),
-    drainSearchConsoleSync(positiveInt(process.env.GSC_CRON_MAX_SITES, 10)),
+    drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
+    drainQueuedGoogleIndexing(config.indexing.limit),
+    drainSearchConsoleSync(config.searchConsole.limit),
     runFeeds(),
     runImages(),
   ]);

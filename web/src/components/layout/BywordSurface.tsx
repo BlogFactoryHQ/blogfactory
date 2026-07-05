@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 export function WorkspaceBackground({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("min-h-[calc(100vh-88px)] factory-grid-bg text-foreground", className)}>
+    <div className={cn("min-h-screen factory-grid-bg text-foreground", className)}>
       {children}
     </div>
   );
@@ -13,7 +13,7 @@ export function WorkspaceBackground({ children, className }: { children: ReactNo
 export function BywordPageShell({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <WorkspaceBackground>
-      <div className={cn("mx-auto w-full max-w-6xl px-6 py-8 lg:px-10", className)}>
+      <div className={cn("mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-8", className)}>
         {children}
       </div>
     </WorkspaceBackground>
@@ -70,7 +70,7 @@ export function SectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="relative flex flex-col gap-4 border-b border-byword-border bg-card px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+    <div className="relative flex flex-col gap-4 border-b border-byword-border bg-card px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5 lg:px-6">
       <div className="absolute inset-x-0 top-0 h-1 factory-divider opacity-45" aria-hidden="true" />
       <div className="flex min-w-0 items-start gap-3">
         <IconTile icon={Icon} />

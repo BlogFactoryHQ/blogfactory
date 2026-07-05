@@ -32,8 +32,9 @@ function AuthShell({ children }: { children: ReactNode }) {
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { login, signup } = useAuth();
+  const { login, signup, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isDevLoading, setIsDevLoading] = useState(false);
   const [view, setView] = useState<View>("signin");
 
   // Sign in fields
@@ -82,6 +83,19 @@ export default function Auth() {
       toast.error(err.message || "An unexpected error occurred");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDevLogin = async () => {
+    setIsDevLoading(true);
+    try {
+      await devLogin();
+      toast.success("Local workspace ready");
+      navigate("/");
+    } catch (err: any) {
+      toast.error(err.message || "Start the local backend, then try again");
+    } finally {
+      setIsDevLoading(false);
     }
   };
 
@@ -262,6 +276,26 @@ export default function Auth() {
               <Button type="submit" className="w-full h-10" disabled={isLoading}>
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
+
+              {import.meta.env.DEV && (
+                <div className="rounded-md border border-byword-border bg-muted/35 p-3">
+                  <p className="mb-2 font-mono text-[10px] font-semibold uppercase text-muted-foreground">
+                    Local development
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleDevLogin}
+                    disabled={isLoading || isDevLoading}
+                  >
+                    {isDevLoading ? "Preparing workspace..." : "Enter local workspace"}
+                  </Button>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    Creates an approved local admin, starter site, and default voice in your dev database.
+                  </p>
+                </div>
+              )}
 
             </form>
           </TabsContent>

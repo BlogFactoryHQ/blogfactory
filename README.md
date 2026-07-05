@@ -82,6 +82,7 @@ Local services:
 | Frontend | http://localhost:8080 |
 
 The frontend calls `/api/*`. In local development, Vite proxies those requests to the backend.
+On the sign-in screen, use **Enter local workspace** to create an approved local admin, starter site, and default voice in your development database. This helper is disabled when `NODE_ENV=production`.
 
 ### Workspace Commands
 

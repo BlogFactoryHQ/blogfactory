@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { safeFormatDate } from "@/lib/date-format";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -634,11 +635,16 @@ export default function Posts() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Posts"
-        description="All generated content in one place."
-      />
+        description="Manage drafts, published inventory, batches, and CMS handoff from one workspace."
+      >
+        <Button onClick={() => navigate("/content-creator")}>
+          <Send className="h-4 w-4" />
+          Create drafts
+        </Button>
+      </PageHeader>
 
       <InventoryInsights
         totalPosts={enrichedPosts.length}
@@ -656,66 +662,71 @@ export default function Posts() {
         pushing={bulkPushIntegrationMutation.isPending}
       />
 
-      {/* Filters */}
-      <PostFilters
-        statusFilter={statusFilter}
-        onStatusFilterChange={handleStatusFilterChange}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        sourceFilter={sourceFilter}
-        onSourceFilterChange={setSourceFilter}
-        modelFilter={modelFilter}
-        onModelFilterChange={setModelFilter}
-        personaFilter={personaFilter}
-        onPersonaFilterChange={setPersonaFilter}
-        campaignFilter={campaignFilter}
-        onCampaignFilterChange={setCampaignFilter}
-        sortField={sortField}
-        sortDirection={sortDirection}
-        onSortChange={handleSortChange}
-        sourceTypes={sourceTypes}
-        models={models}
-        personas={personas}
-        campaigns={campaigns}
-        activeFiltersCount={activeFiltersCount}
-        onClearFilters={handleClearFilters}
-      />
+      <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:mx-0">
+        <PostFilters
+          statusFilter={statusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
+          modelFilter={modelFilter}
+          onModelFilterChange={setModelFilter}
+          personaFilter={personaFilter}
+          onPersonaFilterChange={setPersonaFilter}
+          campaignFilter={campaignFilter}
+          onCampaignFilterChange={setCampaignFilter}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          sourceTypes={sourceTypes}
+          models={models}
+          personas={personas}
+          campaigns={campaigns}
+          activeFiltersCount={activeFiltersCount}
+          onClearFilters={handleClearFilters}
+        />
 
-      {/* Bulk Actions Bar */}
-      {selectedIds.size > 0 && (
-        <div>
-          <BulkActionsBar
-            selectedCount={selectAllAcrossPages ? filteredPosts.length : selectedIds.size}
-            onDelete={handleBulkDelete}
-            onPublish={handleBulkPublish}
-            onPushIntegration={handleBulkPushIntegration}
-            onDraft={handleBulkDraft}
-            onClear={clearSelection}
-            integrations={connectedIntegrations}
-            integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
-            onIntegrationChange={setBulkIntegrationId}
-            isDeleting={isDeleting}
-            isPublishing={isPublishing}
-            isPushingIntegration={bulkPushIntegrationMutation.isPending}
-            isDrafting={isDrafting}
-          />
-          {allPageSelected && !selectAllAcrossPages && filteredPosts.length > postsPerPage && (
-            <div className="text-center text-sm text-muted-foreground mb-4">
-              All {paginatedSelectablePosts.length} posts on this page are selected.{" "}
-              <Button
-                variant="link"
-                className="p-0 h-auto text-primary"
-                onClick={handleSelectAllAcrossPages}
-              >
-                Select all {filteredPosts.length} posts
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+        {selectedIds.size > 0 && (
+          <div>
+            <BulkActionsBar
+              selectedCount={selectAllAcrossPages ? filteredPosts.length : selectedIds.size}
+              onDelete={handleBulkDelete}
+              onPublish={handleBulkPublish}
+              onPushIntegration={handleBulkPushIntegration}
+              onDraft={handleBulkDraft}
+              onClear={clearSelection}
+              integrations={connectedIntegrations}
+              integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
+              onIntegrationChange={setBulkIntegrationId}
+              isDeleting={isDeleting}
+              isPublishing={isPublishing}
+              isPushingIntegration={bulkPushIntegrationMutation.isPending}
+              isDrafting={isDrafting}
+            />
+            {allPageSelected && !selectAllAcrossPages && filteredPosts.length > postsPerPage && (
+              <div className="mb-2 text-center text-sm text-muted-foreground">
+                All {paginatedSelectablePosts.length} posts on this page are selected.{" "}
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-primary"
+                  onClick={handleSelectAllAcrossPages}
+                >
+                  Select all {filteredPosts.length} posts
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Table */}
-      <div className="calm-card overflow-hidden mt-6">
+      <BywordCard className="mt-6">
+        <SectionHeader
+          icon={FileText}
+          title="Inventory table"
+          description={`${formatCompactNumber(displayRows.length)} visible row${displayRows.length === 1 ? "" : "s"} after filters.`}
+          action={<Badge variant="outline">{postsPerPage} / page</Badge>}
+        />
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -778,13 +789,13 @@ export default function Posts() {
 
         {/* Pagination */}
         {displayRows.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
               {Math.min(currentPage * postsPerPage, displayRows.length)} of{" "}
               {displayRows.length} rows
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={String(postsPerPage)}
                 onValueChange={(value) => {
@@ -824,7 +835,7 @@ export default function Posts() {
             </div>
           </div>
         )}
-      </div>
+      </BywordCard>
 
       {/* Quick Delete Confirmation */}
       <AlertDialog open={!!quickDeletePost} onOpenChange={(open) => !open && setQuickDeletePost(null)}>
@@ -847,7 +858,7 @@ export default function Posts() {
         </AlertDialogContent>
       </AlertDialog>
 
-    </div>
+    </BywordPageShell>
   );
 }
 

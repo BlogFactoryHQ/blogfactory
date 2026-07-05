@@ -14,16 +14,32 @@ permissions:
 
 jobs:
   tick:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Campaign queue
+            query: "task=campaigns&maxCampaigns=1&maxItemsPerCampaign=1"
+          - name: Google indexing
+            query: "task=indexing&limit=10"
+          - name: Search Console sync
+            query: "task=search-console&limit=1"
+          - name: Due feeds
+            query: "task=feeds&maxFeeds=1&maxPostsPerFeed=1"
+          - name: Deferred images
+            query: "task=images"
     steps:
-      - name: Drain all background work
+      - name: Drain background work
         env:
           BLOGFACTORY_CRON_SECRET: ${{ secrets.BLOGFACTORY_CRON_SECRET }}
           BLOGFACTORY_BASE_URL: ${{ vars.BLOGFACTORY_BASE_URL }}
+          DRAIN_QUERY: ${{ matrix.query }}
         run: |
           test -n "$BLOGFACTORY_CRON_SECRET"
           BASE_URL="${BLOGFACTORY_BASE_URL:-https://blogfactory.io}"
-          curl --fail --show-error --silent --max-time 70 \
+          curl --fail --show-error --silent --max-time 55 \
             -H "Authorization: Bearer ${BLOGFACTORY_CRON_SECRET}" \
-            "${BASE_URL%/}/api/cron/drain"
+            "${BASE_URL%/}/api/cron/drain?${DRAIN_QUERY}"

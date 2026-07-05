@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { formatCompactCurrency, formatCompactNumber, safePercent, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 
@@ -110,11 +111,18 @@ export default function Dashboard() {
   const nextScaleItem = scaleChecklist.find((item) => !item.done) || scaleChecklist[0];
 
   return (
-    <div className="p-8 max-w-6xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Dashboard"
-        description="Overview of your content pipeline."
-      />
+        description="Pipeline health, next actions, and the latest factory activity."
+      >
+        <Button asChild>
+          <Link to="/content-creator">
+            <PenTool className="h-4 w-4" />
+            Create content
+          </Link>
+        </Button>
+      </PageHeader>
 
       <PipelinePulse
         postCount={postCount}
@@ -126,71 +134,69 @@ export default function Dashboard() {
         searchReady={connectedIndexing.length > 0 && internalLinksReady ? publishedCount : 0}
       />
 
-      <div className="calm-card mb-10 p-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Scale Publishing</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Publish first, index fast, then improve posts that earn demand.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">{completedScaleItems}/{scaleChecklist.length} ready</Badge>
-            <Button asChild variant="outline" size="sm">
-              <Link to={nextScaleItem.href}>
-                {nextScaleItem.done ? "Review posts" : nextScaleItem.action}
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-        <Progress value={scaleProgress} className="mb-4 h-2" />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {scaleChecklist.map((item) => {
-            const Icon = item.done ? CheckCircle : item.warn ? AlertCircle : Clock;
-            const isNext = item.title === nextScaleItem.title && !item.done;
-            return (
-              <Link
-                key={item.title}
-                to={item.href}
-                className={cn(
-                  "group rounded-md border p-4 transition-calm hover:border-foreground/15 hover:bg-muted/30",
-                  isNext ? "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]" : "border-border"
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", item.done ? "text-status-success" : item.warn ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground")} />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium">{item.title}</p>
-                      {isNext && <Badge variant="outline" className="border-[hsl(var(--status-warning)/0.45)] bg-card text-[10px] text-[hsl(var(--status-warning))]">Next best</Badge>}
+      <BywordCard className="mb-6">
+        <SectionHeader
+          icon={CheckCircle}
+          title="What needs attention now"
+          description="Publish first, index fast, then improve posts that earn demand."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{completedScaleItems}/{scaleChecklist.length} ready</Badge>
+              <Button asChild variant="outline" size="sm">
+                <Link to={nextScaleItem.href}>
+                  {nextScaleItem.done ? "Review posts" : nextScaleItem.action}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          }
+        />
+        <div className="p-4 sm:p-5 lg:p-6">
+          <Progress value={scaleProgress} className="mb-4 h-2" />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {scaleChecklist.map((item) => {
+              const Icon = item.done ? CheckCircle : item.warn ? AlertCircle : Clock;
+              const isNext = item.title === nextScaleItem.title && !item.done;
+              return (
+                <Link
+                  key={item.title}
+                  to={item.href}
+                  className={cn(
+                    "group rounded-md border p-4 transition-calm hover:border-byword-blue/45 hover:bg-byword-blue-soft/30",
+                    isNext ? "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]" : "border-byword-border bg-card"
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", item.done ? "text-status-success" : item.warn ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground")} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold">{item.title}</p>
+                        {isNext && <Badge variant="outline" className="border-[hsl(var(--status-warning)/0.45)] bg-card text-[10px] text-[hsl(var(--status-warning))]">Next best</Badge>}
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                      <span className="mt-3 inline-flex items-center text-xs font-medium text-muted-foreground group-hover:text-foreground">
+                        {item.action}
+                        <ArrowRight className="ml-1 h-3 w-3" />
+                      </span>
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
-                    <span className="mt-3 inline-flex items-center text-xs font-medium text-muted-foreground group-hover:text-foreground">
-                      {item.action}
-                      <ArrowRight className="ml-1 h-3 w-3" />
-                    </span>
                   </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Recent Jobs */}
-        <div className="lg:col-span-3">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold">Recent Jobs</h2>
-            <Link
-              to="/jobs"
-              className="text-xs text-muted-foreground hover:text-foreground transition-calm flex items-center gap-1"
-            >
-              View all
-              <ArrowRight className="h-3 w-3" />
-            </Link>
+                </Link>
+              );
+            })}
           </div>
+        </div>
+      </BywordCard>
 
-          <div className="calm-card divide-y divide-border">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Recent Jobs */}
+        <BywordCard className="lg:col-span-3">
+          <SectionHeader
+            icon={ListTodo}
+            title="Recent jobs"
+            description="Latest generation work across the active workspace."
+            action={<Button asChild variant="outline" size="sm"><Link to="/jobs">View all <ArrowRight className="h-4 w-4" /></Link></Button>}
+          />
+          <div className="divide-y divide-border">
             {isLoadingJobs ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -239,14 +245,14 @@ export default function Dashboard() {
               })
             )}
           </div>
-        </div>
+        </BywordCard>
 
         {/* Right column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Job Queue Summary */}
-          <div>
-            <h2 className="text-sm font-semibold mb-4">Job Queue</h2>
-            <div className="calm-card p-4 space-y-2.5">
+          <BywordCard>
+            <SectionHeader icon={ListTodo} title="Job queue" description="Current queue mix from recent jobs." />
+            <div className="space-y-2.5 p-4">
               {[
                 { label: "Completed", count: jobStatusSummary.completed, color: "bg-status-success" },
                 { label: "Running", count: jobStatusSummary.running, color: "bg-status-running", pulse: true },
@@ -267,20 +273,17 @@ export default function Dashboard() {
                 </Link>
               </div>
             </div>
-          </div>
+          </BywordCard>
 
           {/* Scheduler */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold">Scheduler</h2>
-              <Link
-                to="/rss-feeds"
-                className="text-xs text-muted-foreground hover:text-foreground transition-calm"
-              >
-                Feeds →
-              </Link>
-            </div>
-            <div className="calm-card divide-y divide-border">
+          <BywordCard>
+            <SectionHeader
+              icon={Timer}
+              title="Scheduler"
+              description="Recent feed drain activity."
+              action={<Button asChild variant="outline" size="sm"><Link to="/rss-feeds">Feeds <ArrowRight className="h-4 w-4" /></Link></Button>}
+            />
+            <div className="divide-y divide-border">
               {isLoadingScheduler ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -319,12 +322,12 @@ export default function Dashboard() {
                 ))
               )}
             </div>
-          </div>
+          </BywordCard>
 
           {/* Quick Actions */}
-          <div>
-            <h2 className="text-sm font-semibold mb-4">Quick Actions</h2>
-            <div className="space-y-1.5">
+          <BywordCard>
+            <SectionHeader icon={PenTool} title="Quick actions" description="Common next moves." />
+            <div className="space-y-2 p-4">
               {[
                 { label: "Generate Content", sub: "Create new drafts", href: "/content-creator", icon: PenTool },
                 { label: "Add RSS Feed", sub: "New content source", href: "/rss-feeds/new", icon: Rss },
@@ -341,10 +344,10 @@ export default function Dashboard() {
                 </Link>
               ))}
             </div>
-          </div>
+          </BywordCard>
         </div>
       </div>
-    </div>
+    </BywordPageShell>
   );
 }
 
@@ -382,52 +385,47 @@ function PipelinePulse({
   const max = Math.max(postCount, 1);
 
   return (
-    <div className="calm-card mb-10 p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Content pipeline pulse</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Top-level publishing health before the operational tables.</p>
+    <BywordCard className="mb-6">
+      <SectionHeader
+        icon={FileText}
+        title="Content pipeline pulse"
+        description="Top-level publishing health before the operational tables."
+      />
+      <div className="p-4 sm:p-5 lg:p-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {metrics.map((metric) => (
+            <Link key={metric.label} to={metric.href} className={cn("rounded-md border p-4 transition-calm hover:border-byword-blue/45 hover:bg-byword-blue-soft/30", semanticToneClass(metric.tone))}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold uppercase opacity-75">{metric.label}</p>
+                <metric.icon className="h-4 w-4 opacity-70" />
+              </div>
+              <p className="text-2xl font-semibold text-foreground">{metric.value}</p>
+            </Link>
+          ))}
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/content-creator">
-            Create content
-            <ArrowRight className="ml-1.5 h-4 w-4" />
-          </Link>
-        </Button>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {metrics.map((metric) => (
-          <Link key={metric.label} to={metric.href} className={cn("rounded-md border p-4 transition-calm hover:border-foreground/15", semanticToneClass(metric.tone))}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
-              <metric.icon className="h-4 w-4 opacity-70" />
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {steps.map((step) => (
+            <div key={step.label} className="rounded-md border border-byword-border bg-muted/20 p-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-medium">{step.label}</span>
+                <span>{formatCompactNumber(step.value)}</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    step.tone === "performance" && "bg-byword-blue",
+                    step.tone === "opportunity" && "bg-amber-500",
+                    step.tone === "success" && "bg-green-500",
+                    step.tone === "neutral" && "bg-muted-foreground/40"
+                  )}
+                  style={{ width: `${Math.max(8, safePercent(step.value, max))}%` }}
+                />
+              </div>
             </div>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">{metric.value}</p>
-          </Link>
-        ))}
+          ))}
+        </div>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
-        {steps.map((step) => (
-          <div key={step.label} className="rounded-md border border-byword-border bg-muted/20 p-3">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="font-medium">{step.label}</span>
-              <span>{formatCompactNumber(step.value)}</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  "h-full rounded-full",
-                  step.tone === "performance" && "bg-byword-blue",
-                  step.tone === "opportunity" && "bg-amber-500",
-                  step.tone === "success" && "bg-green-500",
-                  step.tone === "neutral" && "bg-muted-foreground/40"
-                )}
-                style={{ width: `${Math.max(8, safePercent(step.value, max))}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    </BywordCard>
   );
 }
