@@ -23,6 +23,15 @@ import {
 import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
 import { normalizeOpenRouterImageModelId } from "../services/openrouter-models.js";
+import {
+  ensureGlobalSettings,
+  ensureSiteSettings,
+  getActiveSiteId,
+  getEffectiveSettings,
+  isAccountSettingsUpdate,
+  updateGlobalSettings,
+  updateSiteSettings,
+} from "../services/user-settings.js";
 
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay"]);
@@ -185,6 +194,8 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     id: settings.id,
     user_id: settings.userId,
     userId: settings.userId,
+    site_id: settings.siteId,
+    siteId: settings.siteId,
     active_site_id: settings.activeSiteId,
     activeSiteId: settings.activeSiteId,
     image_model: settings.imageModel,
@@ -496,6 +507,7 @@ settingsRoutes.post("/api-keys/test", async (c) => {
 
 async function runInternalLinkIndexing({
   userId,
+  siteId,
   jobId,
   sitemapUrl,
   mode,
@@ -506,6 +518,7 @@ async function runInternalLinkIndexing({
   hadExistingIndex,
 }: {
   userId: string;
+  siteId: string;
   jobId: string;
   sitemapUrl: string;
   mode: string;
@@ -528,10 +541,7 @@ async function runInternalLinkIndexing({
   };
   const setState = async (patch: Partial<InternalLinkIndexingState>) => {
     state = { ...state, ...patch, jobId, startedAt };
-    await db
-      .update(userSettings)
-      .set({ internalLinkIndexingState: state, updatedAt: new Date() } as any)
-      .where(eq(userSettings.userId, userId));
+    await updateSiteSettings(userId, siteId, { internalLinkIndexingState: state as never });
   };
 
   try {
@@ -554,71 +564,44 @@ async function runInternalLinkIndexing({
       completedAt: completedAt.toISOString(),
     };
 
-    const [result] = await db
-      .insert(userSettings)
-      .values({
-        userId,
-        enableInternalLinks: true,
-        internalLinkSitemapUrl: index.sitemapUrl,
-        internalLinkStatus: "connected",
-        internalLinkMode: mode,
-        internalLinkDensity: density,
-        internalLinkIncludePatterns: includePatterns,
-        internalLinkExcludePatterns: excludePatterns,
-        internalLinkIndex: index as never,
-        internalLinkIndexingState: completedState as never,
-        internalLinkLastSyncedAt: completedAt,
-        updatedAt: completedAt,
-      } as any)
-      .onConflictDoUpdate({
-        target: userSettings.userId,
-        set: {
-          enableInternalLinks: true,
-          internalLinkSitemapUrl: index.sitemapUrl,
-          internalLinkStatus: "connected",
-          internalLinkMode: mode,
-          internalLinkDensity: density,
-          internalLinkIncludePatterns: includePatterns,
-          internalLinkExcludePatterns: excludePatterns,
-          internalLinkIndex: index as never,
-          internalLinkIndexingState: completedState as never,
-          internalLinkLastSyncedAt: completedAt,
-          updatedAt: completedAt,
-        } as any,
-      })
-      .returning();
+    await updateSiteSettings(userId, siteId, {
+      enableInternalLinks: true,
+      internalLinkSitemapUrl: index.sitemapUrl,
+      internalLinkStatus: "connected",
+      internalLinkMode: mode,
+      internalLinkDensity: density,
+      internalLinkIncludePatterns: includePatterns,
+      internalLinkExcludePatterns: excludePatterns,
+      internalLinkIndex: index as never,
+      internalLinkIndexingState: completedState as never,
+      internalLinkLastSyncedAt: completedAt,
+    });
 
-    if (result?.activeSiteId) {
-      await db
-        .update(sites)
-        .set({
-          sitemapUrl: index.sitemapUrl,
-          domain: index.siteHost,
-          status: "active",
-          pageCount: index.pageCount,
-          vectorCount: index.vectorCount,
-          internalLinkIndex: index as never,
-          internalLinkLastSyncedAt: result.internalLinkLastSyncedAt,
-          updatedAt: new Date(),
-        } as any)
-        .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to index sitemap";
     await db
-      .update(userSettings)
+      .update(sites)
       .set({
-        enableInternalLinks: hadExistingIndex,
-        internalLinkStatus: "failed",
-        internalLinkIndexingState: {
-          ...state,
-          step: "failed",
-          errorMessage: message,
-          completedAt: new Date().toISOString(),
-        } as never,
+        sitemapUrl: index.sitemapUrl,
+        domain: index.siteHost,
+        status: "active",
+        pageCount: index.pageCount,
+        vectorCount: index.vectorCount,
+        internalLinkIndex: index as never,
+        internalLinkLastSyncedAt: completedAt,
         updatedAt: new Date(),
       } as any)
-      .where(eq(userSettings.userId, userId));
+      .where(and(eq(sites.id, siteId), eq(sites.userId, userId)));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to index sitemap";
+    await updateSiteSettings(userId, siteId, {
+      enableInternalLinks: hadExistingIndex,
+      internalLinkStatus: "failed",
+      internalLinkIndexingState: {
+        ...state,
+        step: "failed",
+        errorMessage: message,
+        completedAt: new Date().toISOString(),
+      } as never,
+    });
     console.error("[internal-linking] Indexing failed:", message);
   }
 }
@@ -633,7 +616,9 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
   }
 
   try {
-    const [existing] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+    const siteId = asOptionalText(body.siteId ?? body.site_id) || await getActiveSiteId(userId);
+    if (!siteId) return c.json({ error: "Select a site before indexing internal links" }, 400);
+    const existing = await ensureSiteSettings(userId, siteId);
     const currentState = existing?.internalLinkIndexingState as InternalLinkIndexingState | null | undefined;
     const sameSitemap = comparableSitemap(existing?.internalLinkSitemapUrl) === comparableSitemap(sitemapUrl);
     const recentIndexing = currentState?.startedAt && Date.now() - new Date(currentState.startedAt).getTime() < 30 * 60 * 1000;
@@ -668,38 +653,21 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
       completedAt: null,
     };
 
-    const [result] = await db
-      .insert(userSettings)
-      .values({
-        userId,
-        enableInternalLinks: true,
-        internalLinkSitemapUrl: sitemapUrl,
-        internalLinkStatus: "indexing",
-        internalLinkMode: mode,
-        internalLinkDensity: density,
-        internalLinkIncludePatterns: includePatterns,
-        internalLinkExcludePatterns: excludePatterns,
-        internalLinkIndexingState: indexingState as never,
-        updatedAt: startedAt,
-      } as any)
-      .onConflictDoUpdate({
-        target: userSettings.userId,
-        set: {
-          enableInternalLinks: true,
-          internalLinkSitemapUrl: sitemapUrl,
-          internalLinkStatus: "indexing",
-          internalLinkMode: mode,
-          internalLinkDensity: density,
-          internalLinkIncludePatterns: includePatterns,
-          internalLinkExcludePatterns: excludePatterns,
-          internalLinkIndexingState: indexingState as never,
-          updatedAt: startedAt,
-        } as any,
-      })
-      .returning();
+    const result = await updateSiteSettings(userId, siteId, {
+      enableInternalLinks: true,
+      internalLinkSitemapUrl: sitemapUrl,
+      internalLinkStatus: "indexing",
+      internalLinkMode: mode,
+      internalLinkDensity: density,
+      internalLinkIncludePatterns: includePatterns,
+      internalLinkExcludePatterns: excludePatterns,
+      internalLinkIndexingState: indexingState as never,
+      updatedAt: startedAt,
+    });
 
     runInternalLinkIndexing({
       userId,
+      siteId,
       jobId,
       sitemapUrl,
       mode,
@@ -718,43 +686,26 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
 
 settingsRoutes.delete("/internal-linking", async (c) => {
   const userId = getUserId(c);
-  const [result] = await db
-    .insert(userSettings)
-    .values({
-      userId,
-      enableInternalLinks: false,
-      internalLinkSitemapUrl: null,
-      internalLinkStatus: "disconnected",
+  const siteId = c.req.query("siteId") || c.req.query("site_id") || await getActiveSiteId(userId);
+  if (!siteId) return c.json({ error: "Select a site before changing internal links" }, 400);
+  const result = await updateSiteSettings(userId, siteId, {
+    enableInternalLinks: false,
+    internalLinkSitemapUrl: null,
+    internalLinkStatus: "disconnected",
+    internalLinkIndex: null,
+    internalLinkIndexingState: null,
+    internalLinkLastSyncedAt: null,
+  });
+
+  await db
+    .update(sites)
+    .set({
+      status: "inactive",
       internalLinkIndex: null,
-      internalLinkIndexingState: null,
       internalLinkLastSyncedAt: null,
       updatedAt: new Date(),
     } as any)
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: {
-        enableInternalLinks: false,
-        internalLinkSitemapUrl: null,
-        internalLinkStatus: "disconnected",
-        internalLinkIndex: null,
-        internalLinkIndexingState: null,
-        internalLinkLastSyncedAt: null,
-        updatedAt: new Date(),
-      } as any,
-    })
-    .returning();
-
-  if (result?.activeSiteId) {
-    await db
-      .update(sites)
-      .set({
-        status: "inactive",
-        internalLinkIndex: null,
-        internalLinkLastSyncedAt: null,
-        updatedAt: new Date(),
-      } as any)
-      .where(and(eq(sites.id, result.activeSiteId), eq(sites.userId, userId)));
-  }
+    .where(and(eq(sites.id, siteId), eq(sites.userId, userId)));
 
   return c.json(serializeSettings(result));
 });
@@ -797,26 +748,15 @@ settingsRoutes.post("/voice-profile/analyze", async (c) => {
       samples: body.samples,
       modelId: body.modelId,
     });
+    const siteId = asOptionalText(body.siteId ?? body.site_id) || await getActiveSiteId(userId);
+    if (!siteId) return c.json({ error: "Select a site before analyzing voice" }, 400);
     const values = {
-      userId,
       voiceMode: "custom",
       customVoiceProfile: profile,
       voiceTrainingSamples: samples,
       updatedAt: new Date(),
     } as const;
-    const [result] = await db
-      .insert(userSettings)
-      .values(values as never)
-      .onConflictDoUpdate({
-        target: userSettings.userId,
-        set: {
-          voiceMode: values.voiceMode,
-          customVoiceProfile: values.customVoiceProfile,
-          voiceTrainingSamples: values.voiceTrainingSamples,
-          updatedAt: values.updatedAt,
-        } as any,
-      })
-      .returning();
+    const result = await updateSiteSettings(userId, siteId, values as never);
 
     return c.json(serializeSettings(result));
   } catch (err) {
@@ -826,11 +766,7 @@ settingsRoutes.post("/voice-profile/analyze", async (c) => {
 
 settingsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
-  const [settings] = await db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
+  const settings = await getEffectiveSettings(userId, c.req.query("siteId") || c.req.query("site_id"));
   return c.json(serializeSettings(settings));
 });
 
@@ -844,7 +780,7 @@ settingsRoutes.put("/", async (c) => {
     return c.json({ error: err instanceof Error ? err.message : "Invalid settings" }, 400);
   }
 
-  if (Object.keys(update).length < 1) {
+  if (Object.keys(update).filter((key) => key !== "updatedAt").length < 1) {
     return c.json({ error: "No supported settings fields provided" }, 400);
   }
 
@@ -856,11 +792,8 @@ settingsRoutes.put("/", async (c) => {
   const directManualImageProvider = body.manual_image_provider ?? body.manualImageProvider;
   const directManualPromptSuffix = body.manual_prompt_suffix ?? body.manualPromptSuffix;
   if (directInlineImageModel !== undefined || directInlineImageSource !== undefined || directCoverImageResolution !== undefined || directInlineImageResolution !== undefined || directImageDeliveryMode !== undefined || directManualImageProvider !== undefined || directManualPromptSuffix !== undefined) {
-    const [existing] = await db
-      .select({ imageAdvancedOptions: userSettings.imageAdvancedOptions })
-      .from(userSettings)
-      .where(eq(userSettings.userId, userId))
-      .limit(1);
+    const siteId = asOptionalText(body.siteId ?? body.site_id) || await getActiveSiteId(userId);
+    const existing = siteId ? await ensureSiteSettings(userId, siteId) : await ensureGlobalSettings(userId);
     const imageAdvancedOptions = normalizeImageAdvancedOptions(existing?.imageAdvancedOptions);
     update.imageAdvancedOptions = {
       ...imageAdvancedOptions,
@@ -874,15 +807,14 @@ settingsRoutes.put("/", async (c) => {
     } as never;
   }
 
-  // Upsert: insert or update on conflict
-  const [result] = await db
-    .insert(userSettings)
-    .values({ ...update, userId } as any)
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: update as any,
-    })
-    .returning();
+  let result;
+  if (isAccountSettingsUpdate(update)) {
+    result = await updateGlobalSettings(userId, update);
+  } else {
+    const siteId = asOptionalText(body.siteId ?? body.site_id) || await getActiveSiteId(userId);
+    if (!siteId) return c.json({ error: "Select a site before saving site settings" }, 400);
+    result = await updateSiteSettings(userId, siteId, update);
+  }
 
   return c.json(serializeSettings(result));
 });

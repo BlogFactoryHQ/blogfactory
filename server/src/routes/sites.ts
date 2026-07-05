@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { sites, userSettings } from "../db/schema.js";
+import { sites } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { buildInternalLinkIndex, sanitizeInternalLinkIndex, type InternalLinkIndex } from "../services/internal-linking.js";
+import { getActiveSiteId, getGlobalSettings, updateGlobalSettings, updateSiteSettings } from "../services/user-settings.js";
 
 export const sitesRoutes = new Hono();
 
@@ -114,45 +115,16 @@ function serializeSite(site: typeof sites.$inferSelect) {
 }
 
 async function syncActiveSite(userId: string, site: typeof sites.$inferSelect) {
-  const [settings] = await db
-    .insert(userSettings)
-    .values({
-      userId,
-      activeSiteId: site.id,
-      enableInternalLinks: Boolean(site.internalLinkIndex),
-      internalLinkSitemapUrl: site.sitemapUrl,
-      internalLinkStatus: site.internalLinkIndex ? "connected" : "disconnected",
-      internalLinkMode: "all",
-      internalLinkDensity: "balanced",
-      internalLinkIndex: site.internalLinkIndex as never,
-      internalLinkLastSyncedAt: site.internalLinkLastSyncedAt,
-      updatedAt: new Date(),
-    } as never)
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: {
-        activeSiteId: site.id,
-        enableInternalLinks: Boolean(site.internalLinkIndex),
-        internalLinkSitemapUrl: site.sitemapUrl,
-        internalLinkStatus: site.internalLinkIndex ? "connected" : "disconnected",
-        internalLinkMode: "all",
-        internalLinkDensity: "balanced",
-        internalLinkIndex: site.internalLinkIndex as never,
-        internalLinkLastSyncedAt: site.internalLinkLastSyncedAt,
-        updatedAt: new Date(),
-      } as never,
-    })
-    .returning();
-  return settings;
-}
-
-async function getActiveSiteId(userId: string) {
-  const [settings] = await db
-    .select({ activeSiteId: userSettings.activeSiteId })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
-  return settings?.activeSiteId || null;
+  await updateGlobalSettings(userId, { activeSiteId: site.id });
+  return updateSiteSettings(userId, site.id, {
+    enableInternalLinks: Boolean(site.internalLinkIndex),
+    internalLinkSitemapUrl: site.sitemapUrl,
+    internalLinkStatus: site.internalLinkIndex ? "connected" : "disconnected",
+    internalLinkMode: "all",
+    internalLinkDensity: "balanced",
+    internalLinkIndex: site.internalLinkIndex as never,
+    internalLinkLastSyncedAt: site.internalLinkLastSyncedAt,
+  });
 }
 
 async function listSitesForUser(userId: string) {
@@ -164,11 +136,7 @@ async function bootstrapSitesFromSettings(userId: string) {
   const rows = await listSitesForUser(userId);
   if (rows.length > 0) return rows;
 
-  const [settings] = await db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
+  const settings = await getGlobalSettings(userId);
 
   const index = settings?.internalLinkIndex as InternalLinkIndex | null | undefined;
   if (!settings?.internalLinkSitemapUrl || !index?.siteHost) return rows;
@@ -369,21 +337,7 @@ sitesRoutes.delete("/:id", async (c) => {
     if (remaining.length > 0) {
       await syncActiveSite(userId, remaining[0]);
     } else {
-      await db
-        .insert(userSettings)
-        .values({ userId, activeSiteId: null, enableInternalLinks: false, updatedAt: new Date() } as never)
-        .onConflictDoUpdate({
-          target: userSettings.userId,
-          set: {
-            activeSiteId: null,
-            enableInternalLinks: false,
-            internalLinkSitemapUrl: null,
-            internalLinkStatus: "disconnected",
-            internalLinkIndex: null,
-            internalLinkLastSyncedAt: null,
-            updatedAt: new Date(),
-          } as never,
-        });
+      await updateGlobalSettings(userId, { activeSiteId: null });
     }
   }
 

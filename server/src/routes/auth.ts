@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { hash, compare } from "bcryptjs";
 import { db } from "../db/index.js";
-import { personas, sites, userSettings, users } from "../db/schema.js";
+import { personas, sites, users } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 import { signJwt, getUserId } from "../middleware/auth.js";
 import { randomBytes } from "crypto";
 import { bootstrapUserAccess, isAdminEmail, publicUser } from "../services/access-control.js";
+import { updateGlobalSettings, updateSiteSettings } from "../services/user-settings.js";
 
 export const authRoutes = new Hono();
 
@@ -36,29 +37,18 @@ async function ensureLocalDevWorkspace(userId: string) {
     } as never)
     .returning())[0];
 
-  await db
-    .insert(userSettings)
-    .values({
-      userId,
-      activeSiteId: site.id,
-      articleWordCount: 1200,
-      articleLanguage: "en",
-      enableInternalLinks: false,
-      internalLinkStatus: "disconnected",
-      internalLinkMode: "all",
-      internalLinkDensity: "balanced",
-      brandCompanyName: "BlogFactory Local",
-      brandDescription: "Local development workspace for testing BlogFactory.",
-      monthlyBudget: 25,
-      updatedAt: now,
-    } as never)
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: {
-        activeSiteId: site.id,
-        updatedAt: now,
-      } as never,
-    });
+  await updateGlobalSettings(userId, { activeSiteId: site.id, monthlyBudget: 25, updatedAt: now });
+  await updateSiteSettings(userId, site.id, {
+    articleWordCount: 1200,
+    articleLanguage: "US English",
+    enableInternalLinks: false,
+    internalLinkStatus: "disconnected",
+    internalLinkMode: "all",
+    internalLinkDensity: "balanced",
+    brandCompanyName: "BlogFactory Local",
+    brandDescription: "Local development workspace for testing BlogFactory.",
+    updatedAt: now,
+  });
 
   const [existingPersona] = await db
     .select({ id: personas.id })

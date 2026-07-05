@@ -1,6 +1,7 @@
 import { db } from "../db/index.js";
-import { feeds, jobs, userSettings, schedulerLogs } from "../db/schema.js";
+import { feeds, jobs, schedulerLogs } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
+import { getEffectiveSettings } from "./user-settings.js";
 
 type SchedulerOptions = {
   maxFeeds?: number;
@@ -71,11 +72,7 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
       }
 
       // Get user's image settings
-      const [settings] = await db
-        .select()
-        .from(userSettings)
-        .where(eq(userSettings.userId, feed.userId))
-        .limit(1);
+      const settings = await getEffectiveSettings(feed.userId);
 
       const imageConfig: any = {};
       const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)

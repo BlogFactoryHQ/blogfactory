@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { jobs, personas, userSettings } from "../db/schema.js";
 import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
+import { getEffectiveSettings } from "../services/user-settings.js";
 
 export const jobsRoutes = new Hono();
 const STALE_RUNNING_MS = 10 * 60 * 1000;
@@ -283,11 +284,7 @@ jobsRoutes.post("/:id/retry", async (c) => {
     .limit(1);
 
   if (!job) return c.json({ error: "Job not found" }, 404);
-  const [settings] = await db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
+  const settings = await getEffectiveSettings(userId);
   const imageSettings = imageConfigFromSettings(settings);
   const retryIndices = retryIndicesFromBody(body);
 
