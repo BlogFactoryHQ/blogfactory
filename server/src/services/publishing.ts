@@ -69,6 +69,13 @@ interface ArticlePayload {
   inlineImages: PlacementImage[];
 }
 
+interface PublishingImageAsset {
+  storagePath: string;
+  altText: string | null;
+  type: string;
+  position: number | null;
+}
+
 interface PublishResult {
   status: "draft" | "published";
   externalId: string | null;
@@ -217,10 +224,12 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .select({
       storagePath: imageAssets.storagePath,
       altText: imageAssets.altText,
+      type: imageAssets.type,
+      position: imageAssets.position,
     })
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
-  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), new Map(assetRows.map((asset) => [asset.storagePath, asset.altText])));
+  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows);
   const mode = options.mode === "publish" ? "publish" : "draft";
 
   try {
@@ -402,7 +411,7 @@ function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
   return `${type === "cover" ? "Featured image" : `Article image ${index + 1}`} for ${title}`.slice(0, 180);
 }
 
-function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, altByPath: Map<string, string | null>): ArticlePayload {
+function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[]): ArticlePayload {
   const rawTitle = post.title.trim();
   const content = post.content || "";
   const meta = parseMarkdownMeta(content);
@@ -414,14 +423,27 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
   const slug = slugify(options.slug || meta.slug || title);
   const metaTitle = truncateAtWord(chooseMetaTitle(options.metaTitle || meta.metaTitle, title, body), 60);
   const metaDescription = truncateAtWord(options.metaDescription || meta.metaDescription || excerpt, 145);
-  const storedInlineImages = Array.from(new Set((post.inlineImages || []).filter((url) => url && url !== post.coverImageUrl))).map((url, index) => ({
+  const altByPath = new Map(imageAssetsForPost.map((asset) => [asset.storagePath, asset.altText]));
+  const sortedAssets = [...imageAssetsForPost].sort((left, right) =>
+    (left.position ?? Number.MAX_SAFE_INTEGER) - (right.position ?? Number.MAX_SAFE_INTEGER)
+  );
+  const assetCover = sortedAssets.find((asset) => asset.type === "cover")?.storagePath || null;
+  const markdownImages = markdownImageRefs(body);
+  const coverCandidate = post.coverImageUrl || assetCover || null;
+  const inlineCandidates = uniqueStrings([
+    ...(post.inlineImages || []),
+    ...sortedAssets.filter((asset) => asset.type === "inline").map((asset) => asset.storagePath),
+    ...markdownImages.map((image) => image.url),
+  ]).filter((url) => url && url !== coverCandidate);
+  const markdownAltByPath = new Map(markdownImages.map((image) => [image.url, image.altText]));
+  const storedInlineImages = inlineCandidates.map((url, index) => ({
     url,
-    altText: altByPath.get(url) || fallbackImageAlt(title, "inline", index),
+    altText: altByPath.get(url) || markdownAltByPath.get(url) || fallbackImageAlt(title, "inline", index),
   }));
-  const autoPromotedCover = !post.coverImageUrl && imagePlacement === "auto" && storedInlineImages.length === 1
+  const autoPromotedCover = !coverCandidate && imagePlacement === "auto" && storedInlineImages.length === 1
     ? storedInlineImages[0]
     : null;
-  const coverImageUrl = post.coverImageUrl || autoPromotedCover?.url || null;
+  const coverImageUrl = coverCandidate || autoPromotedCover?.url || null;
   const coverAltText = coverImageUrl ? altByPath.get(coverImageUrl) || autoPromotedCover?.altText || fallbackImageAlt(title, "cover") : fallbackImageAlt(title, "cover");
   const inlineImages = autoPromotedCover ? [] : storedInlineImages;
   const placedMarkdown = reflowInlineImages(body, inlineImages, imagePlacement);
@@ -442,6 +464,16 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
     coverAltText,
     inlineImages,
   };
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function markdownImageRefs(markdown: string) {
+  return Array.from(markdown.matchAll(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g))
+    .map((match) => ({ altText: match[1]?.trim() || null, url: match[2]?.trim() || "" }))
+    .filter((image) => image.url);
 }
 
 function markdownSection(content: string, heading: string) {
