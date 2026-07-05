@@ -180,6 +180,12 @@ interface InternalLinkIndexingState {
 
 type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
 type DirtyState = "clean" | "dirty";
+type BrandSettingsSaveArgs = {
+  knowledgeDocuments?: KnowledgeDocument[];
+  successMessage?: string;
+  suppressErrorToast?: boolean;
+  silent?: boolean;
+} | undefined;
 
 const priceBadgeClass = (pricing: ModelPriceFilter) => {
   if (pricing === "free") return "bg-primary/10 text-primary";
@@ -362,6 +368,7 @@ export default function Settings() {
   const [ctaUrl, setCtaUrl] = useState("");
   const [ctaDescription, setCtaDescription] = useState("");
   const previousInternalLinkStatus = useRef<string | null>(null);
+  const knowledgeFileInputRef = useRef<HTMLInputElement | null>(null);
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
   const settingsQueryKey = useMemo(() => ["user-settings", activeSiteId || "none"], [activeSiteId]);
@@ -641,8 +648,9 @@ export default function Settings() {
   });
 
   const saveBrandSettingsMutation = useMutation({
-    mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
-      await api.put("/settings", {
+    mutationFn: async (args?: BrandSettingsSaveArgs) => {
+      const nextKnowledgeDocuments = args?.knowledgeDocuments;
+      return api.put<UserSettings>("/settings", {
         siteId: activeSiteId,
         brand_company_name: brandCompanyName,
         brand_description: brandDescription,
@@ -655,11 +663,14 @@ export default function Settings() {
         article_voice: articleVoice,
       });
     },
-    onSuccess: () => {
+    onSuccess: (settings, args) => {
+      setSettingsCache(settings);
       invalidateSettings();
-      toast.success("Brand settings saved");
+      if (!args?.silent) toast.success(args?.successMessage || "Brand settings saved");
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to save brand settings"),
+    onError: (err: Error, args) => {
+      if (!args?.suppressErrorToast) toast.error(err.message || "Failed to save brand settings");
+    },
   });
 
   // Save style prompt mutation
@@ -802,8 +813,11 @@ export default function Settings() {
     const nextDocuments = [...knowledgeDocuments, document];
     setKnowledgeDocuments(nextDocuments);
     setKnowledgeBaseEnabled(true);
-    saveBrandSettingsMutation.mutate(nextDocuments);
-    toast.success("Knowledge file imported");
+    await saveBrandSettingsMutation.mutateAsync({
+      knowledgeDocuments: nextDocuments,
+      successMessage: "Knowledge file imported",
+      suppressErrorToast: true,
+    });
   };
 
   const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -891,9 +905,18 @@ export default function Settings() {
       toast.error("Add at least a CTA label and description");
       return;
     }
+    const normalizedUrl = url ? normalizeHttpUrl(url) : "";
+    if (normalizedUrl) {
+      try {
+        new URL(normalizedUrl);
+      } catch {
+        toast.error("Add a valid CTA URL");
+        return;
+      }
+    }
     setBrandCtas((current) => [
       ...current,
-      { id: crypto.randomUUID(), label, url, description },
+      { id: crypto.randomUUID(), label, url: normalizedUrl, description },
     ]);
     setCtaLabel("");
     setCtaUrl("");
@@ -913,6 +936,7 @@ export default function Settings() {
   const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
   const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
   const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
+  const canAddCta = Boolean(ctaLabel.trim() && ctaDescription.trim());
   const articleWordRangeLabel = articleWordCount > 0
     ? `${articleWordCount.toLocaleString()} target · ${Math.round(articleWordCount * 0.8).toLocaleString()}-${Math.round(articleWordCount * 1.2).toLocaleString()} acceptable`
     : "Smart length · no repair pass";
@@ -2264,22 +2288,31 @@ export default function Settings() {
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addKnowledgeDocument}
+                      disabled={!canAddKnowledge || saveBrandSettingsMutation.isPending}
+                    >
                       <Plus className="mr-2 h-4 w-4" />
                       Add Text
                     </Button>
-                    <Button type="button" variant="outline" disabled={isImportingKnowledge || saveBrandSettingsMutation.isPending} asChild>
-                      <label className={cn((isImportingKnowledge || saveBrandSettingsMutation.isPending) && "pointer-events-none opacity-50")}>
-                        {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
-                        Import File
-                        <input
-                          type="file"
-                          accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          className="hidden"
-                          onChange={handleKnowledgeFileChange}
-                        />
-                      </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => knowledgeFileInputRef.current?.click()}
+                      disabled={isImportingKnowledge || saveBrandSettingsMutation.isPending}
+                    >
+                      {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                      Import File
                     </Button>
+                    <input
+                      ref={knowledgeFileInputRef}
+                      type="file"
+                      accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      onChange={handleKnowledgeFileChange}
+                    />
                   </div>
                   {knowledgeDocuments.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
@@ -2318,7 +2351,7 @@ export default function Settings() {
                 description="Promotional content included in your articles."
                 action={
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" onClick={addCta}>
+                    <Button type="button" variant="outline" onClick={addCta} disabled={!canAddCta}>
                       <Plus className="mr-2 h-4 w-4" />
                       Add
                     </Button>
@@ -2340,7 +2373,14 @@ export default function Settings() {
                 <div className="space-y-5 p-6">
                   <div className="grid gap-3 md:grid-cols-3">
                     <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
-                    <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
+                    <InputAffordance
+                      prefix="https://"
+                      value={ctaUrl}
+                      onChange={(event) => setCtaUrl(stripHttpProtocol(event.target.value))}
+                      onClear={() => setCtaUrl("")}
+                      placeholder="example.com/offer"
+                      help="Optional. Paste any HTTP or HTTPS URL; BlogFactory will normalize it before saving."
+                    />
                     <Input value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" />
                   </div>
                   {brandCtas.length === 0 ? (
