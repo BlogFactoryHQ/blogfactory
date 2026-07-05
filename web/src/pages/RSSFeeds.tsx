@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -446,18 +447,18 @@ export default function RSSFeeds() {
   };
 
   return (
-    <div className="p-8 max-w-7xl">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Content Sources"
         description="Monitor, pause, run, and delete all saved sources. News rules and News RSS creation live in Newsroom."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => navigate("/news")}>
-            <Rss className="h-4 w-4 mr-2" />
+            <Rss className="h-4 w-4" />
             Newsroom
           </Button>
           <Button onClick={() => navigate("/rss-feeds/new")}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4" />
             Add Source
           </Button>
         </div>
@@ -465,7 +466,7 @@ export default function RSSFeeds() {
 
       {/* Scheduler Status */}
       {lastSchedulerRun && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm text-muted-foreground mb-4">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-byword-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)]">
           <Clock className="h-4 w-4" />
           <span>Last scheduler check:</span>
           <span className="font-medium text-foreground">
@@ -500,71 +501,78 @@ export default function RSSFeeds() {
         running={Boolean(runningFeedId)}
       />
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-          <TabsList>
-            <TabsTrigger value="all" className="gap-2">
-              All Feeds
-              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                {feeds.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="news" className="gap-2">
-              News
-              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                {newsFeedCount}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="active" className="gap-2">
-              <span className="h-2 w-2 rounded-full bg-status-success" />
-              Active
-            </TabsTrigger>
-            <TabsTrigger value="paused" className="gap-2">
-              <span className="h-2 w-2 rounded-full bg-status-warning" />
-              Paused
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="sticky top-0 z-20 mb-6 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <TabsList className="h-auto flex-wrap justify-start">
+              <TabsTrigger value="all" className="gap-2">
+                All Feeds
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                  {feeds.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="news" className="gap-2">
+                News
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                  {newsFeedCount}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="active" className="gap-2">
+                <span className="h-2 w-2 rounded-full bg-status-success" />
+                Active
+              </TabsTrigger>
+              <TabsTrigger value="paused" className="gap-2">
+                <span className="h-2 w-2 rounded-full bg-status-warning" />
+                Paused
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search feeds..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
-
-      {selectedFeeds.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-byword-border bg-card px-4 py-3">
-          <p className="text-sm font-medium">
-            {selectedFeeds.length} feed{selectedFeeds.length === 1 ? "" : "s"} selected
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(false)}>
-              <Pause className="mr-2 h-4 w-4" />
-              Pause
-            </Button>
-            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(true)}>
-              <Play className="mr-2 h-4 w-4" />
-              Resume
-            </Button>
-            <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setSelectedFeedIds([])}>
-              Clear
-            </Button>
-            <Button size="sm" variant="destructive" disabled={batchBusy} onClick={() => setBatchDeleteOpen(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
+          <div className="relative w-full lg:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search feeds..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
         </div>
-      )}
+
+        {selectedFeeds.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)]">
+            <p className="font-mono text-[12px] font-semibold uppercase text-foreground">
+              {selectedFeeds.length} feed{selectedFeeds.length === 1 ? "" : "s"} selected
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(false)}>
+                <Pause className="h-4 w-4" />
+                Pause
+              </Button>
+              <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => batchUpdateFeedsMutation.mutate(true)}>
+                <Play className="h-4 w-4" />
+                Resume
+              </Button>
+              <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setSelectedFeedIds([])}>
+                Clear
+              </Button>
+              <Button size="sm" variant="destructive" disabled={batchBusy} onClick={() => setBatchDeleteOpen(true)}>
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Table */}
-      <div className="calm-card overflow-hidden">
+      <BywordCard>
+        <SectionHeader
+          icon={Rss}
+          title="Source queue"
+          description={`${formatCompactNumber(filteredFeeds.length)} visible source${filteredFeeds.length === 1 ? "" : "s"} after filters.`}
+          action={<Badge variant="outline">{formatCompactNumber(sourceHealth.totalGenerated)} posts generated</Badge>}
+        />
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -738,7 +746,7 @@ export default function RSSFeeds() {
         </Table>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+        <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             Showing {paginatedFeeds.length} of {filteredFeeds.length} feeds
           </p>
@@ -761,7 +769,7 @@ export default function RSSFeeds() {
             </Button>
           </div>
         </div>
-      </div>
+      </BywordCard>
 
       {/* Feed Editor Dialog */}
       <FeedEditorDialog
@@ -824,7 +832,7 @@ export default function RSSFeeds() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </BywordPageShell>
   );
 }
 
@@ -862,81 +870,82 @@ function SourceHealthInsights({
   ];
 
   return (
-    <div className="mb-6 rounded-md border border-byword-border bg-card p-4 factory-panel">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Source health</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Which sources are alive, due, and contributing posts.</p>
-        </div>
-        <Badge variant="outline">{formatCompactNumber(totalSources)} total sources</Badge>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {metrics.map((metric) => (
-          <div key={metric.label} className={cn("rounded-md border p-4", semanticToneClass(metric.tone))}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
-              <metric.icon className="h-4 w-4 opacity-70" />
-            </div>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">{formatCompactNumber(metric.value)}</p>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-md border border-byword-border bg-muted/20 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-byword-blue" />
-            <p className="text-sm font-semibold">Contribution by platform</p>
-          </div>
-          <div className="space-y-2">
-            {platformBuckets.length ? platformBuckets.map((bucket) => (
-              <div key={bucket.label}>
-                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-                  <span className="truncate text-muted-foreground">{bucket.label}</span>
-                  <span className="font-medium">{formatCompactNumber(bucket.value)}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-byword-blue" style={{ width: `${Math.max(8, safePercent(bucket.value, Math.max(postsGenerated, totalSources)))}%` }} />
-                </div>
+    <BywordCard className="mb-6">
+      <SectionHeader
+        icon={BarChart3}
+        title="Source health"
+        description="Which sources are alive, due, and contributing posts."
+        action={<Badge variant="outline">{formatCompactNumber(totalSources)} total sources</Badge>}
+      />
+      <div className="p-4 sm:p-5 lg:p-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {metrics.map((metric) => (
+            <div key={metric.label} className={cn("rounded-md border p-4", semanticToneClass(metric.tone))}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold uppercase opacity-75">{metric.label}</p>
+                <metric.icon className="h-4 w-4 opacity-70" />
               </div>
-            )) : (
-              <p className="text-xs text-muted-foreground">No source contribution yet.</p>
-            )}
+              <p className="text-2xl font-semibold text-foreground">{formatCompactNumber(metric.value)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+          <div className="rounded-md border border-byword-border bg-muted/20 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-byword-blue" />
+              <p className="text-sm font-semibold">Contribution by platform</p>
+            </div>
+            <div className="space-y-2">
+              {platformBuckets.length ? platformBuckets.map((bucket) => (
+                <div key={bucket.label}>
+                  <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                    <span className="truncate text-muted-foreground">{bucket.label}</span>
+                    <span className="font-medium">{formatCompactNumber(bucket.value)}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-byword-blue" style={{ width: `${Math.max(8, safePercent(bucket.value, Math.max(postsGenerated, totalSources)))}%` }} />
+                  </div>
+                </div>
+              )) : (
+                <p className="text-xs text-muted-foreground">No source contribution yet.</p>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <SourceLane
+              title="Due now"
+              value={formatCompactNumber(dueNowCount)}
+              detail={dueNowCount ? "Run the next due source now or let the scheduler pick it up." : "No active source is due."}
+              tone={dueNowCount ? "performance" : "success"}
+              action={running ? "Running..." : "Run first due"}
+              disabled={!dueNowCount || running}
+              icon={Play}
+              onClick={onRunDueNow}
+            />
+            <SourceLane
+              title="Paused sources"
+              value={formatCompactNumber(pausedCount)}
+              detail={pausedCount ? "Paused sources are no longer feeding the content pipeline." : "All sources are active."}
+              tone={pausedCount ? "opportunity" : "success"}
+              action="Show paused"
+              disabled={!pausedCount}
+              icon={Pause}
+              onClick={onShowPaused}
+            />
+            <SourceLane
+              title="Scheduler errors"
+              value={formatCompactNumber(schedulerErrors)}
+              detail={schedulerErrors ? "Open active sources and check credentials or feed URLs." : "Latest scheduler run is clean."}
+              tone={schedulerErrors ? "risk" : "success"}
+              action={schedulerErrors ? "Show active" : "View sources"}
+              disabled={false}
+              icon={schedulerErrors ? AlertCircle : ArrowRight}
+              onClick={onShowActive}
+            />
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-          <SourceLane
-            title="Due now"
-            value={formatCompactNumber(dueNowCount)}
-            detail={dueNowCount ? "Run the next due source now or let the scheduler pick it up." : "No active source is due."}
-            tone={dueNowCount ? "performance" : "success"}
-            action={running ? "Running..." : "Run first due"}
-            disabled={!dueNowCount || running}
-            icon={Play}
-            onClick={onRunDueNow}
-          />
-          <SourceLane
-            title="Paused sources"
-            value={formatCompactNumber(pausedCount)}
-            detail={pausedCount ? "Paused sources are no longer feeding the content pipeline." : "All sources are active."}
-            tone={pausedCount ? "opportunity" : "success"}
-            action="Show paused"
-            disabled={!pausedCount}
-            icon={Pause}
-            onClick={onShowPaused}
-          />
-          <SourceLane
-            title="Scheduler errors"
-            value={formatCompactNumber(schedulerErrors)}
-            detail={schedulerErrors ? "Open active sources and check credentials or feed URLs." : "Latest scheduler run is clean."}
-            tone={schedulerErrors ? "risk" : "success"}
-            action={schedulerErrors ? "Show active" : "View sources"}
-            disabled={false}
-            icon={schedulerErrors ? AlertCircle : ArrowRight}
-            onClick={onShowActive}
-          />
-        </div>
       </div>
-    </div>
+    </BywordCard>
   );
 }
 

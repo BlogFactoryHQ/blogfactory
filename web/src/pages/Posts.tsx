@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, ArrowRight, BarChart3, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Loader2, Send } from "lucide-react";
+import { AlertCircle, ArrowRight, BarChart3, ChevronDown, ChevronLeft, ChevronRight, Clock, FileText, Layers, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";

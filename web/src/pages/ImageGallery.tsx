@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -579,31 +580,20 @@ export default function ImageGallery() {
   const orphanedCount = stats?.orphaned || 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Image Gallery"
         description={`${stats?.total || 0} images • AI queue, stock assets, and post attachments`}
-      />
-
-      {/* Stats */}
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <GalleryStatsBar
-          total={stats?.total || 0}
-          cover={stats?.cover || 0}
-          inline={stats?.inline || 0}
-          orphaned={stats?.orphaned || 0}
-          unused={stats?.unused || 0}
-          totalCost={stats?.totalCost || 0}
-        />
-        <div className="flex items-center gap-2">
+      >
+        <div className="flex flex-wrap items-center gap-2">
           {orphanedCount > 0 && (
             <Button
               variant="outline"
               size="sm"
-              className="text-destructive border-destructive/30"
+              className="border-destructive/30 text-destructive"
               onClick={() => setShowOrphanCleanup(true)}
             >
-              <Trash2 className="h-4 w-4 mr-1.5" />
+              <Trash2 className="h-4 w-4" />
               Clean {orphanedCount} orphaned
             </Button>
           )}
@@ -613,142 +603,163 @@ export default function ImageGallery() {
             </Button>
           )}
         </div>
-      </div>
+      </PageHeader>
+
+      {/* Stats */}
+      <BywordCard className="mb-6 p-4">
+        <GalleryStatsBar
+          total={stats?.total || 0}
+          cover={stats?.cover || 0}
+          inline={stats?.inline || 0}
+          orphaned={stats?.orphaned || 0}
+          unused={stats?.unused || 0}
+          totalCost={stats?.totalCost || 0}
+        />
+      </BywordCard>
 
       {/* Filters */}
       {imageRequests.length > 0 && (
-        <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold">Image Requests</h2>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {(["queued", "processing", "failed", "done"] as const).map((status) => (
-                  <button key={status} type="button" onClick={() => setRequestStatusFilter(status === "queued" ? "pending" : status)}>
-                    <Badge variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
-                    {status} {requestCounts[status]}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {activeRequests.length} active · {imageRequests.length} total
-              </span>
+        <BywordCard className="mb-6">
+          <SectionHeader
+            icon={RefreshCw}
+            title="Image requests"
+            description={`${activeRequests.length} active · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`}
+            action={
               <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.aiQueued < 1}>
                 {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Process
               </Button>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-            <Select value={requestStatusFilter} onValueChange={(value) => setRequestStatusFilter(value as RequestStatusFilter)}>
-              <SelectTrigger className="h-8 w-[150px] bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active only</SelectItem>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="done">Done</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={requestTypeFilter} onValueChange={(value) => setRequestTypeFilter(value as RequestTypeFilter)}>
-              <SelectTrigger className="h-8 w-[130px] bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="cover">Cover</SelectItem>
-                <SelectItem value="inline">Inline</SelectItem>
-              </SelectContent>
-            </Select>
-            {(requestStatusFilter !== "active" || requestTypeFilter !== "all") && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setRequestStatusFilter("active");
-                  setRequestTypeFilter("all");
-                }}
-              >
-                Reset
-              </Button>
-            )}
-            <span className="text-xs text-muted-foreground">
-              Showing {filteredRequests.length} of {imageRequests.length}
-            </span>
-          </div>
-          {manualImportGroups.length > 0 && (
-            <div className="mt-3 grid gap-2 border-t border-border pt-3">
-              {manualImportGroups.map((group) => (
-                <ManualImportGroupCard
-                  key={group.id}
-                  group={group}
-                  progress={bulkImportState[group.id]}
-                  dragging={draggingGroupId === group.id}
-                  onDragStateChange={(dragging) => setDraggingGroupId(dragging ? group.id : null)}
-                  onImportFiles={handleBulkManualImport}
-                />
-              ))}
-            </div>
-          )}
-          <div className="mt-3 grid gap-2">
-            {paginatedRequests.length ? paginatedRequests.map((request) => (
-              <ImageRequestCard
-                key={request.id}
-                request={request}
-                onImport={(item, file) => importRequest.mutate({ id: item.id, file, postId: item.post_id })}
-                onCancel={(id) => cancelRequest.mutate(id)}
-                onProcess={() => processQueue.mutate()}
-                onRetry={(id) => retryRequest.mutate(id)}
-                importing={importRequest.isPending}
-                cancelling={cancelRequest.isPending}
-                processing={processQueue.isPending}
-                retrying={retryRequest.isPending}
-              />
-            )) : (
-              <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
-                {manualImportGroups.length ? "Individual manual slots are grouped above." : "No image requests match these filters."}
+            }
+          />
+          <div className="p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {(["queued", "processing", "failed", "done"] as const).map((status) => (
+                    <button key={status} type="button" onClick={() => setRequestStatusFilter(status === "queued" ? "pending" : status)}>
+                      <Badge variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
+                        {status} {requestCounts[status]}
+                      </Badge>
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
-          {requestPageCount > 1 && individualRequests.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground">
-                Showing {requestRangeStart}-{requestRangeEnd} of {individualRequests.length} individual requests
-              </p>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRequestPage((page) => Math.max(1, page - 1))}
-                  disabled={requestPage === 1}
-                >
-                  Previous
-                </Button>
-                <Badge variant="outline" className="text-[10px]">
-                  Page {requestPage} of {requestPageCount}
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRequestPage((page) => Math.min(requestPageCount, page + 1))}
-                  disabled={requestPage === requestPageCount}
-                >
-                  Next
-                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {activeRequests.length} active · {imageRequests.length} total
+                </span>
               </div>
             </div>
-          )}
-        </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <Select value={requestStatusFilter} onValueChange={(value) => setRequestStatusFilter(value as RequestStatusFilter)}>
+                <SelectTrigger className="h-8 w-[150px] bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active only</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={requestTypeFilter} onValueChange={(value) => setRequestTypeFilter(value as RequestTypeFilter)}>
+                <SelectTrigger className="h-8 w-[130px] bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="cover">Cover</SelectItem>
+                  <SelectItem value="inline">Inline</SelectItem>
+                </SelectContent>
+              </Select>
+              {(requestStatusFilter !== "active" || requestTypeFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setRequestStatusFilter("active");
+                    setRequestTypeFilter("all");
+                  }}
+                >
+                  Reset
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Showing {filteredRequests.length} of {imageRequests.length}
+              </span>
+            </div>
+            {manualImportGroups.length > 0 && (
+              <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                {manualImportGroups.map((group) => (
+                  <ManualImportGroupCard
+                    key={group.id}
+                    group={group}
+                    progress={bulkImportState[group.id]}
+                    dragging={draggingGroupId === group.id}
+                    onDragStateChange={(dragging) => setDraggingGroupId(dragging ? group.id : null)}
+                    onImportFiles={handleBulkManualImport}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="mt-3 grid gap-2">
+              {paginatedRequests.length ? paginatedRequests.map((request) => (
+                <ImageRequestCard
+                  key={request.id}
+                  request={request}
+                  onImport={(item, file) => importRequest.mutate({ id: item.id, file, postId: item.post_id })}
+                  onCancel={(id) => cancelRequest.mutate(id)}
+                  onProcess={() => processQueue.mutate()}
+                  onRetry={(id) => retryRequest.mutate(id)}
+                  importing={importRequest.isPending}
+                  cancelling={cancelRequest.isPending}
+                  processing={processQueue.isPending}
+                  retrying={retryRequest.isPending}
+                />
+              )) : (
+                <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
+                  {manualImportGroups.length ? "Individual manual slots are grouped above." : "No image requests match these filters."}
+                </div>
+              )}
+            </div>
+            {requestPageCount > 1 && individualRequests.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground">
+                  Showing {requestRangeStart}-{requestRangeEnd} of {individualRequests.length} individual requests
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRequestPage((page) => Math.max(1, page - 1))}
+                    disabled={requestPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <Badge variant="outline" className="text-[10px]">
+                    Page {requestPage} of {requestPageCount}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRequestPage((page) => Math.min(requestPageCount, page + 1))}
+                    disabled={requestPage === requestPageCount}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </BywordCard>
       )}
 
       <GalleryFilters filters={filters} onChange={setFilters} />
 
       {/* Grid */}
+      <BywordCard className="p-4">
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {Array.from({ length: 10 }).map((_, i) => (
@@ -775,6 +786,7 @@ export default function ImageGallery() {
           ))}
         </div>
       )}
+      </BywordCard>
 
       {/* Bulk actions */}
       <GalleryBulkActions
@@ -819,6 +831,6 @@ export default function ImageGallery() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </BywordPageShell>
   );
 }

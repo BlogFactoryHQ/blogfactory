@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 import { useSites } from "@/hooks/useSites";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -761,10 +763,20 @@ export default function Personas() {
   ];
 
   return (
-    <div className="p-8 h-[calc(100vh-2rem)] max-w-7xl">
-      <div className="flex h-full gap-6">
+    <BywordPageShell className="max-w-7xl">
+      <PageHeader
+        title="Brand Voice"
+        description="Voice rules, brand context, knowledge, and writer profiles."
+      >
+        <Button onClick={() => saveBrandVoiceMutation.mutate(undefined)} disabled={saveBrandVoiceMutation.isPending}>
+          <Save className="h-4 w-4" />
+          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+        </Button>
+      </PageHeader>
+
+      <div className="grid min-h-[calc(100vh-14rem)] gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         {/* Left Panel - List */}
-        <div className="w-80 flex flex-col">
+        <BywordCard className="flex min-h-[420px] flex-col p-4">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Writer Profiles</p>
             <Button size="icon" variant="ghost" onClick={() => setIsCreateOpen(true)}>
@@ -838,22 +850,19 @@ export default function Personas() {
               ))
             )}
           </div>
-        </div>
+        </BywordCard>
 
         {/* Right Panel - Brand Workspace */}
-        <div className="flex-1 calm-card overflow-hidden flex flex-col">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
+        <BywordCard className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4 sm:p-5 lg:p-6">
             <div className="flex items-center gap-3">
               <Building2 className="h-6 w-6 text-primary" />
               <div>
-                <h2 className="text-xl font-semibold">Brand Voice</h2>
-                <p className="text-sm text-muted-foreground">Voice rules, brand context, knowledge, and writer profiles.</p>
+                <h2 className="font-mono text-sm font-semibold uppercase">Voice Workspace</h2>
+                <p className="text-sm text-muted-foreground">Edit global brand rules and persona-specific behavior.</p>
               </div>
             </div>
-            <Button onClick={() => saveBrandVoiceMutation.mutate(undefined)} disabled={saveBrandVoiceMutation.isPending}>
-              <Save className="mr-2 h-4 w-4" />
-              {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
-            </Button>
+            <Badge variant="outline">{activeProfileCount} active profiles</Badge>
           </div>
 
           <Tabs value={activeWorkspaceTab} onValueChange={setActiveWorkspaceTab} className="flex min-h-0 flex-1 flex-col">
@@ -1266,7 +1275,7 @@ export default function Personas() {
               </TabsContent>
             </div>
           </Tabs>
-        </div>
+        </BywordCard>
       </div>
 
       {/* Create Profile Dialog */}
@@ -1346,6 +1355,6 @@ export default function Personas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </BywordPageShell>
   );
 }

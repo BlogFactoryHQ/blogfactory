@@ -11,6 +11,7 @@ import { MarkdownEditor } from "@/components/posts/MarkdownEditor";
 import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
+import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
 import {
@@ -265,36 +266,36 @@ export default function PostEditorPage() {
 
   if (isLoadingPost) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <WorkspaceBackground className="flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      </WorkspaceBackground>
     );
   }
 
   if (error || !post) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <WorkspaceBackground className="flex flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">Post not found</p>
         <Button variant="outline" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Posts
         </Button>
-      </div>
+      </WorkspaceBackground>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <WorkspaceBackground className="flex min-h-screen flex-col">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-        <div className="flex items-center justify-between px-6 py-3">
+      <header className="sticky top-0 z-50 border-b border-byword-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           {/* Left: Back button and status */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Button variant="ghost" size="sm" onClick={handleBack}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Posts
             </Button>
-            <div className="h-6 w-px bg-border" />
+            <div className="hidden h-6 w-px bg-border sm:block" />
             <StatusBadge
               status={status === "published" ? "success" : "draft"}
               label={status === "published" ? "Published" : "Draft"}
@@ -308,7 +309,7 @@ export default function PostEditorPage() {
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
@@ -385,7 +386,7 @@ export default function PostEditorPage() {
 
       {/* Scrollable Content */}
       <ScrollArea className="flex-1">
-        <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:py-8">
           {/* Generated Images Panel */}
           {(coverImageUrl || (inlineImages && inlineImages.length > 0)) && (
             <div className="mb-8">
@@ -402,7 +403,7 @@ export default function PostEditorPage() {
           )}
 
           {/* Title */}
-          <div className="mb-6">
+          <BywordCard className="mb-6 p-4 sm:p-5">
             <Label htmlFor="title" className="text-xs text-muted-foreground mb-1.5 block">
               Title
             </Label>
@@ -413,10 +414,10 @@ export default function PostEditorPage() {
               className="text-2xl font-semibold h-14"
               placeholder="Post title..."
             />
-          </div>
+          </BywordCard>
 
           {/* Markdown Editor */}
-          <div className="mb-8">
+          <BywordCard className="mb-8 p-4 sm:p-5">
             <Label className="text-xs text-muted-foreground mb-1.5 block">
               Content
             </Label>
@@ -425,11 +426,11 @@ export default function PostEditorPage() {
               onChange={setContent}
               className="min-h-[600px]"
             />
-          </div>
+          </BywordCard>
 
           {/* Metadata Section */}
           {post && (
-            <div className="border-t border-border pt-6">
+            <BywordCard className="p-4 sm:p-5">
               {publicationData?.publications && publicationData.publications.length > 0 && (
                 <div className="mb-8">
                   <p className="section-label mb-4">Publishing</p>
@@ -483,10 +484,10 @@ export default function PostEditorPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </BywordCard>
           )}
         </div>
       </ScrollArea>
-    </div>
+    </WorkspaceBackground>
   );
 }
