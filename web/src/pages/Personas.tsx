@@ -220,6 +220,9 @@ export default function Personas() {
   const queryClient = useQueryClient();
   const { isAdvanced, toggleAdvanced } = useAdvancedMode();
   const { activeSite } = useSites();
+  const activeSiteId = activeSite?.id || null;
+  const settingsQueryKey = ["user-settings", activeSiteId || "none"];
+  const settingsPath = activeSiteId ? `/settings?siteId=${encodeURIComponent(activeSiteId)}` : "/settings";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [editedPersona, setEditedPersona] = useState<Persona | null>(null);
@@ -288,8 +291,8 @@ export default function Personas() {
   const textModels: LiveTextModel[] = Array.isArray(textModelsData) ? textModelsData : [];
 
   const { data: userSettings } = useQuery({
-    queryKey: ["user-settings"],
-    queryFn: () => api.get<UserSettings>("/settings"),
+    queryKey: settingsQueryKey,
+    queryFn: () => api.get<UserSettings>(settingsPath),
     enabled: !!user,
   });
 
@@ -425,6 +428,7 @@ export default function Personas() {
   const saveBrandVoiceMutation = useMutation({
     mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
       await api.put("/settings", {
+        siteId: activeSiteId,
         article_voice: articleVoice,
         voice_mode: voiceMode,
         custom_voice_profile: customVoiceProfile,
@@ -442,6 +446,7 @@ export default function Personas() {
       });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsQueryKey });
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
       toast.success("Brand voice settings saved.");
     },
@@ -450,6 +455,7 @@ export default function Personas() {
 
   const analyzeVoiceMutation = useMutation({
     mutationFn: () => api.post<UserSettings>("/settings/voice-profile/analyze", {
+      siteId: activeSiteId,
       samples: voiceTrainingSamples,
       modelId: editedPersona?.base_model,
     }),
@@ -457,6 +463,8 @@ export default function Personas() {
       setVoiceMode("custom");
       setCustomVoiceProfile(settings.custom_voice_profile || null);
       setVoiceTrainingSamples(settings.voice_training_samples || voiceTrainingSamples);
+      queryClient.setQueryData(settingsQueryKey, settings);
+      queryClient.invalidateQueries({ queryKey: settingsQueryKey });
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
       toast.success("Custom voice profile generated.");
     },

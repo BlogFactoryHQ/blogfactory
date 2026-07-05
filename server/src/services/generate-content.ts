@@ -16,6 +16,7 @@ import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
+import { getEffectiveSettings, getGlobalSettings, updateGlobalSettings } from "./user-settings.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
 import { fetchSocialContent } from "./fetch-social-content.js";
@@ -1327,14 +1328,15 @@ export async function generateContent(opts: GenerateOpts) {
   }
 
   try {
-    // Budget check
-    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
-    if (settings?.budgetPaused) {
+    // Budget is account-level; generation defaults are resolved from the active site profile.
+    const accountSettings = await getGlobalSettings(userId);
+    const settings = await getEffectiveSettings(userId);
+    if (accountSettings?.budgetPaused) {
       await db.update(jobs).set({ status: "failed", errorMessage: "Generation paused — monthly budget exceeded", completedAt: new Date() }).where(eq(jobs.id, jobId));
       return { jobId, status: "failed", error: "Budget exceeded" };
     }
 
-    if (settings?.monthlyBudget) {
+    if (accountSettings?.monthlyBudget) {
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -1342,8 +1344,8 @@ export async function generateContent(opts: GenerateOpts) {
         .from(generationLogs)
         .where(and(eq(generationLogs.userId, userId), sql`created_at >= ${startOfMonth.toISOString()}`));
 
-      if ((costResult?.total || 0) >= settings.monthlyBudget) {
-        await db.update(userSettings).set({ budgetPaused: true }).where(eq(userSettings.userId, userId));
+      if ((costResult?.total || 0) >= accountSettings.monthlyBudget) {
+        await updateGlobalSettings(userId, { budgetPaused: true });
         await db.update(jobs).set({ status: "failed", errorMessage: "Monthly budget exceeded — generation paused", completedAt: new Date() }).where(eq(jobs.id, jobId));
         return { jobId, status: "failed", error: "Budget exceeded" };
       }

@@ -4,6 +4,7 @@ import { campaignItems, campaigns, jobs, userSettings } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
+import { getEffectiveSettings } from "./user-settings.js";
 
 const CAMPAIGN_CONCURRENCY = 3;
 const STALE_ITEM_MINUTES = 45;
@@ -36,7 +37,7 @@ async function campaignImageSettings(campaign: Campaign) {
     return { settingsSnapshot: snapshot, generateImages: Boolean(snapshot?.generateImages), imageConfig: snapshot?.imageConfig || null };
   }
 
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, campaign.userId)).limit(1);
+  const settings = await getEffectiveSettings(campaign.userId);
   const defaults = imageConfigFromSettings(settings);
   return {
     settingsSnapshot: {

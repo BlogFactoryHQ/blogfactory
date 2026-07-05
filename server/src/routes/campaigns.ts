@@ -6,6 +6,7 @@ import { getUserId } from "../middleware/auth.js";
 import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampaignItem } from "../services/campaign-parser.js";
 import { retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
 import { materializeProgrammaticItems } from "../services/programmatic.js";
+import { getEffectiveSettings } from "../services/user-settings.js";
 
 export const campaignsRoutes = new Hono();
 
@@ -55,7 +56,7 @@ function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | un
 }
 
 async function buildSettingsSnapshot(userId: string, body: any) {
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+  const settings = await getEffectiveSettings(userId);
   const snapshot: Record<string, unknown> = {};
   for (const key of snapshotKeys) snapshot[key] = settings?.[key] ?? null;
   if (internalLinkDensities.has(body.internalLinkDensity)) snapshot.internalLinkDensity = body.internalLinkDensity;

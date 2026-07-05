@@ -422,7 +422,8 @@ export const optimizeAnalyses = pgTable("optimize_analyses", {
 // ── user_settings ──
 export const userSettings = pgTable("user_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "cascade" }),
   activeSiteId: uuid("active_site_id").references(() => sites.id, { onDelete: "set null" }),
   imageModel: text("image_model"),
   imageStylePrompt: text("image_style_prompt"),

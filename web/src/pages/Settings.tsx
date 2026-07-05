@@ -52,6 +52,7 @@ import {
 import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
 import { fetchTextModels, useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
+import { useSites } from "@/hooks/useSites";
 import {
   Select,
   SelectContent,
@@ -99,6 +100,8 @@ interface ApiKeyTestResult {
 }
 
 interface UserSettings {
+  site_id?: string | null;
+  active_site_id?: string | null;
   image_style_prompt?: string | null;
   image_model?: string | null;
   inline_image_model?: string | null;
@@ -304,6 +307,7 @@ function formatImageCostAmount(cost: number) {
 
 export default function Settings() {
   const { user } = useAuth();
+  const { activeSiteId } = useSites();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [imageStylePrompt, setImageStylePrompt] = useState(
@@ -361,6 +365,16 @@ export default function Settings() {
   const previousInternalLinkStatus = useRef<string | null>(null);
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
+  const settingsQueryKey = useMemo(() => ["user-settings", activeSiteId || "none"], [activeSiteId]);
+  const settingsPath = activeSiteId ? `/settings?siteId=${encodeURIComponent(activeSiteId)}` : "/settings";
+  const setSettingsCache = useCallback((settings: UserSettings) => {
+    queryClient.setQueryData(settingsQueryKey, settings);
+    queryClient.setQueryData(["user-settings"], settings);
+  }, [queryClient, settingsQueryKey]);
+  const invalidateSettings = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+  }, [queryClient, settingsQueryKey]);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -393,9 +407,9 @@ export default function Settings() {
 
   // Fetch user settings
   const { data: userSettings, isLoading: settingsLoading } = useQuery({
-    queryKey: ["user-settings"],
+    queryKey: settingsQueryKey,
     queryFn: async () => {
-      return api.get<UserSettings>("/settings");
+      return api.get<UserSettings>(settingsPath);
     },
     enabled: !!user,
     refetchInterval: (query) =>
@@ -556,6 +570,7 @@ export default function Settings() {
   const saveArticleSettingsMutation = useMutation({
     mutationFn: async () => {
       await api.put("/settings", {
+        siteId: activeSiteId,
         article_word_count: articleWordCount,
         article_language: articleLanguage,
         article_voice: articleVoice,
@@ -568,7 +583,7 @@ export default function Settings() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      invalidateSettings();
       toast.success("Article settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save article settings"),
@@ -580,6 +595,7 @@ export default function Settings() {
   const indexInternalLinksMutation = useMutation({
     mutationFn: async () => {
       return api.post<UserSettings>("/settings/internal-linking/index", {
+        siteId: activeSiteId,
         sitemap_url: normalizeHttpUrl(internalLinkSitemapUrl),
         mode: internalLinkMode,
         density: internalLinkDensity,
@@ -588,8 +604,8 @@ export default function Settings() {
       });
     },
     onSuccess: (settings) => {
-      queryClient.setQueryData(["user-settings"], settings);
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      setSettingsCache(settings);
+      invalidateSettings();
       toast.info("Internal link indexing started");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to index sitemap"),
@@ -598,6 +614,7 @@ export default function Settings() {
   const saveInternalLinkSettingsMutation = useMutation({
     mutationFn: async () => {
       return api.put<UserSettings>("/settings", {
+        siteId: activeSiteId,
         enable_internal_links: enableInternalLinks,
         internal_link_mode: internalLinkMode,
         internal_link_density: internalLinkDensity,
@@ -607,18 +624,18 @@ export default function Settings() {
       });
     },
     onSuccess: (settings) => {
-      queryClient.setQueryData(["user-settings"], settings);
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      setSettingsCache(settings);
+      invalidateSettings();
       toast.success("Internal linking settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save internal linking settings"),
   });
 
   const disconnectInternalLinksMutation = useMutation({
-    mutationFn: async () => api.delete<UserSettings>("/settings/internal-linking"),
+    mutationFn: async () => api.delete<UserSettings>(activeSiteId ? `/settings/internal-linking?siteId=${encodeURIComponent(activeSiteId)}` : "/settings/internal-linking"),
     onSuccess: (settings) => {
-      queryClient.setQueryData(["user-settings"], settings);
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      setSettingsCache(settings);
+      invalidateSettings();
       toast.success("Internal linking disconnected");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to disconnect internal linking"),
@@ -627,6 +644,7 @@ export default function Settings() {
   const saveBrandSettingsMutation = useMutation({
     mutationFn: async () => {
       await api.put("/settings", {
+        siteId: activeSiteId,
         brand_company_name: brandCompanyName,
         brand_description: brandDescription,
         brand_target_audience: brandTargetAudience,
@@ -639,7 +657,7 @@ export default function Settings() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      invalidateSettings();
       toast.success("Brand settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save brand settings"),
@@ -648,10 +666,10 @@ export default function Settings() {
   // Save style prompt mutation
   const saveStyleMutation = useMutation({
     mutationFn: async (newPrompt: string) => {
-      await api.put("/settings", { image_style_prompt: newPrompt });
+      await api.put("/settings", { siteId: activeSiteId, image_style_prompt: newPrompt });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      invalidateSettings();
       toast.success("Style prompt saved!");
     },
     onError: (err) => {
@@ -664,6 +682,7 @@ export default function Settings() {
     mutationFn: async () => {
       if (imageSettingsError) throw new Error(imageSettingsError);
       await api.put("/settings", {
+        siteId: activeSiteId,
         image_model: selectedImageModel,
         inline_image_model: selectedInlineImageModel,
         inline_image_source: inlineImageSource,
@@ -678,7 +697,7 @@ export default function Settings() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      invalidateSettings();
       toast.success("Image settings saved");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to save image cost settings"),

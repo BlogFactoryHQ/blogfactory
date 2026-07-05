@@ -1,8 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites, userSettings } from "../db/schema.js";
+import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
 import { getOpenRouterKey } from "./api-keys.js";
+import { getEffectiveSettings } from "./user-settings.js";
 
 export type OptimizeStatus = "needs_attention" | "tracking" | "improved";
 
@@ -197,7 +198,7 @@ export async function getPageInsightDetail(userId: string, siteId: string, pageU
   const normalizedPageUrl = normalizeHttpUrl(pageUrl);
   const metrics = (await selectGscMetrics(userId, siteId)).filter((metric) => normalizeHttpUrl(metric.pageUrl) === normalizedPageUrl);
   const [insight] = buildPageInsightsFromMetrics(metrics);
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+  const settings = await getEffectiveSettings(userId, siteId);
   const analyses = await listOptimizeAnalyses({ userId, siteId, pageUrl: normalizedPageUrl });
   const actions = await actionPlanForPage(userId, insight);
   const intent = queryIntentSummary(insight?.topQueries.map((query) => query.query) || metrics.map((metric) => metric.query));
