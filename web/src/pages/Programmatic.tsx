@@ -371,17 +371,32 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
       ? "Pick a live OpenRouter model."
       : validationErrors[0] || "";
   const canCreate = Boolean(campaignName.trim() && modelId && !selectedModelUnavailable && !validationErrors.length);
+  const isSavedCustomTemplate = Boolean(selectedTemplate && !selectedTemplate.builtIn);
+  const shouldAutosaveTemplate = selectedTemplateId === "new" || Boolean(selectedTemplateId && !selectedTemplate);
+
+  async function persistTemplate() {
+    if (isSavedCustomTemplate && selectedTemplate) {
+      return api.put<ProgrammaticTemplate>(`/programmatic/templates/${selectedTemplate.id}`, { template: liveTemplate });
+    }
+    const nextName = selectedTemplate?.builtIn ? `${liveTemplate.name} (Copy)` : liveTemplate.name;
+    return api.post<ProgrammaticTemplate>("/programmatic/templates", {
+      template: { ...liveTemplate, name: nextName, builtIn: false },
+    });
+  }
+
+  function commitSavedTemplate(template: ProgrammaticTemplate) {
+    queryClient.setQueryData<ProgrammaticTemplate[]>(["programmatic-templates"], (current = []) => {
+      const exists = current.some((item) => item.id === template.id);
+      return exists ? current.map((item) => item.id === template.id ? template : item) : [...current, template];
+    });
+    queryClient.invalidateQueries({ queryKey: ["programmatic-templates"] });
+    setSelectedTemplateId(template.id);
+  }
 
   const saveTemplate = useMutation({
-    mutationFn: async () => {
-      if (selectedTemplate && !selectedTemplate.builtIn) {
-        return api.put<ProgrammaticTemplate>(`/programmatic/templates/${selectedTemplate.id}`, { template: liveTemplate });
-      }
-      return api.post<ProgrammaticTemplate>("/programmatic/templates", { template: { ...liveTemplate, name: selectedTemplate?.builtIn ? `${liveTemplate.name} (Copy)` : liveTemplate.name, builtIn: false } });
-    },
+    mutationFn: persistTemplate,
     onSuccess: (template) => {
-      queryClient.invalidateQueries({ queryKey: ["programmatic-templates"] });
-      setSelectedTemplateId(template.id);
+      commitSavedTemplate(template);
       toast.success("Template saved");
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save template"),
@@ -419,6 +434,10 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   const createCampaign = useMutation({
     mutationFn: async () => {
+      if (shouldAutosaveTemplate) {
+        const savedTemplate = await persistTemplate();
+        commitSavedTemplate(savedTemplate);
+      }
       const result = await api.post<{ campaign: { id: string } }>("/campaigns", {
         name: campaignName,
         mode: "programmatic",
@@ -436,6 +455,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
     },
     onSuccess: ({ campaign }) => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["programmatic-templates"] });
       toast.success(startNow ? "Programmatic campaign started" : "Programmatic campaign created");
       navigate(`/campaigns/${campaign.id}`);
     },
@@ -725,9 +745,15 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                   <p className="mt-1 text-sm text-muted-foreground">~{liveTemplate.wordRange[0]}-{liveTemplate.wordRange[1]} words · {liveTemplate.sections.length} sections</p>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => setView("editor")}>
-                <Copy className="mr-2 h-4 w-4" />Customize
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => setView("editor")}>
+                  <Copy className="mr-2 h-4 w-4" />Customize
+                </Button>
+                <Button variant="outline" onClick={() => saveTemplate.mutate()} disabled={saveTemplate.isPending}>
+                  {saveTemplate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Template
+                </Button>
+              </div>
             </div>
           </BywordCard>
 
