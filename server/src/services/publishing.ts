@@ -964,23 +964,8 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
     const imported = await importWixImage(credentials, image.url, `${article.title}-${index + 1}`);
     if (imported) importedImages.set(image.url, imported);
   }));
-  const createResponse = await wixApi(credentials, "POST", "/blog/v3/draft-posts", {
-    draftPost: {
-      title: article.title,
-      richContent: markdownToWixRichContent(article.markdown, coverMedia, importedImages),
-      memberId: credentials.memberId,
-      slug: article.slug,
-      excerpt: article.excerpt,
-      tagIds: [],
-      seoData: {
-        tags: [
-          { type: "title", children: article.metaTitle },
-          { type: "meta", props: { name: "description", content: article.metaDescription } },
-        ],
-      },
-      ...(coverMedia ? { media: { wixMedia: { image: { id: coverMedia.id } }, displayed: true, custom: true } } : {}),
-    },
-  }) as { draftPost?: { id?: string; url?: string } };
+
+  const createResponse = await createWixDraftPost(credentials, article, coverMedia, importedImages);
 
   const draftId = createResponse.draftPost?.id;
   if (!draftId) throw new Error("Wix did not return a draft post ID");
@@ -1001,6 +986,39 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
     externalUrl: createResponse.draftPost?.url || null,
     responseData: { draftId },
   };
+}
+
+async function createWixDraftPost(
+  credentials: WixCredentials,
+  article: ArticlePayload,
+  coverMedia: WixImportedImage | null,
+  importedImages: Map<string, WixImportedImage>,
+) {
+  const payload = (imageSource: "id" | "url") => ({
+    draftPost: {
+      title: article.title,
+      richContent: markdownToWixRichContent(article.markdown, coverMedia, importedImages, imageSource),
+      memberId: credentials.memberId,
+      slug: article.slug,
+      excerpt: article.excerpt,
+      tagIds: [],
+      seoData: {
+        tags: [
+          { type: "title", children: article.metaTitle },
+          { type: "meta", props: { name: "description", content: article.metaDescription } },
+        ],
+      },
+    },
+  });
+
+  try {
+    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("id")) as { draftPost?: { id?: string; url?: string } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const canRetryWithUrl = [coverMedia, ...importedImages.values()].some((image) => image?.url);
+    if (!canRetryWithUrl || !message.includes("id not found")) throw error;
+    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("url")) as { draftPost?: { id?: string; url?: string } };
+  }
 }
 
 async function wixApi(credentials: WixCredentials, method: string, path: string, body?: unknown) {
@@ -1039,10 +1057,15 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
   };
 }
 
-export function markdownToWixRichContent(markdown: string, coverImage: WixImportedImage | null, importedImages = new Map<string, WixImportedImage>()) {
+export function markdownToWixRichContent(
+  markdown: string,
+  coverImage: WixImportedImage | null,
+  importedImages = new Map<string, WixImportedImage>(),
+  imageSource: "id" | "url" = "id",
+) {
   const nodes: unknown[] = [];
   if (coverImage) {
-    nodes.push(wixImageNode(coverImage, "Featured image"));
+    nodes.push(wixImageNode(coverImage, "Featured image", imageSource));
   }
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1050,7 +1073,7 @@ export function markdownToWixRichContent(markdown: string, coverImage: WixImport
     const image = trimmed.match(/^!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/);
     if (image) {
       const imported = importedImages.get(image[2]);
-      if (imported) nodes.push(wixImageNode(imported, image[1] || "Article image"));
+      if (imported) nodes.push(wixImageNode(imported, image[1] || "Article image", imageSource));
       continue;
     }
     const h1 = trimmed.match(/^# (.+)/);
@@ -1064,7 +1087,8 @@ export function markdownToWixRichContent(markdown: string, coverImage: WixImport
   return { nodes };
 }
 
-function wixImageNode(image: WixImportedImage, altText: string) {
+function wixImageNode(image: WixImportedImage, altText: string, imageSource: "id" | "url") {
+  const src = imageSource === "url" && image.url ? { url: image.url } : { id: image.id };
   return {
     type: "IMAGE",
     nodes: [],
@@ -1074,7 +1098,7 @@ function wixImageNode(image: WixImportedImage, altText: string) {
         alignment: "CENTER",
       },
       image: {
-        src: { id: image.id },
+        src,
         width: image.width,
         height: image.height,
       },

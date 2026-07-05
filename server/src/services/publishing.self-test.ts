@@ -50,9 +50,16 @@ assert.doesNotThrow(() =>
 const wixRichContent = markdownToWixRichContent(
   "Intro paragraph\n\n![Article image](stored/image.webp)\n\n## Details",
   null,
-  new Map([["stored/image.webp", { id: "wix-media-id", width: 1200, height: 675 }]]),
+  new Map([["stored/image.webp", { id: "wix-media-id", url: "https://static.wixstatic.com/media/wix-media-id", width: 1200, height: 675 }]]),
 ) as { nodes: Array<{ type: string; imageData?: { image?: { src?: { id?: string } } }; nodes?: Array<{ textData?: { text?: string } }> }> };
 assert.equal(wixRichContent.nodes.some((node) => node.type === "IMAGE" && node.imageData?.image?.src?.id === "wix-media-id"), true);
 assert.equal(JSON.stringify(wixRichContent).includes("![Article image]"), false);
+const wixRichContentWithUrls = markdownToWixRichContent(
+  "![Article image](stored/image.webp)",
+  null,
+  new Map([["stored/image.webp", { id: "wix-media-id", url: "https://static.wixstatic.com/media/wix-media-id", width: 1200, height: 675 }]]),
+  "url",
+) as { nodes: Array<{ type: string; imageData?: { image?: { src?: { url?: string } } } }> };
+assert.equal(wixRichContentWithUrls.nodes[0].imageData?.image?.src?.url, "https://static.wixstatic.com/media/wix-media-id");
 
 console.log("publishing self-check passed");
