@@ -34,7 +34,6 @@ import {
   Target,
   Plus,
   X,
-  Upload,
   FileUp,
   Link as LinkIcon,
   BookOpen,
@@ -642,7 +641,7 @@ export default function Settings() {
   });
 
   const saveBrandSettingsMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
       await api.put("/settings", {
         siteId: activeSiteId,
         brand_company_name: brandCompanyName,
@@ -651,8 +650,8 @@ export default function Settings() {
         brand_mentions: brandMentions,
         brand_value_props: brandValueProps,
         brand_ctas: brandCtas,
-        knowledge_base_enabled: knowledgeBaseEnabled,
-        knowledge_documents: knowledgeDocuments,
+        knowledge_base_enabled: knowledgeBaseEnabled || Boolean(nextKnowledgeDocuments?.length),
+        knowledge_documents: nextKnowledgeDocuments || knowledgeDocuments,
         article_voice: articleVoice,
       });
     },
@@ -800,8 +799,10 @@ export default function Settings() {
     }
 
     const document = createKnowledgeDocument(file.name.replace(/\.[^.]+$/, ""), content);
-    setKnowledgeDocuments((current) => [...current, document]);
+    const nextDocuments = [...knowledgeDocuments, document];
+    setKnowledgeDocuments(nextDocuments);
     setKnowledgeBaseEnabled(true);
+    saveBrandSettingsMutation.mutate(nextDocuments);
     toast.success("Knowledge file imported");
   };
 
@@ -2235,6 +2236,20 @@ export default function Settings() {
                 }
               />
                 <div className="space-y-5 p-6">
+                  <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-byword-border text-sm md:max-w-md">
+                    <div className="p-3">
+                      <p className="font-semibold">{knowledgeDocuments.length}</p>
+                      <p className="text-muted-foreground">Docs</p>
+                    </div>
+                    <div className="border-l border-byword-border p-3">
+                      <p className="font-semibold">{readyKnowledgeCount}</p>
+                      <p className="text-muted-foreground">Ready</p>
+                    </div>
+                    <div className="border-l border-byword-border p-3">
+                      <p className="font-semibold">{knowledgeChunkTotal}</p>
+                      <p className="text-muted-foreground">Chunks</p>
+                    </div>
+                  </div>
                   <div className="grid gap-3 md:grid-cols-[280px_1fr]">
                     <Input
                       value={knowledgeTitle}
@@ -2248,10 +2263,24 @@ export default function Settings() {
                       className="min-h-[110px] resize-none"
                     />
                   </div>
-                  <Button type="button" variant="outline" onClick={addKnowledgeDocument}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Add Knowledge
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Text
+                    </Button>
+                    <Button type="button" variant="outline" disabled={isImportingKnowledge || saveBrandSettingsMutation.isPending} asChild>
+                      <label className={cn((isImportingKnowledge || saveBrandSettingsMutation.isPending) && "pointer-events-none opacity-50")}>
+                        {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
+                        Import File
+                        <input
+                          type="file"
+                          accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          className="hidden"
+                          onChange={handleKnowledgeFileChange}
+                        />
+                      </label>
+                    </Button>
+                  </div>
                   {knowledgeDocuments.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
                       <IconTile icon={FileText} className="mx-auto" />
