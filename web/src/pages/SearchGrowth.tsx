@@ -301,6 +301,7 @@ function GrowthBriefing({
               <span className="ml-2 text-foreground">{rangeLabel}</span>
             </div>
           </div>
+          <SignalStack insights={insights} />
         </div>
         <div className={cn("p-5 lg:p-6", nextMove.toneClass)}>
           <p className="font-mono text-[11px] font-bold uppercase opacity-75">Next best move</p>
@@ -323,6 +324,43 @@ function GrowthBriefing({
       </div>
       <MetricRail insights={insights} />
     </BywordCard>
+  );
+}
+
+function SignalStack({ insights }: { insights: SearchConsoleInsights }) {
+  const signals = [
+    {
+      label: "Attention",
+      value: insights.segments.needsAttention,
+      detail: "declining rows",
+      tone: "border-[hsl(var(--status-error)/0.25)] bg-[hsl(var(--status-error)/0.07)] text-[hsl(var(--status-error))]",
+    },
+    {
+      label: "CTR upside",
+      value: insights.segments.ctrOpportunities,
+      detail: "snippet tests",
+      tone: "border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.08)] text-[hsl(var(--status-warning))]",
+    },
+    {
+      label: "Page-one push",
+      value: insights.segments.strikingDistance,
+      detail: "near wins",
+      tone: "border-byword-blue/25 bg-byword-blue-soft text-byword-blue",
+    },
+  ];
+
+  return (
+    <div className="mt-5 grid gap-2 sm:grid-cols-3">
+      {signals.map((signal) => (
+        <div key={signal.label} className={cn("rounded-md border px-3 py-2", signal.tone)}>
+          <p className="font-mono text-[10px] font-bold uppercase opacity-80">{signal.label}</p>
+          <div className="mt-1 flex items-baseline justify-between gap-2">
+            <span className="text-lg font-semibold text-foreground">{formatCompactNumber(signal.value)}</span>
+            <span className="truncate text-xs opacity-80">{signal.detail}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -473,8 +511,8 @@ function OpportunityLedger({
       <div className="border-b border-byword-border px-6 py-5">
         <SectionTitle icon={Target} title="Opportunity ledger" description="Ranked search upside with the first evidence row and the next tool to open." />
       </div>
-      <div className="space-y-3 p-4 sm:p-5">
-        {ledger.map((item) => {
+      <div className="divide-y divide-byword-border">
+        {ledger.map((item, index) => {
           const isEmpty = item.value <= 0;
           return (
           <button
@@ -482,29 +520,32 @@ function OpportunityLedger({
             type="button"
             onClick={() => onOpenOptimize(item.filter)}
             className={cn(
-              "group w-full rounded-md border p-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40",
+              "group grid w-full gap-3 px-4 py-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:items-center sm:px-5",
               isEmpty
-                ? "border-byword-border bg-muted/20 text-muted-foreground hover:border-byword-border"
-                : item.toneClass
+                ? "text-muted-foreground hover:bg-muted/20"
+                : "hover:bg-muted/20"
             )}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-[11px] font-bold uppercase opacity-75">{item.label}</span>
-                  <Badge variant="outline">{item.countLabel}</Badge>
-                </div>
-                <p className={cn("mt-2 text-2xl font-semibold", isEmpty ? "text-muted-foreground" : "text-foreground")}>{formatCompactNumber(item.value)}</p>
+            <div className={cn("flex h-9 w-9 items-center justify-center rounded-md border font-mono text-xs font-bold", isEmpty ? "border-byword-border bg-muted/30" : item.toneClass)}>
+              {index + 1}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[11px] font-bold uppercase opacity-75">{item.label}</span>
+                <Badge variant="outline">{item.countLabel}</Badge>
               </div>
-              <span className={cn("inline-flex shrink-0 items-center gap-1 text-sm font-semibold", isEmpty ? "text-muted-foreground" : "text-foreground")}>
+              <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_4.5rem] sm:items-center">
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", item.barClass)} style={{ width: isEmpty ? "0%" : `${Math.max(4, (item.value / max) * 100)}%` }} />
+                </div>
+                <p className={cn("font-mono text-sm font-semibold sm:text-right", isEmpty ? "text-muted-foreground" : "text-foreground")}>{formatCompactNumber(item.value)}</p>
+              </div>
+              <p className="mt-2 truncate text-sm opacity-80">{item.example}</p>
+            </div>
+            <span className={cn("inline-flex shrink-0 items-center gap-1 text-sm font-semibold sm:justify-end", isEmpty ? "text-muted-foreground" : "text-foreground")}>
                 {item.action}
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/70">
-              <div className={cn("h-full rounded-full", item.barClass)} style={{ width: isEmpty ? "0%" : `${Math.max(4, (item.value / max) * 100)}%` }} />
-            </div>
-            <p className="mt-3 truncate text-sm opacity-80">{item.example}</p>
+            </span>
           </button>
           );
         })}
@@ -674,11 +715,11 @@ function OptimizationQueue({
         {rows.length ? rows.map((item) => {
           const trend = formatDelta(item.row.deltaClicks, {});
           return (
-            <div key={`${item.kind}-${item.row.pageUrl}-${item.row.query}`} className="grid gap-3 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_420px_auto] lg:items-center lg:px-6">
+            <div key={`${item.kind}-${item.row.pageUrl}-${item.row.query}`} className={cn("grid gap-3 border-l-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_420px_auto] lg:items-center lg:px-6", queueTone(item.kind))}>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={item.kind === "risk" ? "destructive" : "secondary"}>{item.label}</Badge>
-                  <span className="font-mono text-xs text-muted-foreground">score {formatCompactNumber(item.score)}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{queueEvidence(item.row, item.kind)}</span>
                 </div>
                 <p className="mt-2 truncate font-semibold text-foreground">{item.row.query || compactUrl(item.row.label)}</p>
                 {item.row.pageUrl && <p className="mt-1 truncate text-sm text-muted-foreground">{compactUrl(item.row.pageUrl)}</p>}
@@ -711,6 +752,21 @@ function QueueMetric({ label, value }: { label: string; value: string }) {
       <p className="mt-0.5 truncate font-semibold text-foreground">{value}</p>
     </div>
   );
+}
+
+function queueTone(kind: "risk" | "ctr" | "lift") {
+  if (kind === "risk") return "border-[hsl(var(--status-error))] bg-[hsl(var(--status-error)/0.035)]";
+  if (kind === "ctr") return "border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.035)]";
+  return "border-byword-blue bg-byword-blue-soft/45";
+}
+
+function queueEvidence(row: SearchInsightRow, kind: "risk" | "ctr" | "lift") {
+  if (kind === "risk") {
+    const position = row.deltaPosition ? `, ${row.deltaPosition > 0 ? "+" : ""}${row.deltaPosition.toFixed(1)} pos.` : "";
+    return `${row.deltaClicks > 0 ? "+" : ""}${row.deltaClicks || 0} clicks${position}`;
+  }
+  if (kind === "ctr") return `${formatCompactNumber(row.impressions)} impressions, ${formatPercent(row.ctr)} CTR`;
+  return `pos ${row.position.toFixed(1)}, ${formatCompactNumber(row.impressions)} impressions`;
 }
 
 function queueItem(

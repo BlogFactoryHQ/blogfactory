@@ -176,6 +176,9 @@ export function OptimizePanel() {
   const insightStatusCounts = summary?.statusCounts || summary?.status_counts || statusCounts;
   const connectedIndexing = indexingIntegrations.some((item) => item.status === "connected");
   const totalOpportunityCount = Object.values(insightCounts).reduce((sum, value) => sum + value, 0);
+  const currentViewLabel = showOpportunities
+    ? opportunityFilters.find((item) => item.value === opportunity)?.label || "Opportunities"
+    : statuses.find((item) => item.value === status)?.label || "Pages";
 
   useEffect(() => {
     if (status === "needs_attention" && !insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !params.get("status") && !params.get("opportunity")) {
@@ -392,6 +395,11 @@ export function OptimizePanel() {
                   </Button>
                 </div>
               </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <WorkbenchStat label="Current view" value={currentViewLabel} detail={`${pageInsights.length} rows loaded`} />
+                <WorkbenchStat label="Attention" value={`${insightStatusCounts.needs_attention || 0}`} detail="pages need review" tone="risk" />
+                <WorkbenchStat label="Opportunities" value={`${totalOpportunityCount}`} detail="ranked signals" tone="info" />
+              </div>
               <OpportunityStrip counts={insightCounts} active={showOpportunities ? opportunity : "all"} onSelect={(value) => setOptimizeFilter({ opportunity: value })} />
             </div>
 
@@ -413,6 +421,7 @@ export function OptimizePanel() {
                   : `No pages in ${showOpportunities ? "this opportunity" : statuses.find((item) => item.value === status)?.label.toLowerCase()}.`}
               </div>
             ) : (
+              <div className="overflow-x-auto rounded-md border border-byword-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -442,7 +451,7 @@ export function OptimizePanel() {
                         <TableCell className="max-w-[260px]">
                           <div className="flex flex-wrap items-center gap-2">
                             <OptimizeStatusBadge status={page.status} />
-                            <span className="font-mono text-xs text-muted-foreground">{formatDelta(page)}</span>
+                            <DeltaBadge page={page} />
                           </div>
                           <p className="mt-2 truncate text-sm font-medium text-foreground">{page.topQuery}</p>
                           <OpportunityBadges opportunities={page.opportunities} />
@@ -477,6 +486,7 @@ export function OptimizePanel() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             )}
             </div>
           </div>
@@ -772,12 +782,57 @@ function OpportunityStrip({
   );
 }
 
+function WorkbenchStat({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "neutral" | "risk" | "info";
+}) {
+  return (
+    <div className={cn(
+      "rounded-md border px-3 py-2",
+      tone === "neutral" && "border-byword-border bg-card",
+      tone === "risk" && "border-[hsl(var(--status-error)/0.25)] bg-[hsl(var(--status-error)/0.06)]",
+      tone === "info" && "border-byword-blue/25 bg-byword-blue-soft",
+    )}>
+      <p className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
+      <div className="mt-1 flex items-baseline justify-between gap-3">
+        <span className="truncate text-sm font-semibold text-foreground">{value}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
+      </div>
+    </div>
+  );
+}
+
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-[64px] rounded-md border border-byword-border bg-card px-2.5 py-2">
       <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
       <p className="whitespace-nowrap text-sm font-semibold text-foreground">{value}</p>
     </div>
+  );
+}
+
+function DeltaBadge({ page }: { page: OptimizePageInsight }) {
+  const isBad = page.delta.clicks < 0 || page.delta.position > 1.5;
+  const isGood = page.delta.clicks > 0 || page.delta.position < -1.5;
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "border font-mono text-[10px] uppercase",
+        isBad && "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.08)] text-[hsl(var(--status-error))]",
+        isGood && "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.08)] text-[hsl(var(--status-success))]",
+        !isBad && !isGood && "border-byword-border bg-muted/30 text-muted-foreground",
+      )}
+    >
+      {formatDelta(page)}
+    </Badge>
   );
 }
 
@@ -832,7 +887,7 @@ function PageDetailSheet({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <OptimizeStatusBadge status={insight.status} />
-                    <span className="font-mono text-xs text-muted-foreground">{formatDelta(insight)}</span>
+                    <DeltaBadge page={insight} />
                   </div>
                   <h3 className="mt-3 truncate text-lg font-semibold text-foreground">{insight.topQuery}</h3>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{compactUrl(insight.pageUrl)}</p>
