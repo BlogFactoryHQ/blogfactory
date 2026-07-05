@@ -100,6 +100,7 @@ export function OptimizePanel() {
   const insightCounts = summary?.opportunityCounts || summary?.opportunity_counts || {};
   const insightStatusCounts = summary?.statusCounts || summary?.status_counts || statusCounts;
   const connectedIndexing = indexingIntegrations.some((item) => item.status === "connected");
+  const totalOpportunityCount = Object.values(insightCounts).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
     if (status === "needs_attention" && !insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !params.get("status") && !params.get("opportunity")) {
@@ -192,7 +193,7 @@ export function OptimizePanel() {
   return (
     <>
       <div className="space-y-8">
-        <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-4">
+        <div className="grid overflow-hidden rounded-md border border-byword-border bg-card md:grid-cols-4">
           {[
             ["Site", activeSite?.domain || "No site selected"],
             ["Needs attention", String(summary?.needsAttentionCount ?? summary?.needs_attention_count ?? insightStatusCounts.needs_attention ?? 0)],
@@ -200,7 +201,7 @@ export function OptimizePanel() {
             ["GSC clicks", String(summary?.clicks ?? stats.clicks)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+              <p className="font-mono text-[11px] font-bold uppercase text-muted-foreground">{label}</p>
               <p className="mt-2 truncate text-2xl font-semibold text-foreground">{value}</p>
             </div>
           ))}
@@ -275,36 +276,51 @@ export function OptimizePanel() {
             description="Review synced pages or analyze a URL manually."
             action={<Button size="sm" onClick={() => openAnalyze()}><Plus className="mr-1.5 h-4 w-4" />Add Page</Button>}
           />
-          <div className="space-y-4 p-6">
-            <OpportunityStrip counts={insightCounts} active={showOpportunities ? opportunity : "all"} onSelect={(value) => setOptimizeFilter({ opportunity: value })} />
+          <div>
+            <div className="sticky top-0 z-20 space-y-4 border-b border-byword-border bg-background/95 p-4 shadow-[0_12px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:p-5 lg:p-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <Tabs value={showOpportunities ? "opportunities" : status} onValueChange={(value) => {
+                  if (value === "opportunities") setOptimizeFilter({ opportunity });
+                  else setOptimizeFilter({ status: value as OptimizeStatus });
+                }}>
+                  <TabsList className="h-auto flex-wrap justify-start">
+                    {statuses.map((item) => (
+                      <TabsTrigger key={item.value} value={item.value}>
+                        {item.label} ({insightStatusCounts[item.value] || 0})
+                      </TabsTrigger>
+                    ))}
+                    <TabsTrigger value="opportunities">
+                      Opportunities ({totalOpportunityCount})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
-            <Tabs value={showOpportunities ? "opportunities" : status} onValueChange={(value) => {
-              if (value === "opportunities") setOptimizeFilter({ opportunity });
-              else setOptimizeFilter({ status: value as OptimizeStatus });
-            }}>
-              <TabsList>
-                {statuses.map((item) => (
-                  <TabsTrigger key={item.value} value={item.value}>
-                    {item.label} ({insightStatusCounts[item.value] || 0})
-                  </TabsTrigger>
-                ))}
-                <TabsTrigger value="opportunities">
-                  Opportunities ({Object.values(insightCounts).reduce((sum, value) => sum + value, 0)})
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+                <div className="flex flex-wrap items-center gap-2">
+                  {showOpportunities && (
+                    <select
+                      value={opportunity}
+                      onChange={(event) => setOptimizeFilter({ opportunity: event.target.value as OptimizeOpportunity })}
+                      className="h-10 rounded-md border border-byword-border bg-background px-3 text-sm"
+                    >
+                      {opportunityFilters.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handleSync} disabled={sync.isPending || !integration}>
+                    {sync.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Sync
+                  </Button>
+                  <Button size="sm" onClick={() => openAnalyze()}>
+                    <Plus className="h-4 w-4" />
+                    Analyze URL
+                  </Button>
+                </div>
+              </div>
+              <OpportunityStrip counts={insightCounts} active={showOpportunities ? opportunity : "all"} onSelect={(value) => setOptimizeFilter({ opportunity: value })} />
+            </div>
 
-            {showOpportunities && (
-              <select
-                value={opportunity}
-                onChange={(event) => setOptimizeFilter({ opportunity: event.target.value as OptimizeOpportunity })}
-                className="h-10 rounded-md border border-byword-border bg-background px-3 text-sm"
-              >
-                {opportunityFilters.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </select>
-            )}
+            <div className="p-4 sm:p-5 lg:p-6">
 
             {hasNoSearchConsole ? (
               <div className="p-12 text-center text-muted-foreground">
@@ -326,12 +342,8 @@ export function OptimizePanel() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Page</TableHead>
-                    <TableHead>Top query</TableHead>
-                    <TableHead>Clicks</TableHead>
-                    <TableHead>Impr.</TableHead>
-                    <TableHead>CTR</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>14d change</TableHead>
+                    <TableHead>Search signal</TableHead>
+                    <TableHead>Metrics</TableHead>
                     <TableHead>Suggested action</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -341,20 +353,34 @@ export function OptimizePanel() {
                     const tracked = visiblePages.find((oldPage) => oldPage.pageUrl === page.pageUrl && oldPage.targetQuery === page.topQuery);
                     return (
                       <TableRow key={page.pageUrl}>
-                        <TableCell className="max-w-[360px] truncate font-medium">{page.pageUrl}</TableCell>
-                        <TableCell className="max-w-[220px] truncate">{page.topQuery}</TableCell>
-                        <TableCell>{page.clicks}</TableCell>
-                        <TableCell>{page.impressions}</TableCell>
-                        <TableCell>{formatPercent(page.ctr)}</TableCell>
-                        <TableCell><OptimizeStatusBadge status={page.status} /></TableCell>
-                        <TableCell>{formatDelta(page)}</TableCell>
-                        <TableCell className="max-w-[260px]">{page.suggestedAction}</TableCell>
+                        <TableCell className="max-w-[360px]">
+                          <button type="button" className="block max-w-full text-left" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>
+                            <span className="block truncate font-semibold text-foreground">{compactUrl(page.pageUrl)}</span>
+                            <span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{page.pageUrl}</span>
+                          </button>
+                        </TableCell>
+                        <TableCell className="max-w-[260px]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <OptimizeStatusBadge status={page.status} />
+                            <span className="font-mono text-xs text-muted-foreground">{formatDelta(page)}</span>
+                          </div>
+                          <p className="mt-2 truncate text-sm font-medium text-foreground">{page.topQuery}</p>
+                        </TableCell>
+                        <TableCell>
+                          <div className="grid min-w-[220px] grid-cols-4 gap-2">
+                            <MiniMetric label="Clk" value={String(page.clicks)} />
+                            <MiniMetric label="Impr" value={String(page.impressions)} />
+                            <MiniMetric label="CTR" value={formatPercent(page.ctr)} />
+                            <MiniMetric label="Pos" value={page.position.toFixed(1)} />
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[280px] text-sm leading-6">{page.suggestedAction}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Open</Button>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
                             <Button variant="outline" size="sm" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
                             <Button variant="ghost" size="sm" onClick={() => tracked && markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending || !tracked}>
-                              Mark optimized
+                              Done
                             </Button>
                           </div>
                         </TableCell>
@@ -364,6 +390,7 @@ export function OptimizePanel() {
                 </TableBody>
               </Table>
             )}
+            </div>
           </div>
         </BywordCard>
       </div>
@@ -650,6 +677,15 @@ function OpportunityStrip({
   );
 }
 
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-byword-border bg-muted/20 px-2 py-1.5">
+      <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
+      <p className="truncate text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
 function PageDetailSheet({
   detail,
   indexingConnected,
@@ -671,18 +707,30 @@ function PageDetailSheet({
 
   return (
     <Sheet open={Boolean(detail)} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-5xl">
         <SheetHeader>
           <SheetTitle>{insight?.topQuery || "Page performance"}</SheetTitle>
           <SheetDescription>{insight?.pageUrl}</SheetDescription>
         </SheetHeader>
         {insight && (
           <div className="mt-6 space-y-6">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Metric label="Clicks" value={insight.clicks} />
-              <Metric label="Impr." value={insight.impressions} />
-              <Metric label="CTR" value={formatPercent(insight.ctr)} />
-              <Metric label="Position" value={insight.position.toFixed(1)} />
+            <div className="rounded-md border border-byword-border bg-muted/20 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <OptimizeStatusBadge status={insight.status} />
+                    <span className="font-mono text-xs text-muted-foreground">{formatDelta(insight)}</span>
+                  </div>
+                  <h3 className="mt-3 truncate text-lg font-semibold text-foreground">{insight.topQuery}</h3>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{compactUrl(insight.pageUrl)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[420px]">
+                  <Metric label="Clicks" value={insight.clicks} />
+                  <Metric label="Impr." value={insight.impressions} />
+                  <Metric label="CTR" value={formatPercent(insight.ctr)} />
+                  <Metric label="Position" value={insight.position.toFixed(1)} />
+                </div>
+              </div>
             </div>
 
             <div>
@@ -867,23 +915,6 @@ function OptimizeStatusBadge({ status }: { status: string }) {
   return <Badge variant="secondary">Tracking</Badge>;
 }
 
-function metricPosition(page: OptimizePage) {
-  const latest = page.latestMetrics || page.latest_metrics;
-  const baseline = page.baselineMetrics || page.baseline_metrics;
-  if (!latest?.position) return "No data";
-  if (!baseline?.position) return latest.position.toFixed(1);
-  const delta = latest.position - baseline.position;
-  return `${latest.position.toFixed(1)} (${delta > 0 ? "+" : ""}${delta.toFixed(1)})`;
-}
-
-function metricClicks(page: OptimizePage) {
-  const latest = page.latestMetrics || page.latest_metrics;
-  const baseline = page.baselineMetrics || page.baseline_metrics;
-  if (!latest) return "No data";
-  const delta = baseline ? latest.clicks - baseline.clicks : 0;
-  return baseline ? `${latest.clicks} (${delta > 0 ? "+" : ""}${delta})` : String(latest.clicks);
-}
-
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(value >= 0.1 ? 1 : 2)}%`;
 }
@@ -896,6 +927,15 @@ function formatDelta(page: OptimizePageInsight) {
 
 function formatDateTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : "None yet";
+}
+
+function compactUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    return value;
+  }
 }
 
 function humanOpportunity(value: string) {

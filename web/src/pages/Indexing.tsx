@@ -29,7 +29,9 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { IndexingIntegration, IndexingProvider, useIndexing } from "@/hooks/useIndexing";
+import { useSearchConsole } from "@/hooks/useSearchConsole";
 import { useSites } from "@/hooks/useSites";
+import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { cn } from "@/lib/utils";
 
 const providerDetails: Record<IndexingProvider, {
@@ -80,6 +82,7 @@ const providers: IndexingProvider[] = ["indexnow", "google"];
 export function IndexingPanel() {
   const { activeSite } = useSites();
   const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls, startGoogleOAuth } = useIndexing();
+  const { integration: searchConsoleIntegration } = useSearchConsole();
   const [providerToConnect, setProviderToConnect] = useState<IndexingProvider | null>(null);
   const [editing, setEditing] = useState<IndexingIntegration | null>(null);
   const [bulkUrls, setBulkUrls] = useState("");
@@ -137,6 +140,31 @@ export function IndexingPanel() {
             </div>
           ))}
         </div>
+
+        <SearchGrowthDependencyBand
+          title="Indexing role in search growth"
+          description="Use this tab after an optimization edit to request faster discovery from connected providers."
+          items={[
+            {
+              label: "Active site",
+              value: activeSite?.domain || "No site selected",
+              detail: activeSite ? "Submissions are limited to this domain." : "Select a site before submitting URLs.",
+              state: activeSite ? "ready" : "blocked",
+            },
+            {
+              label: "Search Console",
+              value: searchConsoleIntegration?.status === "connected" ? "Connected" : "Not connected",
+              detail: searchConsoleIntegration ? "Performance data can confirm edits after the next sync." : "Connect GSC from Optimize to measure the result.",
+              state: searchConsoleIntegration?.status === "connected" ? "ready" : "idle",
+            },
+            {
+              label: "Indexing providers",
+              value: integrations.length ? `${integrations.length} configured` : "Not connected",
+              detail: integrations.length ? `${stats.accepted} accepted, ${stats.queued} queued, ${stats.failed} failed.` : "Connect IndexNow for normal article URLs.",
+              state: integrations.some((item) => item.status === "connected") ? "ready" : "warning",
+            },
+          ]}
+        />
 
         <BywordCard>
           <SectionHeader icon={CheckCircle2} title="Providers" description="Connect IndexNow for regular articles; Google is gated to eligible structured-data pages." />

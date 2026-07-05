@@ -21,6 +21,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { BywordCard, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
+import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,9 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useIndexing } from "@/hooks/useIndexing";
+import { useSearchConsole } from "@/hooks/useSearchConsole";
+import { useSites } from "@/hooks/useSites";
 
 interface ApiKeyMetadata {
   hasOpenaiKey: boolean;
@@ -85,6 +89,9 @@ const indexingSteps = [
 
 export function InternalLinksPanel() {
   const queryClient = useQueryClient();
+  const { activeSite } = useSites();
+  const { integration: searchConsoleIntegration } = useSearchConsole();
+  const { integrations: indexingIntegrations } = useIndexing();
   const previousStatus = useRef<string | null>(null);
   const [enableInternalLinks, setEnableInternalLinks] = useState(false);
   const [sitemapUrl, setSitemapUrl] = useState("");
@@ -212,19 +219,45 @@ export function InternalLinksPanel() {
   };
 
   return (
-    <BywordCard>
-      <SectionHeader
-        icon={LinkIcon}
-        title="Internal Links"
-        description="Build a sitemap index for semantic links in generated articles."
-        action={
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isIndexing}>
-            {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save
-          </Button>
-        }
+    <>
+      <SearchGrowthDependencyBand
+        title="Internal links role in search growth"
+        description="Use this tab to turn optimization targets into contextual links inside generated articles."
+        items={[
+          {
+            label: "Active site",
+            value: activeSite?.domain || "No site selected",
+            detail: activeSite ? "Sitemap and link targets should match this domain." : "Select a site before building a link index.",
+            state: activeSite ? "ready" : "blocked",
+          },
+          {
+            label: "Search Console",
+            value: searchConsoleIntegration?.status === "connected" ? "Connected" : "Not connected",
+            detail: searchConsoleIntegration ? "Query data can identify pages that need internal-link support." : "Connect GSC from Optimize to prioritize link targets.",
+            state: searchConsoleIntegration?.status === "connected" ? "ready" : "idle",
+          },
+          {
+            label: "Indexing",
+            value: indexingIntegrations.some((item) => item.status === "connected") ? "Provider ready" : "Not connected",
+            detail: indexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect IndexNow to close the edit-submit loop.",
+            state: indexingIntegrations.some((item) => item.status === "connected") ? "ready" : "idle",
+          },
+        ]}
       />
-      <div className="divide-y divide-byword-border">
+
+      <BywordCard>
+        <SectionHeader
+          icon={LinkIcon}
+          title="Internal Links"
+          description="Build a sitemap index for semantic links in generated articles."
+          action={
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isIndexing}>
+              {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save
+            </Button>
+          }
+        />
+        <div className="divide-y divide-byword-border">
         <div className="space-y-5 p-6">
           <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-byword-border p-5">
             <div className="flex items-start gap-4">
@@ -482,6 +515,7 @@ export function InternalLinksPanel() {
         )}
       </div>
     </BywordCard>
+    </>
   );
 }
 

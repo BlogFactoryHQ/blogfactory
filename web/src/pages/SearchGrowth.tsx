@@ -37,10 +37,11 @@ import {
 } from "@/hooks/useSearchConsole";
 import { useSites } from "@/hooks/useSites";
 import { InternalLinksPanel } from "@/components/search-growth/InternalLinksPanel";
+import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { IndexingPanel } from "@/pages/Indexing";
 import { OptimizePanel } from "@/pages/Optimize";
 import { api } from "@/lib/api";
-import { bucketBubbleSize, formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
+import { formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
 
 const tabs = new Set(["overview", "optimize", "indexing", "internal-links"]);
@@ -57,13 +58,6 @@ const INSIGHT_COLORS = {
   improved: "#00856A",
 };
 
-const bubbleTone: Record<SearchOpportunityBubble["kind"], string> = {
-  risk: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
-  ctr: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-  lift: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-  improved: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
-};
-
 const rowTone: Record<SearchInsightRow["kind"], string> = {
   risk: "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
   ctr: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
@@ -76,6 +70,12 @@ export default function SearchGrowth() {
   const [params, setParams] = useSearchParams();
   const tab = tabs.has(params.get("tab") || "") ? params.get("tab")! : "overview";
   const setTab = (value: string) => setParams(value === "overview" ? {} : { tab: value });
+  const openOptimize = (filter?: { status?: string; opportunity?: string }) => {
+    const next = new URLSearchParams({ tab: "optimize" });
+    if (filter?.status) next.set("status", filter.status);
+    if (filter?.opportunity) next.set("opportunity", filter.opportunity);
+    setParams(next);
+  };
 
   useEffect(() => {
     const result = params.get("gsc");
@@ -105,7 +105,7 @@ export default function SearchGrowth() {
 
         {tab === "overview" && (
           <TabsContent value="overview" className="mt-0">
-            <SearchGrowthOverview onSelectTab={setTab} />
+            <SearchGrowthOverview onSelectTab={setTab} onOpenOptimize={openOptimize} />
           </TabsContent>
         )}
         {tab === "optimize" && (
@@ -128,7 +128,13 @@ export default function SearchGrowth() {
   );
 }
 
-function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => void }) {
+function SearchGrowthOverview({
+  onSelectTab,
+  onOpenOptimize,
+}: {
+  onSelectTab: (tab: string) => void;
+  onOpenOptimize: (filter?: { status?: string; opportunity?: string }) => void;
+}) {
   const { activeSite } = useSites();
   const { integration: searchConsoleFallback, sync } = useSearchConsole();
   const insightsQuery = useSearchConsoleInsights();
@@ -219,66 +225,129 @@ function SearchGrowthOverview({ onSelectTab }: { onSelectTab: (tab: string) => v
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <SearchPulseCard siteDomain={activeSite.domain} insights={insights} />
+        <GrowthBriefing siteDomain={activeSite.domain} insights={insights} onOpenOptimize={onOpenOptimize} />
+        <SearchGrowthDependencyBand
+          items={[
+            {
+              label: "Search Console",
+              value: searchConsole.status === "connected" ? "Connected" : searchConsole.status,
+              detail: `Last sync: ${searchConsole.lastSyncAt || searchConsole.last_sync_at || "none yet"}`,
+              state: searchConsole.status === "connected" ? "ready" : "warning",
+              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("optimize")}>Manage GSC</Button>,
+            },
+            {
+              label: "Indexing",
+              value: connectedIndexing ? `${connectedIndexing} provider connected` : "Not connected",
+              detail: connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect IndexNow to submit edited pages.",
+              state: connectedIndexing ? "ready" : "idle",
+              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("indexing")}>Open Indexing</Button>,
+            },
+            {
+              label: "Internal Links",
+              value: internalStatus === "connected" ? "Ready" : internalStatus,
+              detail: internalStatus === "connected" ? `${internalPageCount} pages available for semantic links.` : "Build a sitemap index to support page-one pushes.",
+              state: internalStatus === "connected" ? "ready" : internalStatus === "failed" ? "blocked" : "idle",
+              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("internal-links")}>Open Links</Button>,
+            },
+          ]}
+        />
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
           <PerformanceCard insights={insights} />
-          <OpportunityMap insights={insights} />
+          <OpportunityLedger insights={insights} onOpenOptimize={onOpenOptimize} />
         </div>
 
-        <ActionLanes insights={insights} onSelectTab={onSelectTab} />
+        <OptimizationQueue insights={insights} onOpenOptimize={onOpenOptimize} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <RankedBars title="Top pages by clicks" icon={Eye} rows={insights.topPages} color={INSIGHT_COLORS.performance} />
           <RankedBars title="Top queries by clicks" icon={MousePointerClick} rows={insights.topQueries} color={INSIGHT_COLORS.opportunity} />
         </div>
-
-        {supportCards}
       </div>
     </TooltipProvider>
   );
 }
 
-function SearchPulseCard({ siteDomain, insights }: { siteDomain: string; insights: SearchConsoleInsights }) {
+function GrowthBriefing({
+  siteDomain,
+  insights,
+  onOpenOptimize,
+}: {
+  siteDomain: string;
+  insights: SearchConsoleInsights;
+  onOpenOptimize: (filter?: { status?: string; opportunity?: string }) => void;
+}) {
   const rangeLabel = insights.range.latestStart && insights.range.latestEnd
     ? `${safeFormatIsoDate(insights.range.latestStart, "MMM d")} - ${safeFormatIsoDate(insights.range.latestEnd, "MMM d")}`
     : "Latest sync";
+  const nextMove = getNextMove(insights);
 
   return (
     <BywordCard>
-      <div className="flex flex-col gap-4 border-b border-byword-border px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">Search pulse</h2>
-            <Badge variant="secondary">{siteDomain}</Badge>
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+        <div className="border-b border-byword-border p-5 lg:border-b-0 lg:border-r lg:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">Growth briefing</span>
+                <Badge variant="secondary">{siteDomain}</Badge>
+                {!insights.range.baselineStart && <Badge variant="outline">Baseline building</Badge>}
+              </div>
+              <h2 className="mt-2 text-xl font-semibold text-foreground">Search operations pulse</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from synced Google Search Console data.</p>
+            </div>
+            <div className="rounded-md border border-byword-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-mono uppercase">Window</span>
+              <span className="ml-2 text-foreground">{rangeLabel}</span>
+            </div>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from synced Google Search Console data.</p>
         </div>
-        {!insights.range.baselineStart && (
-          <Badge variant="outline" className="w-fit">Baseline building</Badge>
-        )}
+        <div className={cn("p-5 lg:p-6", nextMove.toneClass)}>
+          <p className="font-mono text-[11px] font-bold uppercase opacity-75">Next best move</p>
+          <div className="mt-3 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-foreground">{nextMove.title}</h3>
+              <p className="mt-1 text-sm leading-6 opacity-80">{nextMove.detail}</p>
+              {nextMove.row && (
+                <p className="mt-2 truncate font-mono text-xs opacity-75">
+                  {nextMove.row.query || compactUrl(nextMove.row.label)} · {formatCompactNumber(nextMove.row.impressions)} impressions · pos {nextMove.row.position.toFixed(1)}
+                </p>
+              )}
+            </div>
+            <Button size="sm" variant={nextMove.kind === "risk" ? "destructive" : "outline"} onClick={() => onOpenOptimize(nextMove.filter)}>
+              {nextMove.action}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
-      <div className="grid divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0 xl:grid-cols-6">
-        <PulseMetric label="Clicks" value={formatCompactNumber(insights.totals.clicks.value)} metric={insights.totals.clicks} />
-        <PulseMetric label="Impressions" value={formatCompactNumber(insights.totals.impressions.value)} metric={insights.totals.impressions} />
-        <PulseMetric
-          label="CTR"
-          value={formatPercent(insights.totals.ctr.value)}
-          metric={insights.totals.ctr}
-          percent
-          tooltip="Clicks divided by impressions."
-        />
-        <PulseMetric
-          label="Avg position"
-          value={insights.totals.position.value ? insights.totals.position.value.toFixed(1) : "0"}
-          metric={insights.totals.position}
-          lowerIsBetter
-          tooltip="Lower average position is better."
-        />
-        <PulseStatic label="Tracked pages" value={formatCompactNumber(insights.totals.pageCount)} />
-        <PulseStatic label="Tracked queries" value={formatCompactNumber(insights.totals.queryCount)} />
-      </div>
+      <MetricRail insights={insights} />
     </BywordCard>
+  );
+}
+
+function MetricRail({ insights }: { insights: SearchConsoleInsights }) {
+  return (
+    <div className="grid divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0 xl:grid-cols-6">
+      <PulseMetric label="Clicks" value={formatCompactNumber(insights.totals.clicks.value)} metric={insights.totals.clicks} />
+      <PulseMetric label="Impressions" value={formatCompactNumber(insights.totals.impressions.value)} metric={insights.totals.impressions} />
+      <PulseMetric
+        label="CTR"
+        value={formatPercent(insights.totals.ctr.value)}
+        metric={insights.totals.ctr}
+        percent
+        tooltip="Clicks divided by impressions."
+      />
+      <PulseMetric
+        label="Avg position"
+        value={insights.totals.position.value ? insights.totals.position.value.toFixed(1) : "0"}
+        metric={insights.totals.position}
+        lowerIsBetter
+        tooltip="Lower average position is better."
+      />
+      <PulseStatic label="Tracked pages" value={formatCompactNumber(insights.totals.pageCount)} />
+      <PulseStatic label="Tracked queries" value={formatCompactNumber(insights.totals.queryCount)} />
+    </div>
   );
 }
 
@@ -389,117 +458,269 @@ function PerformanceCard({ insights }: { insights: SearchConsoleInsights }) {
   );
 }
 
-function OpportunityMap({ insights }: { insights: SearchConsoleInsights }) {
-  const bubbles = useMemo(() => {
-    const max = Math.max(...insights.opportunityBubbles.map((bubble) => bubble.value), 1);
-    return insights.opportunityBubbles
-      .map((bubble) => ({ ...bubble, size: bucketBubbleSize(bubble.value, max) }))
-      .sort((a, b) => b.value - a.value);
-  }, [insights.opportunityBubbles]);
+function OpportunityLedger({
+  insights,
+  onOpenOptimize,
+}: {
+  insights: SearchConsoleInsights;
+  onOpenOptimize: (filter?: { status?: string; opportunity?: string }) => void;
+}) {
+  const max = Math.max(...insights.opportunityBubbles.map((bubble) => bubble.value), 1);
+  const ledger = buildOpportunityLedger(insights).sort((a, b) => b.value - a.value);
 
   return (
     <BywordCard>
       <div className="border-b border-byword-border px-6 py-5">
-        <SectionTitle icon={Target} title="Opportunity map" description="Fixed bubble sizes keep small signals readable while labels preserve the numbers." />
+        <SectionTitle icon={Target} title="Opportunity ledger" description="Ranked search upside with the first evidence row and the next tool to open." />
       </div>
-      <div className="grid gap-6 p-6">
-        <div className="flex min-h-[220px] flex-wrap items-center justify-center gap-4">
-          {bubbles.map((bubble) => (
-            <div
-              key={bubble.label}
-              className={cn(
-                "flex shrink-0 flex-col items-center justify-center rounded-full border text-center shadow-sm",
-                bubbleTone[bubble.kind],
-                bubble.size === "lg" && "h-36 w-36",
-                bubble.size === "md" && "h-28 w-28",
-                bubble.size === "sm" && "h-20 w-20",
-              )}
-            >
-              <span className="text-lg font-semibold">{formatCompactNumber(bubble.value)}</span>
-              <span className="mt-1 max-w-[92px] px-2 text-[11px] font-medium leading-4">{bubble.label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="space-y-2">
-          {bubbles.map((bubble) => (
-            <div key={bubble.label} className="flex items-center justify-between gap-3 rounded-md border border-byword-border px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={cn("h-2.5 w-2.5 rounded-full", bubbleDotClass(bubble.kind))} />
-                <span className="truncate text-sm font-medium text-foreground">{bubble.label}</span>
+      <div className="space-y-3 p-4 sm:p-5">
+        {ledger.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => onOpenOptimize(item.filter)}
+            className={cn(
+              "group w-full rounded-md border p-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40",
+              item.toneClass
+            )}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[11px] font-bold uppercase opacity-75">{item.label}</span>
+                  <Badge variant="outline">{item.countLabel}</Badge>
+                </div>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{formatCompactNumber(item.value)}</p>
               </div>
-              <span className="text-sm font-semibold text-foreground">{formatCompactNumber(bubble.value)}</span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-foreground">
+                {item.action}
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
             </div>
-          ))}
-        </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/70">
+              <div className={cn("h-full rounded-full", item.barClass)} style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+            </div>
+            <p className="mt-3 truncate text-sm opacity-80">{item.example}</p>
+          </button>
+        ))}
       </div>
     </BywordCard>
   );
 }
 
-function ActionLanes({ insights, onSelectTab }: { insights: SearchConsoleInsights; onSelectTab: (tab: string) => void }) {
-  const lanes = [
+function getNextMove(insights: SearchConsoleInsights) {
+  const risk = insights.actionRows.protectTraffic[0];
+  if (risk) {
+    return {
+      kind: "risk",
+      title: "Protect the page/query losing momentum",
+      detail: "A tracked search row is losing clicks or position versus baseline. Start here before chasing upside.",
+      action: "Review page",
+      row: risk,
+      filter: { status: "needs_attention" },
+      toneClass: "border-l-4 border-[hsl(var(--status-error))] bg-[hsl(var(--status-error)/0.08)]",
+    };
+  }
+
+  const ctr = insights.actionRows.liftCtr[0];
+  if (ctr) {
+    return {
+      kind: "ctr",
+      title: "Rewrite the snippet that is under-clicking",
+      detail: "There is enough impression volume to matter, but the current title/meta promise is not earning clicks.",
+      action: "Lift CTR",
+      row: ctr,
+      filter: { opportunity: "low_ctr" },
+      toneClass: "border-l-4 border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.08)]",
+    };
+  }
+
+  const lift = insights.actionRows.strikingDistance[0];
+  if (lift) {
+    return {
+      kind: "lift",
+      title: "Push a near-page-one query",
+      detail: "This query is close enough to move with stronger topical coverage and internal links.",
+      action: "Build links",
+      row: lift,
+      filter: { opportunity: "almost_ranking" },
+      toneClass: "border-l-4 border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.08)]",
+    };
+  }
+
+  return {
+    kind: "improved",
+    title: "No urgent search issue in this window",
+    detail: "Use Optimize to review tracked pages, or refresh Search Console after the next publishing batch.",
+    action: "Open Optimize",
+    row: null,
+    filter: { status: "tracking" },
+    toneClass: "border-l-4 border-[hsl(var(--status-success))] bg-[hsl(var(--status-success)/0.08)]",
+  };
+}
+
+function buildOpportunityLedger(insights: SearchConsoleInsights) {
+  const bubbleValue = (kind: SearchOpportunityBubble["kind"]) => insights.opportunityBubbles.find((bubble) => bubble.kind === kind)?.value || 0;
+  const improvedExample = insights.topPages.find((row) => row.kind === "improved") || insights.topQueries.find((row) => row.kind === "improved");
+  const items = [
     {
-      title: "Protect traffic",
-      description: "Click drops or position losses.",
-      icon: AlertTriangle,
-      count: insights.segments.needsAttention,
-      kind: "risk" as const,
-      rows: insights.actionRows.protectTraffic,
-      tooltip: "Needs attention means a page/query lost clicks or ranking versus baseline.",
+      label: "Traffic at risk",
+      value: bubbleValue("risk"),
+      countLabel: `${insights.segments.needsAttention} rows`,
+      example: evidenceLabel(insights.actionRows.protectTraffic[0], "No declining rows in this window."),
+      action: "Review page",
+      filter: { status: "needs_attention" },
+      toneClass: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.08)] hover:border-[hsl(var(--status-error)/0.55)]",
+      barClass: "bg-[hsl(var(--status-error))]",
     },
     {
-      title: "Lift CTR",
-      description: "High impressions with weak click-through.",
-      icon: MousePointerClick,
-      count: insights.segments.ctrOpportunities,
-      kind: "ctr" as const,
-      rows: insights.actionRows.liftCtr,
-      tooltip: "CTR opportunities have meaningful impressions but trail the site average CTR.",
+      label: "CTR upside",
+      value: bubbleValue("ctr"),
+      countLabel: `${insights.segments.ctrOpportunities} rows`,
+      example: evidenceLabel(insights.actionRows.liftCtr[0], "No under-clicking high-impression rows."),
+      action: "Rewrite snippet",
+      filter: { opportunity: "low_ctr" },
+      toneClass: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.08)] hover:border-[hsl(var(--status-warning)/0.55)]",
+      barClass: "bg-[hsl(var(--status-warning))]",
     },
     {
-      title: "Push striking distance",
-      description: "Queries near page-one wins.",
-      icon: TrendingUp,
-      count: insights.segments.strikingDistance,
-      kind: "lift" as const,
-      rows: insights.actionRows.strikingDistance,
-      tooltip: "Striking distance is average position 4-15 with enough impressions to matter.",
+      label: "Striking distance",
+      value: bubbleValue("lift"),
+      countLabel: `${insights.segments.strikingDistance} rows`,
+      example: evidenceLabel(insights.actionRows.strikingDistance[0], "No near-page-one query with enough volume."),
+      action: "Build links",
+      filter: { opportunity: "almost_ranking" },
+      toneClass: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.08)] hover:border-[hsl(var(--status-warning)/0.55)]",
+      barClass: "bg-[hsl(var(--status-warning))]",
+    },
+    {
+      label: "Improved wins",
+      value: bubbleValue("improved"),
+      countLabel: `${insights.segments.improved} rows`,
+      example: evidenceLabel(improvedExample, "No confirmed wins yet."),
+      action: "Review wins",
+      filter: { status: "improved" },
+      toneClass: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.08)] hover:border-[hsl(var(--status-success)/0.55)]",
+      barClass: "bg-[hsl(var(--status-success))]",
     },
   ];
+  return items;
+}
+
+function evidenceLabel(row: SearchInsightRow | undefined, fallback: string) {
+  if (!row) return fallback;
+  const subject = row.query || compactUrl(row.label);
+  return `${subject} · ${formatCompactNumber(row.impressions)} impressions · pos ${row.position.toFixed(1)}`;
+}
+
+function OptimizationQueue({
+  insights,
+  onOpenOptimize,
+}: {
+  insights: SearchConsoleInsights;
+  onOpenOptimize: (filter?: { status?: string; opportunity?: string }) => void;
+}) {
+  const [filter, setFilter] = useState<"all" | "risk" | "ctr" | "lift">("all");
+  const rows = useMemo(() => {
+    const queue = [
+      ...insights.actionRows.protectTraffic.map((row) => queueItem(row, "risk" as const, "Protect traffic", "Review page", { status: "needs_attention" })),
+      ...insights.actionRows.liftCtr.map((row) => queueItem(row, "ctr" as const, "Lift CTR", "Rewrite snippet", { opportunity: "low_ctr" })),
+      ...insights.actionRows.strikingDistance.map((row) => queueItem(row, "lift" as const, "Build page-one push", "Build links", { opportunity: "almost_ranking" })),
+    ];
+    return queue
+      .filter((item) => filter === "all" || item.kind === filter)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+  }, [filter, insights.actionRows.liftCtr, insights.actionRows.protectTraffic, insights.actionRows.strikingDistance]);
+
+  const counts = {
+    all: insights.segments.needsAttention + insights.segments.ctrOpportunities + insights.segments.strikingDistance,
+    risk: insights.segments.needsAttention,
+    ctr: insights.segments.ctrOpportunities,
+    lift: insights.segments.strikingDistance,
+  };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {lanes.map((lane) => (
-        <BywordCard key={lane.title}>
-          <div className="space-y-4 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <IconTile icon={lane.icon} className={cn(lane.kind === "risk" && "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]", lane.kind !== "risk" && "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]")} />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-semibold text-foreground">{lane.title}</h3>
-                    <InfoTip text={lane.tooltip} />
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{lane.description}</p>
-                </div>
-              </div>
-              <Badge variant="secondary">{lane.count}</Badge>
-            </div>
-            <div className="space-y-2">
-              {lane.rows.length ? lane.rows.slice(0, 3).map((row) => (
-                <MiniInsightRow key={`${lane.title}-${row.label}`} row={row} />
-              )) : (
-                <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">No active signal in this window.</p>
+    <BywordCard>
+      <div className="flex flex-col gap-4 border-b border-byword-border px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <SectionTitle icon={AlertTriangle} title="Optimization queue" description="One ranked work list across risk, CTR, and page-one opportunities." />
+        <div className="inline-flex w-fit flex-wrap rounded-md border border-border bg-muted p-1">
+          {[
+            ["all", "All"],
+            ["risk", "Risk"],
+            ["ctr", "CTR"],
+            ["lift", "Page one"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value as typeof filter)}
+              className={cn(
+                "rounded px-3 py-1.5 text-sm font-medium transition-calm",
+                filter === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
+            >
+              {label} <span className="font-mono text-xs">({counts[value as keyof typeof counts]})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="divide-y divide-byword-border">
+        {rows.length ? rows.map((item) => {
+          const trend = formatDelta(item.row.deltaClicks, {});
+          return (
+            <div key={`${item.kind}-${item.row.pageUrl}-${item.row.query}`} className="grid gap-3 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_420px_auto] lg:items-center lg:px-6">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={item.kind === "risk" ? "destructive" : "secondary"}>{item.label}</Badge>
+                  <span className="font-mono text-xs text-muted-foreground">score {formatCompactNumber(item.score)}</span>
+                </div>
+                <p className="mt-2 truncate font-semibold text-foreground">{item.row.query || compactUrl(item.row.label)}</p>
+                {item.row.pageUrl && <p className="mt-1 truncate text-sm text-muted-foreground">{compactUrl(item.row.pageUrl)}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">
+                <QueueMetric label="Clicks" value={formatCompactNumber(item.row.clicks)} />
+                <QueueMetric label="Impr." value={formatCompactNumber(item.row.impressions)} />
+                <QueueMetric label="CTR" value={formatPercent(item.row.ctr)} />
+                <QueueMetric label="Pos." value={item.row.position.toFixed(1)} />
+                <QueueMetric label="Delta" value={trend.label} />
+              </div>
+              <Button variant="outline" size="sm" onClick={() => onOpenOptimize(item.filter)}>
+                {item.action}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button variant="outline" className="w-full" onClick={() => onSelectTab("optimize")}>
-              Open Optimize <ArrowRight className="ml-1.5 h-4 w-4" />
-            </Button>
-          </div>
-        </BywordCard>
-      ))}
+          );
+        }) : (
+          <div className="p-8 text-center text-sm text-muted-foreground">No actionable search signal in this window.</div>
+        )}
+      </div>
+    </BywordCard>
+  );
+}
+
+function QueueMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-byword-border bg-muted/20 px-2 py-1.5">
+      <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate font-semibold text-foreground">{value}</p>
     </div>
   );
+}
+
+function queueItem(
+  row: SearchInsightRow,
+  kind: "risk" | "ctr" | "lift",
+  label: string,
+  action: string,
+  filter: { status?: string; opportunity?: string },
+) {
+  const score = kind === "risk"
+    ? Math.max(1, Math.abs(row.deltaClicks || 0) * 20 + Math.max(0, row.deltaPosition || 0) * 10 + row.impressions)
+    : kind === "ctr"
+      ? Math.max(1, row.impressions * Math.max(0.05, 0.12 - row.ctr))
+      : Math.max(1, row.impressions / Math.max(1, row.position));
+  return { row, kind, label, action, filter, score };
 }
 
 function RankedBars({ title, icon, rows, color }: { title: string; icon: LucideIcon; rows: SearchInsightRow[]; color: string }) {
@@ -683,24 +904,6 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-function MiniInsightRow({ row }: { row: SearchInsightRow }) {
-  const trend = formatDelta(row.deltaClicks, {});
-  return (
-    <div className="rounded-md border border-byword-border px-3 py-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">{row.query || compactUrl(row.label)}</span>
-        <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-xs font-medium", rowTone[row.kind])}>{row.kind}</span>
-      </div>
-      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        {row.pageUrl && <span className="max-w-full truncate">{compactUrl(row.pageUrl)}</span>}
-        <span>{formatCompactNumber(row.clicks)} clicks</span>
-        <span>{formatCompactNumber(row.impressions)} impressions</span>
-        <span>{trend.label}</span>
-      </div>
-    </div>
-  );
-}
-
 function chartValueLabel(value: number, metric: "clicks" | "ctr" | "position" | "impressions") {
   if (metric === "ctr") return formatPercent(value);
   if (metric === "position") return value.toFixed(1);
@@ -712,12 +915,6 @@ function chartName(name: string, lineMetric: "clicks" | "ctr" | "position") {
   if (lineMetric === "ctr") return "CTR";
   if (lineMetric === "position") return "Avg position";
   return "Clicks";
-}
-
-function bubbleDotClass(kind: SearchOpportunityBubble["kind"]) {
-  if (kind === "risk") return "bg-[hsl(var(--status-error))]";
-  if (kind === "improved") return "bg-[hsl(var(--status-success))]";
-  return "bg-[hsl(var(--status-warning))]";
 }
 
 function compactUrl(value: string) {
