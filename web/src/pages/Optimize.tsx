@@ -56,6 +56,81 @@ const opportunityFilters: Array<{ value: OptimizeOpportunity; label: string }> =
   { value: "weak_focus", label: "Weak focus" },
 ];
 
+const opportunityMeta: Record<string, { label: string; action: string; tone: string; dot: string; rail: string; row: string }> = {
+  needs_attention: {
+    label: "Needs attention",
+    action: "Review decline",
+    tone: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.10)] text-[hsl(var(--status-error))]",
+    dot: "bg-[hsl(var(--status-error))]",
+    rail: "bg-[hsl(var(--status-error))]",
+    row: "bg-[hsl(var(--status-error)/0.04)]",
+  },
+  wrong_page_risk: {
+    label: "Wrong page risk",
+    action: "Check intent",
+    tone: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.10)] text-[hsl(var(--status-error))]",
+    dot: "bg-[hsl(var(--status-error))]",
+    rail: "bg-[hsl(var(--status-error))]",
+    row: "bg-[hsl(var(--status-error)/0.04)]",
+  },
+  low_ctr: {
+    label: "Low CTR",
+    action: "Rewrite snippet",
+    tone: "border-[hsl(var(--status-warning)/0.4)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+    dot: "bg-[hsl(var(--status-warning))]",
+    rail: "bg-[hsl(var(--status-warning))]",
+    row: "bg-[hsl(var(--status-warning)/0.04)]",
+  },
+  zero_clicks: {
+    label: "Zero clicks",
+    action: "Improve snippet",
+    tone: "border-[hsl(var(--status-warning)/0.4)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
+    dot: "bg-[hsl(var(--status-warning))]",
+    rail: "bg-[hsl(var(--status-warning))]",
+    row: "bg-[hsl(var(--status-warning)/0.04)]",
+  },
+  almost_ranking: {
+    label: "Almost ranking",
+    action: "Build links",
+    tone: "border-byword-blue/30 bg-byword-blue-soft text-byword-blue",
+    dot: "bg-byword-blue",
+    rail: "bg-byword-blue",
+    row: "bg-byword-blue-soft/45",
+  },
+  page_two: {
+    label: "Page two",
+    action: "Expand section",
+    tone: "border-byword-blue/30 bg-byword-blue-soft text-byword-blue",
+    dot: "bg-byword-blue",
+    rail: "bg-byword-blue",
+    row: "bg-byword-blue-soft/45",
+  },
+  weak_focus: {
+    label: "Weak focus",
+    action: "Tighten intent",
+    tone: "border-slate-300 bg-slate-100 text-slate-700",
+    dot: "bg-slate-500",
+    rail: "bg-slate-500",
+    row: "bg-slate-50",
+  },
+  growing: {
+    label: "Growing",
+    action: "Reinforce win",
+    tone: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.10)] text-[hsl(var(--status-success))]",
+    dot: "bg-[hsl(var(--status-success))]",
+    rail: "bg-[hsl(var(--status-success))]",
+    row: "bg-[hsl(var(--status-success)/0.04)]",
+  },
+  tracking: {
+    label: "Tracking",
+    action: "Track",
+    tone: "border-byword-border bg-muted/40 text-muted-foreground",
+    dot: "bg-muted-foreground",
+    rail: "bg-border",
+    row: "",
+  },
+};
+
 const searchConsoleOAuthSteps = [
   "Use the Google account that owns or can read this Search Console property.",
   "Click Continue with Google and approve read-only Search Console access.",
@@ -351,13 +426,18 @@ export function OptimizePanel() {
                 <TableBody>
                   {pageInsights.map((page) => {
                     const tracked = visiblePages.find((oldPage) => oldPage.pageUrl === page.pageUrl && oldPage.targetQuery === page.topQuery);
+                    const primary = primaryOpportunity(page);
+                    const meta = opportunityMeta[primary] || opportunityMeta.tracking;
                     return (
-                      <TableRow key={page.pageUrl}>
+                      <TableRow key={page.pageUrl} className={cn("align-top", meta.row)}>
                         <TableCell className="max-w-[360px]">
-                          <button type="button" className="block max-w-full text-left" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>
-                            <span className="block truncate font-semibold text-foreground">{compactUrl(page.pageUrl)}</span>
-                            <span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{page.pageUrl}</span>
-                          </button>
+                          <div className="flex min-w-0 gap-3">
+                            <span className={cn("mt-1 h-11 w-1 shrink-0 rounded-full", meta.rail)} />
+                            <button type="button" className="block min-w-0 max-w-full text-left" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>
+                              <span className="block truncate font-semibold text-foreground">{compactUrl(page.pageUrl)}</span>
+                              <span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{page.pageUrl}</span>
+                            </button>
+                          </div>
                         </TableCell>
                         <TableCell className="max-w-[260px]">
                           <div className="flex flex-wrap items-center gap-2">
@@ -365,23 +445,31 @@ export function OptimizePanel() {
                             <span className="font-mono text-xs text-muted-foreground">{formatDelta(page)}</span>
                           </div>
                           <p className="mt-2 truncate text-sm font-medium text-foreground">{page.topQuery}</p>
+                          <OpportunityBadges opportunities={page.opportunities} />
                         </TableCell>
                         <TableCell>
-                          <div className="grid min-w-[220px] grid-cols-4 gap-2">
+                          <div className="grid min-w-[300px] grid-cols-4 gap-2">
                             <MiniMetric label="Clk" value={String(page.clicks)} />
                             <MiniMetric label="Impr" value={String(page.impressions)} />
                             <MiniMetric label="CTR" value={formatPercent(page.ctr)} />
                             <MiniMetric label="Pos" value={page.position.toFixed(1)} />
                           </div>
                         </TableCell>
-                        <TableCell className="max-w-[280px] text-sm leading-6">{page.suggestedAction}</TableCell>
+                        <TableCell className="max-w-[300px]">
+                          <div className="space-y-2">
+                            <Badge variant="outline" className={cn("border font-mono text-[10px] uppercase", meta.tone)}>{meta.action}</Badge>
+                            <p className="text-sm leading-6 text-foreground">{page.suggestedAction}</p>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
-                            <Button variant="outline" size="sm" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
-                            <Button variant="ghost" size="sm" onClick={() => tracked && markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending || !tracked}>
-                              Done
-                            </Button>
+                            <Button variant="outline" size="sm" className="border-byword-blue/35 text-byword-blue hover:bg-byword-blue-soft" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
+                            <Button variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary/10" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
+                            {tracked && (
+                              <Button variant="ghost" size="sm" onClick={() => markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending}>
+                                Done
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -659,29 +747,54 @@ function OpportunityStrip({
   const items = opportunityFilters.filter((item) => item.value !== "all");
   return (
     <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-      {items.map((item) => (
-        <button
-          key={item.value}
-          type="button"
-          onClick={() => onSelect(item.value)}
-          className={cn(
-            "rounded-lg border border-byword-border bg-card p-3 text-left text-sm transition-colors hover:border-byword-blue",
-            active === item.value && "border-byword-blue bg-byword-blue-soft"
-          )}
-        >
-          <span className="block font-semibold text-foreground">{item.label}</span>
-          <span className="mt-1 block text-muted-foreground">{counts[item.value] || 0} pages</span>
-        </button>
-      ))}
+      {items.map((item) => {
+        const meta = opportunityMeta[item.value] || opportunityMeta.tracking;
+        const isActive = active === item.value;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => onSelect(item.value)}
+            className={cn(
+              "rounded-lg border bg-card p-3 text-left text-sm transition-colors hover:border-byword-blue",
+              isActive ? meta.tone : "border-byword-border"
+            )}
+          >
+            <span className="flex items-center gap-2 font-semibold text-foreground">
+              <span className={cn("h-2.5 w-2.5 rounded-full", meta.dot)} />
+              {item.label}
+            </span>
+            <span className="mt-2 block text-muted-foreground">{counts[item.value] || 0} pages</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-byword-border bg-muted/20 px-2 py-1.5">
+    <div className="min-w-[64px] rounded-md border border-byword-border bg-card px-2.5 py-2">
       <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
-      <p className="truncate text-sm font-semibold text-foreground">{value}</p>
+      <p className="whitespace-nowrap text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function OpportunityBadges({ opportunities }: { opportunities: string[] }) {
+  const visible = opportunities.length ? opportunities.slice(0, 3) : ["tracking"];
+  const overflow = Math.max(0, opportunities.length - visible.length);
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {visible.map((item) => {
+        const meta = opportunityMeta[item] || opportunityMeta.tracking;
+        return (
+          <Badge key={item} variant="outline" className={cn("border px-1.5 py-0 font-mono text-[10px] uppercase", meta.tone)}>
+            {meta.label}
+          </Badge>
+        );
+      })}
+      {overflow > 0 && <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px] uppercase">+{overflow}</Badge>}
     </div>
   );
 }
@@ -723,6 +836,7 @@ function PageDetailSheet({
                   </div>
                   <h3 className="mt-3 truncate text-lg font-semibold text-foreground">{insight.topQuery}</h3>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{compactUrl(insight.pageUrl)}</p>
+                  <OpportunityBadges opportunities={insight.opportunities} />
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[420px]">
                   <Metric label="Clicks" value={insight.clicks} />
@@ -911,8 +1025,13 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 
 function OptimizeStatusBadge({ status }: { status: string }) {
   if (status === "needs_attention") return <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Needs attention</Badge>;
-  if (status === "improved") return <Badge><CheckCircle2 className="mr-1 h-3 w-3" />Improved</Badge>;
-  return <Badge variant="secondary">Tracking</Badge>;
+  if (status === "improved") return <Badge className="bg-[hsl(var(--status-success))] text-white"><CheckCircle2 className="mr-1 h-3 w-3" />Improved</Badge>;
+  return <Badge variant="secondary" className="border border-byword-border">Tracking</Badge>;
+}
+
+function primaryOpportunity(page: OptimizePageInsight) {
+  const priority = ["needs_attention", "wrong_page_risk", "low_ctr", "zero_clicks", "almost_ranking", "page_two", "weak_focus", "growing"];
+  return priority.find((item) => page.opportunities.includes(item)) || page.status || "tracking";
 }
 
 function formatPercent(value: number) {

@@ -252,7 +252,7 @@ function SearchGrowthOverview({
           ]}
         />
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
           <PerformanceCard insights={insights} />
           <OpportunityLedger insights={insights} onOpenOptimize={onOpenOptimize} />
         </div>
@@ -474,14 +474,18 @@ function OpportunityLedger({
         <SectionTitle icon={Target} title="Opportunity ledger" description="Ranked search upside with the first evidence row and the next tool to open." />
       </div>
       <div className="space-y-3 p-4 sm:p-5">
-        {ledger.map((item) => (
+        {ledger.map((item) => {
+          const isEmpty = item.value <= 0;
+          return (
           <button
             key={item.label}
             type="button"
             onClick={() => onOpenOptimize(item.filter)}
             className={cn(
               "group w-full rounded-md border p-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40",
-              item.toneClass
+              isEmpty
+                ? "border-byword-border bg-muted/20 text-muted-foreground hover:border-byword-border"
+                : item.toneClass
             )}
           >
             <div className="flex items-start justify-between gap-4">
@@ -490,19 +494,20 @@ function OpportunityLedger({
                   <span className="font-mono text-[11px] font-bold uppercase opacity-75">{item.label}</span>
                   <Badge variant="outline">{item.countLabel}</Badge>
                 </div>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{formatCompactNumber(item.value)}</p>
+                <p className={cn("mt-2 text-2xl font-semibold", isEmpty ? "text-muted-foreground" : "text-foreground")}>{formatCompactNumber(item.value)}</p>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-foreground">
+              <span className={cn("inline-flex shrink-0 items-center gap-1 text-sm font-semibold", isEmpty ? "text-muted-foreground" : "text-foreground")}>
                 {item.action}
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/70">
-              <div className={cn("h-full rounded-full", item.barClass)} style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+              <div className={cn("h-full rounded-full", item.barClass)} style={{ width: isEmpty ? "0%" : `${Math.max(4, (item.value / max) * 100)}%` }} />
             </div>
             <p className="mt-3 truncate text-sm opacity-80">{item.example}</p>
           </button>
-        ))}
+          );
+        })}
       </div>
     </BywordCard>
   );
