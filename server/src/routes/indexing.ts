@@ -187,5 +187,7 @@ function sanitizeConfig(value: unknown) {
 }
 
 function defaultDisplayName(provider: string) {
-  return provider === "google" ? "Google" : "IndexNow";
+  if (provider === "google") return "Google";
+  if (provider === "bing") return "Bing Webmaster";
+  return "IndexNow";
 }

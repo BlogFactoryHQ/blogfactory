@@ -100,7 +100,7 @@ export default function Dashboard() {
     },
     {
       title: "Indexing",
-      description: connectedIndexing.length ? "Auto-submit can start after publishing." : "Connect IndexNow before large batches.",
+      description: connectedIndexing.length ? "Auto-submit can start after publishing." : "Connect Bing Webmaster or IndexNow before large batches.",
       href: "/search-growth?tab=indexing",
       action: "Search Growth",
       done: connectedIndexing.length > 0,

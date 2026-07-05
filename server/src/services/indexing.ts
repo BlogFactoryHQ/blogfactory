@@ -8,10 +8,10 @@ const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const GOOGLE_INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
 const OAUTH_STATE_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
 
-export type IndexingProvider = "indexnow" | "google";
+export type IndexingProvider = "indexnow" | "bing" | "google";
 export type SubmissionSource = "manual" | "publish";
 
-export const INDEXING_PROVIDERS: IndexingProvider[] = ["indexnow", "google"];
+export const INDEXING_PROVIDERS: IndexingProvider[] = ["indexnow", "bing", "google"];
 
 type IntegrationRow = typeof indexingIntegrations.$inferSelect;
 type SiteRow = typeof sites.$inferSelect;
@@ -19,6 +19,11 @@ type SiteRow = typeof sites.$inferSelect;
 interface IndexNowCredentials {
   key: string;
   keyLocation: string;
+}
+
+interface BingWebmasterCredentials {
+  apiKey: string;
+  siteUrl?: string;
 }
 
 interface GoogleCredentials {
@@ -150,6 +155,7 @@ export async function testIndexingIntegration(row: IntegrationRow) {
   const provider = row.provider as IndexingProvider;
   const credentials = decryptIndexingCredentials(row);
   if (provider === "indexnow") return testIndexNow(credentials as IndexNowCredentials);
+  if (provider === "bing") return testBingWebmaster(credentials as BingWebmasterCredentials, await getIntegrationSite(row));
   return testGoogle(credentials as GoogleCredentials);
 }
 
@@ -256,7 +262,9 @@ export async function submitUrlsForSite(userId: string, siteId: string, rawUrls:
     try {
       const submitted = integration.provider === "indexnow"
         ? await submitIndexNow(integration, site, urls, source)
-        : await submitGoogle(integration, site, urls, source);
+        : integration.provider === "bing"
+          ? await submitBingWebmaster(integration, site, urls, source)
+          : await submitGoogle(integration, site, urls, source);
       created.push(...submitted);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Submission failed";
@@ -334,6 +342,20 @@ function validateCredentials(provider: IndexingProvider, input: unknown) {
     return credentials;
   }
 
+  if (provider === "bing") {
+    const credentials = {
+      apiKey: String(record.apiKey || record.api_key || "").trim(),
+      siteUrl: String(record.siteUrl || record.site_url || "").trim(),
+    };
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(credentials.apiKey)) {
+      throw new Error("Bing Webmaster API key must be 16-128 letters, numbers, underscores, or dashes");
+    }
+    return {
+      apiKey: credentials.apiKey,
+      ...(credentials.siteUrl ? { siteUrl: normalizeHttpUrl(credentials.siteUrl) } : {}),
+    };
+  }
+
   const credentials = {
     type: "service_account" as const,
     client_email: String(record.client_email || "").trim(),
@@ -355,8 +377,9 @@ function validateCredentials(provider: IndexingProvider, input: unknown) {
   return credentials;
 }
 
-function credentialHint(provider: IndexingProvider, credentials: IndexNowCredentials | GoogleCredentials) {
+function credentialHint(provider: IndexingProvider, credentials: IndexNowCredentials | BingWebmasterCredentials | GoogleCredentials) {
   if (provider === "indexnow") return (credentials as IndexNowCredentials).key.slice(-8);
+  if (provider === "bing") return `Bing API key ...${(credentials as BingWebmasterCredentials).apiKey.slice(-6)}`;
   if ((credentials as GoogleCredentials).type === "oauth") return "Google OAuth";
   return (credentials as GoogleCredentials).client_email || "Google";
 }
@@ -371,12 +394,33 @@ async function getUserSite(userId: string, siteId: string) {
   return site;
 }
 
+async function getIntegrationSite(row: IntegrationRow) {
+  const [site] = await db
+    .select()
+    .from(sites)
+    .where(and(eq(sites.id, row.siteId), eq(sites.userId, row.userId)))
+    .limit(1);
+  if (!site) throw new Error("Site not found");
+  return site;
+}
+
 async function testIndexNow(credentials: IndexNowCredentials) {
   const response = await fetch(credentials.keyLocation, { signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`Key file returned ${response.status}`);
   const text = (await response.text()).trim();
   if (text !== credentials.key) throw new Error("Key file does not contain the IndexNow key");
   return { success: true, message: "IndexNow key file verified" };
+}
+
+async function testBingWebmaster(credentials: BingWebmasterCredentials, site: SiteRow) {
+  const siteUrl = bingSiteUrl(credentials, site);
+  const url = new URL("https://ssl.bing.com/webmaster/api.svc/json/GetUrlSubmissionQuota");
+  url.searchParams.set("siteUrl", siteUrl);
+  url.searchParams.set("apikey", credentials.apiKey);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  const body = await response.text();
+  if (!response.ok) throw new Error(bingErrorMessage(response.status, body, "Bing Webmaster test failed"));
+  return { success: true, message: `Bing Webmaster API connected for ${siteUrl}` };
 }
 
 async function testGoogle(credentials: GoogleCredentials) {
@@ -429,6 +473,48 @@ async function submitIndexNow(integration: IntegrationRow, site: SiteRow, urls: 
       errorMessage,
       responseData: { responses },
       submittedAt: new Date(),
+    }));
+  }
+  return created;
+}
+
+async function submitBingWebmaster(integration: IntegrationRow, site: SiteRow, urls: string[], source: SubmissionSource) {
+  const credentials = decryptIndexingCredentials(integration) as BingWebmasterCredentials;
+  const siteUrl = bingSiteUrl(credentials, site);
+  const responses: Array<{ status: number; body: string; count: number }> = [];
+  const created = [];
+  const chunks = chunk(urls, 500);
+
+  for (const urlList of chunks) {
+    const endpoint = new URL("https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch");
+    endpoint.searchParams.set("apikey", credentials.apiKey);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ siteUrl, urlList }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = (await response.text()).slice(0, 1000);
+    responses.push({ status: response.status, body, count: urlList.length });
+  }
+
+  const failed = responses.find((response) => response.status !== 200);
+  const status = failed ? "failed" : "accepted";
+  const errorMessage = failed ? bingErrorMessage(failed.status, failed.body, "Bing Webmaster submission failed") : undefined;
+  await db.update(indexingIntegrations).set({ lastSubmitAt: new Date() }).where(eq(indexingIntegrations.id, integration.id));
+
+  for (const url of urls) {
+    created.push(await insertSubmission({
+      userId: integration.userId,
+      siteId: site.id,
+      integrationId: integration.id,
+      provider: "bing",
+      url,
+      source,
+      status,
+      errorMessage,
+      responseData: { siteUrl, responses },
+      submittedAt: status === "accepted" ? new Date() : undefined,
     }));
   }
   return created;
@@ -704,6 +790,29 @@ function groupByHost(urls: string[]) {
     groups.set(host, [...(groups.get(host) || []), url]);
   }
   return groups;
+}
+
+function bingSiteUrl(credentials: BingWebmasterCredentials, site: SiteRow) {
+  return credentials.siteUrl || normalizeHttpUrl(site.domain);
+}
+
+function bingErrorMessage(status: number, body: string, fallback: string) {
+  const value = body.trim();
+  if (!value) return `${fallback}: Bing returned ${status}`;
+  try {
+    const parsed = JSON.parse(value) as { error?: { message?: string }; Message?: string };
+    return parsed.error?.message || parsed.Message || `${fallback}: Bing returned ${status}`;
+  } catch {
+    return `${fallback}: Bing returned ${status} ${value.slice(0, 200)}`;
+  }
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function parseJson(value: string) {

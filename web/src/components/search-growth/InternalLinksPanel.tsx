@@ -239,7 +239,7 @@ export function InternalLinksPanel() {
           {
             label: "Indexing",
             value: indexingIntegrations.some((item) => item.status === "connected") ? "Provider ready" : "Not connected",
-            detail: indexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect IndexNow to close the edit-submit loop.",
+            detail: indexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect Bing Webmaster or IndexNow to close the edit-submit loop.",
             state: indexingIntegrations.some((item) => item.status === "connected") ? "ready" : "idle",
           },
         ]}

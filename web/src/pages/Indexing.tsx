@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
+  Search,
   Loader2,
   RefreshCw,
   SearchCheck,
@@ -59,6 +60,22 @@ const providerDetails: Record<IndexingProvider, {
       { key: "keyLocation", label: "Key file URL", placeholder: "https://example.com/your-key.txt" },
     ],
   },
+  bing: {
+    name: "Bing Webmaster",
+    description: "Submit article URLs directly to Bing with a verified Bing Webmaster API key.",
+    badge: "Bing only",
+    icon: Search,
+    helpUrl: "https://learn.microsoft.com/en-us/bingwebmaster/getting-access",
+    setupSteps: [
+      "Add and verify this site in Bing Webmaster Tools.",
+      "Open Settings > API Access > API Key, then generate or copy the API key.",
+      "Paste the API key here. Use the exact verified site URL if Bing has a www or protocol-specific property.",
+    ],
+    fields: [
+      { key: "apiKey", label: "Bing Webmaster API key", placeholder: "Paste API key" },
+      { key: "siteUrl", label: "Verified site URL", placeholder: "https://example.com" },
+    ],
+  },
   google: {
     name: "Google",
     description: "Submit eligible JobPosting or BroadcastEvent pages with the Google Indexing API.",
@@ -77,7 +94,7 @@ const providerDetails: Record<IndexingProvider, {
   },
 };
 
-const providers: IndexingProvider[] = ["indexnow", "google"];
+const providers: IndexingProvider[] = ["indexnow", "bing", "google"];
 
 export function IndexingPanel() {
   const { activeSite } = useSites();
@@ -160,15 +177,15 @@ export function IndexingPanel() {
             {
               label: "Indexing providers",
               value: integrations.length ? `${integrations.length} configured` : "Not connected",
-              detail: integrations.length ? `${stats.accepted} accepted, ${stats.queued} queued, ${stats.failed} failed.` : "Connect IndexNow for normal article URLs.",
+              detail: integrations.length ? `${stats.accepted} accepted, ${stats.queued} queued, ${stats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal article URLs.",
               state: integrations.some((item) => item.status === "connected") ? "ready" : "warning",
             },
           ]}
         />
 
         <BywordCard>
-          <SectionHeader icon={CheckCircle2} title="Providers" description="Connect IndexNow for regular articles; Google is gated to eligible structured-data pages." />
-          <div className="grid gap-4 p-6 lg:grid-cols-2">
+          <SectionHeader icon={CheckCircle2} title="Providers" description="Use Bing Webmaster for Bing-only submissions, IndexNow for multi-engine, and Google only for eligible structured-data pages." />
+          <div className="grid gap-4 p-6 xl:grid-cols-3">
             {providers.map((provider) => {
               const details = providerDetails[provider];
               const integration = byProvider.get(provider);
@@ -267,7 +284,7 @@ export function IndexingPanel() {
           ) : submissions.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
               <p>No indexing submissions yet.</p>
-              <p className="mt-2 text-sm">Connect IndexNow before publishing large batches.</p>
+              <p className="mt-2 text-sm">Connect Bing Webmaster or IndexNow before publishing large batches.</p>
             </div>
           ) : (
             <Table>
@@ -380,8 +397,9 @@ function IndexingSetupDialog({
     } else if (details) {
       setDisplayName(details.name);
       setAutoSubmit(true);
+      setCredentials(activeProvider === "bing" && siteDomain ? { siteUrl: canonicalSiteUrl(siteDomain) } : {});
     }
-  }, [details, integration]);
+  }, [activeProvider, details, integration, siteDomain]);
 
   const setCredential = (key: string, value: string) => setCredentials((current) => ({ ...current, [key]: value }));
 
@@ -561,6 +579,16 @@ function indexNowKeyLocation(domain: string, key: string) {
   return host ? `https://${host}/${key}.txt` : "";
 }
 
+function canonicalSiteUrl(domain: string) {
+  const value = domain.trim();
+  if (!value) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).origin;
+  } catch {
+    return `https://${value}`;
+  }
+}
+
 function formatSetupStep(step: string, key?: string) {
   return step.replace("{key}", key || "your-key");
 }
@@ -601,7 +629,9 @@ function comparableHost(value: string) {
 }
 
 function providerLabel(provider: string) {
-  return provider === "google" ? "Google" : "IndexNow";
+  if (provider === "google") return "Google";
+  if (provider === "bing") return "Bing Webmaster";
+  return "IndexNow";
 }
 
 function StatusBadge({ status }: { status: string }) {

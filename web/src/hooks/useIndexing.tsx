@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useSites } from "@/hooks/useSites";
 
-export type IndexingProvider = "indexnow" | "google";
+export type IndexingProvider = "indexnow" | "bing" | "google";
 
 export interface IndexingIntegration {
   id: string;

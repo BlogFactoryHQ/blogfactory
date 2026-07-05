@@ -238,7 +238,7 @@ function SearchGrowthOverview({
             {
               label: "Indexing",
               value: connectedIndexing ? `${connectedIndexing} provider connected` : "Not connected",
-              detail: connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect IndexNow to submit edited pages.",
+              detail: connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect Bing Webmaster or IndexNow to submit edited pages.",
               state: connectedIndexing ? "ready" : "idle",
               action: <Button variant="outline" size="sm" onClick={() => onSelectTab("indexing")}>Open Indexing</Button>,
             },
@@ -835,7 +835,7 @@ function SupportCards({
         icon={Send}
         title="URL Indexing"
         badge={connectedIndexing ? `${connectedIndexing} connected` : "Not connected"}
-        description={connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect IndexNow for normal articles."}
+        description={connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal articles."}
         action="Open Indexing"
         onClick={() => onSelectTab("indexing")}
       />
