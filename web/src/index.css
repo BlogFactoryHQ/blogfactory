@@ -101,13 +101,29 @@
 
   html {
     background: hsl(var(--background));
+    font-size: 16px;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "ss01";
+    font-feature-settings: "ss01", "kern";
+    font-synthesis-weight: none;
     letter-spacing: 0;
+    line-height: 1.5;
     text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
   }
 
   [class*="tracking-"] {
@@ -213,6 +229,39 @@
 }
 
 @layer components {
+  .type-kicker {
+    @apply font-mono text-[10px] font-semibold uppercase text-muted-foreground;
+  }
+
+  .type-page-title {
+    @apply break-words text-2xl font-semibold leading-[1.12] text-foreground sm:text-[26px];
+  }
+
+  .type-panel-title {
+    @apply break-words text-base font-semibold leading-snug text-foreground;
+  }
+
+  .type-object-title {
+    @apply min-w-0 break-words text-sm font-semibold leading-snug text-foreground;
+  }
+
+  .type-body {
+    @apply text-sm leading-6 text-muted-foreground;
+  }
+
+  .type-meta {
+    @apply font-mono text-[11px] leading-4 text-muted-foreground;
+  }
+
+  .type-data {
+    @apply font-mono font-medium text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .type-editorial {
+    @apply text-[15px] leading-7 text-foreground;
+  }
+
   .status-badge {
     @apply inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold;
   }
@@ -238,7 +287,7 @@
   }
 
   .section-label {
-    @apply font-mono text-[10px] font-semibold uppercase text-muted-foreground;
+    @apply type-kicker;
   }
 
   .calm-card {
