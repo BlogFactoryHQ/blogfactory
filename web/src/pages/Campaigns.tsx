@@ -408,7 +408,6 @@ function CampaignDetail({ id }: { id: string }) {
               <TableHead>Step</TableHead>
               <TableHead>Post</TableHead>
               <TableHead>Error</TableHead>
-              <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -430,15 +429,14 @@ function CampaignDetail({ id }: { id: string }) {
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/posts/${item.postId}/edit`}><ExternalLink className="mr-2 h-3.5 w-3.5" />Open</Link>
                     </Button>
+                  ) : item.status === "failed" ? (
+                    <Button variant="outline" size="sm" onClick={() => action.mutate(`/campaigns/${campaign.id}/items/${item.id}/retry`)} disabled={action.isPending}>
+                      <RotateCcw className="mr-2 h-3.5 w-3.5" />Retry
+                    </Button>
                   ) : "-"}
                 </TableCell>
-                <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{item.errorMessage || item.jobErrorMessage || "-"}</TableCell>
-                <TableCell>
-                  {item.status === "failed" && (
-                    <Button variant="outline" size="sm" onClick={() => action.mutate(`/campaigns/${campaign.id}/items/${item.id}/retry`)} disabled={action.isPending}>
-                      Retry
-                    </Button>
-                  )}
+                <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={item.errorMessage || item.jobErrorMessage || ""}>
+                  {item.errorMessage || item.jobErrorMessage || "-"}
                 </TableCell>
               </TableRow>
             ))}

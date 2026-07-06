@@ -153,6 +153,10 @@ const SEO_META_DESCRIPTION_LIMIT = 145;
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"]);
 const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
+
+function hasJobSyncBudget(startedAt: number, requiredMs: number) {
+  return JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= requiredMs;
+}
 const FAQ_TARGET: [number, number] = [3, 5];
 const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
   minimal: [1, 2],
@@ -1674,61 +1678,69 @@ export async function generateContent(opts: GenerateOpts) {
         let languageRepaired = false;
 
         if (isBlogDraftSource(opts.sourceType) && draftLanguage && !looksLikeRequestedLanguage(genContent, draftLanguage)) {
-          try {
-            await db.update(jobs).set({ currentStep: `repairing_language_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
-            const repairedLanguage = await repairArticleLanguage({
-              content: genContent,
-              language: draftLanguage,
-              draftSystemPrompt,
-              modelId,
-              openRouterKey,
-              contract: generationContract,
-            });
-            if (repairedLanguage?.content) {
-              genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(repairedLanguage.content), {
-                sourceType: opts.sourceType,
-                topic: opts.articleTitleOverride || article.title || opts.sourceValue,
-                settings: promptSettings,
+          if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
+            try {
+              await db.update(jobs).set({ currentStep: `repairing_language_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+              const repairedLanguage = await repairArticleLanguage({
+                content: genContent,
+                language: draftLanguage,
+                draftSystemPrompt,
+                modelId,
+                openRouterKey,
+                contract: generationContract,
               });
-              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
-              usageTotals.prompt += Number(repairedLanguage.usage?.prompt_tokens || 0);
-              usageTotals.completion += Number(repairedLanguage.usage?.completion_tokens || 0);
-              usageTotals.total += Number(repairedLanguage.usage?.total_tokens || 0);
-              requestCost += repairedLanguage.cost;
-              responseData.languageRepair = repairedLanguage.responseData;
-              languageRepaired = true;
+              if (repairedLanguage?.content) {
+                genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(repairedLanguage.content), {
+                  sourceType: opts.sourceType,
+                  topic: opts.articleTitleOverride || article.title || opts.sourceValue,
+                  settings: promptSettings,
+                });
+                genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
+                usageTotals.prompt += Number(repairedLanguage.usage?.prompt_tokens || 0);
+                usageTotals.completion += Number(repairedLanguage.usage?.completion_tokens || 0);
+                usageTotals.total += Number(repairedLanguage.usage?.total_tokens || 0);
+                requestCost += repairedLanguage.cost;
+                responseData.languageRepair = repairedLanguage.responseData;
+                languageRepaired = true;
+              }
+            } catch (languageErr) {
+              console.warn("[generate] Language repair failed:", languageErr instanceof Error ? languageErr.message : languageErr);
             }
-          } catch (languageErr) {
-            console.warn("[generate] Language repair failed:", languageErr instanceof Error ? languageErr.message : languageErr);
+          } else {
+            console.warn(`[generate] Skipping language repair for draft ${i + 1}: function budget nearly exhausted`);
           }
         }
 
         if (isBlogDraftSource(opts.sourceType) && generationContract.minWords && wordCount(genContent) < generationContract.minWords) {
-          try {
-            await db.update(jobs).set({ currentStep: `repairing_length_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
-            const repaired = await repairShortArticle({
-              content: genContent,
-              contract: generationContract,
-              draftSystemPrompt,
-              modelId,
-              openRouterKey,
-            });
-            if (repaired?.content) {
-              genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(repaired.content), {
-                sourceType: opts.sourceType,
-                topic: opts.articleTitleOverride || article.title || opts.sourceValue,
-                settings: promptSettings,
+          if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
+            try {
+              await db.update(jobs).set({ currentStep: `repairing_length_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+              const repaired = await repairShortArticle({
+                content: genContent,
+                contract: generationContract,
+                draftSystemPrompt,
+                modelId,
+                openRouterKey,
               });
-              genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
-              usageTotals.prompt += Number(repaired.usage?.prompt_tokens || 0);
-              usageTotals.completion += Number(repaired.usage?.completion_tokens || 0);
-              usageTotals.total += Number(repaired.usage?.total_tokens || 0);
-              requestCost += repaired.cost;
-              responseData.repair = repaired.responseData;
-              lengthRepaired = true;
+              if (repaired?.content) {
+                genContent = enforceGeneratedArticleContracts(cleanGeneratedPostContent(repaired.content), {
+                  sourceType: opts.sourceType,
+                  topic: opts.articleTitleOverride || article.title || opts.sourceValue,
+                  settings: promptSettings,
+                });
+                genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
+                usageTotals.prompt += Number(repaired.usage?.prompt_tokens || 0);
+                usageTotals.completion += Number(repaired.usage?.completion_tokens || 0);
+                usageTotals.total += Number(repaired.usage?.total_tokens || 0);
+                requestCost += repaired.cost;
+                responseData.repair = repaired.responseData;
+                lengthRepaired = true;
+              }
+            } catch (repairErr) {
+              console.warn("[generate] Length repair failed:", repairErr instanceof Error ? repairErr.message : repairErr);
             }
-          } catch (repairErr) {
-            console.warn("[generate] Length repair failed:", repairErr instanceof Error ? repairErr.message : repairErr);
+          } else {
+            console.warn(`[generate] Skipping length repair for draft ${i + 1}: function budget nearly exhausted`);
           }
         }
         const genLatency = Date.now() - genStart;
@@ -1804,32 +1816,37 @@ export async function generateContent(opts: GenerateOpts) {
         // Resolve images after the draft exists. Small AI batches run now if the function budget is still safe.
         if (opts.generateImages && opts.imageConfig) {
           try {
-            await db.update(jobs).set({
-              currentStep: imageMode === "manual_prompt"
-                ? `creating_manual_prompts_for_draft_${i + 1}`
-                : `resolving_images_for_draft_${i + 1}`,
-            }).where(eq(jobs.id, jobId));
             if (imageMode === "manual_prompt") {
-              const manualRequest = await createManualImagePromptRequest({
-                content: genContent,
-                title: postTitle,
-                userId,
-                postId: post.id,
-                jobId: jobId!,
-                modelId,
-                openRouterKey,
-                stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
-                manualPromptSuffix: manualSuffix,
-                imageConfig: opts.imageConfig,
-                provider: manualProvider,
-              });
-              imageResolutionResults.push({
-                postId: post.id,
-                title: postTitle,
-                result: manualPromptImageResolutionSummary(manualRequest.requests, manualProvider),
-              });
-              totalCost += manualRequest.cost;
+              if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
+                await db.update(jobs).set({ currentStep: `creating_manual_prompts_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+                const manualRequest = await createManualImagePromptRequest({
+                  content: genContent,
+                  title: postTitle,
+                  userId,
+                  postId: post.id,
+                  jobId: jobId!,
+                  modelId,
+                  openRouterKey,
+                  stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+                  manualPromptSuffix: manualSuffix,
+                  imageConfig: opts.imageConfig,
+                  provider: manualProvider,
+                });
+                imageResolutionResults.push({
+                  postId: post.id,
+                  title: postTitle,
+                  result: manualPromptImageResolutionSummary(manualRequest.requests, manualProvider),
+                });
+                totalCost += manualRequest.cost;
+              } else {
+                imageResolutionResults.push({
+                  postId: post.id,
+                  title: postTitle,
+                  error: "Manual image prompts were skipped because the generation was near the serverless time limit.",
+                });
+              }
             } else {
+              await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
               const immediateAi = JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= IMAGE_REQUEST_TIMEOUT_MS + 5_000;
 
               const imageResults = await resolveLowCostImages({
