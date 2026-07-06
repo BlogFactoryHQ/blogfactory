@@ -62,6 +62,8 @@ interface GenerationPlan {
   failedDrafts?: FailedDraft[];
   batchId?: string | null;
   variationCount?: number | null;
+  imagesEnabled?: boolean | null;
+  imageDeliveryMode?: "generate" | "manual_prompt" | string | null;
 }
 
 interface Post {
@@ -126,6 +128,12 @@ const hasPostImageWork = (post: Pick<Post, "cover_image_url" | "inline_images" |
   || (Number(post.image_prompt_count) || 0) > 0
 );
 
+const hasSettlingImageWork = (post: Post) => {
+  if (!post.generation_plan?.imagesEnabled || hasPostImageWork(post)) return false;
+  const ageMs = Date.now() - new Date(post.created_at).getTime();
+  return Number.isFinite(ageMs) && ageMs < 15 * 60 * 1000;
+};
+
 export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
   if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
   if (FEED_SOURCE_TYPES.has(post.source_type)) return "";
@@ -187,6 +195,10 @@ export default function Posts() {
     queryKey: ["posts"],
     queryFn: async () => {
       return api.get<any[]>("/posts");
+    },
+    refetchInterval: (query) => {
+      const data = query.state.data as Post[] | undefined;
+      return data?.some(hasSettlingImageWork) ? 5000 : false;
     },
   });
 

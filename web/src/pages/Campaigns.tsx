@@ -198,6 +198,7 @@ function CampaignDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", id] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Action failed"),
   });
