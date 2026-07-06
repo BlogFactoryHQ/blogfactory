@@ -1175,12 +1175,52 @@ export function markdownToWixRichContent(
     const h1 = trimmed.match(/^# (.+)/);
     const h2 = trimmed.match(/^## (.+)/);
     if (h1 || h2) {
-      nodes.push({ type: "HEADING", headingData: { level: h1 ? 2 : 3 }, nodes: [{ type: "TEXT", textData: { text: (h1 || h2)![1] } }] });
+      nodes.push({ type: "HEADING", headingData: { level: h1 ? 2 : 3 }, nodes: wixTextNodesFromMarkdown((h1 || h2)![1]) });
     } else {
-      nodes.push({ type: "PARAGRAPH", nodes: [{ type: "TEXT", textData: { text: trimmed.replace(/^[-*]\s+/, "") } }] });
+      nodes.push({ type: "PARAGRAPH", nodes: wixTextNodesFromMarkdown(trimmed.replace(/^[-*]\s+/, "")) });
     }
   }
   return { nodes };
+}
+
+function wixTextNodesFromMarkdown(value: string) {
+  const nodes = parseWixInlineMarkdown(value);
+  return nodes.length ? nodes : [{ type: "TEXT", textData: { text: "" } }];
+}
+
+function parseWixInlineMarkdown(value: string, decorations: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
+  const nodes: Array<Record<string, unknown>> = [];
+  let index = 0;
+  const boldPattern = /\*\*([^*]+(?:\*(?!\*)[^*]*)*)\*\*/g;
+  for (const match of value.matchAll(boldPattern)) {
+    const start = match.index || 0;
+    if (start > index) nodes.push(...parseWixLinks(value.slice(index, start), decorations));
+    nodes.push(...parseWixInlineMarkdown(match[1], [...decorations, { type: "BOLD" }]));
+    index = start + match[0].length;
+  }
+  if (index < value.length) nodes.push(...parseWixLinks(value.slice(index), decorations));
+  return nodes;
+}
+
+function parseWixLinks(value: string, decorations: Array<Record<string, unknown>>) {
+  const nodes: Array<Record<string, unknown>> = [];
+  let index = 0;
+  const linkPattern = /\[([^\]]+)]\(([^)\s]+)\)/g;
+  for (const match of value.matchAll(linkPattern)) {
+    const start = match.index || 0;
+    if (start > index) nodes.push(wixTextNode(value.slice(index, start), decorations));
+    const href = match[2];
+    nodes.push(wixTextNode(match[1], [...decorations, { type: "LINK", linkData: { link: { url: href } } }]));
+    index = start + match[0].length;
+  }
+  if (index < value.length) nodes.push(wixTextNode(value.slice(index), decorations));
+  return nodes.filter((node) => Boolean((node.textData as { text?: string }).text));
+}
+
+function wixTextNode(text: string, decorations: Array<Record<string, unknown>>) {
+  const textData: Record<string, unknown> = { text };
+  if (decorations.length) textData.decorations = decorations;
+  return { type: "TEXT", textData };
 }
 
 function wixImageNode(image: WixImportedImage, altText: string, imageSource: "id" | "url") {

@@ -69,5 +69,21 @@ const wixRichContentWithoutImages = markdownToWixRichContent(
 ) as { nodes: Array<{ type: string }> };
 assert.equal(wixRichContentWithoutImages.nodes.some((node) => node.type === "IMAGE"), false);
 assert.equal(JSON.stringify(wixRichContentWithoutImages).includes("![Article image]"), false);
+const wixRichContentWithInlineFormatting = markdownToWixRichContent(
+  "## Sık Sorulan Sorular\n\n**Havalandırma tapası ne sıklıkla değiştirilmelidir?**\n\nDaha fazla bilgi için [kaynağı inceleyin](https://example.com).",
+  null,
+) as { nodes: Array<{ nodes?: Array<{ textData?: { text?: string; decorations?: Array<{ type?: string }> } }> }> };
+const wixRichFormattingJson = JSON.stringify(wixRichContentWithInlineFormatting);
+assert.equal(wixRichFormattingJson.includes("**Havalandırma"), false);
+assert.equal(wixRichFormattingJson.includes("[kaynağı inceleyin]"), false);
+assert.equal(
+  wixRichContentWithInlineFormatting.nodes.some((node) =>
+    node.nodes?.some((child) =>
+      child.textData?.text === "Havalandırma tapası ne sıklıkla değiştirilmelidir?"
+      && child.textData.decorations?.some((decoration) => decoration.type === "BOLD")
+    )
+  ),
+  true,
+);
 
 console.log("publishing self-check passed");
