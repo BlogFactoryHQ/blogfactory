@@ -665,6 +665,12 @@ export function truncateAtWord(value: string, maxChars: number) {
 
 type ListKind = "ul" | "ol";
 
+interface MarkdownTable {
+  headers: string[];
+  rows: string[][];
+  nextIndex: number;
+}
+
 export function markdownToHtml(markdown: string) {
   const lines = markdown.split(/\r?\n/);
   const html: string[] = [];
@@ -705,11 +711,21 @@ export function markdownToHtml(markdown: string) {
     inFaqSection = false;
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const trimmed = line.trim();
     if (!trimmed) {
       flushParagraph();
       closeList();
+      continue;
+    }
+    const table = parseMarkdownTable(lines, index);
+    if (table) {
+      if (inFaqSection) flushFaqSection();
+      flushParagraph();
+      closeList();
+      html.push(markdownTableToHtml(table));
+      index = table.nextIndex - 1;
       continue;
     }
     const image = trimmed.match(/^!\[([^\]]*)]\(([^)]+)\)/);
@@ -758,6 +774,14 @@ export function markdownToHtml(markdown: string) {
   flushParagraph();
   closeList();
   return html.join("\n");
+}
+
+function markdownTableToHtml(table: MarkdownTable) {
+  const head = table.headers.map((cell) => `<th>${inlineMarkdown(cell)}</th>`).join("");
+  const body = table.rows.map((row) =>
+    `<tr>${row.map((cell) => `<td>${inlineMarkdown(cell)}</td>`).join("")}</tr>`
+  ).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function renderFaqBody(lines: string[]) {
@@ -812,6 +836,57 @@ function parseListItem(value: string): { kind: ListKind; value: string } | null 
   const ordered = value.match(/^\d+[.)]\s+(.+)/);
   if (ordered) return { kind: "ol", value: ordered[1] };
   return null;
+}
+
+function parseMarkdownTable(lines: string[], startIndex: number): MarkdownTable | null {
+  const headers = parseMarkdownTableRow(lines[startIndex]?.trim() || "");
+  const separator = parseMarkdownTableRow(lines[startIndex + 1]?.trim() || "");
+  if (!headers || !separator || headers.length < 2 || separator.length < 2) return null;
+  if (!separator.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")))) return null;
+
+  const rows: string[][] = [];
+  let index = startIndex + 2;
+  while (index < lines.length) {
+    const row = parseMarkdownTableRow(lines[index].trim());
+    if (!row) break;
+    rows.push(row);
+    index += 1;
+  }
+  if (!rows.length) return null;
+
+  const columnCount = Math.max(headers.length, separator.length, ...rows.map((row) => row.length));
+  return {
+    headers: normalizeMarkdownTableRow(headers, columnCount),
+    rows: rows.map((row) => normalizeMarkdownTableRow(row, columnCount)),
+    nextIndex: index,
+  };
+}
+
+function normalizeMarkdownTableRow(row: string[], columnCount: number) {
+  return Array.from({ length: columnCount }, (_item, index) => (row[index] || "").replace(/\\\|/g, "|").trim());
+}
+
+function parseMarkdownTableRow(value: string) {
+  if (!value.includes("|")) return null;
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  for (const char of value) {
+    if (char === "|" && !escaped) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+    escaped = char === "\\" && !escaped;
+    if (char !== "\\") escaped = false;
+  }
+  cells.push(current);
+
+  if (!cells[0]?.trim()) cells.shift();
+  if (!cells[cells.length - 1]?.trim()) cells.pop();
+  const normalized = cells.map((cell) => cell.trim());
+  return normalized.length >= 2 ? normalized : null;
 }
 
 function inlineMarkdown(value: string) {
@@ -1236,7 +1311,7 @@ export function markdownToWixRichContent(
   let paragraph: string[] = [];
   let list: { kind: ListKind; items: string[] } | null = null;
   let pendingSpacer = false;
-  let lastBlock: "heading" | "image" | "list" | "paragraph" | "quote" | "spacer" | null = null;
+  let lastBlock: "heading" | "image" | "list" | "paragraph" | "quote" | "spacer" | "table" | null = null;
 
   const pushBlock = (node: unknown, kind: NonNullable<typeof lastBlock>) => {
     if (pendingSpacer && nodes.length && lastBlock !== "heading" && lastBlock !== "spacer") {
@@ -1263,7 +1338,9 @@ export function markdownToWixRichContent(
   if (coverImage && imageSource !== "none") {
     pushBlock(wixImageNode(coverImage, "Featured image", imageSource), "image");
   }
-  for (const line of markdown.split(/\r?\n/)) {
+  const lines = markdown.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const trimmed = line.trim();
     if (!trimmed) {
       const hadParagraph = paragraph.length > 0;
@@ -1273,6 +1350,14 @@ export function markdownToWixRichContent(
       if (hadParagraph || hadList || (lastBlock && lastBlock !== "heading" && lastBlock !== "spacer")) {
         pendingSpacer = true;
       }
+      continue;
+    }
+    const table = parseMarkdownTable(lines, index);
+    if (table) {
+      flushParagraph();
+      flushList();
+      pushBlock(wixTableNode(table), "table");
+      index = table.nextIndex - 1;
       continue;
     }
     const image = trimmed.match(/^!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/);
@@ -1346,6 +1431,29 @@ function wixBlockquoteNode(value: string) {
     type: "BLOCKQUOTE",
     nodes: [wixParagraphNode(value)],
     blockquoteData: { indentation: 1 },
+  };
+}
+
+function wixTableNode(table: MarkdownTable) {
+  const rows = [table.headers, ...table.rows];
+  const columnCount = table.headers.length;
+  return {
+    type: "TABLE",
+    nodes: rows.map((row) => ({
+      type: "TABLE_ROW",
+      nodes: row.map((cell) => ({
+        type: "TABLE_CELL",
+        nodes: [wixParagraphNode(cell)],
+        tableCellData: { cellStyle: { verticalAlignment: "TOP" } },
+      })),
+    })),
+    tableData: {
+      rowHeader: true,
+      columnHeader: false,
+      dimensions: {
+        colsWidthRatio: Array.from({ length: columnCount }, () => 1 / columnCount),
+      },
+    },
   };
 }
 

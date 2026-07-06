@@ -34,6 +34,16 @@ assert.doesNotMatch(html, /<h3>Agentik kodlama araçları/);
 assert.match(html, /<li><p><strong>Agentik kodlama araçları kodlama bilmeyenleri tamamen ikame eder mi\?<\/strong><\/p><p>Hayır\./);
 assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına ulaşıyor\.<\/li><li>Fark daha çok uzmanlık derinliğinde ortaya çıkıyor\.<\/li><\/ul>/);
 assert.match(html, /<h2>Sonuç<\/h2>/);
+const tableHtml = markdownToHtml([
+  "Tablo / Bilgi",
+  "",
+  "| Yöntem | Çevrim Süresi | Birim Maliyet |",
+  "| --- | --- | --- |",
+  "| Plastik Enjeksiyon | 15-40 sn | Düşük |",
+  "| 3D Baskı | 5-15 dk | Yüksek |",
+].join("\n"));
+assert.match(tableHtml, /<table><thead><tr><th>Yöntem<\/th><th>Çevrim Süresi<\/th><th>Birim Maliyet<\/th><\/tr><\/thead>/);
+assert.doesNotMatch(tableHtml, /\| --- \|/);
 assert.equal(articleBody("# Başlık\n\n# Başlık\n\n## Başlık\n\nGövde"), "Gövde");
 assert.equal(slugify("Farklı Sektörlerde Havalandırma Tapası Kullanımı: Otomotivden Elektroniğe"), "farkli-sektorlerde-havalandirma-tapasi-kullanimi");
 const ctaResult = appendBrandCta("Intro\n\nBody", [{
@@ -152,5 +162,30 @@ assert.equal(wixRichContentWithStructure.nodes.some((node) => node.type === "ORD
 const quote = wixRichContentWithStructure.nodes.find((node) => node.type === "BLOCKQUOTE");
 assert.equal(quote?.nodes?.[0]?.type, "PARAGRAPH");
 assert.equal(JSON.stringify(quote).includes("[source]"), false);
+const wixRichContentWithTable = markdownToWixRichContent(
+  [
+    "Tablo / Bilgi",
+    "",
+    "| Yöntem | Çevrim Süresi | Birim Maliyet |",
+    "| --- | --- | --- |",
+    "| Plastik Enjeksiyon | 15-40 sn | Düşük |",
+    "| 3D Baskı | 5-15 dk | Yüksek |",
+  ].join("\n"),
+  null,
+) as {
+  nodes: Array<{
+    type: string;
+    tableData?: { rowHeader?: boolean };
+    nodes?: Array<{
+      type?: string;
+      nodes?: Array<{ type?: string; nodes?: Array<{ type?: string; textData?: { text?: string } }> }>;
+    }>;
+  }>;
+};
+const table = wixRichContentWithTable.nodes.find((node) => node.type === "TABLE");
+assert.equal(table?.tableData?.rowHeader, true);
+assert.equal(table?.nodes?.length, 3);
+assert.equal(JSON.stringify(table).includes("| Yöntem |"), false);
+assert.equal(JSON.stringify(table).includes("Plastik Enjeksiyon"), true);
 
 console.log("publishing self-check passed");
