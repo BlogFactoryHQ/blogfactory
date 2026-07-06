@@ -36,6 +36,8 @@ interface Post {
   created_at: string;
   cover_image_url: string | null;
   inline_images: string[] | null;
+  image_asset_count?: number | null;
+  image_prompt_count?: number | null;
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
   campaigns?: { name: string } | null;
@@ -69,6 +71,16 @@ export function PostTableRow({
   titlePrefix,
 }: PostTableRowProps) {
   const SourceIcon = sourceIcons[post.source_type] || FileText;
+  const hasAttachedImages = Boolean(
+    post.cover_image_url
+    || (Array.isArray(post.inline_images) && post.inline_images.length > 0)
+    || (Number(post.image_asset_count) || 0) > 0
+  );
+  const hasImagePrompts = (Number(post.image_prompt_count) || 0) > 0;
+  const hasImageWork = hasAttachedImages || hasImagePrompts;
+  const imagePromptLabel = hasImageWork
+    ? `Open image prompts for ${displayTitle || post.title}. Image or prompt exists.`
+    : `Open image prompts for ${displayTitle || post.title}. No image or prompt yet.`;
 
   return (
     <TableRow
@@ -132,10 +144,15 @@ export function PostTableRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-primary"
+            className={cn(
+              "h-7 w-7 border",
+              hasImageWork
+                ? "border-[hsl(var(--status-success)/0.30)] bg-[hsl(var(--status-success)/0.10)] text-[hsl(var(--status-success))] hover:bg-[hsl(var(--status-success)/0.16)] hover:text-[hsl(var(--status-success))]"
+                : "border-destructive/25 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            )}
             onClick={onOpenImagePrompts}
-            title="Open image prompts"
-            aria-label={`Open image prompts for ${displayTitle || post.title}`}
+            title={hasImageWork ? "Image or prompt exists" : "No image or prompt yet"}
+            aria-label={imagePromptLabel}
           >
             <ImageIcon className="h-4 w-4" />
           </Button>

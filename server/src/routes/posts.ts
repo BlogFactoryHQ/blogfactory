@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { posts, personas, imageAssets, campaigns, jobs } from "../db/schema.js";
+import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs } from "../db/schema.js";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
@@ -43,8 +43,44 @@ postsRoutes.get("/", async (c) => {
     .where(ids.length ? and(eq(posts.userId, userId), inArray(posts.id, ids)) : eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 
+  const postIds = rows.map((row) => row.id);
+  const promptCounts = new Map<string, number>();
+  const imageCounts = new Map<string, number>();
+
+  if (postIds.length) {
+    const promptRows = await db
+      .select({
+        postId: imageGenerationRequests.postId,
+        count: sql<number>`count(*)`,
+      })
+      .from(imageGenerationRequests)
+      .where(and(
+        eq(imageGenerationRequests.userId, userId),
+        inArray(imageGenerationRequests.postId, postIds),
+        inArray(imageGenerationRequests.status, ["pending", "queued", "processing", "failed", "done"]),
+      ))
+      .groupBy(imageGenerationRequests.postId);
+    for (const row of promptRows) {
+      if (row.postId) promptCounts.set(row.postId, Number(row.count) || 0);
+    }
+
+    const imageRows = await db
+      .select({
+        postId: imageAssets.postId,
+        count: sql<number>`count(*)`,
+      })
+      .from(imageAssets)
+      .where(and(eq(imageAssets.userId, userId), inArray(imageAssets.postId, postIds)))
+      .groupBy(imageAssets.postId);
+    for (const row of imageRows) {
+      if (row.postId) imageCounts.set(row.postId, Number(row.count) || 0);
+    }
+  }
+
   return c.json(rows.map(({ persona_name, campaign_name, ...post }) => ({
     ...post,
+    image_asset_count: imageCounts.get(post.id) || 0,
+    image_prompt_count: promptCounts.get(post.id) || 0,
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,
   })));

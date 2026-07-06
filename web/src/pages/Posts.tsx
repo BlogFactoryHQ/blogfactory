@@ -78,6 +78,8 @@ interface Post {
   created_at: string;
   cover_image_url: string | null;
   inline_images: string[] | null;
+  image_asset_count?: number | null;
+  image_prompt_count?: number | null;
   generation_plan?: GenerationPlan | null;
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
