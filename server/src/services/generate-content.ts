@@ -143,6 +143,7 @@ export function manualPromptImageResolutionSummary(requests: ManualPromptRequest
 }
 
 const AI_REQUEST_TIMEOUT_MS = 35_000;
+const MANUAL_PROMPT_SYNC_TIMEOUT_MS = 12_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 45_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
 const RSS_FETCH_TIMEOUT_MS = 15_000;
@@ -1848,34 +1849,48 @@ export async function generateContent(opts: GenerateOpts) {
         if (opts.generateImages && opts.imageConfig) {
           try {
             if (imageMode === "manual_prompt") {
-              if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
-                await db.update(jobs).set({ currentStep: `creating_manual_prompts_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
-                const manualRequest = await createManualImagePromptRequest({
-                  content: genContent,
-                  title: postTitle,
-                  userId,
-                  postId: post.id,
-                  jobId: jobId!,
-                  modelId,
-                  openRouterKey,
-                  stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
-                  manualPromptSuffix: manualSuffix,
-                  imageConfig: opts.imageConfig,
-                  provider: manualProvider,
-                });
-                imageResolutionResults.push({
-                  postId: post.id,
-                  title: postTitle,
-                  result: manualPromptImageResolutionSummary(manualRequest.requests, manualProvider),
-                });
-                totalCost += manualRequest.cost;
+              await db.update(jobs).set({ currentStep: `creating_manual_prompts_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
+              const sharedManualPromptOpts = {
+                content: genContent,
+                title: postTitle,
+                userId,
+                postId: post.id,
+                jobId: jobId!,
+                stylePrompt: promptSettings?.imageStylePrompt || settings?.imageStylePrompt || undefined,
+                manualPromptSuffix: manualSuffix,
+                imageConfig: opts.imageConfig,
+                provider: manualProvider,
+              };
+              let manualRequest: Awaited<ReturnType<typeof createManualImagePromptRequest | typeof createFallbackManualImagePromptRequest>>;
+              if (hasJobSyncBudget(startedAt, MANUAL_PROMPT_SYNC_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 4_000)) {
+                try {
+                  const promptModelId = await resolveFastManualPromptModel(openRouterKey);
+                  manualRequest = await createManualImagePromptRequest({
+                    ...sharedManualPromptOpts,
+                    modelId: promptModelId,
+                    openRouterKey,
+                    timeoutMs: MANUAL_PROMPT_SYNC_TIMEOUT_MS,
+                  });
+                } catch (manualPromptErr) {
+                  const reason = manualPromptErr instanceof Error ? manualPromptErr.message : "Manual image prompt model timed out";
+                  console.warn(`[images] Manual prompt model failed for draft ${i + 1}, using fallback prompt rows:`, reason);
+                  manualRequest = await createFallbackManualImagePromptRequest({
+                    ...sharedManualPromptOpts,
+                    reason,
+                  });
+                }
               } else {
-                imageResolutionResults.push({
-                  postId: post.id,
-                  title: postTitle,
-                  error: "Manual image prompts were skipped because the generation was near the serverless time limit.",
+                manualRequest = await createFallbackManualImagePromptRequest({
+                  ...sharedManualPromptOpts,
+                  reason: "serverless_budget_low",
                 });
               }
+              imageResolutionResults.push({
+                postId: post.id,
+                title: postTitle,
+                result: manualPromptImageResolutionSummary(manualRequest.requests, manualProvider),
+              });
+              totalCost += manualRequest.cost;
             } else {
               await db.update(jobs).set({ currentStep: `resolving_images_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
               const immediateAi = JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= IMAGE_REQUEST_TIMEOUT_MS + 5_000;
@@ -2218,6 +2233,7 @@ async function createManualImagePromptRequest(opts: {
   manualPromptSuffix?: string | null;
   imageConfig: any;
   provider: ManualImageProvider;
+  timeoutMs?: number;
 }) {
   const startedAt = Date.now();
   const messages = buildManualImagePromptMessages({
@@ -2227,7 +2243,7 @@ async function createManualImagePromptRequest(opts: {
   });
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(opts.timeoutMs || AI_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${opts.openRouterKey}`,
       "Content-Type": "application/json",
@@ -2280,16 +2296,39 @@ async function createManualImagePromptRequest(opts: {
     responseData: { id: data.id, generation: openRouterUsage.stats, task: "manual_image_prompt" },
   });
 
+  const requests = await insertManualImagePromptRequests({ ...opts, prompt });
+
+  return {
+    requests: requests.map((request) => ({
+      id: request.id,
+      type: request.type === "inline" ? "inline" as const : "cover" as const,
+      position: request.position || 0,
+    })),
+    prompt,
+    cost: openRouterUsage.cost,
+  };
+}
+
+async function insertManualImagePromptRequests(opts: {
+  userId: string;
+  postId: string;
+  jobId: string;
+  modelId: string;
+  title: string;
+  prompt: string;
+  imageConfig: any;
+  provider: ManualImageProvider;
+}) {
   const targets = imageTargets(opts.imageConfig);
   if (!targets.length) throw new Error("Manual image prompt has no enabled image slots");
 
-  const requests = await db.insert(imageGenerationRequests).values(targets.map((target) => ({
+  return db.insert(imageGenerationRequests).values(targets.map((target) => ({
     userId: opts.userId,
     postId: opts.postId,
     jobId: opts.jobId,
     provider: opts.provider,
     modelId: opts.modelId,
-    prompt,
+    prompt: opts.prompt,
     altText: `${target.type === "cover" ? "Featured image" : "Article image"} for ${opts.title}`.slice(0, 180),
     type: target.type,
     position: target.position,
@@ -2301,6 +2340,50 @@ async function createManualImagePromptRequest(opts: {
     type: imageGenerationRequests.type,
     position: imageGenerationRequests.position,
   });
+}
+
+function buildFallbackManualImagePrompt(opts: {
+  title: string;
+  content: string;
+  stylePrompt?: string | null;
+  manualPromptSuffix?: string | null;
+}) {
+  const style = opts.stylePrompt?.trim()
+    || "A colorful modern editorial illustration, clean white background, no text, no letters, no numbers, no typography";
+  const context = plainText(opts.content, 500);
+  return appendManualPromptSuffix([
+    style,
+    `Editorial cover image for an article titled "${opts.title}".`,
+    context ? `Visual context: ${context}` : "",
+    "Show the main subject clearly with realistic professional composition, no text, no letters, no numbers, no typography.",
+  ].filter(Boolean).join(" "), opts.manualPromptSuffix);
+}
+
+async function createFallbackManualImagePromptRequest(opts: {
+  userId: string;
+  postId: string;
+  jobId: string;
+  title: string;
+  content: string;
+  stylePrompt?: string | null;
+  manualPromptSuffix?: string | null;
+  imageConfig: any;
+  provider: ManualImageProvider;
+  reason: string;
+}) {
+  const prompt = buildFallbackManualImagePrompt(opts);
+  const modelId = "manual/fallback-prompt";
+  const requests = await insertManualImagePromptRequests({ ...opts, modelId, prompt });
+  await db.insert(generationLogs).values({
+    userId: opts.userId,
+    postId: opts.postId,
+    usageType: "text",
+    modelId,
+    provider: "manual",
+    status: "success",
+    sessionId: opts.jobId,
+    responseData: { task: "manual_image_prompt_fallback", reason: opts.reason },
+  });
 
   return {
     requests: requests.map((request) => ({
@@ -2309,7 +2392,7 @@ async function createManualImagePromptRequest(opts: {
       position: request.position || 0,
     })),
     prompt,
-    cost: openRouterUsage.cost,
+    cost: 0,
   };
 }
 
@@ -2352,9 +2435,12 @@ export async function createManualImagePromptRequestsForPost(userId: string, pos
   const imageConfig = manualPromptImageConfigFromSettings(settings);
   if (!imageConfig) throw new Error("Enable cover or inline images in Settings before creating image prompts");
 
-  const modelId = await resolveFastManualPromptModel(openRouterKey);
+  let modelId = "manual/fallback-prompt";
   let jobId = post.jobId;
   if (!jobId) {
+    try {
+      modelId = await resolveFastManualPromptModel(openRouterKey);
+    } catch {}
     const [job] = await db.insert(jobs).values({
       userId,
       sourceType: "manual_image_prompts",
@@ -2368,19 +2454,34 @@ export async function createManualImagePromptRequestsForPost(userId: string, pos
     jobId = job.id;
   }
 
-  const result = await createManualImagePromptRequest({
+  const sharedManualPromptOpts = {
     userId,
     postId,
     jobId,
-    modelId,
-    openRouterKey,
     title: post.title,
     content: post.content,
     stylePrompt: settings?.imageStylePrompt,
     manualPromptSuffix: manualPromptSuffix(settings),
     imageConfig,
     provider: manualImageProvider(settings),
-  });
+  };
+  let result: Awaited<ReturnType<typeof createManualImagePromptRequest | typeof createFallbackManualImagePromptRequest>>;
+  try {
+    if (modelId === "manual/fallback-prompt") {
+      modelId = await resolveFastManualPromptModel(openRouterKey);
+    }
+    result = await createManualImagePromptRequest({
+      ...sharedManualPromptOpts,
+      modelId,
+      openRouterKey,
+      timeoutMs: MANUAL_PROMPT_SYNC_TIMEOUT_MS,
+    });
+  } catch (error) {
+    result = await createFallbackManualImagePromptRequest({
+      ...sharedManualPromptOpts,
+      reason: error instanceof Error ? error.message : "manual_prompt_recovery_failed",
+    });
+  }
 
   return {
     created: result.requests.length,
