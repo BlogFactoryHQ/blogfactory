@@ -23,10 +23,12 @@ import {
   Check,
   Newspaper,
   LayoutDashboard,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useSites } from "@/hooks/useSites";
+import type { Site } from "@/hooks/useSites";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { useNavigate } from "react-router-dom";
 import {
@@ -43,9 +45,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FactoryMark } from "@/components/layout/BywordSurface";
+import { toast } from "sonner";
 
 const primaryNavigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -75,15 +78,18 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { sites, activeSite, activeSiteId, activateSite } = useSites();
+  const { sites, activeSite, activeSiteId, activateSite, isActivating } = useSites();
   const { isCollapsed, toggle } = useSidebar();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [switchingSite, setSwitchingSite] = useState<Site | null>(null);
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
   const workspaceName = activeSite?.domain || activeSite?.name || "Connect site";
   const workspaceInitial = (activeSite?.name || activeSite?.domain || "B").charAt(0).toUpperCase();
+  const switchingLabel = switchingSite?.name || switchingSite?.domain || "selected site";
+  const switchingInitial = (switchingSite?.name || switchingSite?.domain || "S").charAt(0).toUpperCase();
   const filteredNavigation = searchNavigation.filter((item) =>
     item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
   );
@@ -107,6 +113,18 @@ export function AppSidebar() {
   const goTo = (href: string) => {
     setIsSearchOpen(false);
     navigate(href);
+  };
+
+  const switchSite = async (site: Site) => {
+    if (isActivating || site.id === activeSiteId) return;
+    setSwitchingSite(site);
+    try {
+      await activateSite(site.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not switch sites");
+    } finally {
+      setSwitchingSite(null);
+    }
   };
 
   return (
@@ -172,10 +190,11 @@ export function AppSidebar() {
                     <DropdownMenuItem
                       key={site.id}
                       className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-3"
-                      onClick={() => activateSite(site.id)}
+                      disabled={isActivating}
+                      onClick={() => switchSite(site)}
                     >
                       <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border text-byword-blue">
-                        <span className="text-xs font-bold">{site.name.charAt(0).toUpperCase()}</span>
+                        <span className="text-xs font-bold">{(site.name || site.domain || "S").charAt(0).toUpperCase()}</span>
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{site.name}</p>
@@ -310,6 +329,60 @@ export function AppSidebar() {
               {filteredNavigation.length === 0 && (
                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">No pages found.</p>
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(switchingSite || isActivating)}>
+          <DialogContent
+            className="max-w-md gap-0 overflow-hidden p-0 [&>button]:hidden"
+            onInteractOutside={(event) => event.preventDefault()}
+            onEscapeKeyDown={(event) => event.preventDefault()}
+          >
+            <DialogTitle className="sr-only">Switching active site</DialogTitle>
+            <DialogDescription className="sr-only">
+              BlogFactory is changing the active site and refreshing site-specific workspace data.
+            </DialogDescription>
+            <div className="h-1 factory-divider opacity-70" aria-hidden="true" />
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue factory-panel">
+                  <span className="text-sm font-bold">{switchingInitial}</span>
+                  <Loader2 className="absolute -right-1 -top-1 h-4 w-4 animate-spin rounded-full bg-card text-byword-blue" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className="type-kicker text-muted-foreground">Site routing</p>
+                  <h2 className="mt-2 text-xl font-semibold leading-tight text-foreground">
+                    Loading {switchingLabel}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    BlogFactory is switching the active domain and refreshing site-scoped settings,
+                    integrations, content filters, and workspace data.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-md border border-byword-border bg-muted/45 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="type-kicker text-muted-foreground">Destination</span>
+                  <span className="truncate text-sm font-semibold text-byword-blue">
+                    {switchingSite?.domain || "Preparing domain"}
+                  </span>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full border border-byword-border bg-card">
+                  <div className="h-full w-full origin-left animate-pulse bg-byword-blue" />
+                </div>
+                <div className="mt-4 grid gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Current domain</span>
+                    <span className="truncate font-medium text-foreground">{activeSite?.domain || "Workspace"}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Workspace data</span>
+                    <span className="font-medium text-foreground">Refreshing</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
