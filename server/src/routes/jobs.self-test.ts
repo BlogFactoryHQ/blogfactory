@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { staleTimeoutUpdateForJob } from "./jobs.js";
+import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
 
 function plan(update: ReturnType<typeof staleTimeoutUpdateForJob>) {
   return update.generationPlan as { totalDrafts: number; failedDrafts?: Array<{ index: number; error: string }> };

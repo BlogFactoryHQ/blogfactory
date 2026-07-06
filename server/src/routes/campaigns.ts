@@ -5,7 +5,7 @@ import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs, personas, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampaignItem } from "../services/campaign-parser.js";
-import { retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
+import { reconcileStaleCampaignItems, retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
 import { materializeProgrammaticItems } from "../services/programmatic.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
 
@@ -164,8 +164,13 @@ campaignsRoutes.post("/", async (c) => {
 campaignsRoutes.get("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
+  let [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  const reconciled = await reconcileStaleCampaignItems(id, userId);
+  if (reconciled.stale > 0) {
+    [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
+    if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  }
 
   const itemRows = await db
     .select()
@@ -254,6 +259,7 @@ campaignsRoutes.post("/:id/run-next", async (c) => {
     return c.json({ error: "Campaign must be running to process the next batch" }, 409);
   }
 
+  await reconcileStaleCampaignItems(id, userId);
   waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed:", err)));
   const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   return c.json({ campaign, queued: true }, 202);

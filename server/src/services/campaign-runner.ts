@@ -5,9 +5,12 @@ import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
 import { getEffectiveSettings } from "./user-settings.js";
+import { staleTimeoutUpdateForJob } from "./job-timeouts.js";
 
 const CAMPAIGN_CONCURRENCY = 3;
-const STALE_ITEM_MINUTES = 45;
+const STALE_ITEM_MINUTES = 2;
+const STALE_CAMPAIGN_ITEM_MESSAGE =
+  "Campaign item timed out in the background worker. Retry this row or use a faster model/settings.";
 
 type Campaign = typeof campaigns.$inferSelect;
 type CampaignItem = typeof campaignItems.$inferSelect;
@@ -112,6 +115,89 @@ async function refreshCampaignCounters(campaignId: string) {
   return { total, completed, failed, running };
 }
 
+export async function reconcileStaleCampaignItems(campaignId: string, userId?: string) {
+  const staleBefore = new Date(Date.now() - STALE_ITEM_MINUTES * 60 * 1000);
+  const clauses = [
+    eq(campaignItems.campaignId, campaignId),
+    eq(campaignItems.status, "running"),
+    lt(campaignItems.startedAt, staleBefore),
+  ];
+  if (userId) clauses.push(eq(campaignItems.userId, userId));
+
+  const staleItems = await db
+    .select({
+      id: campaignItems.id,
+      jobId: campaignItems.jobId,
+    })
+    .from(campaignItems)
+    .where(and(...clauses));
+
+  if (!staleItems.length) return { stale: 0, completed: 0, failed: 0 };
+
+  const jobIds = staleItems.map((item) => item.jobId).filter((jobId): jobId is string => Boolean(jobId));
+  const itemJobs = jobIds.length
+    ? await db
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        generationPlan: jobs.generationPlan,
+        resultPostIds: jobs.resultPostIds,
+        currentStep: jobs.currentStep,
+        errorMessage: jobs.errorMessage,
+      })
+      .from(jobs)
+      .where(inArray(jobs.id, jobIds))
+    : [];
+  const jobById = new Map(itemJobs.map((job) => [job.id, job]));
+  let completed = 0;
+  let failed = 0;
+
+  for (const item of staleItems) {
+    const job = item.jobId ? jobById.get(item.jobId) : null;
+    const postId = Array.isArray(job?.resultPostIds) ? job.resultPostIds[0] : null;
+
+    if (postId) {
+      if (job && job.status === "running") {
+        await db
+          .update(jobs)
+          .set(staleTimeoutUpdateForJob(job) as any)
+          .where(eq(jobs.id, job.id));
+      }
+      await db
+        .update(campaignItems)
+        .set({
+          status: "completed",
+          postId,
+          errorMessage: null,
+          completedAt: new Date(),
+        })
+        .where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "running")));
+      completed += 1;
+      continue;
+    }
+
+    if (job && job.status === "running") {
+      await db
+        .update(jobs)
+        .set(staleTimeoutUpdateForJob(job) as any)
+        .where(eq(jobs.id, job.id));
+    }
+
+    await db
+      .update(campaignItems)
+      .set({
+        status: "failed",
+        errorMessage: job?.errorMessage || STALE_CAMPAIGN_ITEM_MESSAGE,
+        completedAt: new Date(),
+      })
+      .where(and(eq(campaignItems.id, item.id), eq(campaignItems.status, "running")));
+    failed += 1;
+  }
+
+  await refreshCampaignCounters(campaignId);
+  return { stale: staleItems.length, completed, failed };
+}
+
 async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
   const [current] = await db
     .select({ status: campaigns.status })
@@ -180,6 +266,7 @@ async function runCampaignItem(campaign: Campaign, item: CampaignItem) {
 export async function runCampaign(campaignId: string, options: { maxItems?: number } = {}) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
   if (!campaign || campaign.status === "stopped") return;
+  await reconcileStaleCampaignItems(campaignId, campaign.userId);
   const maxItems = options.maxItems ?? Number.POSITIVE_INFINITY;
   let processed = 0;
 
@@ -212,14 +299,6 @@ export async function runCampaign(campaignId: string, options: { maxItems?: numb
 }
 
 export async function drainCampaignQueue(maxCampaigns = 5, maxItemsPerCampaign = CAMPAIGN_CONCURRENCY) {
-  const staleBefore = new Date(Date.now() - STALE_ITEM_MINUTES * 60 * 1000);
-  await db.update(campaignItems).set({ status: "queued", errorMessage: "Resumed after stale run", completedAt: null })
-    .where(and(
-      eq(campaignItems.status, "running"),
-      lt(campaignItems.startedAt, staleBefore),
-      sql`${campaignItems.campaignId} in (select id from campaigns where status = 'running')`,
-    ));
-
   const rows = await db
     .select({ id: campaigns.id })
     .from(campaigns)
@@ -229,7 +308,8 @@ export async function drainCampaignQueue(maxCampaigns = 5, maxItemsPerCampaign =
 
   let processed = 0;
   for (const row of rows) {
-    // ponytail: bounded cron chunks; add a real external queue if single articles exceed function duration.
+    await reconcileStaleCampaignItems(row.id);
+    // Keep cron chunks bounded; add a real external queue if single articles exceed function duration.
     processed += await runCampaign(row.id, { maxItems: maxItemsPerCampaign }) || 0;
   }
   return { campaigns: rows.length, processed };
