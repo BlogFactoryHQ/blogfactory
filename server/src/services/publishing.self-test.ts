@@ -185,7 +185,9 @@ const wixRichContentWithTable = markdownToWixRichContent(
 const table = wixRichContentWithTable.nodes.find((node) => node.type === "HTML");
 assert.equal(table?.htmlData?.source, "HTML");
 assert.equal(table?.htmlData?.autoHeight, true);
-assert.match(table?.htmlData?.html || "", /<table><thead><tr><th>Yöntem<\/th>/);
+assert.match(table?.htmlData?.html || "", /font-family:Arial,Helvetica,sans-serif/);
+assert.match(table?.htmlData?.html || "", /<table style="[^"]*border-collapse:collapse/);
+assert.match(table?.htmlData?.html || "", /<th style="[^"]*background:#f3f4f6[^"]*">Yöntem<\/th>/);
 assert.equal(JSON.stringify(table).includes("| Yöntem |"), false);
 assert.equal(JSON.stringify(table).includes("Plastik Enjeksiyon"), true);
 const wixRichContentWithTableFallback = markdownToWixRichContent(

@@ -785,6 +785,17 @@ function markdownTableToHtml(table: MarkdownTable) {
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+function markdownTableToStyledHtml(table: MarkdownTable) {
+  const tableStyle = "border-collapse:collapse;border-spacing:0;width:100%;min-width:640px;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:16px;line-height:1.45;text-align:left;";
+  const headerStyle = "border:1px solid #d1d5db;background:#f3f4f6;color:#111827;font-weight:700;padding:10px 12px;vertical-align:top;text-align:left;white-space:normal;";
+  const cellStyle = "border:1px solid #d1d5db;padding:10px 12px;vertical-align:top;text-align:left;white-space:normal;";
+  const head = table.headers.map((cell) => `<th style="${headerStyle}">${inlineMarkdown(cell)}</th>`).join("");
+  const body = table.rows.map((row) =>
+    `<tr>${row.map((cell) => `<td style="${cellStyle}">${inlineMarkdown(cell)}</td>`).join("")}</tr>`
+  ).join("");
+  return `<div style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;"><table style="${tableStyle}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
 function renderFaqBody(lines: string[]) {
   const html: string[] = [];
   let listKind: ListKind | null = null;
@@ -1478,7 +1489,7 @@ function wixHtmlTableNode(table: MarkdownTable) {
     nodes: [],
     htmlData: {
       source: "HTML",
-      html: markdownTableToHtml(table),
+      html: markdownTableToStyledHtml(table),
       autoHeight: true,
     },
   };
