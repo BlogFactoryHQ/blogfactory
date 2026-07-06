@@ -4,15 +4,24 @@ import { getObjectStream, getPublicUrl } from "../services/s3-client.js";
 export const storageRoutes = new Hono();
 
 storageRoutes.get("/*", async (c) => {
-  const key = c.req.path.replace("/api/storage/", "");
+  return serveStorageObject(c.req.path);
+});
+
+storageRoutes.on("HEAD", "/*", async (c) => {
+  const response = await serveStorageObject(c.req.path);
+  return new Response(null, { status: response.status, headers: response.headers });
+});
+
+async function serveStorageObject(path: string) {
+  const key = path.replace("/api/storage/", "");
   if (!key || key.includes("..")) {
-    return c.json({ error: "Invalid path" }, 400);
+    return Response.json({ error: "Invalid path" }, { status: 400 });
   }
 
   // If a CDN URL is configured, redirect instead of proxying
   const publicUrl = getPublicUrl(key);
   if (publicUrl) {
-    return c.redirect(publicUrl, 302);
+    return Response.redirect(publicUrl, 302);
   }
 
   try {
@@ -27,8 +36,8 @@ storageRoutes.get("/*", async (c) => {
     return new Response(stream, { headers });
   } catch (err: any) {
     if (err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404) {
-      return c.json({ error: "File not found" }, 404);
+      return Response.json({ error: "File not found" }, { status: 404 });
     }
     throw err;
   }
-});
+}
