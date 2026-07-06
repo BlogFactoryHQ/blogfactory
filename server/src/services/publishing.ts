@@ -1025,6 +1025,7 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
     externalUrl: createResponse.draftPost?.url || null,
     responseData: {
       draftId,
+      seoSlug: article.slug,
       imageVariant: createResponse.blogFactoryImageVariant,
       coverImported: Boolean(coverMedia),
       inlineImported: importedImages.size,
@@ -1053,7 +1054,7 @@ async function createWixDraftPost(
       ...(cover && (coverSource === "both" || coverSource === "media") ? { media: wixCoverMedia(cover) } : {}),
       ...(cover && (coverSource === "both" || coverSource === "hero") ? { heroImage: cover.image } : {}),
       memberId: credentials.memberId,
-      slug: article.slug,
+      seoSlug: article.slug,
       excerpt: article.excerpt,
       tagIds: [],
       seoData: {

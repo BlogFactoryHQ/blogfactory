@@ -4,7 +4,7 @@ process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/
 process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
 const { encryptSecret } = await import("./api-keys.js");
-const { articleBody, encryptProviderCredentials, markdownToHtml, markdownToWixRichContent } = await import("./publishing.js");
+const { articleBody, encryptProviderCredentials, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
 
 const html = markdownToHtml([
   "# Agentik Kodlama",
@@ -35,6 +35,7 @@ assert.match(html, /<li><p><strong>Agentik kodlama araçları kodlama bilmeyenle
 assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına ulaşıyor\.<\/li><li>Fark daha çok uzmanlık derinliğinde ortaya çıkıyor\.<\/li><\/ul>/);
 assert.match(html, /<h2>Sonuç<\/h2>/);
 assert.equal(articleBody("# Başlık\n\n# Başlık\n\n## Başlık\n\nGövde"), "Gövde");
+assert.equal(slugify("Farklı Sektörlerde Havalandırma Tapası Kullanımı: Otomotivden Elektroniğe"), "farkli-sektorlerde-havalandirma-tapasi-kullanimi");
 assert.throws(
   () => encryptProviderCredentials("wix", { apiKey: "token", siteId: "site" }),
   /Wix API key, site ID, and author\/member ID are required/,
