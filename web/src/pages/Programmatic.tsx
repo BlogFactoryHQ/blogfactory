@@ -1066,6 +1066,13 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
       {!embedded && <PageHeader title="Programmatic" description="Scale your content with templates and data" />}
 
       <div className="mx-auto max-w-6xl space-y-8">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={(event) => event.target.files?.[0] && handleFile(event.target.files[0])}
+        />
         <BywordCard>
           <SectionHeader icon={Grid2X2} title="Dimensional Strategy" description="Choose the smallest workflow that fits the keyword pattern." />
           <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0">
@@ -1094,7 +1101,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         <div className="grid gap-6 lg:grid-cols-4">
           <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
           <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
-          <FlowCard icon={Upload} title="Import Excel / CSV" description="Create a campaign from spreadsheet rows and auto-build a template" onClick={() => setView("campaign")} />
+          <FlowCard icon={Upload} title="Import Excel / CSV" description="Create a campaign from spreadsheet rows and auto-build a template" onClick={() => fileInputRef.current?.click()} />
           <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/campaigns")} />
         </div>
 
