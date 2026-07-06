@@ -89,6 +89,7 @@ interface WixImportedImage {
   url?: string;
   wixMediaIdentifier?: string;
   filename?: string;
+  mediaType?: string;
   operationStatus?: string;
   width: number;
   height: number;
@@ -1128,9 +1129,15 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
     mediaType: "IMAGE",
     mimeType,
     displayName: `${slugify(title)}.${extensionForMime(mimeType)}`,
+    externalInfo: {
+      origin: "blogfactory",
+      externalIds: [imageUrl.slice(0, 4000)],
+    },
   }) as { file?: WixFileInfo };
   const id = normalizeWixMediaId(wixFileId(response.file));
-  if (!id) return null;
+  if (!id) {
+    throw new Error(`Wix media import did not return a file ID for ${imageUrl}. Response: ${summarizeWixFile(response.file)}`);
+  }
   const image = await waitForWixImage(credentials, {
     id,
     wixMediaIdentifier: wixImageIdentifier(id, response.file),
@@ -1140,7 +1147,9 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
     width: wixImageWidth(response.file),
     height: wixImageHeight(response.file),
   });
-  if (image.operationStatus === "FAILED") return null;
+  if (image.operationStatus === "FAILED") {
+    throw new Error(`Wix media import failed for ${imageUrl}. Imported ID: ${image.id}`);
+  }
   return image;
 }
 
@@ -1223,6 +1232,7 @@ interface WixFileInfo {
   url?: string;
   displayName?: string;
   filename?: string;
+  mediaType?: string;
   operationStatus?: string;
   width?: number;
   height?: number;
@@ -1277,6 +1287,20 @@ function wixImageIdentifier(id: string, file?: WixFileInfo) {
   const width = wixImageWidth(file);
   const height = wixImageHeight(file);
   return `wix:image://v1/${id}/${filename}#originWidth=${width}&originHeight=${height}`;
+}
+
+function summarizeWixFile(file?: WixFileInfo) {
+  if (!file) return "missing file object";
+  return JSON.stringify({
+    keys: Object.keys(file),
+    id: file.id || null,
+    _id: file._id || null,
+    url: file.url || null,
+    mediaType: file.mediaType || null,
+    operationStatus: file.operationStatus || null,
+    mediaKeys: file.media ? Object.keys(file.media) : null,
+    nestedImageId: file.media?.image?.image?.id || file.media?.image?.image?._id || null,
+  });
 }
 
 function wixImageWidth(file?: WixFileInfo) {

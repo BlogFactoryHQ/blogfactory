@@ -6,6 +6,7 @@ const handler = async (request) => {
 };
 
 exports.GET = handler;
+exports.HEAD = handler;
 exports.POST = handler;
 exports.PUT = handler;
 exports.DELETE = handler;
