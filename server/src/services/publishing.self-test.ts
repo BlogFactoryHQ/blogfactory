@@ -175,17 +175,32 @@ const wixRichContentWithTable = markdownToWixRichContent(
 ) as {
   nodes: Array<{
     type: string;
-    tableData?: { rowHeader?: boolean };
+    htmlData?: { html?: string; source?: string; autoHeight?: boolean };
     nodes?: Array<{
       type?: string;
       nodes?: Array<{ type?: string; nodes?: Array<{ type?: string; textData?: { text?: string } }> }>;
     }>;
   }>;
 };
-const table = wixRichContentWithTable.nodes.find((node) => node.type === "TABLE");
-assert.equal(table?.tableData?.rowHeader, true);
-assert.equal(table?.nodes?.length, 3);
+const table = wixRichContentWithTable.nodes.find((node) => node.type === "HTML");
+assert.equal(table?.htmlData?.source, "HTML");
+assert.equal(table?.htmlData?.autoHeight, true);
+assert.match(table?.htmlData?.html || "", /<table><thead><tr><th>Yöntem<\/th>/);
 assert.equal(JSON.stringify(table).includes("| Yöntem |"), false);
 assert.equal(JSON.stringify(table).includes("Plastik Enjeksiyon"), true);
+const wixRichContentWithTableFallback = markdownToWixRichContent(
+  [
+    "| Yöntem | Çevrim Süresi | Birim Maliyet |",
+    "| --- | --- | --- |",
+    "| Plastik Enjeksiyon | 15-40 sn | Düşük |",
+  ].join("\n"),
+  null,
+  new Map(),
+  "id",
+  "text",
+) as { nodes: Array<{ type: string; nodes?: Array<{ nodes?: Array<{ nodes?: Array<{ textData?: { text?: string } }> }> }> }> };
+const fallbackTable = wixRichContentWithTableFallback.nodes.find((node) => node.type === "BULLETED_LIST");
+assert.equal(JSON.stringify(fallbackTable).includes("| Yöntem |"), false);
+assert.equal(JSON.stringify(fallbackTable).includes("Çevrim Süresi: 15-40 sn"), true);
 
 console.log("publishing self-check passed");

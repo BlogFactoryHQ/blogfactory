@@ -104,6 +104,7 @@ interface WixImportedImage {
 
 type WixImageSource = "id" | "url" | "none";
 type WixCoverSource = "both" | "media" | "hero" | "none";
+type WixTableRenderMode = "html" | "text";
 
 export function isPublishingProvider(value: string): value is IntegrationProvider {
   return (PUBLISHING_PROVIDERS as string[]).includes(value);
@@ -889,6 +890,11 @@ function parseMarkdownTableRow(value: string) {
   return normalized.length >= 2 ? normalized : null;
 }
 
+function markdownHasTable(markdown: string) {
+  const lines = markdown.split(/\r?\n/);
+  return lines.some((_line, index) => Boolean(parseMarkdownTable(lines, index)));
+}
+
 function inlineMarkdown(value: string) {
   const linkTokens: string[] = [];
   const withLinkTokens = value.replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_match, label: string, href: string) => {
@@ -1180,12 +1186,13 @@ async function createWixDraftPost(
   importedImages: Map<string, WixImportedImage>,
 ) {
   const hasImages = Boolean(coverMedia || importedImages.size);
-  const payload = (imageSource: WixImageSource, coverSource: WixCoverSource) => {
+  const tableModes: WixTableRenderMode[] = markdownHasTable(article.markdown) ? ["html", "text"] : ["html"];
+  const payload = (imageSource: WixImageSource, coverSource: WixCoverSource, tableMode: WixTableRenderMode) => {
     const cover = coverMedia ? wixCoverData(coverMedia, article.coverAltText) : null;
     return {
       draftPost: {
       title: article.title,
-      richContent: markdownToWixRichContent(article.markdown, null, importedImages, imageSource),
+      richContent: markdownToWixRichContent(article.markdown, null, importedImages, imageSource, tableMode),
       ...(cover && (coverSource === "both" || coverSource === "media") ? { media: wixCoverMedia(cover) } : {}),
       ...(cover && (coverSource === "both" || coverSource === "hero") ? { heroImage: cover.image } : {}),
       memberId: credentials.memberId,
@@ -1218,26 +1225,52 @@ async function createWixDraftPost(
   });
 
   let lastMediaError = "";
-  for (let index = 0; index < variants.length; index += 1) {
-    const variant = variants[index];
-    try {
-      const response = await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload(variant.imageSource, variant.coverSource)) as WixDraftCreateResponse;
-      response.blogFactoryImageVariant = variant.label;
-      return response;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!isWixMediaReferenceError(message)) throw error;
-      lastMediaError = message;
-      console.warn(`[wix] Draft media variant failed: ${variant.label}: ${message}`);
-      if (index === 0) await sleep(1500);
+  let lastTableError = "";
+  for (const tableMode of tableModes) {
+    let tableModeRejected = false;
+    for (let index = 0; index < variants.length; index += 1) {
+      const variant = variants[index];
+      try {
+        const response = await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload(variant.imageSource, variant.coverSource, tableMode)) as WixDraftCreateResponse;
+        response.blogFactoryImageVariant = `${variant.label}-table-${tableMode}`;
+        return response;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (tableMode === "html" && isWixRichContentTableError(message)) {
+          lastTableError = message;
+          tableModeRejected = true;
+          console.warn(`[wix] Draft table render failed with ${tableMode}; retrying fallback: ${message}`);
+          break;
+        }
+        if (!isWixMediaReferenceError(message)) throw error;
+        lastMediaError = message;
+        console.warn(`[wix] Draft media variant failed: ${variant.label}: ${message}`);
+        if (index === 0) await sleep(1500);
+      }
+    }
+
+    if (!hasImages) {
+      try {
+        const response = await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("none", "none", tableMode)) as WixDraftCreateResponse;
+        response.blogFactoryImageVariant = `text-only-table-${tableMode}`;
+        return response;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (tableMode === "html" && isWixRichContentTableError(message)) {
+          lastTableError = message;
+          console.warn(`[wix] Draft table render failed with ${tableMode}; retrying fallback: ${message}`);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!tableModeRejected) {
+      throw new Error(`Wix rejected imported media for this draft. No text-only draft was created. Last Wix error: ${lastMediaError || "unknown media error"}`);
     }
   }
 
-  if (!hasImages) {
-    return await wixApi(credentials, "POST", "/blog/v3/draft-posts", payload("none", "none")) as WixDraftCreateResponse;
-  }
-
-  throw new Error(`Wix rejected imported media for this draft. No text-only draft was created. Last Wix error: ${lastMediaError || "unknown media error"}`);
+  throw new Error(`Wix rejected table content for this draft. Last Wix error: ${lastTableError || lastMediaError || "unknown table error"}`);
 }
 
 async function wixApi(credentials: WixCredentials, method: string, path: string, body?: unknown) {
@@ -1306,6 +1339,7 @@ export function markdownToWixRichContent(
   coverImage: WixImportedImage | null,
   importedImages = new Map<string, WixImportedImage>(),
   imageSource: WixImageSource = "id",
+  tableMode: WixTableRenderMode = "html",
 ) {
   const nodes: unknown[] = [];
   let paragraph: string[] = [];
@@ -1356,7 +1390,11 @@ export function markdownToWixRichContent(
     if (table) {
       flushParagraph();
       flushList();
-      pushBlock(wixTableNode(table), "table");
+      if (tableMode === "html") {
+        pushBlock(wixHtmlTableNode(table), "table");
+      } else {
+        pushBlock(wixTableTextFallbackNode(table), "table");
+      }
       index = table.nextIndex - 1;
       continue;
     }
@@ -1434,27 +1472,35 @@ function wixBlockquoteNode(value: string) {
   };
 }
 
-function wixTableNode(table: MarkdownTable) {
-  const rows = [table.headers, ...table.rows];
-  const columnCount = table.headers.length;
+function wixHtmlTableNode(table: MarkdownTable) {
   return {
-    type: "TABLE",
-    nodes: rows.map((row) => ({
-      type: "TABLE_ROW",
-      nodes: row.map((cell) => ({
-        type: "TABLE_CELL",
-        nodes: [wixParagraphNode(cell)],
-        tableCellData: { cellStyle: { verticalAlignment: "TOP" } },
-      })),
-    })),
-    tableData: {
-      rowHeader: true,
-      columnHeader: false,
-      dimensions: {
-        colsWidthRatio: Array.from({ length: columnCount }, () => 1 / columnCount),
-      },
+    type: "HTML",
+    nodes: [],
+    htmlData: {
+      source: "HTML",
+      html: markdownTableToHtml(table),
+      autoHeight: true,
     },
   };
+}
+
+function wixTableTextFallbackNode(table: MarkdownTable) {
+  const headers = table.headers.map((header) => header.trim());
+  return {
+    type: "BULLETED_LIST",
+    nodes: table.rows.map((row) => {
+      const [label, ...values] = row;
+      const details = values
+        .map((value, index) => `${headers[index + 1] || `Kolon ${index + 2}`}: ${value}`)
+        .filter((value) => !value.endsWith(": "))
+        .join("; ");
+      return {
+        type: "LIST_ITEM",
+        nodes: [wixParagraphNode(details ? `**${label || "Satır"}:** ${details}` : label || row.join(" "))],
+      };
+    }),
+    bulletedListData: {},
+  } as const;
 }
 
 function parseWixInlineMarkdown(value: string, decorations: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
@@ -1616,6 +1662,10 @@ function filenameFromUrl(value?: string) {
 
 function isWixMediaReferenceError(message: string) {
   return /media image|id not found|provided .* not found/i.test(message);
+}
+
+function isWixRichContentTableError(message: string) {
+  return /not a numeric value|richContent|html|table|unsupported.*node|invalid.*node|plugin/i.test(message);
 }
 
 function sleep(ms: number) {
