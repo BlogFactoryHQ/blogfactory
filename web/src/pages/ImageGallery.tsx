@@ -47,6 +47,7 @@ import { imageProviderName, isStockProvider } from "@/lib/image-labels";
 import { toast } from "sonner";
 
 const REQUESTS_PER_PAGE = 6;
+const MANUAL_GROUPS_PER_PAGE = 5;
 type RequestStatusFilter = "active" | "all" | "pending" | "processing" | "failed" | "done";
 type RequestTypeFilter = "all" | "cover" | "inline";
 type BulkImportState = Record<string, { total: number; completed: number; failed: number; uploading: boolean }>;
@@ -384,6 +385,7 @@ export default function ImageGallery() {
   const [detailImage, setDetailImage] = useState<ImageAsset | null>(null);
   const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
   const [requestPage, setRequestPage] = useState(1);
+  const [manualGroupPage, setManualGroupPage] = useState(1);
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("active");
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>("all");
   const [bulkImportState, setBulkImportState] = useState<BulkImportState>({});
@@ -475,6 +477,13 @@ export default function ImageGallery() {
     () => new Set(manualImportGroups.flatMap((group) => group.requests.map((request) => request.id))),
     [manualImportGroups]
   );
+  const manualGroupPageCount = Math.max(1, Math.ceil(manualImportGroups.length / MANUAL_GROUPS_PER_PAGE));
+  const paginatedManualImportGroups = useMemo(() => {
+    const start = (manualGroupPage - 1) * MANUAL_GROUPS_PER_PAGE;
+    return manualImportGroups.slice(start, start + MANUAL_GROUPS_PER_PAGE);
+  }, [manualImportGroups, manualGroupPage]);
+  const manualGroupRangeStart = manualImportGroups.length ? (manualGroupPage - 1) * MANUAL_GROUPS_PER_PAGE + 1 : 0;
+  const manualGroupRangeEnd = manualImportGroups.length ? Math.min(manualGroupPage * MANUAL_GROUPS_PER_PAGE, manualImportGroups.length) : 0;
   const individualRequests = useMemo(
     () => filteredRequests.filter((request) => !groupedRequestIds.has(request.id)),
     [filteredRequests, groupedRequestIds]
@@ -497,7 +506,12 @@ export default function ImageGallery() {
   }, [requestPageCount]);
 
   useEffect(() => {
+    setManualGroupPage((page) => Math.min(page, manualGroupPageCount));
+  }, [manualGroupPageCount]);
+
+  useEffect(() => {
     setRequestPage(1);
+    setManualGroupPage(1);
   }, [requestStatusFilter, requestTypeFilter]);
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
@@ -692,7 +706,7 @@ export default function ImageGallery() {
             </div>
             {manualImportGroups.length > 0 && (
               <div className="mt-3 grid gap-2 border-t border-border pt-3">
-                {manualImportGroups.map((group) => (
+                {paginatedManualImportGroups.map((group) => (
                   <ManualImportGroupCard
                     key={group.id}
                     group={group}
@@ -702,6 +716,34 @@ export default function ImageGallery() {
                     onImportFiles={handleBulkManualImport}
                   />
                 ))}
+                {manualGroupPageCount > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {manualGroupRangeStart}-{manualGroupRangeEnd} of {manualImportGroups.length} manual prompt sets
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setManualGroupPage((page) => Math.max(1, page - 1))}
+                        disabled={manualGroupPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <Badge variant="outline" className="text-[10px]">
+                        Page {manualGroupPage} of {manualGroupPageCount}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setManualGroupPage((page) => Math.min(manualGroupPageCount, page + 1))}
+                        disabled={manualGroupPage === manualGroupPageCount}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="mt-3 grid gap-2">
