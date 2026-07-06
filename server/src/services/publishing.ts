@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
 import { and, eq, desc } from "drizzle-orm";
@@ -7,7 +6,7 @@ import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
-import { getObject, getPublicUrl, putObject } from "./s3-client.js";
+import { getObject } from "./s3-client.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
 export type PublishMode = "draft" | "publish";
@@ -1120,53 +1119,49 @@ async function wixApi(credentials: WixCredentials, method: string, path: string,
 }
 
 async function importWixImage(credentials: WixCredentials, imageUrl: string, title: string): Promise<WixImportedImage | null> {
-  const image = await importWixImageCandidate(credentials, imageUrl, title);
-  if (image.operationStatus !== "FAILED") return image;
-
-  const fallbackPath = await createWixJpegFallback(imageUrl, title).catch((error) => {
-    console.warn(`[wix] JPEG fallback conversion failed for ${imageUrl}: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  });
-  if (!fallbackPath) {
-    throw new Error(`Wix media import failed for ${imageUrl}. Imported ID: ${image.id}`);
-  }
-
-  const fallback = await importWixImageCandidate(credentials, fallbackPath, `${title}-wix-jpeg`);
-  if (fallback.operationStatus === "FAILED") {
-    throw new Error(`Wix media import failed for ${imageUrl}. Original imported ID: ${image.id}. JPEG fallback imported ID: ${fallback.id}`);
-  }
-  return fallback;
-}
-
-async function importWixImageCandidate(credentials: WixCredentials, imageUrl: string, title: string): Promise<WixImportedImage> {
-  const url = externalImageUrl(imageUrl);
-  if (!url) {
-    throw new Error("Wix image publishing needs public image URLs. Set S3_PUBLIC_URL or deploy with VERCEL_URL/BLOGFACTORY_BASE_URL so stored images can be imported.");
-  }
-  const mimeType = mimeForPath(imageUrl);
-  const response = await wixApi(credentials, "POST", "/site-media/v1/files/import", {
-    url,
-    mediaType: "IMAGE",
-    mimeType,
-    displayName: `${slugify(title)}.${extensionForMime(mimeType)}`,
+  const prepared = await prepareWixUploadImage(imageUrl, title);
+  const uploadUrlResponse = await wixApi(credentials, "POST", "/site-media/v1/files/generate-upload-url", {
+    mimeType: prepared.mimeType,
+    fileName: prepared.filename,
+    sizeInBytes: String(prepared.buffer.length),
+    private: false,
     externalInfo: {
       origin: "blogfactory",
       externalIds: [imageUrl.slice(0, 4000)],
     },
-  }) as { file?: WixFileInfo };
-  const id = normalizeWixMediaId(wixFileId(response.file));
+  }) as { uploadUrl?: string };
+  if (!uploadUrlResponse.uploadUrl) {
+    throw new Error(`Wix media upload URL was not returned for ${imageUrl}`);
+  }
+
+  const uploadResponse = await fetch(uploadUrlResponse.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": prepared.mimeType },
+    body: arrayBufferBody(prepared.buffer),
+  });
+  const uploadBody = await uploadResponse.text();
+  if (!uploadResponse.ok) {
+    throw new Error(`Wix media upload failed ${uploadResponse.status}: ${uploadBody}`);
+  }
+
+  const uploaded = parseJson(uploadBody);
+  const file = wixUploadFile(uploaded);
+  const id = normalizeWixMediaId(wixFileId(file) || wixMediaIdFromUploadUrl(uploadUrlResponse.uploadUrl));
   if (!id) {
-    throw new Error(`Wix media import did not return a file ID for ${imageUrl}. Response: ${summarizeWixFile(response.file)}`);
+    throw new Error(`Wix media upload did not return a file ID for ${imageUrl}. Response: ${uploadBody || "empty upload response"}`);
   }
   const image = await waitForWixImage(credentials, {
     id,
-    wixMediaIdentifier: wixImageIdentifier(id, response.file),
-    url: response.file?.url,
-    filename: response.file?.displayName || filenameFromUrl(response.file?.url),
-    operationStatus: response.file?.operationStatus,
-    width: wixImageWidth(response.file),
-    height: wixImageHeight(response.file),
+    wixMediaIdentifier: wixImageIdentifier(id, file, prepared.width, prepared.height),
+    url: file?.url,
+    filename: file?.displayName || prepared.filename,
+    operationStatus: file?.operationStatus || "PENDING",
+    width: wixImageWidth(file, prepared.width),
+    height: wixImageHeight(file, prepared.height),
   });
+  if (image.operationStatus === "FAILED") {
+    throw new Error(`Wix media upload failed while processing ${imageUrl}. Uploaded ID: ${image.id}`);
+  }
   return image;
 }
 
@@ -1404,34 +1399,20 @@ function wixFileId(file?: WixFileInfo) {
   return file?._id || file?.id || file?.media?.image?.image?.id || file?.media?.image?.image?._id || "";
 }
 
-function wixImageIdentifier(id: string, file?: WixFileInfo) {
+function wixImageIdentifier(id: string, file?: WixFileInfo, fallbackWidth = 1200, fallbackHeight = 675) {
   if (!id) return undefined;
   const filename = file?.filename || file?.displayName || filenameFromUrl(file?.url) || id;
-  const width = wixImageWidth(file);
-  const height = wixImageHeight(file);
+  const width = wixImageWidth(file, fallbackWidth);
+  const height = wixImageHeight(file, fallbackHeight);
   return `wix:image://v1/${id}/${filename}#originWidth=${width}&originHeight=${height}`;
 }
 
-function summarizeWixFile(file?: WixFileInfo) {
-  if (!file) return "missing file object";
-  return JSON.stringify({
-    keys: Object.keys(file),
-    id: file.id || null,
-    _id: file._id || null,
-    url: file.url || null,
-    mediaType: file.mediaType || null,
-    operationStatus: file.operationStatus || null,
-    mediaKeys: file.media ? Object.keys(file.media) : null,
-    nestedImageId: file.media?.image?.image?.id || file.media?.image?.image?._id || null,
-  });
+function wixImageWidth(file?: WixFileInfo, fallback = 1200) {
+  return Number(file?.width || file?.image?.width || file?.media?.image?.width || file?.media?.image?.image?.width || fallback);
 }
 
-function wixImageWidth(file?: WixFileInfo) {
-  return Number(file?.width || file?.image?.width || file?.media?.image?.width || file?.media?.image?.image?.width || 1200);
-}
-
-function wixImageHeight(file?: WixFileInfo) {
-  return Number(file?.height || file?.image?.height || file?.media?.image?.height || file?.media?.image?.image?.height || 675);
+function wixImageHeight(file?: WixFileInfo, fallback = 675) {
+  return Number(file?.height || file?.image?.height || file?.media?.image?.height || file?.media?.image?.image?.height || fallback);
 }
 
 function filenameFromUrl(value?: string) {
@@ -1451,49 +1432,61 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function createWixJpegFallback(pathOrUrl: string, title: string) {
+async function prepareWixUploadImage(pathOrUrl: string, title: string) {
   const image = await fetchImage(pathOrUrl);
-  if (!image?.buffer.length) return null;
+  if (!image?.buffer.length) throw new Error(`Could not read image bytes for Wix upload: ${pathOrUrl}`);
 
   const sharp = (await import("sharp")).default;
-  const buffer = await sharp(image.buffer, { animated: false })
+  const result = await sharp(image.buffer, { animated: false })
     .rotate()
     .flatten({ background: "#ffffff" })
     .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 90, mozjpeg: true })
-    .toBuffer();
-  const storagePath = wixJpegFallbackPath(pathOrUrl, title);
-  await putObject(storagePath, buffer, "image/jpeg");
-  return storagePath;
+    .toBuffer({ resolveWithObject: true });
+  return {
+    buffer: result.data,
+    mimeType: "image/jpeg",
+    filename: `${slugify(title) || "image"}.jpg`,
+    width: result.info.width || 1200,
+    height: result.info.height || 675,
+  };
 }
 
-function wixJpegFallbackPath(pathOrUrl: string, title: string) {
-  if (!pathOrUrl.startsWith("http")) {
-    const cleanPath = pathOrUrl.split(/[?#]/)[0];
-    const slashIndex = cleanPath.lastIndexOf("/");
-    const folder = slashIndex >= 0 ? cleanPath.slice(0, slashIndex + 1) : "";
-    const filename = slashIndex >= 0 ? cleanPath.slice(slashIndex + 1) : cleanPath;
-    const stem = filename.replace(/\.[^.]+$/, "") || slugify(title) || "image";
-    return `${folder}${stem}.wix-jpeg.jpg`;
+function parseJson(value: string) {
+  if (!value.trim()) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
-
-  const hash = createHash("sha256").update(pathOrUrl).digest("hex").slice(0, 16);
-  const month = new Date().toISOString().slice(0, 7);
-  return `wix-imports/${month}/${hash}-${slugify(title) || "image"}.jpg`;
 }
 
-function externalImageUrl(pathOrUrl: string) {
-  if (pathOrUrl.startsWith("http")) return pathOrUrl;
+function arrayBufferBody(buffer: Buffer) {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
 
-  const publicUrl = getPublicUrl(pathOrUrl);
-  if (publicUrl) return publicUrl;
+function wixUploadFile(value: unknown): WixFileInfo | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.file && typeof record.file === "object") return record.file as WixFileInfo;
+  if (Array.isArray(record.files) && record.files[0] && typeof record.files[0] === "object") return record.files[0] as WixFileInfo;
+  if (Array.isArray(record) && record[0] && typeof record[0] === "object") {
+    const first = record[0] as Record<string, unknown>;
+    if (first.file && typeof first.file === "object") return first.file as WixFileInfo;
+    return first as WixFileInfo;
+  }
+  return record.id || record._id || record.url ? record as WixFileInfo : undefined;
+}
 
-  const base = process.env.BLOGFACTORY_BASE_URL || process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.VERCEL_URL;
-  if (!base) return null;
-
-  const normalizedBase = base.startsWith("http") ? base : `https://${base}`;
-  const encodedPath = pathOrUrl.split("/").map(encodeURIComponent).join("/");
-  return `${normalizedBase.replace(/\/$/, "")}/api/storage/${encodedPath}`;
+function wixMediaIdFromUploadUrl(uploadUrl: string) {
+  try {
+    const token = new URL(uploadUrl).pathname.split("/").filter(Boolean).pop();
+    if (!token) return "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as { path?: string };
+    return payload.path?.split("/").pop() || "";
+  } catch {
+    return "";
+  }
 }
 
 function normalizeWixMediaId(value: string) {
