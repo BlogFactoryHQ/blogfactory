@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
 import { and, eq, desc } from "drizzle-orm";
@@ -6,7 +7,7 @@ import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
-import { getObject, getPublicUrl } from "./s3-client.js";
+import { getObject, getPublicUrl, putObject } from "./s3-client.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
 export type PublishMode = "draft" | "publish";
@@ -1119,6 +1120,25 @@ async function wixApi(credentials: WixCredentials, method: string, path: string,
 }
 
 async function importWixImage(credentials: WixCredentials, imageUrl: string, title: string): Promise<WixImportedImage | null> {
+  const image = await importWixImageCandidate(credentials, imageUrl, title);
+  if (image.operationStatus !== "FAILED") return image;
+
+  const fallbackPath = await createWixJpegFallback(imageUrl, title).catch((error) => {
+    console.warn(`[wix] JPEG fallback conversion failed for ${imageUrl}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  });
+  if (!fallbackPath) {
+    throw new Error(`Wix media import failed for ${imageUrl}. Imported ID: ${image.id}`);
+  }
+
+  const fallback = await importWixImageCandidate(credentials, fallbackPath, `${title}-wix-jpeg`);
+  if (fallback.operationStatus === "FAILED") {
+    throw new Error(`Wix media import failed for ${imageUrl}. Original imported ID: ${image.id}. JPEG fallback imported ID: ${fallback.id}`);
+  }
+  return fallback;
+}
+
+async function importWixImageCandidate(credentials: WixCredentials, imageUrl: string, title: string): Promise<WixImportedImage> {
   const url = externalImageUrl(imageUrl);
   if (!url) {
     throw new Error("Wix image publishing needs public image URLs. Set S3_PUBLIC_URL or deploy with VERCEL_URL/BLOGFACTORY_BASE_URL so stored images can be imported.");
@@ -1147,9 +1167,6 @@ async function importWixImage(credentials: WixCredentials, imageUrl: string, tit
     width: wixImageWidth(response.file),
     height: wixImageHeight(response.file),
   });
-  if (image.operationStatus === "FAILED") {
-    throw new Error(`Wix media import failed for ${imageUrl}. Imported ID: ${image.id}`);
-  }
   return image;
 }
 
@@ -1432,6 +1449,37 @@ function isWixMediaReferenceError(message: string) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function createWixJpegFallback(pathOrUrl: string, title: string) {
+  const image = await fetchImage(pathOrUrl);
+  if (!image?.buffer.length) return null;
+
+  const sharp = (await import("sharp")).default;
+  const buffer = await sharp(image.buffer, { animated: false })
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+  const storagePath = wixJpegFallbackPath(pathOrUrl, title);
+  await putObject(storagePath, buffer, "image/jpeg");
+  return storagePath;
+}
+
+function wixJpegFallbackPath(pathOrUrl: string, title: string) {
+  if (!pathOrUrl.startsWith("http")) {
+    const cleanPath = pathOrUrl.split(/[?#]/)[0];
+    const slashIndex = cleanPath.lastIndexOf("/");
+    const folder = slashIndex >= 0 ? cleanPath.slice(0, slashIndex + 1) : "";
+    const filename = slashIndex >= 0 ? cleanPath.slice(slashIndex + 1) : cleanPath;
+    const stem = filename.replace(/\.[^.]+$/, "") || slugify(title) || "image";
+    return `${folder}${stem}.wix-jpeg.jpg`;
+  }
+
+  const hash = createHash("sha256").update(pathOrUrl).digest("hex").slice(0, 16);
+  const month = new Date().toISOString().slice(0, 7);
+  return `wix-imports/${month}/${hash}-${slugify(title) || "image"}.jpg`;
 }
 
 function externalImageUrl(pathOrUrl: string) {
