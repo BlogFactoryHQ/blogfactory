@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone, ImageIcon } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone, ImageIcon, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,7 @@ interface PostTableRowProps {
   onQuickPublish: (e: React.MouseEvent) => void;
   onQuickDelete: (e: React.MouseEvent) => void;
   onOpenImagePrompts: (e: React.MouseEvent) => void;
+  isImagePromptActionPending?: boolean;
   formatModelName: (modelId: string) => string;
   className?: string;
   displayTitle?: string;
@@ -65,6 +66,7 @@ export function PostTableRow({
   onQuickPublish,
   onQuickDelete,
   onOpenImagePrompts,
+  isImagePromptActionPending = false,
   formatModelName,
   className,
   displayTitle,
@@ -79,8 +81,8 @@ export function PostTableRow({
   const hasImagePrompts = (Number(post.image_prompt_count) || 0) > 0;
   const hasImageWork = hasAttachedImages || hasImagePrompts;
   const imagePromptLabel = hasImageWork
-    ? `Open image prompts for ${displayTitle || post.title}. Image or prompt exists.`
-    : `Open image prompts for ${displayTitle || post.title}. No image or prompt yet.`;
+    ? `Open image prompts for ${displayTitle || post.title}`
+    : `Create image prompts for ${displayTitle || post.title}`;
 
   return (
     <TableRow
@@ -151,10 +153,11 @@ export function PostTableRow({
                 : "border-destructive/25 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive"
             )}
             onClick={onOpenImagePrompts}
-            title={hasImageWork ? "Image or prompt exists" : "No image or prompt yet"}
+            disabled={isImagePromptActionPending}
+            title={hasImageWork ? "Open image prompts" : "Create image prompts"}
             aria-label={imagePromptLabel}
           >
-            <ImageIcon className="h-4 w-4" />
+            {isImagePromptActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
           </Button>
           {post.status !== "published" && (
             <Button

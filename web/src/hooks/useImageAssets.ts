@@ -179,6 +179,7 @@ export function useCreateManualImagePrompts() {
     }>(`/images/posts/${postId}/manual-prompts`, {}),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
       if (result.created > 0) {
         toast.success("Image prompts created", { description: `${result.created} manual slot${result.created === 1 ? "" : "s"} ready to import.` });
       } else {

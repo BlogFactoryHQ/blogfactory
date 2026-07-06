@@ -31,6 +31,7 @@ import { PostFilters, SortField, SortDirection, StatusFilter } from "@/component
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
 import { useIntegrations } from "@/hooks/useIntegrations";
+import { useCreateManualImagePrompts } from "@/hooks/useImageAssets";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
@@ -118,6 +119,13 @@ const sortDraftPosts = (a: Post, b: Post) => {
 const statusFromParam = (value: string | null): StatusFilter =>
   value === "draft" || value === "published" || value === "all" ? value : "all";
 
+const hasPostImageWork = (post: Pick<Post, "cover_image_url" | "inline_images" | "image_asset_count" | "image_prompt_count">) => Boolean(
+  post.cover_image_url
+  || (Array.isArray(post.inline_images) && post.inline_images.length > 0)
+  || (Number(post.image_asset_count) || 0) > 0
+  || (Number(post.image_prompt_count) || 0) > 0
+);
+
 export const draftGroupKey = (post: Pick<Post, "generation_plan" | "job_id" | "source_type" | "source_ref_id" | "persona_id" | "model_id" | "created_at">) => {
   if (post.generation_plan?.batchId) return `batch-${post.generation_plan.batchId}`;
   if (FEED_SOURCE_TYPES.has(post.source_type)) return "";
@@ -167,10 +175,12 @@ export default function Posts() {
   const [postsPerPage, setPostsPerPage] = useState(25);
   const [bulkIntegrationId, setBulkIntegrationId] = useState("");
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+  const [creatingImagePromptPostId, setCreatingImagePromptPostId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { bulkDelete, bulkPublish, bulkDraft, isDeleting, isPublishing, isDrafting, isLoading } = useBulkPostActions();
   const { integrations } = useIntegrations();
+  const createManualImagePrompts = useCreateManualImagePrompts();
   const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
 
   const { data: posts = [], isLoading: isLoadingPosts } = useQuery({
@@ -490,8 +500,17 @@ export default function Posts() {
     });
   };
 
-  const openImagePrompts = (post: Post, event: React.MouseEvent) => {
+  const handleImagePromptAction = (post: Post, event: React.MouseEvent) => {
     event.stopPropagation();
+    if (!hasPostImageWork(post)) {
+      if (createManualImagePrompts.isPending) return;
+      setCreatingImagePromptPostId(post.id);
+      createManualImagePrompts.mutate(post.id, {
+        onSettled: () => setCreatingImagePromptPostId(null),
+      });
+      return;
+    }
+
     const params = new URLSearchParams({
       postId: post.id,
       requestSearch: cleanDraftTitle(post.title),
@@ -585,7 +604,8 @@ export default function Posts() {
               e.stopPropagation();
               setQuickDeletePost(post);
             }}
-            onOpenImagePrompts={(e) => openImagePrompts(post, e)}
+            onOpenImagePrompts={(e) => handleImagePromptAction(post, e)}
+            isImagePromptActionPending={creatingImagePromptPostId === post.id}
             formatModelName={formatModelName}
             className="bg-muted/20"
             displayTitle={cleanDraftTitle(post.title)}
@@ -792,7 +812,8 @@ export default function Posts() {
                     e.stopPropagation();
                     setQuickDeletePost(row.post);
                   }}
-                  onOpenImagePrompts={(e) => openImagePrompts(row.post, e)}
+                  onOpenImagePrompts={(e) => handleImagePromptAction(row.post, e)}
+                  isImagePromptActionPending={creatingImagePromptPostId === row.post.id}
                   formatModelName={formatModelName}
                 />
               ))
