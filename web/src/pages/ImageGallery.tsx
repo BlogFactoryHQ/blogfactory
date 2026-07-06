@@ -431,9 +431,29 @@ export default function ImageGallery() {
     }
     return counts;
   }, [imageRequests]);
+  const scopedPostRequests = useMemo(
+    () => requestPostId ? imageRequests.filter((request) => request.post_id === requestPostId) : [],
+    [imageRequests, requestPostId]
+  );
+  const requestPanelRequests = requestPostId ? scopedPostRequests : imageRequests;
+  const requestPanelCounts = useMemo(() => {
+    const counts = { queued: 0, processing: 0, failed: 0, done: 0, aiQueued: 0 };
+    for (const request of requestPanelRequests) {
+      if (request.status === "pending" || request.status === "queued") counts.queued += 1;
+      else if (request.status === "processing") counts.processing += 1;
+      else if (request.status === "failed") counts.failed += 1;
+      else if (request.status === "done") counts.done += 1;
+      if (request.provider === "ai-deferred" && (request.status === "pending" || request.status === "queued")) counts.aiQueued += 1;
+    }
+    return counts;
+  }, [requestPanelRequests]);
   const activeRequests = useMemo(
     () => imageRequests.filter((request) => request.status !== "done"),
     [imageRequests]
+  );
+  const activePanelRequests = useMemo(
+    () => requestPanelRequests.filter((request) => request.status !== "done"),
+    [requestPanelRequests]
   );
   const filteredRequests = useMemo(() => {
     const query = requestSearch.trim().toLowerCase();
@@ -448,11 +468,9 @@ export default function ImageGallery() {
       )
     );
   }, [imageRequests, requestPostId, requestSearch, requestStatusFilter, requestTypeFilter]);
-  const scopedPostRequests = useMemo(
-    () => requestPostId ? imageRequests.filter((request) => request.post_id === requestPostId) : [],
-    [imageRequests, requestPostId]
-  );
   const missingScopedImagePrompts = Boolean(requestPostId && scopedPostRequests.length === 0);
+  const hiddenScopedImagePrompts = Boolean(requestPostId && scopedPostRequests.length > 0 && filteredRequests.length === 0);
+  const scopedPostTitle = requestSearch.trim() || scopedPostRequests[0]?.post_title || "Selected post";
   const manualImportGroups = useMemo(() => {
     const visibleIds = new Set(filteredRequests.map((request) => request.id));
     const groups = new Map<string, ManualImportGroup>();
@@ -684,7 +702,7 @@ export default function ImageGallery() {
             icon={RefreshCw}
             title="Image requests"
             description={requestPostId
-              ? `${filteredRequests.length} matching this post · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`
+              ? `${filteredRequests.length} shown for this post · ${scopedPostRequests.length} post request${scopedPostRequests.length === 1 ? "" : "s"}`
               : `${activeRequests.length} active · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`}
             action={
               <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.aiQueued < 1}>
@@ -694,13 +712,29 @@ export default function ImageGallery() {
             }
           />
           <div className="p-4">
+            {requestPostId && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="border-primary/30 text-primary">Post scoped</Badge>
+                    <span className="truncate text-sm font-medium text-foreground">{scopedPostTitle}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Showing image prompt requests attached to this exact post.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={clearRequestFilters}>
+                  View all requests
+                </Button>
+              </div>
+            )}
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {(["queued", "processing", "failed", "done"] as const).map((status) => (
                     <button key={status} type="button" onClick={() => setRequestStatusFilter(status === "queued" ? "pending" : status)}>
                       <Badge variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
-                        {status} {requestCounts[status]}
+                        {status} {requestPanelCounts[status]}
                       </Badge>
                     </button>
                   ))}
@@ -708,7 +742,7 @@ export default function ImageGallery() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">
-                  {activeRequests.length} active · {imageRequests.length} total
+                  {activePanelRequests.length} active · {requestPanelRequests.length} total
                 </span>
               </div>
             </div>
@@ -755,7 +789,7 @@ export default function ImageGallery() {
                 </Button>
               )}
               <span className="text-xs text-muted-foreground">
-                Showing {filteredRequests.length} of {imageRequests.length}
+                Showing {filteredRequests.length} of {requestPanelRequests.length}
               </span>
             </div>
             {manualImportGroups.length > 0 && (
@@ -816,12 +850,25 @@ export default function ImageGallery() {
                 />
               )) : (
                 <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
-                  <p>
+                  <p className="font-medium text-foreground">
                     {manualImportGroups.length
-                      ? "Individual manual slots are grouped above."
-                      : requestSearch || requestPostId
-                        ? "No image prompts found for this post. Prompt generation may have been skipped or timed out."
-                        : "No image requests match these filters."}
+                      ? "Manual set is shown above"
+                      : missingScopedImagePrompts
+                        ? "No image prompts exist for this post"
+                        : hiddenScopedImagePrompts
+                          ? "Image prompts exist, but the current filters hide them"
+                          : requestSearch || requestPostId
+                            ? "No image prompts match this view"
+                            : "No image requests match these filters"}
+                  </p>
+                  <p className="mx-auto mt-1 max-w-xl">
+                    {missingScopedImagePrompts
+                      ? "The article draft exists, but the image prompt step did not create request rows. This can happen when the text job timed out near the end."
+                      : hiddenScopedImagePrompts
+                        ? "Switch back to all statuses and all types to reveal the existing prompt requests for this post."
+                        : manualImportGroups.length
+                          ? "Individual manual slots are grouped so cover and inline imports stay together."
+                          : "Adjust the request filters or clear the post scope to browse the full request queue."}
                   </p>
                   {missingScopedImagePrompts && (
                     <Button
@@ -832,6 +879,19 @@ export default function ImageGallery() {
                     >
                       {createManualPrompts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       Create image prompts
+                    </Button>
+                  )}
+                  {hiddenScopedImagePrompts && (
+                    <Button
+                      className="mt-3"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setRequestStatusFilter("all");
+                        setRequestTypeFilter("all");
+                      }}
+                    >
+                      Show existing prompts
                     </Button>
                   )}
                 </div>

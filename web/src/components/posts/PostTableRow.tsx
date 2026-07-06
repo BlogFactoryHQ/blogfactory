@@ -134,7 +134,8 @@ export function PostTableRow({
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-primary"
             onClick={onOpenImagePrompts}
-            title="Image prompts"
+            title="Open image prompts"
+            aria-label={`Open image prompts for ${displayTitle || post.title}`}
           >
             <ImageIcon className="h-4 w-4" />
           </Button>
