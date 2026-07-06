@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { imageAssets, postPublications, posts, siteIntegrations, sites } from "../db/schema.js";
+import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
@@ -52,6 +52,12 @@ interface PublishOptions {
   excerpt?: string;
 }
 
+interface BrandCta {
+  label: string;
+  url: string;
+  description: string;
+}
+
 interface ArticlePayload {
   title: string;
   baseMarkdown: string;
@@ -67,6 +73,7 @@ interface ArticlePayload {
   coverImageUrl: string | null;
   coverAltText: string;
   inlineImages: PlacementImage[];
+  appendedCta?: BrandCta | null;
 }
 
 interface PublishingImageAsset {
@@ -231,7 +238,8 @@ export async function publishPost(userId: string, postId: string, integrationId:
     })
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
-  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows);
+  const brandCtas = await publishingBrandCtas(userId, integration.siteId);
+  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas);
   const mode = options.mode === "publish" ? "publish" : "draft";
 
   try {
@@ -413,7 +421,7 @@ function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
   return `${type === "cover" ? "Featured image" : `Article image ${index + 1}`} for ${title}`.slice(0, 180);
 }
 
-function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[]): ArticlePayload {
+function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[], brandCtas: BrandCta[] = []): ArticlePayload {
   const rawTitle = post.title.trim();
   const content = post.content || "";
   const meta = parseMarkdownMeta(content);
@@ -448,7 +456,8 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
   const coverImageUrl = coverCandidate || autoPromotedCover?.url || null;
   const coverAltText = coverImageUrl ? altByPath.get(coverImageUrl) || autoPromotedCover?.altText || fallbackImageAlt(title, "cover") : fallbackImageAlt(title, "cover");
   const inlineImages = autoPromotedCover ? [] : storedInlineImages;
-  const placedMarkdown = reflowInlineImages(body, inlineImages, imagePlacement);
+  const ctaResult = appendBrandCta(body, brandCtas);
+  const placedMarkdown = reflowInlineImages(ctaResult.markdown, inlineImages, imagePlacement);
 
   return {
     title,
@@ -465,7 +474,57 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
     coverImageUrl,
     coverAltText,
     inlineImages,
+    appendedCta: ctaResult.cta,
   };
+}
+
+async function publishingBrandCtas(userId: string, siteId: string) {
+  const siteRows = await db
+    .select({ brandCtas: userSettings.brandCtas })
+    .from(userSettings)
+    .where(and(eq(userSettings.userId, userId), eq(userSettings.siteId, siteId)))
+    .limit(1);
+  const siteCtas = normalizeBrandCtas(siteRows[0]?.brandCtas);
+  if (siteCtas.length) return siteCtas;
+
+  const globalRows = await db
+    .select({ brandCtas: userSettings.brandCtas })
+    .from(userSettings)
+    .where(and(eq(userSettings.userId, userId), sql`${userSettings.siteId} IS NULL`))
+    .limit(1);
+  return normalizeBrandCtas(globalRows[0]?.brandCtas);
+}
+
+function normalizeBrandCtas(value: unknown): BrandCta[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    const label = String(record.label || "").trim();
+    const description = String(record.description || "").trim();
+    const url = String(record.url || "").trim();
+    if (!label || !description) return null;
+    return { label, description, url };
+  }).filter(Boolean).slice(0, 5) as BrandCta[];
+}
+
+export function appendBrandCta(markdown: string, ctas: BrandCta[]) {
+  const cta = ctas[0] || null;
+  if (!cta) return { markdown, cta: null };
+  const haystack = normalizeCtaSearchText(markdown);
+  const alreadyIncluded = [cta.label, cta.description, cta.url]
+    .filter(Boolean)
+    .some((part) => normalizeCtaSearchText(part).length > 8 && haystack.includes(normalizeCtaSearchText(part)));
+  if (alreadyIncluded) return { markdown, cta: null };
+
+  const heading = cta.label.replace(/^#+\s*/, "").trim();
+  const lines = [`## ${heading}`, "", cta.description];
+  if (cta.url) lines.push("", `[${heading}](${cta.url})`);
+  return { markdown: `${markdown.trim()}\n\n${lines.join("\n")}`.trim(), cta };
+}
+
+function normalizeCtaSearchText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function uniqueStrings(values: string[]) {
@@ -1026,6 +1085,7 @@ async function publishWix(credentials: WixCredentials, article: ArticlePayload, 
     responseData: {
       draftId,
       seoSlug: article.slug,
+      appendedCta: article.appendedCta ? { label: article.appendedCta.label, url: article.appendedCta.url || null } : null,
       imageVariant: createResponse.blogFactoryImageVariant,
       coverImported: Boolean(coverMedia),
       inlineImported: importedImages.size,

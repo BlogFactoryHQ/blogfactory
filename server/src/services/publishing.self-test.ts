@@ -4,7 +4,7 @@ process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/
 process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
 const { encryptSecret } = await import("./api-keys.js");
-const { articleBody, encryptProviderCredentials, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
+const { appendBrandCta, articleBody, encryptProviderCredentials, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
 
 const html = markdownToHtml([
   "# Agentik Kodlama",
@@ -36,6 +36,21 @@ assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına 
 assert.match(html, /<h2>Sonuç<\/h2>/);
 assert.equal(articleBody("# Başlık\n\n# Başlık\n\n## Başlık\n\nGövde"), "Gövde");
 assert.equal(slugify("Farklı Sektörlerde Havalandırma Tapası Kullanımı: Otomotivden Elektroniğe"), "farkli-sektorlerde-havalandirma-tapasi-kullanimi");
+const ctaResult = appendBrandCta("Intro\n\nBody", [{
+  label: "İletişime Geç:",
+  description: "sinangokce@idealplastik.com.tr +90 212 612 68 40 / 41 İstanbul - Türkiye",
+  url: "https://idealplastik.com.tr/iletisim",
+}]);
+assert.match(ctaResult.markdown, /## İletişime Geç:/);
+assert.match(ctaResult.markdown, /\[İletişime Geç:]\(https:\/\/idealplastik\.com\.tr\/iletisim\)/);
+assert.equal(ctaResult.cta?.label, "İletişime Geç:");
+const duplicateCtaResult = appendBrandCta(ctaResult.markdown, [{
+  label: "İletişime Geç:",
+  description: "sinangokce@idealplastik.com.tr +90 212 612 68 40 / 41 İstanbul - Türkiye",
+  url: "https://idealplastik.com.tr/iletisim",
+}]);
+assert.equal(duplicateCtaResult.cta, null);
+assert.equal(duplicateCtaResult.markdown, ctaResult.markdown);
 assert.throws(
   () => encryptProviderCredentials("wix", { apiKey: "token", siteId: "site" }),
   /Wix API key, site ID, and author\/member ID are required/,
