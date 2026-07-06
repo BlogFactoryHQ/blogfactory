@@ -9,8 +9,9 @@ import {
   templateVariables,
 } from "./programmatic.js";
 
-const local = BUILT_IN_PROGRAMMATIC_TEMPLATES[0];
+const local = BUILT_IN_PROGRAMMATIC_TEMPLATES.find((template) => template.id === "builtin-local-seo");
 
+assert.ok(local);
 assert.deepEqual(templateVariables(local), ["service", "city", "state", "year"]);
 assert.equal(renderTemplateText("Best {{service}} in {{city}}", { service: "Plumbers", city: "Austin" }), "Best Plumbers in Austin");
 assert.equal(parseCsv("city,state\nAustin,Texas").rows[0].state, "Texas");

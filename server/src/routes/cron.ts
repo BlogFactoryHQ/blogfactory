@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
 import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
@@ -67,7 +68,12 @@ cronRoutes.get("/drain", async (c) => {
   };
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
-  if (task === "campaigns") return c.json({ ok: true, campaigns: await drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign) });
+  if (task === "campaigns") {
+    waitUntil(drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign).catch((err) => {
+      console.error("[cron] Campaign drain failed:", err);
+    }));
+    return c.json({ ok: true, campaigns: { queued: true } }, 202);
+  }
   if (task === "indexing") return c.json({ ok: true, google: await drainQueuedGoogleIndexing(config.indexing.limit) });
   if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(config.searchConsole.limit) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });

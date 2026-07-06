@@ -271,6 +271,5 @@ export async function retryCampaignItems(campaignId: string, userId: string, ite
   }).where(where);
 
   await db.update(campaigns).set({ status: "running", completedAt: null, errorMessage: null }).where(eq(campaigns.id, campaignId));
-  runCampaign(campaignId, { maxItems: CAMPAIGN_CONCURRENCY }).catch((err) => console.error("[campaign] Retry failed:", err));
   return campaign;
 }

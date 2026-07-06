@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
 import { asc, and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs, personas, userSettings } from "../db/schema.js";
@@ -240,7 +241,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
     .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)))
     .returning();
 
-  runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed:", err));
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed:", err)));
   return c.json({ campaign });
 });
 
@@ -253,9 +254,9 @@ campaignsRoutes.post("/:id/run-next", async (c) => {
     return c.json({ error: "Campaign must be running to process the next batch" }, 409);
   }
 
-  const processed = await runCampaign(id, { maxItems: 3 });
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed:", err)));
   const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
-  return c.json({ campaign, processed: processed || 0 });
+  return c.json({ campaign, queued: true }, 202);
 });
 
 campaignsRoutes.post("/:id/stop", async (c) => {
@@ -267,15 +268,19 @@ campaignsRoutes.post("/:id/stop", async (c) => {
 
 campaignsRoutes.post("/:id/retry-failed", async (c) => {
   const userId = getUserId(c);
-  const campaign = await retryCampaignItems(c.req.param("id"), userId);
+  const id = c.req.param("id");
+  const campaign = await retryCampaignItems(id, userId);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry failed:", err)));
   return c.json({ campaign });
 });
 
 campaignsRoutes.post("/:id/items/:itemId/retry", async (c) => {
   const userId = getUserId(c);
-  const campaign = await retryCampaignItems(c.req.param("id"), userId, [c.req.param("itemId")]);
+  const id = c.req.param("id");
+  const campaign = await retryCampaignItems(id, userId, [c.req.param("itemId")]);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry item failed:", err)));
   return c.json({ campaign });
 });
 

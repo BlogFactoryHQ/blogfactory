@@ -23,7 +23,10 @@ async function drain(task: string, env: Env) {
 
 export default {
   async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
-    ctx.waitUntil(Promise.all(Array.from({ length: IMAGE_DRAIN_CONCURRENCY }, () => drain("images", env))));
+    ctx.waitUntil(Promise.all([
+      drain("campaigns", env),
+      ...Array.from({ length: IMAGE_DRAIN_CONCURRENCY }, () => drain("images", env)),
+    ]));
   },
 
   async fetch() {
