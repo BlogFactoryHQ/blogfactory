@@ -175,7 +175,7 @@ const wixRichContentWithTable = markdownToWixRichContent(
 ) as {
   nodes: Array<{
     type: string;
-    htmlData?: { html?: string; source?: string; autoHeight?: boolean };
+    htmlData?: { html?: string; source?: string; autoHeight?: boolean; containerData?: { width?: { custom?: string }; alignment?: string; textWrap?: boolean } };
     nodes?: Array<{
       type?: string;
       nodes?: Array<{ type?: string; nodes?: Array<{ type?: string; textData?: { text?: string } }> }>;
@@ -185,6 +185,9 @@ const wixRichContentWithTable = markdownToWixRichContent(
 const table = wixRichContentWithTable.nodes.find((node) => node.type === "HTML");
 assert.equal(table?.htmlData?.source, "HTML");
 assert.equal(table?.htmlData?.autoHeight, true);
+assert.equal(table?.htmlData?.containerData?.width?.custom, "842");
+assert.equal(table?.htmlData?.containerData?.alignment, "CENTER");
+assert.equal(table?.htmlData?.containerData?.textWrap, false);
 assert.match(table?.htmlData?.html || "", /font-family:Arial,Helvetica,sans-serif/);
 assert.match(table?.htmlData?.html || "", /<table style="[^"]*border-collapse:collapse/);
 assert.match(table?.htmlData?.html || "", /<th style="[^"]*background:#f3f4f6[^"]*">Yöntem<\/th>/);

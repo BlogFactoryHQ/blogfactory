@@ -1488,6 +1488,11 @@ function wixHtmlTableNode(table: MarkdownTable) {
     type: "HTML",
     nodes: [],
     htmlData: {
+      containerData: {
+        width: { custom: "842" },
+        alignment: "CENTER",
+        textWrap: false,
+      },
       source: "HTML",
       html: markdownTableToStyledHtml(table),
       autoHeight: true,
