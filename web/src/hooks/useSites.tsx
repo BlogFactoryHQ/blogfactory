@@ -45,6 +45,7 @@ interface SiteContextValue {
   activeSiteId: string | null;
   isLoading: boolean;
   isCreating: boolean;
+  isActivating: boolean;
   isRefreshing: boolean;
   createSite: (input: CreateSiteInput) => Promise<Site>;
   activateSite: (siteId: string) => Promise<void>;
@@ -88,9 +89,11 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       const response = await api.post<{ site: Site; activeSiteId: string; active_site_id: string }>("/sites", input);
       return normalizeSite(response.site);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sites"] });
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sites"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-settings"] }),
+      ]);
     },
   });
 
@@ -136,6 +139,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       activeSiteId,
       isLoading: sitesQuery.isLoading,
       isCreating: createSiteMutation.isPending,
+      isActivating: activateSiteMutation.isPending,
       isRefreshing: refreshSiteMutation.isPending,
       createSite: async (input) => createSiteMutation.mutateAsync(input),
       activateSite: async (siteId) => { await activateSiteMutation.mutateAsync(siteId); },
