@@ -301,6 +301,50 @@ function buildServiceTemplate(columns: string[]): ProgrammaticTemplate {
   };
 }
 
+function buildSeoContentBriefTemplate(columns: string[]): ProgrammaticTemplate {
+  const title = firstColumn(columns, ["blog_title_h1", "h1", "title"]) || columns[0];
+  const primaryKeyword = firstColumn(columns, ["primary_keyword", "keyword"]);
+  const secondaryKeywords = firstColumn(columns, ["secondary_keywords", "related_keywords", "keywords"]);
+  const intent = firstColumn(columns, ["search_intent", "intent"]);
+  const metaTitle = firstColumn(columns, ["meta_title", "seo_title"]);
+  const metaDescription = firstColumn(columns, ["meta_description", "seo_description"]);
+  const outline = firstColumn(columns, ["outline_summary", "outline", "brief"]);
+  const cta = firstColumn(columns, ["cta", "call_to_action"]);
+
+  return {
+    id: "auto-seo-content-brief",
+    name: "SEO Content Brief",
+    description: "Create one SEO article per imported brief row, using title, keywords, intent, meta fields, outline, and CTA.",
+    category: "SEO",
+    titleTemplate: `{{${title}}}`,
+    wordRange: [900, 1250],
+    requiredVariables: [],
+    sections: [
+      { id: "title", type: "title", heading: `{{${title}}}`, instructions: "Use as the exact article H1 title." },
+      section("intro", "introduction", `{{${title}}}`, [
+        "Yazıya doğrudan konu ve okuyucu ihtiyacıyla başla.",
+        primaryKeyword ? `Ana anahtar kelimeyi doğal kullan: {{${primaryKeyword}}}.` : "",
+        intent ? `Arama niyetini karşıla: {{${intent}}}.` : "",
+      ].filter(Boolean).join(" "), 120, 180),
+      section("brief", "text", "Konu kapsamı ve temel noktalar", [
+        outline ? `Şu outline özetini ana plan olarak kullan: {{${outline}}}.` : "Satırdaki brief verisini ana plan olarak kullan.",
+        secondaryKeywords ? `İlgili kelimeleri doğal bağlamda işle: {{${secondaryKeywords}}}.` : "",
+        "Eksik teknik iddiaları uydurma; belirsiz kalan yerlerde genel ve güvenli ifade kullan.",
+      ].filter(Boolean).join(" "), 360, 520),
+      section("seo", "text", "SEO notları", [
+        metaTitle ? `Meta title hedefi: {{${metaTitle}}}.` : "",
+        metaDescription ? `Meta description hedefi: {{${metaDescription}}}.` : "",
+        primaryKeyword ? `Anahtar kelime odağını metin boyunca koru: {{${primaryKeyword}}}.` : "",
+      ].filter(Boolean).join(" "), 120, 180),
+      section("faq", "faq", "Sık sorulan sorular", [
+        "Okurun satın alma, teknik değerlendirme veya uygulama kararını destekleyen 3-5 kısa soru-cevap üret.",
+        intent ? `Soruları şu niyete göre seç: {{${intent}}}.` : "",
+      ].filter(Boolean).join(" "), 180, 260),
+      section("cta", "cta", "Sonraki adım", cta ? `CTA mesajını doğal biçimde işle: {{${cta}}}.` : "Okuru net bir sonraki adıma yönlendir.", 80, 120),
+    ],
+  };
+}
+
 function buildGenericTemplate(columns: string[]): ProgrammaticTemplate {
   const primary = columns[0] || "topic";
   return {
@@ -321,6 +365,9 @@ function buildGenericTemplate(columns: string[]): ProgrammaticTemplate {
 }
 
 export function suggestProgrammaticTemplate(columns: string[]) {
+  if (firstColumn(columns, ["blog_title_h1", "h1", "title"]) && firstColumn(columns, ["primary_keyword", "keyword"])) {
+    return buildSeoContentBriefTemplate(columns);
+  }
   if (firstColumn(columns, ["startup", "company", "business"]) || (firstColumn(columns, ["category"]) && firstColumn(columns, ["funding", "founder", "people"]))) {
     return buildStartupTemplate(columns);
   }

@@ -80,4 +80,27 @@ describe("programmatic import", () => {
     expect(serialized).toContain("{{category}}");
     expect(serialized).not.toContain("{{total_funding}}");
   });
+
+  it("suggests an SEO content brief template for blog planning imports", () => {
+    const columns = [
+      "blog_title_h1",
+      "primary_keyword",
+      "secondary_keywords",
+      "search_intent",
+      "meta_title",
+      "meta_description",
+      "outline_summary",
+      "cta",
+    ];
+
+    const template = suggestProgrammaticTemplate(columns);
+    const serialized = JSON.stringify(template);
+
+    expect(template.id).toBe("auto-seo-content-brief");
+    expect(template.titleTemplate).toBe("{{blog_title_h1}}");
+    expect(serialized).toContain("{{primary_keyword}}");
+    expect(serialized).toContain("{{secondary_keywords}}");
+    expect(serialized).toContain("{{outline_summary}}");
+    expect(serialized).toContain("{{cta}}");
+  });
 });
