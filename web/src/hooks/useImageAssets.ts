@@ -168,6 +168,30 @@ export function useRetryImageGenerationRequest() {
   });
 }
 
+export function useCreateManualImagePrompts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (postId: string) => api.post<{
+      created: number;
+      existing: number;
+      requestIds: string[];
+      message?: string;
+    }>(`/images/posts/${postId}/manual-prompts`, {}),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      if (result.created > 0) {
+        toast.success("Image prompts created", { description: `${result.created} manual slot${result.created === 1 ? "" : "s"} ready to import.` });
+      } else {
+        toast.info(result.message || "Image prompts already exist for this post");
+      }
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unable to create image prompts.";
+      toast.error("Prompt creation failed", { description: message });
+    },
+  });
+}
+
 export function useCancelImageGenerationRequest() {
   const queryClient = useQueryClient();
   return useMutation({

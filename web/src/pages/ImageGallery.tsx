@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
-import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -26,6 +28,7 @@ import {
   useImageAssets,
   useImageAssetStats,
   useCancelImageGenerationRequest,
+  useCreateManualImagePrompts,
   useDeleteImageAssets,
   useDetachImageAsset,
   useImageGenerationRequests,
@@ -380,14 +383,18 @@ function ManualImportGroupCard({
 }
 
 export default function ImageGallery() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPostId = searchParams.get("postId") || "";
+  const requestPostId = searchParams.get("postId") || "";
   const [filters, setFilters] = useState<GalleryFiltersType>(defaultFilters);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailImage, setDetailImage] = useState<ImageAsset | null>(null);
   const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
   const [requestPage, setRequestPage] = useState(1);
   const [manualGroupPage, setManualGroupPage] = useState(1);
-  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("active");
+  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>(() => initialPostId ? "all" : "active");
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>("all");
+  const [requestSearch, setRequestSearch] = useState(() => searchParams.get("requestSearch") || "");
   const [bulkImportState, setBulkImportState] = useState<BulkImportState>({});
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
 
@@ -400,6 +407,7 @@ export default function ImageGallery() {
   const importRequest = useImportImageGenerationRequest();
   const processQueue = useProcessImageQueue();
   const retryRequest = useRetryImageGenerationRequest();
+  const createManualPrompts = useCreateManualImagePrompts();
 
   const storagePaths = useMemo(() => (images || []).map((i) => i.storage_path), [images]);
   const signedUrls = useSignedUrls(storagePaths);
@@ -427,13 +435,24 @@ export default function ImageGallery() {
     () => imageRequests.filter((request) => request.status !== "done"),
     [imageRequests]
   );
-  const filteredRequests = useMemo(
-    () => imageRequests.filter((request) =>
+  const filteredRequests = useMemo(() => {
+    const query = requestSearch.trim().toLowerCase();
+    return imageRequests.filter((request) =>
       requestMatchesStatus(request, requestStatusFilter)
       && (requestTypeFilter === "all" || request.type === requestTypeFilter)
-    ),
-    [imageRequests, requestStatusFilter, requestTypeFilter]
+      && (!requestPostId || request.post_id === requestPostId)
+      && (!query
+        || request.post_title?.toLowerCase().includes(query)
+        || request.prompt?.toLowerCase().includes(query)
+        || request.model_id?.toLowerCase().includes(query)
+      )
+    );
+  }, [imageRequests, requestPostId, requestSearch, requestStatusFilter, requestTypeFilter]);
+  const scopedPostRequests = useMemo(
+    () => requestPostId ? imageRequests.filter((request) => request.post_id === requestPostId) : [],
+    [imageRequests, requestPostId]
   );
+  const missingScopedImagePrompts = Boolean(requestPostId && scopedPostRequests.length === 0);
   const manualImportGroups = useMemo(() => {
     const visibleIds = new Set(filteredRequests.map((request) => request.id));
     const groups = new Map<string, ManualImportGroup>();
@@ -512,7 +531,34 @@ export default function ImageGallery() {
   useEffect(() => {
     setRequestPage(1);
     setManualGroupPage(1);
-  }, [requestStatusFilter, requestTypeFilter]);
+  }, [requestSearch, requestStatusFilter, requestTypeFilter]);
+
+  useEffect(() => {
+    const next = searchParams.get("requestSearch") || "";
+    setRequestSearch((current) => current === next ? current : next);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (requestPostId) setRequestStatusFilter("all");
+  }, [requestPostId]);
+
+  const updateRequestSearch = (value: string) => {
+    setRequestSearch(value);
+    const next = new URLSearchParams(searchParams);
+    if (value.trim()) next.set("requestSearch", value);
+    else next.delete("requestSearch");
+    setSearchParams(next, { replace: true });
+  };
+
+  const clearRequestFilters = () => {
+    setRequestStatusFilter("active");
+    setRequestTypeFilter("all");
+    setRequestSearch("");
+    const next = new URLSearchParams(searchParams);
+    next.delete("postId");
+    next.delete("requestSearch");
+    setSearchParams(next, { replace: true });
+  };
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -632,12 +678,14 @@ export default function ImageGallery() {
       </BywordCard>
 
       {/* Filters */}
-      {imageRequests.length > 0 && (
+      {(imageRequests.length > 0 || requestPostId) && (
         <BywordCard className="mb-6">
           <SectionHeader
             icon={RefreshCw}
             title="Image requests"
-            description={`${activeRequests.length} active · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`}
+            description={requestPostId
+              ? `${filteredRequests.length} matching this post · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`
+              : `${activeRequests.length} active · ${imageRequests.length} total request${imageRequests.length === 1 ? "" : "s"}`}
             action={
               <Button size="sm" variant="outline" onClick={() => processQueue.mutate()} disabled={processQueue.isPending || requestCounts.aiQueued < 1}>
                 {processQueue.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -688,14 +736,20 @@ export default function ImageGallery() {
                   <SelectItem value="inline">Inline</SelectItem>
                 </SelectContent>
               </Select>
-              {(requestStatusFilter !== "active" || requestTypeFilter !== "all") && (
+              <div className="relative min-w-[220px] flex-1 sm:flex-none">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={requestSearch}
+                  onChange={(event) => updateRequestSearch(event.target.value)}
+                  placeholder="Find prompts by post..."
+                  className="h-8 bg-background pl-8"
+                />
+              </div>
+              {(requestStatusFilter !== "active" || requestTypeFilter !== "all" || requestSearch || requestPostId) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setRequestStatusFilter("active");
-                    setRequestTypeFilter("all");
-                  }}
+                  onClick={clearRequestFilters}
                 >
                   Reset
                 </Button>
@@ -762,7 +816,24 @@ export default function ImageGallery() {
                 />
               )) : (
                 <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
-                  {manualImportGroups.length ? "Individual manual slots are grouped above." : "No image requests match these filters."}
+                  <p>
+                    {manualImportGroups.length
+                      ? "Individual manual slots are grouped above."
+                      : requestSearch || requestPostId
+                        ? "No image prompts found for this post. Prompt generation may have been skipped or timed out."
+                        : "No image requests match these filters."}
+                  </p>
+                  {missingScopedImagePrompts && (
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      onClick={() => createManualPrompts.mutate(requestPostId)}
+                      disabled={createManualPrompts.isPending}
+                    >
+                      {createManualPrompts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Create image prompts
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

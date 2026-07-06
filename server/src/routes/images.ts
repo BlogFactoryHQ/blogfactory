@@ -6,6 +6,7 @@ import { getUserId } from "../middleware/auth.js";
 import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
 import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
 import { canRestartImageRequest } from "./image-request-controls.js";
+import { createManualImagePromptRequestsForPost } from "../services/generate-content.js";
 
 export const imagesRoutes = new Hono();
 
@@ -148,6 +149,20 @@ imagesRoutes.post("/queue/process", async (c) => {
     ...results.find((result) => result.processed),
     error: results.find((result) => result.error)?.error,
   });
+});
+
+imagesRoutes.post("/posts/:postId/manual-prompts", async (c) => {
+  const userId = getUserId(c);
+  const postId = c.req.param("postId");
+
+  try {
+    const result = await createManualImagePromptRequestsForPost(userId, postId);
+    return c.json(result, result.created > 0 ? 201 : 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to create image prompts";
+    const status = message === "Post not found" ? 404 : 400;
+    return c.json({ error: message }, status);
+  }
 });
 
 imagesRoutes.post("/requests/:id/retry", async (c) => {

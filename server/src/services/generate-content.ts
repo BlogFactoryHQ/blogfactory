@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
@@ -617,6 +617,37 @@ export function manualPromptSuffix(settings?: GenerationSettings) {
   const value = settingValue(settings, "manualPromptSuffix", "manual_prompt_suffix")
     || imageAdvancedOptions(settings).manualPromptSuffix;
   return typeof value === "string" ? value.trim() : "";
+}
+
+function manualPromptImageConfigFromSettings(settings?: GenerationSettings) {
+  const imageConfig: Record<string, unknown> = {};
+  const imageOptions = imageAdvancedOptions(settings);
+  const coverResolution = imageOptions.coverResolution === "512" ? "512" : "1K";
+  const inlineResolution = imageOptions.inlineResolution === "512" ? "512" : "1K";
+  if (settingBool(settings, "coverEnabled", "cover_enabled")) {
+    imageConfig.cover = { resolution: coverResolution };
+  }
+  const inlineCount = Math.max(0, settingNumber(settings, "inlineCount", "inline_count") ?? 2);
+  if (settingBool(settings, "inlineEnabled", "inline_enabled") && inlineCount > 0) {
+    imageConfig.inline = { count: inlineCount, resolution: inlineResolution };
+  }
+  return Object.keys(imageConfig).length ? imageConfig : null;
+}
+
+async function resolveFastManualPromptModel(openRouterKey: string) {
+  const preferredModels = [
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-3.5-haiku",
+  ];
+
+  for (const modelId of preferredModels) {
+    try {
+      return await resolveOpenRouterTextModel(openRouterKey, modelId);
+    } catch {}
+  }
+
+  return resolveOpenRouterTextModel(openRouterKey, null);
 }
 
 function isBlogDraftSource(sourceType: string) {
@@ -2279,6 +2310,85 @@ async function createManualImagePromptRequest(opts: {
     })),
     prompt,
     cost: openRouterUsage.cost,
+  };
+}
+
+export async function createManualImagePromptRequestsForPost(userId: string, postId: string) {
+  const [post] = await db
+    .select({
+      id: posts.id,
+      title: posts.title,
+      content: posts.content,
+      jobId: posts.jobId,
+    })
+    .from(posts)
+    .where(and(eq(posts.id, postId), eq(posts.userId, userId)))
+    .limit(1);
+
+  if (!post) throw new Error("Post not found");
+
+  const existingRequests = await db
+    .select({ id: imageGenerationRequests.id, status: imageGenerationRequests.status })
+    .from(imageGenerationRequests)
+    .where(and(
+      eq(imageGenerationRequests.postId, postId),
+      eq(imageGenerationRequests.userId, userId),
+      inArray(imageGenerationRequests.status, ["pending", "queued", "processing", "failed", "done"]),
+    ));
+
+  if (existingRequests.length > 0) {
+    return {
+      created: 0,
+      existing: existingRequests.length,
+      requestIds: existingRequests.map((request) => request.id),
+      message: "Image prompts already exist for this post",
+    };
+  }
+
+  const openRouterKey = await getOpenRouterKey(userId);
+  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before generating image prompts");
+
+  const settings = await getEffectiveSettings(userId);
+  const imageConfig = manualPromptImageConfigFromSettings(settings);
+  if (!imageConfig) throw new Error("Enable cover or inline images in Settings before creating image prompts");
+
+  const modelId = await resolveFastManualPromptModel(openRouterKey);
+  let jobId = post.jobId;
+  if (!jobId) {
+    const [job] = await db.insert(jobs).values({
+      userId,
+      sourceType: "manual_image_prompts",
+      sourceValue: post.title,
+      modelId,
+      status: "completed",
+      currentStep: "manual_image_prompts",
+      resultPostIds: [post.id],
+      completedAt: new Date(),
+    }).returning({ id: jobs.id });
+    jobId = job.id;
+  }
+
+  const result = await createManualImagePromptRequest({
+    userId,
+    postId,
+    jobId,
+    modelId,
+    openRouterKey,
+    title: post.title,
+    content: post.content,
+    stylePrompt: settings?.imageStylePrompt,
+    manualPromptSuffix: manualPromptSuffix(settings),
+    imageConfig,
+    provider: manualImageProvider(settings),
+  });
+
+  return {
+    created: result.requests.length,
+    existing: 0,
+    requestIds: result.requests.map((request) => request.id).filter(Boolean),
+    modelId,
+    prompt: result.prompt,
+    cost: result.cost,
   };
 }
 

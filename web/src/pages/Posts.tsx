@@ -488,6 +488,15 @@ export default function Posts() {
     });
   };
 
+  const openImagePrompts = (post: Post, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const params = new URLSearchParams({
+      postId: post.id,
+      requestSearch: cleanDraftTitle(post.title),
+    });
+    navigate(`/gallery?${params.toString()}`);
+  };
+
   const renderDraftGroup = (row: Extract<DisplayRow, { type: "draftGroup" }>) => {
     const isExpanded = expandedJobIds.has(row.jobId);
     const selectedCount = row.posts.filter((post) => selectedIds.has(post.id)).length;
@@ -574,6 +583,7 @@ export default function Posts() {
               e.stopPropagation();
               setQuickDeletePost(post);
             }}
+            onOpenImagePrompts={(e) => openImagePrompts(post, e)}
             formatModelName={formatModelName}
             className="bg-muted/20"
             displayTitle={cleanDraftTitle(post.title)}
@@ -780,6 +790,7 @@ export default function Posts() {
                     e.stopPropagation();
                     setQuickDeletePost(row.post);
                   }}
+                  onOpenImagePrompts={(e) => openImagePrompts(row.post, e)}
                   formatModelName={formatModelName}
                 />
               ))

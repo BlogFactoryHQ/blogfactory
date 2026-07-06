@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone, ImageIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ interface PostTableRowProps {
   onClick: () => void;
   onQuickPublish: (e: React.MouseEvent) => void;
   onQuickDelete: (e: React.MouseEvent) => void;
+  onOpenImagePrompts: (e: React.MouseEvent) => void;
   formatModelName: (modelId: string) => string;
   className?: string;
   displayTitle?: string;
@@ -61,6 +62,7 @@ export function PostTableRow({
   onClick,
   onQuickPublish,
   onQuickDelete,
+  onOpenImagePrompts,
   formatModelName,
   className,
   displayTitle,
@@ -125,8 +127,17 @@ export function PostTableRow({
       <TableCell className="text-muted-foreground">
         {safeFormatDate(post.created_at, "MMM d, yyyy")}
       </TableCell>
-      <TableCell className="w-24">
+      <TableCell className="w-32">
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-primary"
+            onClick={onOpenImagePrompts}
+            title="Image prompts"
+          >
+            <ImageIcon className="h-4 w-4" />
+          </Button>
           {post.status !== "published" && (
             <Button
               variant="ghost"
