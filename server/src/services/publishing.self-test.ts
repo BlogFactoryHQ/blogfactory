@@ -85,5 +85,49 @@ assert.equal(
   ),
   true,
 );
+const wixRichContentWithStructure = markdownToWixRichContent(
+  [
+    "First line of one paragraph",
+    "second line continues it.",
+    "",
+    "### Deep heading",
+    "",
+    "- First **bold** item",
+    "- Second item",
+    "",
+    "1. Ordered item",
+    "",
+    "> Quoted [source](https://example.com/source)",
+  ].join("\n"),
+  null,
+) as {
+  nodes: Array<{
+    type: string;
+    headingData?: { level?: number };
+    nodes?: Array<{
+      type?: string;
+      nodes?: Array<{ type?: string; nodes?: Array<{ textData?: { text?: string; decorations?: Array<{ type?: string }> } }> }>;
+      textData?: { text?: string; decorations?: Array<{ type?: string }> };
+    }>;
+  }>;
+};
+assert.equal(
+  wixRichContentWithStructure.nodes.some((node) =>
+    node.type === "PARAGRAPH"
+    && node.nodes?.some((child) => child.textData?.text === "First line of one paragraph second line continues it.")
+  ),
+  true,
+);
+assert.equal(wixRichContentWithStructure.nodes.some((node) => node.type === "HEADING" && node.headingData?.level === 4), true);
+const bulletList = wixRichContentWithStructure.nodes.find((node) => node.type === "BULLETED_LIST");
+assert.equal(bulletList?.nodes?.every((item) => item.type === "LIST_ITEM" && item.nodes?.[0]?.type === "PARAGRAPH"), true);
+assert.equal(
+  JSON.stringify(bulletList).includes("- First"),
+  false,
+);
+assert.equal(wixRichContentWithStructure.nodes.some((node) => node.type === "ORDERED_LIST"), true);
+const quote = wixRichContentWithStructure.nodes.find((node) => node.type === "BLOCKQUOTE");
+assert.equal(quote?.nodes?.[0]?.type, "PARAGRAPH");
+assert.equal(JSON.stringify(quote).includes("[source]"), false);
 
 console.log("publishing self-check passed");
