@@ -119,6 +119,13 @@ assert.equal(
   true,
 );
 assert.equal(wixRichContentWithStructure.nodes.some((node) => node.type === "HEADING" && node.headingData?.level === 4), true);
+assert.equal(
+  wixRichContentWithStructure.nodes.some((node) =>
+    node.type === "PARAGRAPH"
+    && node.nodes?.some((child) => child.textData?.text === " ")
+  ),
+  true,
+);
 const bulletList = wixRichContentWithStructure.nodes.find((node) => node.type === "BULLETED_LIST");
 assert.equal(bulletList?.nodes?.every((item) => item.type === "LIST_ITEM" && item.nodes?.[0]?.type === "PARAGRAPH"), true);
 assert.equal(

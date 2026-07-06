@@ -1174,27 +1174,44 @@ export function markdownToWixRichContent(
   const nodes: unknown[] = [];
   let paragraph: string[] = [];
   let list: { kind: ListKind; items: string[] } | null = null;
+  let pendingSpacer = false;
+  let lastBlock: "heading" | "image" | "list" | "paragraph" | "quote" | "spacer" | null = null;
+
+  const pushBlock = (node: unknown, kind: NonNullable<typeof lastBlock>) => {
+    if (pendingSpacer && nodes.length && lastBlock !== "heading" && lastBlock !== "spacer") {
+      nodes.push(wixSpacerNode());
+      lastBlock = "spacer";
+    }
+    pendingSpacer = false;
+    nodes.push(node);
+    lastBlock = kind;
+  };
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    nodes.push(wixParagraphNode(paragraph.join(" ")));
+    pushBlock(wixParagraphNode(paragraph.join(" ")), "paragraph");
     paragraph = [];
   };
 
   const flushList = () => {
     if (!list) return;
-    nodes.push(wixListNode(list.kind, list.items));
+    pushBlock(wixListNode(list.kind, list.items), "list");
     list = null;
   };
 
   if (coverImage && imageSource !== "none") {
-    nodes.push(wixImageNode(coverImage, "Featured image", imageSource));
+    pushBlock(wixImageNode(coverImage, "Featured image", imageSource), "image");
   }
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) {
+      const hadParagraph = paragraph.length > 0;
+      const hadList = Boolean(list);
       flushParagraph();
       flushList();
+      if (hadParagraph || hadList || (lastBlock && lastBlock !== "heading" && lastBlock !== "spacer")) {
+        pendingSpacer = true;
+      }
       continue;
     }
     const image = trimmed.match(/^!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/);
@@ -1202,21 +1219,21 @@ export function markdownToWixRichContent(
       flushParagraph();
       flushList();
       const imported = importedImages.get(image[2]);
-      if (imported && imageSource !== "none") nodes.push(wixImageNode(imported, image[1] || "Article image", imageSource));
+      if (imported && imageSource !== "none") pushBlock(wixImageNode(imported, image[1] || "Article image", imageSource), "image");
       continue;
     }
     const heading = trimmed.match(/^(#{1,6})\s+(.+)/);
     if (heading) {
       flushParagraph();
       flushList();
-      nodes.push(wixHeadingNode(Math.min(heading[1].length + 1, 6), heading[2]));
+      pushBlock(wixHeadingNode(Math.min(heading[1].length + 1, 6), heading[2]), "heading");
       continue;
     }
     const quote = trimmed.match(/^>\s+(.+)/);
     if (quote) {
       flushParagraph();
       flushList();
-      nodes.push(wixBlockquoteNode(quote[1]));
+      pushBlock(wixBlockquoteNode(quote[1]), "quote");
       continue;
     }
     const listItem = parseListItem(trimmed);
@@ -1242,6 +1259,10 @@ function wixTextNodesFromMarkdown(value: string) {
 
 function wixParagraphNode(value: string) {
   return { type: "PARAGRAPH", nodes: wixTextNodesFromMarkdown(value), paragraphData: {} };
+}
+
+function wixSpacerNode() {
+  return { type: "PARAGRAPH", nodes: [wixTextNode(" ", [])], paragraphData: {} };
 }
 
 function wixHeadingNode(level: number, value: string) {
