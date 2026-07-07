@@ -44,13 +44,19 @@ const manualMessages = buildManualImagePromptMessages({
   content: "# Community-Led Growth\n\nFounders and users build product momentum together.",
   stylePrompt: "A colorful editorial illustration, risograph print look, no text, no letters, no numbers, no typography --ar 16:9 --profile 376a42y g7qoxps",
 });
-assertEqual(manualMessages.user.includes("--ar 16:9 --profile 376a42y g7qoxps"), true, "manual prompt instructions preserve Midjourney suffix");
+assertEqual(manualMessages.user.includes("--ar 16:9 --profile 376a42y g7qoxps"), false, "manual prompt instructions strip Midjourney suffixes from style text");
+assertEqual(manualMessages.system.includes("do not add Midjourney parameter suffixes"), true, "manual prompt blocks AI-invented suffixes");
 assertEqual(manualMessages.system.includes("Return only the final prompt"), true, "manual prompt asks for prompt-only output");
 assertEqual(manualMessages.user.includes("Community-Led Growth"), true, "manual prompt includes article context");
 assertEqual(
-  appendManualPromptSuffix("A colorful editorial illustration about AI communities", "--ar 16:9 --profile 376a42y g7qoxps"),
-  "A colorful editorial illustration about AI communities --ar 16:9 --profile 376a42y g7qoxps",
-  "manual suffix is appended after the generated prompt"
+  appendManualPromptSuffix("A colorful editorial illustration about AI communities --ar 16:9 --s 500 --v 5", "--profile 376a42y"),
+  "A colorful editorial illustration about AI communities --profile 376a42y",
+  "AI-invented suffixes are stripped before the saved suffix is appended"
+);
+assertEqual(
+  appendManualPromptSuffix("A colorful editorial illustration about AI communities", "--ar 16:9 --profile 376a42y"),
+  "A colorful editorial illustration about AI communities --ar 16:9 --profile 376a42y",
+  "manual suffix still preserves user-entered Midjourney params"
 );
 const manualSummary = manualPromptImageResolutionSummary([
   { id: "cover-request", type: "cover", position: 0 },

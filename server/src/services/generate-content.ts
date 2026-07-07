@@ -2180,14 +2180,20 @@ function plainText(value: string, maxChars = 900) {
 }
 
 function cleanManualImagePrompt(value: string) {
-  return value
+  return stripTrailingMidjourneyParams(value
     .replace(/^```(?:text|markdown)?/i, "")
     .replace(/```$/i, "")
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/^\s*(?:midjourney prompt|prompt)\s*:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 2500);
+    .slice(0, 2500));
+}
+
+function stripTrailingMidjourneyParams(value: string) {
+  return value
+    .replace(/(?:\s+--[a-z][a-z0-9-]*(?:\s+(?!--)[^\s]+)*)+\s*$/i, "")
+    .trim();
 }
 
 export function appendManualPromptSuffix(prompt: string, suffix?: string | null) {
@@ -2201,14 +2207,17 @@ export function buildManualImagePromptMessages(opts: {
   content: string;
   stylePrompt?: string | null;
 }) {
-  const style = opts.stylePrompt?.trim()
-    || "A colorful modern editorial illustration, hand-drawn graphic style, clean white background, no text, no letters, no numbers, no typography --ar 16:9";
+  const style = stripTrailingMidjourneyParams(
+    opts.stylePrompt?.trim()
+      || "A colorful modern editorial illustration, hand-drawn graphic style, clean white background, no text, no letters, no numbers, no typography"
+  );
   const articleContext = plainText(opts.content, 1800);
   return {
     system: [
       "You write one Midjourney image prompt for a generated blog post.",
       "Return only the final prompt as plain text. Do not add markdown, labels, quotes, explanations, alternatives, or bullets.",
-      "Preserve the saved visual style, constraints, and Midjourney parameters exactly when possible, including --ar, --profile, --style, --sref, or similar suffixes.",
+      "Preserve the saved visual style and constraints, but do not add Midjourney parameter suffixes such as --ar, --s, --v, --style, --sref, or --profile.",
+      "The app appends the saved Midjourney suffix after your response.",
       "Change only the article-specific subject, scene, symbols, and context.",
       "Unless the saved style explicitly conflicts, include: no text, no letters, no numbers, no typography.",
     ].join(" "),
@@ -2348,8 +2357,10 @@ function buildFallbackManualImagePrompt(opts: {
   stylePrompt?: string | null;
   manualPromptSuffix?: string | null;
 }) {
-  const style = opts.stylePrompt?.trim()
-    || "A colorful modern editorial illustration, clean white background, no text, no letters, no numbers, no typography";
+  const style = stripTrailingMidjourneyParams(
+    opts.stylePrompt?.trim()
+      || "A colorful modern editorial illustration, clean white background, no text, no letters, no numbers, no typography"
+  );
   const context = plainText(opts.content, 500);
   return appendManualPromptSuffix([
     style,

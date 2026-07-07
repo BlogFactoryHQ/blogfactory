@@ -1954,10 +1954,10 @@ export default function Settings() {
                           id="manualPromptSuffix"
                           value={manualPromptSuffix}
                           onChange={(event) => setManualPromptSuffix(event.target.value)}
-                          placeholder="--ar 16:9 --profile 376a42y g7qoxps"
+                          placeholder="--profile 376a42y"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Appended exactly at the end of every manual Midjourney prompt.
+                          Appended exactly once at the end. Keep visual style in the prompt field above.
                         </p>
                       </div>
                     </div>
