@@ -11,7 +11,7 @@ function LayoutContent() {
       <AppSidebar />
       <main className={cn(
         "min-h-screen transition-all duration-300",
-        isCollapsed ? "pl-[64px]" : "pl-[236px]"
+        isCollapsed ? "pl-[64px]" : "pl-[64px] lg:pl-[236px]"
       )}>
         <Outlet />
       </main>

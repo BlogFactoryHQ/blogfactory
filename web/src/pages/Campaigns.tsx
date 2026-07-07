@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, StopCircle } from "lucide-react";
+import { ExternalLink, FileText, Filter, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, Search, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -83,6 +84,9 @@ const modeLabels: Record<CampaignMode, string> = {
   programmatic: "Programmatic",
 };
 
+const campaignStatuses: CampaignStatus[] = ["draft", "queued", "running", "completed", "failed", "stopped"];
+const campaignModes: CampaignMode[] = ["keyword", "title", "title_outline", "programmatic"];
+
 function statusType(status: string): BadgeStatus {
   if (status === "completed") return "success";
   if (status === "running") return "running";
@@ -101,6 +105,14 @@ function formatStep(value: string | null | undefined) {
   return value ? value.replace(/_/g, " ") : "";
 }
 
+function formatMoney(value: number | null | undefined) {
+  return typeof value === "number" ? `$${value.toFixed(4)}` : "-";
+}
+
+function formatStatusLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 export default function Campaigns() {
   const params = useParams();
   if (params.id) return <CampaignDetail id={params.id} />;
@@ -109,11 +121,33 @@ export default function Campaigns() {
 
 function CampaignList() {
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CampaignStatus | "all">("all");
+  const [modeFilter, setModeFilter] = useState<CampaignMode | "all">("all");
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
     queryFn: () => api.get<Campaign[]>("/campaigns"),
     refetchInterval: 5000,
   });
+
+  const filteredCampaigns = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return campaigns.filter((campaign) => {
+      const matchesSearch = !needle || [
+        campaign.name,
+        campaign.mode,
+        campaign.status,
+        campaign.modelId,
+      ].join(" ").toLowerCase().includes(needle);
+      const matchesStatus = statusFilter === "all" || campaign.status === statusFilter;
+      const matchesMode = modeFilter === "all" || campaign.mode === modeFilter;
+      return matchesSearch && matchesStatus && matchesMode;
+    });
+  }, [campaigns, modeFilter, search, statusFilter]);
+
+  const activeCount = campaigns.filter((campaign) => campaign.status === "running" || campaign.status === "queued").length;
+  const generatedCount = campaigns.reduce((sum, campaign) => sum + campaign.completedItems, 0);
+  const failedCount = campaigns.reduce((sum, campaign) => sum + campaign.failedItems, 0);
 
   return (
     <BywordPageShell className="max-w-7xl">
@@ -135,14 +169,69 @@ function CampaignList() {
         </div>
       </div>
 
+      <div className="mb-6 grid gap-3 md:grid-cols-4">
+        <BywordCard className="p-4">
+          <p className="type-meta">Runs</p>
+          <p className="mt-2 text-2xl font-semibold">{campaigns.length}</p>
+        </BywordCard>
+        <BywordCard className="p-4">
+          <p className="type-meta">Active</p>
+          <p className="mt-2 text-2xl font-semibold text-byword-blue">{activeCount}</p>
+        </BywordCard>
+        <BywordCard className="p-4">
+          <p className="type-meta">Drafts made</p>
+          <p className="mt-2 text-2xl font-semibold">{generatedCount}</p>
+        </BywordCard>
+        <BywordCard className="p-4">
+          <p className="type-meta">Failed items</p>
+          <p className="mt-2 text-2xl font-semibold text-destructive">{failedCount}</p>
+        </BywordCard>
+      </div>
+
       <BywordCard>
-        <SectionHeader icon={Megaphone} title="Campaigns" />
+        <SectionHeader
+          icon={Megaphone}
+          title="Campaign Control"
+          description="Find a run, inspect output, retry failures, or push completed drafts."
+          action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{filteredCampaigns.length} shown</span>}
+        />
+        <div className="grid gap-3 border-b border-byword-border p-4 lg:grid-cols-[minmax(0,1fr)_220px_220px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns, modes, models..." />
+          </div>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as CampaignStatus | "all")}>
+            <SelectTrigger>
+              <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {campaignStatuses.map((status) => (
+                <SelectItem key={status} value={status}>{formatStatusLabel(status)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={modeFilter} onValueChange={(value) => setModeFilter(value as CampaignMode | "all")}>
+            <SelectTrigger>
+              <Grid2X2 className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All modes</SelectItem>
+              {campaignModes.map((mode) => (
+                <SelectItem key={mode} value={mode}>{modeLabels[mode]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Mode</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Items</TableHead>
               <TableHead>Progress</TableHead>
               <TableHead>Cost</TableHead>
               <TableHead>Created</TableHead>
@@ -150,23 +239,44 @@ function CampaignList() {
           </TableHeader>
           <TableBody>
             {isLoading && (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-muted-foreground">Loading...</TableCell></TableRow>
             )}
             {!isLoading && campaigns.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No campaigns yet.</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={7} className="py-10 text-center">
+                  <p className="font-semibold">No campaigns yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Start with a keyword batch or import an SEO content brief spreadsheet.</p>
+                  <div className="mt-4 flex justify-center gap-2">
+                    <Button variant="outline" asChild><Link to="/content-creator?mode=programmatic">Import Briefs</Link></Button>
+                    <Button asChild><Link to="/content-creator?mode=campaign">New Campaign</Link></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
             )}
-            {campaigns.map((campaign) => (
-              <TableRow key={campaign.id} className="cursor-pointer" onClick={() => navigate(`/campaigns/${campaign.id}`)}>
+            {!isLoading && campaigns.length > 0 && filteredCampaigns.length === 0 && (
+              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No campaigns match these filters.</TableCell></TableRow>
+            )}
+            {filteredCampaigns.map((campaign) => (
+              <TableRow
+                key={campaign.id}
+                className="cursor-pointer"
+                tabIndex={0}
+                onClick={() => navigate(`/campaigns/${campaign.id}`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") navigate(`/campaigns/${campaign.id}`);
+                }}
+              >
                 <TableCell className="font-medium">{campaign.name}</TableCell>
                 <TableCell>{modeLabels[campaign.mode] || campaign.mode}</TableCell>
-                <TableCell><StatusBadge status={statusType(campaign.status)} label={campaign.status} /></TableCell>
+                <TableCell><StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} /></TableCell>
+                <TableCell className="text-sm text-muted-foreground">{campaign.totalItems}</TableCell>
                 <TableCell>
                   <div className="flex min-w-40 items-center gap-3">
                     <Progress value={progress(campaign)} className="h-2" />
                     <span className="w-16 text-xs text-muted-foreground">{campaign.completedItems}/{campaign.totalItems}</span>
                   </div>
                 </TableCell>
-                <TableCell>{campaign.totalCost ? `$${campaign.totalCost.toFixed(4)}` : "-"}</TableCell>
+                <TableCell>{formatMoney(campaign.totalCost)}</TableCell>
                 <TableCell>{safeFormatDistanceToNow(campaign.createdAt)}</TableCell>
               </TableRow>
             ))}
@@ -180,6 +290,8 @@ function CampaignList() {
 function CampaignDetail({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [integrationId, setIntegrationId] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemStatusFilter, setItemStatusFilter] = useState<CampaignStatus | "all">("all");
   const [autoRunBatches, setAutoRunBatches] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(`campaign:auto-run:${id}`) === "true";
@@ -268,15 +380,36 @@ function CampaignDetail({ id }: { id: string }) {
   const { campaign, items, history = [] } = data;
   const failedCount = items.filter((item) => item.status === "failed").length;
   const queuedCount = items.filter((item) => item.status === "queued").length;
+  const runningCount = items.filter((item) => item.status === "running" || item.jobStatus === "running").length;
   const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
   const resumableCount = items.filter((item) => item.status === "stopped").length;
+  const filteredItems = items.filter((item) => {
+    const needle = itemSearch.trim().toLowerCase();
+    const matchesSearch = !needle || [
+      item.input,
+      item.keyword,
+      item.title,
+      item.currentStep,
+      item.jobStatus,
+      item.errorMessage,
+      item.jobErrorMessage,
+      ...(item.variables ? Object.entries(item.variables).flatMap(([key, value]) => [key, value]) : []),
+    ].filter(Boolean).join(" ").toLowerCase().includes(needle);
+    const matchesStatus = itemStatusFilter === "all" || item.status === itemStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <BywordPageShell className="max-w-7xl">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{campaign.name}</h1>
-          <p className="mt-2 text-muted-foreground">{campaign.completedItems}/{campaign.totalItems} completed</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} />
+            <span>{modeLabels[campaign.mode] || campaign.mode}</span>
+            <span>{campaign.completedItems}/{campaign.totalItems} completed</span>
+            <span>{safeFormatDistanceToNow(campaign.createdAt)}</span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild><Link to="/campaigns">Back</Link></Button>
@@ -309,6 +442,40 @@ function CampaignDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      <BywordCard className="mb-6">
+        <SectionHeader
+          icon={FileText}
+          title="Run Console"
+          description={campaign.mode === "programmatic" ? "Programmatic rows are converted into draft articles one batch at a time." : "Campaign items move from queued to generated drafts as batches finish."}
+          action={<StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} />}
+        />
+        <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-5 md:divide-x md:divide-y-0">
+          <div className="p-4">
+            <p className="type-meta">Progress</p>
+            <div className="mt-3 flex items-center gap-3">
+              <Progress value={progress(campaign)} className="h-2" />
+              <span className="text-sm font-semibold">{progress(campaign)}%</span>
+            </div>
+          </div>
+          <div className="p-4">
+            <p className="type-meta">Queued</p>
+            <p className="mt-2 text-2xl font-semibold">{queuedCount}</p>
+          </div>
+          <div className="p-4">
+            <p className="type-meta">Running</p>
+            <p className="mt-2 text-2xl font-semibold text-byword-blue">{runningCount}</p>
+          </div>
+          <div className="p-4">
+            <p className="type-meta">Failed</p>
+            <p className="mt-2 text-2xl font-semibold text-destructive">{campaign.failedItems}</p>
+          </div>
+          <div className="p-4">
+            <p className="type-meta">Cost</p>
+            <p className="mt-2 text-2xl font-semibold">{formatMoney(campaign.totalCost)}</p>
+          </div>
+        </div>
+      </BywordCard>
 
       {campaign.status === "running" && queuedCount > 0 && (
         <BywordCard className="mb-6 p-4">
@@ -345,28 +512,6 @@ function CampaignDetail({ id }: { id: string }) {
         </BywordCard>
       )}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-4">
-        <BywordCard className="p-4">
-          <p className="text-xs text-muted-foreground">Status</p>
-          <div className="mt-2"><StatusBadge status={statusType(campaign.status)} label={campaign.status} /></div>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="text-xs text-muted-foreground">Progress</p>
-          <div className="mt-3 flex items-center gap-3">
-            <Progress value={progress(campaign)} className="h-2" />
-            <span className="text-sm font-medium">{progress(campaign)}%</span>
-          </div>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="text-xs text-muted-foreground">Failed</p>
-          <p className="mt-2 text-2xl font-semibold">{campaign.failedItems}</p>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="text-xs text-muted-foreground">Cost</p>
-          <p className="mt-2 text-2xl font-semibold">{campaign.totalCost ? `$${campaign.totalCost.toFixed(4)}` : "-"}</p>
-        </BywordCard>
-      </div>
-
       <BywordCard className="mb-6">
         <SectionHeader icon={History} title="History" />
         <Table>
@@ -386,10 +531,10 @@ function CampaignDetail({ id }: { id: string }) {
             )}
             {history.map((job) => (
               <TableRow key={job.id}>
-                <TableCell><StatusBadge status={statusType(job.status)} label={job.status} /></TableCell>
+                <TableCell><StatusBadge status={statusType(job.status)} label={formatStatusLabel(job.status)} /></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{job.currentStep || "-"}</TableCell>
                 <TableCell>{job.resultPostIds?.length || 0}</TableCell>
-                <TableCell>{job.totalCost ? `$${job.totalCost.toFixed(4)}` : "-"}</TableCell>
+                <TableCell>{formatMoney(job.totalCost)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{safeFormatDistanceToNow(job.createdAt)}</TableCell>
                 <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{job.errorMessage || "-"}</TableCell>
               </TableRow>
@@ -399,7 +544,30 @@ function CampaignDetail({ id }: { id: string }) {
       </BywordCard>
 
       <BywordCard>
-        <SectionHeader icon={Megaphone} title="Items" />
+        <SectionHeader
+          icon={Megaphone}
+          title="Items"
+          description="Inspect each keyword, title, or programmatic row and retry failed outputs in place."
+          action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{filteredItems.length} shown</span>}
+        />
+        <div className="grid gap-3 border-b border-byword-border p-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Search item inputs, variables, steps, errors..." />
+          </div>
+          <Select value={itemStatusFilter} onValueChange={(value) => setItemStatusFilter(value as CampaignStatus | "all")}>
+            <SelectTrigger>
+              <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All item statuses</SelectItem>
+              {campaignStatuses.map((status) => (
+                <SelectItem key={status} value={status}>{formatStatusLabel(status)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -412,16 +580,30 @@ function CampaignDetail({ id }: { id: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((item) => (
+            {filteredItems.length === 0 && (
+              <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No items match these filters.</TableCell></TableRow>
+            )}
+            {filteredItems.map((item) => (
               <TableRow key={item.id}>
                 <TableCell>{item.position}</TableCell>
                 <TableCell className="max-w-xl">
                   <p className="truncate font-medium">{item.title || item.keyword || item.input}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.variables ? Object.entries(item.variables).map(([key, value]) => `${key}: ${value}`).join(" · ") : item.input}
-                  </p>
+                  {item.variables ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {Object.entries(item.variables).slice(0, 4).map(([key, value]) => (
+                        <span key={key} className="max-w-[220px] truncate rounded-sm border border-byword-border bg-muted px-2 py-1 text-[11px] text-muted-foreground" title={`${key}: ${value}`}>
+                          <span className="font-mono uppercase">{key}</span>: {value}
+                        </span>
+                      ))}
+                      {Object.keys(item.variables).length > 4 && (
+                        <span className="rounded-sm border border-byword-border bg-muted px-2 py-1 text-[11px] text-muted-foreground">+{Object.keys(item.variables).length - 4}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="truncate text-xs text-muted-foreground">{item.input}</p>
+                  )}
                 </TableCell>
-                <TableCell><StatusBadge status={statusType(item.status)} label={item.status} /></TableCell>
+                <TableCell><StatusBadge status={statusType(item.status)} label={formatStatusLabel(item.status)} /></TableCell>
                 <TableCell className="max-w-48 truncate text-xs text-muted-foreground">
                   {formatStep(item.currentStep) || item.jobStatus || "-"}
                 </TableCell>

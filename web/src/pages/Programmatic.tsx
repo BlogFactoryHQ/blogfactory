@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeft,
   ChevronRight,
+  CheckCircle2,
   Copy,
   Database,
   Eye,
@@ -125,6 +127,16 @@ const variableExamples: Record<string, string> = {
   service: "plumbers, roofers, dentists",
 };
 
+const seoBriefSignals = [
+  { label: "H1 / title", candidates: ["blog_title_h1", "h1", "title"] },
+  { label: "Primary keyword", candidates: ["primary_keyword", "keyword"] },
+  { label: "Search intent", candidates: ["search_intent", "intent"] },
+  { label: "Meta title", candidates: ["meta_title", "seo_title"] },
+  { label: "Meta description", candidates: ["meta_description", "seo_description"] },
+  { label: "Outline / brief", candidates: ["outline_summary", "outline", "brief"] },
+  { label: "CTA", candidates: ["cta", "call_to_action"] },
+];
+
 const formatCost = (value: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(value);
 
@@ -160,6 +172,14 @@ function variableLabel(variable: string) {
 
 function variableExample(variable: string) {
   return variableExamples[variable.toLowerCase()] || "one value per line";
+}
+
+function normalizeColumn(value: string) {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function findVariable(variables: string[], candidates: string[]) {
+  return variables.find((variable) => candidates.includes(normalizeColumn(variable)));
 }
 
 function VariableBadge({ variable }: { variable: string }) {
@@ -237,6 +257,27 @@ function StrategyFitNote({ result }: { result: TopicFitResult }) {
   );
 }
 
+function SignalPill({ label, value }: { label: string; value?: string }) {
+  const Icon = value ? CheckCircle2 : AlertCircle;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs ${value ? "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)] text-foreground" : "border-byword-border bg-muted text-muted-foreground"}`}>
+      <Icon className={`h-3.5 w-3.5 ${value ? "text-[hsl(var(--status-success))]" : "text-muted-foreground"}`} />
+      <span className="font-medium">{label}</span>
+      {value && <span className="font-mono text-muted-foreground">{variableLabel(value)}</span>}
+    </span>
+  );
+}
+
+function WorkflowStep({ step, title, detail, active }: { step: string; title: string; detail: string; active?: boolean }) {
+  return (
+    <div className={`border-l-2 px-4 py-3 ${active ? "border-byword-blue bg-byword-blue-soft/35" : "border-byword-border bg-card"}`}>
+      <p className="type-meta">{step}</p>
+      <p className="mt-1 text-sm font-semibold">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
 function ProgrammaticShell({ embedded, className, children }: { embedded?: boolean; className?: string; children: ReactNode }) {
   if (embedded) return <div className={["space-y-8", className].filter(Boolean).join(" ")}>{children}</div>;
   return <BywordPageShell className={className}>{children}</BywordPageShell>;
@@ -308,6 +349,12 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
     wordRange: wordRange(draftTemplate),
   }), [draftTemplate]);
   const variables = useMemo(() => templateVariables(liveTemplate), [liveTemplate]);
+  const isSeoBriefCampaign = liveTemplate.id === "auto-seo-content-brief" || liveTemplate.name.toLowerCase().includes("seo content brief") || liveTemplate.category.toLowerCase() === "seo";
+  const briefSignalMap = useMemo(() => seoBriefSignals.map((signal) => ({
+    ...signal,
+    variable: findVariable(variables, signal.candidates),
+  })), [variables]);
+  const briefCoverage = briefSignalMap.filter((signal) => signal.variable).length;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
   const customTemplates = templates.filter((template) => !template.builtIn);
   const categories = useMemo(() => ["All Templates", ...Array.from(new Set(templates.map((template) => template.category).filter(Boolean)))], [templates]);
@@ -554,7 +601,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   const renderPreviewCard = () => (
     <BywordCard>
-      <SectionHeader icon={Eye} title="Preview" />
+      <SectionHeader icon={Eye} title="Preview" description="Check one materialized row before the campaign writes drafts." />
       <div className="space-y-4 p-6">
         <div className="flex items-center gap-2">
           <Label className="shrink-0">Row</Label>
@@ -583,12 +630,37 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   const renderGenerateCard = () => (
     <BywordCard>
-      <SectionHeader icon={Play} title="Generate" />
+      <SectionHeader icon={Play} title="Launch Campaign" />
       <div className="space-y-4 p-6">
         <div className="space-y-2">
           <Label>Campaign name</Label>
           <Input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} />
         </div>
+        <div className="grid grid-cols-3 divide-x divide-byword-border rounded-md border border-byword-border bg-muted/20 text-center">
+          <div className="p-3">
+            <p className="type-meta">Rows</p>
+            <p className="mt-1 font-semibold">{materialized.rows.length}</p>
+          </div>
+          <div className="p-3">
+            <p className="type-meta">Fields</p>
+            <p className="mt-1 font-semibold">{variables.length}</p>
+          </div>
+          <div className="p-3">
+            <p className="type-meta">Mode</p>
+            <p className="mt-1 truncate font-semibold">{dataMode === "match_rows" ? "Rows" : "Combos"}</p>
+          </div>
+        </div>
+        {isSeoBriefCampaign && (
+          <div className="rounded-md border border-byword-border bg-card p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold">SEO brief readiness</span>
+              <span className="font-mono text-xs text-muted-foreground">{briefCoverage}/{seoBriefSignals.length}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded bg-muted">
+              <div className="h-full bg-byword-blue" style={{ width: `${Math.round((briefCoverage / seoBriefSignals.length) * 100)}%` }} />
+            </div>
+          </div>
+        )}
         <div className="space-y-2">
           <Label>Brand Voice</Label>
           <Select value={personaId} onValueChange={setPersonaId}>
@@ -608,11 +680,11 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <Label>Custom Instructions</Label>
           <Textarea value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} className="min-h-20" />
         </div>
-        <label className="flex items-center gap-2 rounded-lg border border-byword-border bg-muted/20 p-3 text-sm">
+        <label className="flex items-center gap-2 rounded-md border border-byword-border bg-muted/20 p-3 text-sm">
           <Checkbox checked={startNow} onCheckedChange={(checked) => setStartNow(Boolean(checked))} />
           Start after create
         </label>
-        <div className="rounded-lg border border-byword-border bg-muted/20 p-4 text-sm">
+        <div className="rounded-md border border-byword-border bg-muted/20 p-4 text-sm">
           <p className="font-semibold">{materialized.rows.length} article{materialized.rows.length === 1 ? "" : "s"}</p>
           <p className="mt-1 text-muted-foreground">Expected text cost {formatCost(estimate.totalExpected)} · high {formatCost(estimate.totalHigh)}</p>
         </div>
@@ -710,12 +782,20 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   if (view === "campaign") {
     return (
       <ProgrammaticShell embedded={embedded} className="max-w-7xl">
-        <div className="mb-10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
             <BackButton onClick={() => setView("home")} />
-            <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">New Campaign</span>
+            <div>
+              <span className="type-meta">New Programmatic Campaign</span>
+              <h1 className="mt-1 text-2xl font-semibold">{isSeoBriefCampaign ? "SEO Content Brief Campaign" : `${liveTemplate.name} Campaign`}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isSeoBriefCampaign
+                  ? "Turn each imported brief row into one article draft with its title, keywords, intent, metadata, outline, and CTA preserved."
+                  : "Choose how data becomes rows, preview the article structure, then launch the run."}
+              </p>
+            </div>
           </div>
-          <div className="grid grid-cols-2 rounded-lg bg-muted p-1">
+          <div className="grid w-full grid-cols-2 rounded-md bg-muted p-1 sm:w-auto">
             <Button variant={dataMode === "all_combinations" ? "secondary" : "ghost"} className="h-auto justify-start py-2" onClick={() => setDataMode("all_combinations")}>
               <Grid2X2 className="mr-2 h-4 w-4" />
               <span className="text-left">
@@ -734,7 +814,14 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </div>
 
         <div className="mx-auto max-w-6xl space-y-6">
-          <h1 className="text-2xl font-semibold">{liveTemplate.name} Campaign</h1>
+          <BywordCard>
+            <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-4 md:divide-x md:divide-y-0">
+              <WorkflowStep step="01" title="Template" detail={`${liveTemplate.sections.length} sections · ${liveTemplate.wordRange[0]}-${liveTemplate.wordRange[1]} words`} active />
+              <WorkflowStep step="02" title="Data" detail={`${materialized.rows.length} row${materialized.rows.length === 1 ? "" : "s"} · ${variables.length} fields`} active={materialized.rows.length > 0} />
+              <WorkflowStep step="03" title="Preview" detail={renderedPreview.title || "Preview needs row data"} active={Boolean(renderedPreview.title)} />
+              <WorkflowStep step="04" title="Launch" detail={createBlocker || (startNow ? "Starts after create" : "Creates as draft")} active={canCreate} />
+            </div>
+          </BywordCard>
 
           <BywordCard className="p-6">
             <div className="flex items-center justify-between gap-4">
@@ -757,10 +844,30 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
             </div>
           </BywordCard>
 
+          {isSeoBriefCampaign && (
+            <BywordCard>
+              <SectionHeader
+                icon={Search}
+                title="SEO Brief Field Map"
+                description="Detected brief columns are passed into the generated article plan."
+                action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{briefCoverage}/{seoBriefSignals.length} detected</span>}
+              />
+              <div className="flex flex-wrap gap-2 p-5">
+                {briefSignalMap.map((signal) => (
+                  <SignalPill key={signal.label} label={signal.label} value={signal.variable} />
+                ))}
+              </div>
+            </BywordCard>
+          )}
+
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="space-y-6">
               <div className="flex items-center justify-between gap-4">
-                <SectionHeader icon={Database} title="Your Data" description={`Needs: ${variables.map(variableLabel).join(", ")}`} />
+                <SectionHeader
+                  icon={Database}
+                  title={isSeoBriefCampaign ? "Brief Rows" : "Your Data"}
+                  description={isSeoBriefCampaign ? "One spreadsheet row becomes one article draft." : `Needs: ${variables.map(variableLabel).join(", ")}`}
+                />
                 <div className="flex flex-wrap gap-2">
                   <input ref={fileInputRef} type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => event.target.files?.[0] && handleFile(event.target.files[0])} />
                   <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" />Import</Button>
@@ -820,32 +927,34 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                 </>
               ) : (
                 <BywordCard className="overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-14"></TableHead>
-                        {variables.map((variable) => <TableHead key={variable}>{variable} <span className="text-byword-blue">*</span></TableHead>)}
-                        <TableHead className="w-12"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(rows.length ? rows : [{}]).map((row, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                          {variables.map((variable) => (
-                            <TableCell key={variable} className="min-w-52">
-                              <Input value={row[variable] || ""} onChange={(event) => updateCell(index, variable, event.target.value)} placeholder="Click to start typing..." />
-                            </TableCell>
-                          ))}
-                          <TableCell>
-                            <Button variant="ghost" size="icon" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-14"></TableHead>
+                          {variables.map((variable) => <TableHead key={variable}>{variable} <span className="text-byword-blue">*</span></TableHead>)}
+                          <TableHead className="w-12"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(rows.length ? rows : [{}]).map((row, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                            {variables.map((variable) => (
+                              <TableCell key={variable} className="min-w-52">
+                                <Input value={row[variable] || ""} onChange={(event) => updateCell(index, variable, event.target.value)} placeholder="Click to start typing..." />
+                              </TableCell>
+                            ))}
+                            <TableCell>
+                              <Button variant="ghost" size="icon" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-byword-border p-4">
                     <Button variant="ghost" onClick={() => setRows((current) => [...(current.length ? current : []), {}])}>
                       <Plus className="mr-2 h-4 w-4" />Add row
@@ -1074,6 +1183,45 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           onChange={(event) => event.target.files?.[0] && handleFile(event.target.files[0])}
         />
         <BywordCard>
+          <SectionHeader
+            icon={Search}
+            title="SEO Content Brief Campaign"
+            description="Import an editorial brief spreadsheet and generate one SEO-ready article draft per row."
+            action={
+              <Button onClick={() => fileInputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />Import Brief Sheet
+              </Button>
+            }
+          />
+          <div className="grid gap-0 divide-y divide-byword-border lg:grid-cols-[1fr_1.2fr] lg:divide-x lg:divide-y-0">
+            <div className="p-6">
+              <p className="type-meta">Expected columns</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {seoBriefSignals.map((signal) => (
+                  <span key={signal.label} className="rounded-sm border border-byword-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {signal.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-0 divide-y divide-byword-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="p-6">
+                <p className="type-meta">Import</p>
+                <p className="mt-2 text-sm text-muted-foreground">CSV or XLSX rows are parsed into content targets.</p>
+              </div>
+              <div className="p-6">
+                <p className="type-meta">Map</p>
+                <p className="mt-2 text-sm text-muted-foreground">Title, keyword, intent, metadata, outline, and CTA become variables.</p>
+              </div>
+              <div className="p-6">
+                <p className="type-meta">Launch</p>
+                <p className="mt-2 text-sm text-muted-foreground">Review one preview row, then create the campaign run.</p>
+              </div>
+            </div>
+          </div>
+        </BywordCard>
+
+        <BywordCard>
           <SectionHeader icon={Grid2X2} title="Dimensional Strategy" description="Choose the smallest workflow that fits the keyword pattern." />
           <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0">
             {dimensionalStrategies.map((strategy) => (
@@ -1101,7 +1249,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         <div className="grid gap-6 lg:grid-cols-4">
           <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
           <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
-          <FlowCard icon={Upload} title="Import Excel / CSV" description="Create a campaign from spreadsheet rows and auto-build a template" onClick={() => fileInputRef.current?.click()} />
+          <FlowCard icon={Upload} title="Import Any Sheet" description="Auto-build a template from spreadsheet rows when it is not a standard SEO brief" onClick={() => fileInputRef.current?.click()} />
           <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/campaigns")} />
         </div>
 

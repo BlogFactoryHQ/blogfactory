@@ -80,9 +80,11 @@ export function AppSidebar() {
   const { user, signOut } = useAuth();
   const { sites, activeSite, activeSiteId, activateSite, isActivating } = useSites();
   const { isCollapsed, toggle } = useSidebar();
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [switchingSite, setSwitchingSite] = useState<Site | null>(null);
+  const effectiveCollapsed = isCollapsed || isCompactViewport;
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
   const email = user?.email || "";
@@ -103,6 +105,14 @@ export function AppSidebar() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsCompactViewport(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
 
   const openSearch = () => {
@@ -133,25 +143,25 @@ export function AppSidebar() {
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar shadow-[inset_-1px_0_0_hsl(var(--sidebar-border)/0.55)]",
           "transition-[width] duration-200 ease-out",
-          isCollapsed ? "w-[60px]" : "w-[224px]"
+          effectiveCollapsed ? "w-[60px]" : "w-[224px]"
         )}
       >
         <div className="shrink-0 space-y-3 border-b border-sidebar-border p-2.5">
-          <div className={cn("flex items-center", isCollapsed ? "flex-col justify-center gap-2" : "justify-between px-1 pt-1")}>
-            <FactoryMark showText={!isCollapsed} />
+          <div className={cn("flex items-center", effectiveCollapsed ? "flex-col justify-center gap-2" : "justify-between px-1 pt-1")}>
+            <FactoryMark showText={!effectiveCollapsed} />
             <button
               type="button"
               onClick={toggle}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
-              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {isCollapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
+              {effectiveCollapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
             </button>
           </div>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <DropdownMenu>
-              <DropdownMenuTrigger asChild disabled={isCollapsed}>
+              <DropdownMenuTrigger asChild disabled={effectiveCollapsed}>
                 <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
                     <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
@@ -226,7 +236,7 @@ export function AppSidebar() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {isCollapsed ? (
+          {effectiveCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -254,9 +264,9 @@ export function AppSidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
-          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
-          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
-          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} isCollapsed={isCollapsed} />
+          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
         </nav>
 
         <div className="border-t border-sidebar-border px-2.5 py-2.5 overflow-hidden">
@@ -269,11 +279,11 @@ export function AppSidebar() {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-secondary bg-secondary text-[11px] font-semibold text-secondary-foreground">
                   {displayName[0].toUpperCase()}
                 </span>
-                <span className={cn("ml-2 min-w-0 flex-1 shrink-0", isCollapsed && "hidden")}>
+                <span className={cn("ml-2 min-w-0 flex-1 shrink-0", effectiveCollapsed && "hidden")}>
                   <span className="block truncate text-[12px] font-medium leading-tight text-foreground">{displayName}</span>
                   <span className="block truncate text-[11px] leading-tight text-sidebar-muted">{email}</span>
                 </span>
-                <ChevronDown className={cn("ml-2 h-3.5 w-3.5 shrink-0 text-sidebar-muted", isCollapsed && "hidden")} />
+                <ChevronDown className={cn("ml-2 h-3.5 w-3.5 shrink-0 text-sidebar-muted", effectiveCollapsed && "hidden")} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" sideOffset={8} className="w-56 rounded-md border-byword-border">
