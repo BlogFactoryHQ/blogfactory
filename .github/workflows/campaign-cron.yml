@@ -1,0 +1,29 @@
+name: Campaign queue tick
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: campaign-queue-tick
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Drain running campaigns
+        env:
+          BLOGFACTORY_CRON_SECRET: ${{ secrets.BLOGFACTORY_CRON_SECRET }}
+          BLOGFACTORY_BASE_URL: ${{ vars.BLOGFACTORY_BASE_URL }}
+        run: |
+          test -n "$BLOGFACTORY_CRON_SECRET"
+          BASE_URL="${BLOGFACTORY_BASE_URL:-https://blogfactory.io}"
+          curl --fail --show-error --silent --max-time 70 \
+            -H "Authorization: Bearer ${BLOGFACTORY_CRON_SECRET}" \
+            "${BASE_URL%/}/api/cron/drain?task=campaigns&maxCampaigns=2&maxItemsPerCampaign=3"
