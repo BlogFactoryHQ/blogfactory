@@ -260,20 +260,40 @@ export default function Posts() {
     mutationFn: async (postIds: string[]) => {
       const integrationId = bulkIntegrationId || connectedIntegrations[0]?.id;
       if (!integrationId) throw new Error("Connect an integration first");
-      let failed = 0;
+      const postTitleById = new Map(enrichedPosts.map((post) => [post.id, post.title]));
+      const failures: Array<{ id: string; title: string; error: string }> = [];
       for (const id of postIds) {
-        const result = await api.post<{ success: boolean; error?: string }>(`/posts/${id}/publish`, {
-          integrationId,
-          mode: "draft",
-          postType: "post",
-        });
-        if (!result.success) failed += 1;
+        try {
+          const result = await api.post<{ success: boolean; error?: string }>(`/posts/${id}/publish`, {
+            integrationId,
+            mode: "draft",
+            postType: "post",
+          });
+          if (!result.success) {
+            failures.push({
+              id,
+              title: postTitleById.get(id) || id,
+              error: result.error || "CMS draft creation failed",
+            });
+          }
+        } catch (error) {
+          failures.push({
+            id,
+            title: postTitleById.get(id) || id,
+            error: error instanceof Error ? error.message : "CMS draft creation failed",
+          });
+        }
       }
-      return { total: postIds.length, failed };
+      return { total: postIds.length, failures };
     },
-    onSuccess: ({ total, failed }) => {
+    onSuccess: ({ total, failures }) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success(failed ? `${total - failed}/${total} posts pushed` : `${total} post${total > 1 ? "s" : ""} pushed`);
+      const pushed = total - failures.length;
+      if (failures.length) {
+        toast.error(`${pushed}/${total} posts pushed. First failure: ${failures[0].title} - ${failures[0].error}`);
+      } else {
+        toast.success(`${total} post${total > 1 ? "s" : ""} pushed`);
+      }
       clearSelection();
     },
     onError: (error) => {
@@ -530,6 +550,10 @@ export default function Posts() {
     navigate(`/gallery?${params.toString()}`);
   };
 
+  const openPostInNewTab = (postId: string) => {
+    window.open(`/posts/${postId}/edit`, "_blank", "noopener,noreferrer");
+  };
+
   const renderDraftGroup = (row: Extract<DisplayRow, { type: "draftGroup" }>) => {
     const isExpanded = expandedJobIds.has(row.jobId);
     const selectedCount = row.posts.filter((post) => selectedIds.has(post.id)).length;
@@ -607,7 +631,7 @@ export default function Posts() {
             post={post}
             isSelected={selectedIds.has(post.id)}
             onSelect={(checked) => handleRowSelect(post.id, checked)}
-            onClick={() => navigate(`/posts/${post.id}/edit`)}
+            onClick={() => openPostInNewTab(post.id)}
             onQuickPublish={(e) => {
               e.stopPropagation();
               quickPublishMutation.mutate(post.id);
@@ -815,7 +839,7 @@ export default function Posts() {
                   post={row.post}
                   isSelected={selectedIds.has(row.post.id)}
                   onSelect={(checked) => handleRowSelect(row.post.id, checked)}
-                  onClick={() => navigate(`/posts/${row.post.id}/edit`)}
+                  onClick={() => openPostInNewTab(row.post.id)}
                   onQuickPublish={(e) => {
                     e.stopPropagation();
                     quickPublishMutation.mutate(row.post.id);

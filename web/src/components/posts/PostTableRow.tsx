@@ -92,7 +92,7 @@ export function PostTableRow({
         className
       )}
       onClick={onClick}
-      title="Edit post"
+      title="Open post in new tab"
     >
       <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
         <Checkbox
