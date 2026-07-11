@@ -92,3 +92,4 @@ try {
 }
 
 console.log("PostgreSQL migration and feed lease integration check passed");
+process.exit(0);
