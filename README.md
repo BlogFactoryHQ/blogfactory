@@ -139,6 +139,7 @@ For OpenRouter Broadcast, use `/api/webhooks/openrouter` as the webhook URL and 
 Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through the single serverless entrypoint at `api/index.ts`, which loads the Hono backend from `server/src/index.ts`.
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
+Migrations are locked, checksummed, and recorded in `schema_migrations`. For an existing database created before the ledger was introduced, verify that every checked-in migration is already present, then run once with `MIGRATION_BASELINE_EXISTING=true`; this records the baseline without replaying historical SQL.
 
 ## Contributor Notes
 
