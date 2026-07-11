@@ -2,20 +2,22 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useImportImageGenerationRequest } from "./useImageAssets";
+import { useDeleteImageAssets, useImportImageGenerationRequest } from "./useImageAssets";
 
-const { uploadMock, successToast, errorToast } = vi.hoisted(() => ({
+const { uploadMock, postMock, successToast, warningToast, errorToast } = vi.hoisted(() => ({
   uploadMock: vi.fn(),
+  postMock: vi.fn(),
   successToast: vi.fn(),
+  warningToast: vi.fn(),
   errorToast: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
-  api: { upload: uploadMock },
+  api: { upload: uploadMock, post: postMock },
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: successToast, error: errorToast },
+  toast: { success: successToast, warning: warningToast, error: errorToast },
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,13 +25,19 @@ vi.mock("sonner", () => ({
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 let mutation: ReturnType<typeof useImportImageGenerationRequest> | null = null;
+let deleteMutation: ReturnType<typeof useDeleteImageAssets> | null = null;
 
 function ImportHarness() {
   mutation = useImportImageGenerationRequest();
   return null;
 }
 
-async function renderHook() {
+function DeleteHarness() {
+  deleteMutation = useDeleteImageAssets();
+  return null;
+}
+
+async function renderHook(harness: "import" | "delete" = "import") {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -43,7 +51,7 @@ async function renderHook() {
   await act(async () => {
     root?.render(
       <QueryClientProvider client={queryClient}>
-        <ImportHarness />
+        {harness === "import" ? <ImportHarness /> : <DeleteHarness />}
       </QueryClientProvider>,
     );
   });
@@ -56,7 +64,28 @@ afterEach(async () => {
   root = null;
   container = null;
   mutation = null;
+  deleteMutation = null;
   vi.clearAllMocks();
+});
+
+describe("useDeleteImageAssets", () => {
+  it("keeps partial storage failures visible to the user", async () => {
+    postMock.mockResolvedValue({ success: false, deleted: 1, failed: [{ id: "asset-2", error: "R2 unavailable" }] });
+    const invalidate = await renderHook("delete");
+
+    await act(async () => {
+      await deleteMutation?.mutateAsync(["asset-1", "asset-2"]);
+    });
+
+    expect(warningToast).toHaveBeenCalledWith("Some images could not be deleted", {
+      description: "1 removed; 1 retained for retry.",
+    });
+    expect(successToast).not.toHaveBeenCalled();
+    expect(invalidate.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
+      ["image-assets"],
+      ["image-asset-stats"],
+    ]);
+  });
 });
 
 describe("useImportImageGenerationRequest", () => {
