@@ -38,7 +38,7 @@ export async function fetchImageModels(refresh = false): Promise<LiveImageModel[
 export function useImageModels() {
   return useQuery<LiveImageModel[]>({
     queryKey: ["image-models"],
-    queryFn: fetchImageModels,
+    queryFn: () => fetchImageModels(),
     staleTime: 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
     retry: 2,
