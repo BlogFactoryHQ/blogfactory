@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, limitKnowledgeContent, type KnowledgeDocument } from "@/lib/knowledge";
+import { extractDocxText, limitKnowledgeContent } from "@/lib/knowledge";
 import { SimplePromptView } from "@/components/personas/SimplePromptView";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import type { LiveTextModel } from "@/hooks/useTextModels";
@@ -62,6 +62,11 @@ import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
 import { Switch } from "@/components/ui/switch";
 import { useTextModels } from "@/hooks/useTextModels";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
+import {
+  useBrandKnowledgeEditor,
+  type BrandKnowledgeSettings,
+} from "@/hooks/useBrandKnowledgeEditor";
 
 interface ToolDefinition {
   id: string;
@@ -108,13 +113,6 @@ interface Persona {
   validation_rules: ValidationRules;
 }
 
-interface BrandCta {
-  id: string;
-  label: string;
-  url: string;
-  description: string;
-}
-
 interface VoiceTrainingSample {
   id: string;
   title: string;
@@ -147,7 +145,7 @@ interface ContentRules {
   avoidAiPhrases: boolean;
 }
 
-interface UserSettings {
+interface UserSettings extends BrandKnowledgeSettings {
   article_word_count?: number | null;
   article_language?: string | null;
   article_voice?: string | null;
@@ -160,14 +158,6 @@ interface UserSettings {
   enable_research?: boolean | null;
   enable_internal_links?: boolean | null;
   internal_link_density?: string | null;
-  brand_company_name?: string | null;
-  brand_description?: string | null;
-  brand_target_audience?: string | null;
-  brand_mentions?: string | null;
-  brand_value_props?: string[] | null;
-  brand_ctas?: BrandCta[] | null;
-  knowledge_base_enabled?: boolean | null;
-  knowledge_documents?: KnowledgeDocument[] | null;
 }
 
 const voiceOptions = [
@@ -221,8 +211,6 @@ export default function Personas() {
   const { isAdvanced, toggleAdvanced } = useAdvancedMode();
   const { activeSite } = useSites();
   const activeSiteId = activeSite?.id || null;
-  const settingsQueryKey = ["user-settings", activeSiteId || "none"];
-  const settingsPath = activeSiteId ? `/settings?siteId=${encodeURIComponent(activeSiteId)}` : "/settings";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [editedPersona, setEditedPersona] = useState<Persona | null>(null);
@@ -254,21 +242,6 @@ export default function Personas() {
   const [newPreferredFrom, setNewPreferredFrom] = useState("");
   const [newPreferredTo, setNewPreferredTo] = useState("");
   const [newCompetitor, setNewCompetitor] = useState("");
-  const [brandCompanyName, setBrandCompanyName] = useState("");
-  const [brandDescription, setBrandDescription] = useState("");
-  const [brandTargetAudience, setBrandTargetAudience] = useState("");
-  const [brandMentions, setBrandMentions] = useState("moderate");
-  const [brandValueProps, setBrandValueProps] = useState<string[]>([]);
-  const [newValueProp, setNewValueProp] = useState("");
-  const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(false);
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
-  const [knowledgeTitle, setKnowledgeTitle] = useState("");
-  const [knowledgeContent, setKnowledgeContent] = useState("");
-  const [isImportingKnowledge, setIsImportingKnowledge] = useState(false);
-  const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
-  const [ctaLabel, setCtaLabel] = useState("");
-  const [ctaUrl, setCtaUrl] = useState("");
-  const [ctaDescription, setCtaDescription] = useState("");
 
   // Fetch personas
   const { data: personas = [], isLoading } = useQuery({
@@ -290,10 +263,52 @@ export default function Personas() {
   const { data: textModelsData = [] } = useTextModels();
   const textModels: LiveTextModel[] = Array.isArray(textModelsData) ? textModelsData : [];
 
-  const { data: userSettings } = useQuery({
-    queryKey: settingsQueryKey,
-    queryFn: () => api.get<UserSettings>(settingsPath),
-    enabled: !!user,
+  const {
+    data: userSettings,
+    setSettingsCache,
+    invalidateSettings,
+  } = useSiteSettings<UserSettings>(activeSiteId, { enabled: !!user });
+
+  const {
+    brandCompanyName, setBrandCompanyName,
+    brandDescription, setBrandDescription,
+    brandTargetAudience, setBrandTargetAudience,
+    brandMentions, setBrandMentions,
+    brandValueProps, setBrandValueProps,
+    newValueProp, setNewValueProp,
+    knowledgeBaseEnabled, setKnowledgeBaseEnabled,
+    knowledgeDocuments,
+    knowledgeTitle, setKnowledgeTitle,
+    knowledgeContent, setKnowledgeContent,
+    isImportingKnowledge,
+    brandCtas,
+    ctaLabel, setCtaLabel,
+    ctaUrl, setCtaUrl,
+    ctaDescription, setCtaDescription,
+    addValueProp,
+    addKnowledgeDocument,
+    removeKnowledgeDocument,
+    handleKnowledgeFileChange,
+    addCta,
+    removeCta,
+    saveMutation: saveBrandVoiceMutation,
+    knowledgeChunkTotal,
+    readyKnowledgeCount,
+    canAddKnowledge,
+  } = useBrandKnowledgeEditor<UserSettings>({
+    siteId: activeSiteId,
+    settings: userSettings,
+    additionalPayload: () => ({
+      article_voice: articleVoice,
+      voice_mode: voiceMode,
+      custom_voice_profile: customVoiceProfile,
+      voice_training_samples: voiceTrainingSamples,
+      content_rules: contentRules,
+      custom_article_instructions: customArticleInstructions,
+    }),
+    successMessage: "Brand voice settings saved.",
+    setSettingsCache,
+    invalidateSettings,
   });
 
   useEffect(() => {
@@ -308,14 +323,6 @@ export default function Personas() {
     setCustomArticleInstructions(userSettings.custom_article_instructions || "");
     setIncludeTableOfContents(userSettings.include_table_of_contents ?? false);
     setEnableResearch(userSettings.enable_research ?? false);
-    setBrandCompanyName(userSettings.brand_company_name || "");
-    setBrandDescription(userSettings.brand_description || "");
-    setBrandTargetAudience(userSettings.brand_target_audience || "");
-    setBrandMentions(userSettings.brand_mentions || "moderate");
-    setBrandValueProps(userSettings.brand_value_props || []);
-    setBrandCtas(userSettings.brand_ctas || []);
-    setKnowledgeBaseEnabled(userSettings.knowledge_base_enabled ?? false);
-    setKnowledgeDocuments(userSettings.knowledge_documents || []);
   }, [userSettings]);
 
   // Create persona mutation
@@ -425,34 +432,6 @@ export default function Personas() {
     },
   });
 
-  const saveBrandVoiceMutation = useMutation({
-    mutationFn: async (nextKnowledgeDocuments?: KnowledgeDocument[]) => {
-      await api.put("/settings", {
-        siteId: activeSiteId,
-        article_voice: articleVoice,
-        voice_mode: voiceMode,
-        custom_voice_profile: customVoiceProfile,
-        voice_training_samples: voiceTrainingSamples,
-        content_rules: contentRules,
-        custom_article_instructions: customArticleInstructions,
-        brand_company_name: brandCompanyName,
-        brand_description: brandDescription,
-        brand_target_audience: brandTargetAudience,
-        brand_mentions: brandMentions,
-        brand_value_props: brandValueProps,
-        brand_ctas: brandCtas,
-        knowledge_base_enabled: knowledgeBaseEnabled || Boolean(nextKnowledgeDocuments?.length),
-        knowledge_documents: nextKnowledgeDocuments || knowledgeDocuments,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsQueryKey });
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Brand voice settings saved.");
-    },
-    onError: (err: Error) => toast.error(err.message || "Failed to save brand voice settings"),
-  });
-
   const analyzeVoiceMutation = useMutation({
     mutationFn: () => api.post<UserSettings>("/settings/voice-profile/analyze", {
       siteId: activeSiteId,
@@ -463,9 +442,8 @@ export default function Personas() {
       setVoiceMode("custom");
       setCustomVoiceProfile(settings.custom_voice_profile || null);
       setVoiceTrainingSamples(settings.voice_training_samples || voiceTrainingSamples);
-      queryClient.setQueryData(settingsQueryKey, settings);
-      queryClient.invalidateQueries({ queryKey: settingsQueryKey });
-      queryClient.invalidateQueries({ queryKey: ["user-settings"] });
+      setSettingsCache(settings);
+      void invalidateSettings();
       toast.success("Custom voice profile generated.");
     },
     onError: (err: Error) => toast.error(err.message || "Failed to generate voice profile"),
@@ -516,30 +494,6 @@ export default function Personas() {
   const updateEditedPersona = (updates: Partial<Persona>) => {
     if (!editedPersona) return;
     setEditedPersona({ ...editedPersona, ...updates });
-  };
-
-  const addValueProp = () => {
-    const value = newValueProp.trim();
-    if (!value) return;
-    if (brandValueProps.length >= 5) {
-      toast.error("You can add up to 5 value props");
-      return;
-    }
-    setBrandValueProps((current) => [...current, value]);
-    setNewValueProp("");
-  };
-
-  const addKnowledgeDocument = () => {
-    const title = knowledgeTitle.trim();
-    const content = knowledgeContent.trim();
-    if (!title || !content) {
-      toast.error("Add a title and content for the knowledge document");
-      return;
-    }
-    setKnowledgeDocuments((current) => [...current, createKnowledgeDocument(title, content)]);
-    setKnowledgeBaseEnabled(true);
-    setKnowledgeTitle("");
-    setKnowledgeContent("");
   };
 
   const updateContentRules = (updates: Partial<ContentRules>) => {
@@ -641,31 +595,6 @@ export default function Personas() {
     toast[changed ? "success" : "info"](changed ? "Autofilled blank brand fields. Review and save." : "No blank site-backed fields to autofill.");
   };
 
-  const importKnowledgeFile = async (file: File) => {
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    let content = "";
-
-    if (extension === "txt" || file.type === "text/plain") {
-      content = await file.text();
-    } else if (extension === "docx") {
-      content = await extractDocxText(file);
-    } else if (extension === "pdf" || file.type === "application/pdf") {
-      const formData = new FormData();
-      formData.append("file", file);
-      const imported = await api.upload<Pick<KnowledgeDocument, "title" | "content" | "status" | "chunks" | "error">>("/settings/knowledge/import", formData);
-      content = imported.content;
-    } else {
-      throw new Error("Upload a PDF, DOCX, or TXT file");
-    }
-
-    const document = createKnowledgeDocument(file.name.replace(/\.[^.]+$/, ""), content);
-    const nextDocuments = [...knowledgeDocuments, document];
-    setKnowledgeDocuments(nextDocuments);
-    setKnowledgeBaseEnabled(true);
-    saveBrandVoiceMutation.mutate(nextDocuments);
-    toast.success("Knowledge file imported");
-  };
-
   const importVoiceSampleFile = async (file: File) => {
     const extension = file.name.split(".").pop()?.toLowerCase();
     let content = "";
@@ -693,20 +622,6 @@ export default function Personas() {
     toast.success("Training sample imported");
   };
 
-  const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setIsImportingKnowledge(true);
-    try {
-      await importKnowledgeFile(file);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to import knowledge file");
-    } finally {
-      setIsImportingKnowledge(false);
-    }
-  };
-
   const handleVoiceSampleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -719,19 +634,6 @@ export default function Personas() {
     } finally {
       setIsImportingVoiceSample(false);
     }
-  };
-
-  const addCta = () => {
-    const label = ctaLabel.trim();
-    const description = ctaDescription.trim();
-    if (!label || !description) {
-      toast.error("Add at least a CTA label and description");
-      return;
-    }
-    setBrandCtas((current) => [...current, { id: crypto.randomUUID(), label, url: ctaUrl.trim(), description }]);
-    setCtaLabel("");
-    setCtaUrl("");
-    setCtaDescription("");
   };
 
   // Count configured tools and plugins for badges
@@ -748,9 +650,6 @@ export default function Personas() {
     trainingWordCount >= 2000 ? "Good coverage" :
     trainingWordCount >= 500 ? "Good start" :
     "Minimal";
-  const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
-  const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
-  const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
   const activeProfileCount = personas.filter((persona) => persona.status === "active").length;
   const wordRange = articleWordCount > 0
     ? `${Math.round(articleWordCount * 0.8).toLocaleString()}-${Math.round(articleWordCount * 1.2).toLocaleString()} words`
@@ -1149,7 +1048,7 @@ export default function Personas() {
                           <p className="truncate font-medium">{document.title}</p>
                           <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
                         </div>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.title}`}>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeKnowledgeDocument(document.id)} aria-label={`Remove ${document.title}`}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1169,7 +1068,7 @@ export default function Personas() {
                           <p className="text-sm text-muted-foreground">{cta.description}</p>
                           {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeCta(cta.id)}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>

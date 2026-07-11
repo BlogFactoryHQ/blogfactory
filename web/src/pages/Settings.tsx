@@ -10,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
-import { createKnowledgeDocument, extractDocxText, knowledgeChunkCount, knowledgeStatus, type KnowledgeDocument } from "@/lib/knowledge";
 import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,6 +51,11 @@ import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
 import { fetchTextModels, useTextModels, type LiveTextModel } from "@/hooks/useTextModels";
 import { useSites } from "@/hooks/useSites";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
+import {
+  useBrandKnowledgeEditor,
+  type BrandKnowledgeSettings,
+} from "@/hooks/useBrandKnowledgeEditor";
 import {
   Select,
   SelectContent,
@@ -98,7 +102,7 @@ interface ApiKeyTestResult {
   error?: string;
 }
 
-interface UserSettings {
+interface UserSettings extends BrandKnowledgeSettings {
   site_id?: string | null;
   active_site_id?: string | null;
   image_style_prompt?: string | null;
@@ -119,14 +123,6 @@ interface UserSettings {
   include_table_of_contents?: boolean | null;
   enable_research?: boolean | null;
   enable_internal_links?: boolean | null;
-  brand_company_name?: string | null;
-  brand_description?: string | null;
-  brand_target_audience?: string | null;
-  brand_mentions?: string | null;
-  brand_value_props?: string[] | null;
-  brand_ctas?: BrandCta[] | null;
-  knowledge_base_enabled?: boolean | null;
-  knowledge_documents?: KnowledgeDocument[] | null;
   internal_link_sitemap_url?: string | null;
   internal_link_status?: string | null;
   internal_link_mode?: string | null;
@@ -137,13 +133,6 @@ interface UserSettings {
   internal_link_index?: InternalLinkIndex | null;
   internal_link_indexing_state?: InternalLinkIndexingState | null;
   internal_link_last_synced_at?: string | null;
-}
-
-interface BrandCta {
-  id: string;
-  label: string;
-  url: string;
-  description: string;
 }
 
 interface InternalLinkRule {
@@ -182,12 +171,6 @@ interface InternalLinkIndexingState {
 
 type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
 type DirtyState = "clean" | "dirty";
-type BrandSettingsSaveArgs = {
-  knowledgeDocuments?: KnowledgeDocument[];
-  successMessage?: string;
-  suppressErrorToast?: boolean;
-  silent?: boolean;
-} | undefined;
 
 const priceBadgeClass = (pricing: ModelPriceFilter) => {
   if (pricing === "free") return "bg-primary/10 text-primary";
@@ -354,35 +337,10 @@ export default function Settings() {
   const [internalLinkStatus, setInternalLinkStatus] = useState("disconnected");
   const [internalLinkIndexingState, setInternalLinkIndexingState] = useState<InternalLinkIndexingState | null>(null);
   const [internalLinkLastSyncedAt, setInternalLinkLastSyncedAt] = useState<string | null>(null);
-  const [brandCompanyName, setBrandCompanyName] = useState("");
-  const [brandDescription, setBrandDescription] = useState("");
-  const [brandTargetAudience, setBrandTargetAudience] = useState("");
-  const [brandMentions, setBrandMentions] = useState("moderate");
-  const [brandValueProps, setBrandValueProps] = useState<string[]>([]);
-  const [newValueProp, setNewValueProp] = useState("");
-  const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(false);
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
-  const [knowledgeTitle, setKnowledgeTitle] = useState("");
-  const [knowledgeContent, setKnowledgeContent] = useState("");
-  const [isImportingKnowledge, setIsImportingKnowledge] = useState(false);
-  const [brandCtas, setBrandCtas] = useState<BrandCta[]>([]);
-  const [ctaLabel, setCtaLabel] = useState("");
-  const [ctaUrl, setCtaUrl] = useState("");
-  const [ctaDescription, setCtaDescription] = useState("");
   const previousInternalLinkStatus = useRef<string | null>(null);
   const knowledgeFileInputRef = useRef<HTMLInputElement | null>(null);
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
-  const settingsQueryKey = useMemo(() => ["user-settings", activeSiteId || "none"], [activeSiteId]);
-  const settingsPath = activeSiteId ? `/settings?siteId=${encodeURIComponent(activeSiteId)}` : "/settings";
-  const setSettingsCache = useCallback((settings: UserSettings) => {
-    queryClient.setQueryData(settingsQueryKey, settings);
-    queryClient.setQueryData(["user-settings"], settings);
-  }, [queryClient, settingsQueryKey]);
-  const invalidateSettings = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: settingsQueryKey });
-    queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-  }, [queryClient, settingsQueryKey]);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -413,15 +371,51 @@ export default function Settings() {
     inlineImageSource === "ai" && selectedInlineImageModel && imageModels.length > 0 && !imageModels.some((model) => model.id === selectedInlineImageModel)
   );
 
-  // Fetch user settings
-  const { data: userSettings, isLoading: settingsLoading } = useQuery({
-    queryKey: settingsQueryKey,
-    queryFn: async () => {
-      return api.get<UserSettings>(settingsPath);
-    },
+  const {
+    data: userSettings,
+    isLoading: settingsLoading,
+    setSettingsCache,
+    invalidateSettings,
+  } = useSiteSettings<UserSettings>(activeSiteId, {
     enabled: !!user,
-    refetchInterval: (query) =>
-      (query.state.data as UserSettings | undefined)?.internal_link_status === "indexing" ? 3000 : false,
+    refetchInterval: (settings) => settings?.internal_link_status === "indexing" ? 3000 : false,
+  });
+
+  const {
+    brandCompanyName, setBrandCompanyName,
+    brandDescription, setBrandDescription,
+    brandTargetAudience, setBrandTargetAudience,
+    brandMentions, setBrandMentions,
+    brandValueProps, setBrandValueProps,
+    newValueProp, setNewValueProp,
+    knowledgeBaseEnabled, setKnowledgeBaseEnabled,
+    knowledgeDocuments,
+    knowledgeTitle, setKnowledgeTitle,
+    knowledgeContent, setKnowledgeContent,
+    isImportingKnowledge,
+    brandCtas,
+    ctaLabel, setCtaLabel,
+    ctaUrl, setCtaUrl,
+    ctaDescription, setCtaDescription,
+    addValueProp,
+    addKnowledgeDocument,
+    removeKnowledgeDocument,
+    handleKnowledgeFileChange,
+    addCta,
+    removeCta,
+    saveMutation: saveBrandSettingsMutation,
+    isDirty: isBrandDirty,
+    knowledgeChunkTotal,
+    readyKnowledgeCount,
+    canAddKnowledge,
+    canAddCta,
+  } = useBrandKnowledgeEditor<UserSettings>({
+    siteId: activeSiteId,
+    settings: userSettings,
+    additionalPayload: () => ({ article_voice: articleVoice }),
+    successMessage: "Brand settings saved",
+    setSettingsCache,
+    invalidateSettings,
   });
 
   const { data: apiKeys } = useQuery({
@@ -494,16 +488,7 @@ export default function Settings() {
   ) ? "dirty" : "clean";
   const imagePromptDirty: DirtyState = userSettings && imageStylePrompt !== (userSettings.image_style_prompt || "Professional, modern, clean style. High quality, suitable for a tech/business blog. No text overlays.") ? "dirty" : "clean";
 
-  const brandDirty: DirtyState = userSettings && (
-    brandCompanyName !== (userSettings.brand_company_name || "") ||
-    brandDescription !== (userSettings.brand_description || "") ||
-    brandTargetAudience !== (userSettings.brand_target_audience || "") ||
-    brandMentions !== (userSettings.brand_mentions || "moderate") ||
-    knowledgeBaseEnabled !== (userSettings.knowledge_base_enabled ?? false) ||
-    JSON.stringify(brandValueProps) !== JSON.stringify(userSettings.brand_value_props || []) ||
-    JSON.stringify(brandCtas) !== JSON.stringify(userSettings.brand_ctas || []) ||
-    JSON.stringify(knowledgeDocuments) !== JSON.stringify(userSettings.knowledge_documents || [])
-  ) ? "dirty" : "clean";
+  const brandDirty: DirtyState = isBrandDirty ? "dirty" : "clean";
 
   // Update local state when settings load
   useEffect(() => {
@@ -544,14 +529,6 @@ export default function Settings() {
       setInternalLinkIndex(userSettings.internal_link_index || null);
       setInternalLinkIndexingState(userSettings.internal_link_indexing_state || null);
       setInternalLinkLastSyncedAt(userSettings.internal_link_last_synced_at || null);
-      setBrandCompanyName(userSettings.brand_company_name || "");
-      setBrandDescription(userSettings.brand_description || "");
-      setBrandTargetAudience(userSettings.brand_target_audience || "");
-      setBrandMentions(userSettings.brand_mentions || "moderate");
-      setBrandValueProps(userSettings.brand_value_props || []);
-      setBrandCtas(userSettings.brand_ctas || []);
-      setKnowledgeBaseEnabled(userSettings.knowledge_base_enabled ?? false);
-      setKnowledgeDocuments(userSettings.knowledge_documents || []);
     }
   }, [userSettings]);
 
@@ -649,32 +626,6 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message || "Failed to disconnect internal linking"),
   });
 
-  const saveBrandSettingsMutation = useMutation({
-    mutationFn: async (args?: BrandSettingsSaveArgs) => {
-      const nextKnowledgeDocuments = args?.knowledgeDocuments;
-      return api.put<UserSettings>("/settings", {
-        siteId: activeSiteId,
-        brand_company_name: brandCompanyName,
-        brand_description: brandDescription,
-        brand_target_audience: brandTargetAudience,
-        brand_mentions: brandMentions,
-        brand_value_props: brandValueProps,
-        brand_ctas: brandCtas,
-        knowledge_base_enabled: knowledgeBaseEnabled || Boolean(nextKnowledgeDocuments?.length),
-        knowledge_documents: nextKnowledgeDocuments || knowledgeDocuments,
-        article_voice: articleVoice,
-      });
-    },
-    onSuccess: (settings, args) => {
-      setSettingsCache(settings);
-      invalidateSettings();
-      if (!args?.silent) toast.success(args?.successMessage || "Brand settings saved");
-    },
-    onError: (err: Error, args) => {
-      if (!args?.suppressErrorToast) toast.error(err.message || "Failed to save brand settings");
-    },
-  });
-
   // Save style prompt mutation
   const saveStyleMutation = useMutation({
     mutationFn: async (newPrompt: string) => {
@@ -767,75 +718,6 @@ export default function Settings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const addValueProp = () => {
-    const value = newValueProp.trim();
-    if (!value) return;
-    if (brandValueProps.length >= 5) {
-      toast.error("You can add up to 5 value props");
-      return;
-    }
-    setBrandValueProps((current) => [...current, value]);
-    setNewValueProp("");
-  };
-
-  const addKnowledgeDocument = () => {
-    const title = knowledgeTitle.trim();
-    const content = knowledgeContent.trim();
-    if (!title || !content) {
-      toast.error("Add a title and content for the knowledge document");
-      return;
-    }
-    setKnowledgeDocuments((current) => [
-      ...current,
-      createKnowledgeDocument(title, content),
-    ]);
-    setKnowledgeBaseEnabled(true);
-    setKnowledgeTitle("");
-    setKnowledgeContent("");
-  };
-
-  const importKnowledgeFile = async (file: File) => {
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    let content = "";
-
-    if (extension === "txt" || file.type === "text/plain") {
-      content = await file.text();
-    } else if (extension === "docx") {
-      content = await extractDocxText(file);
-    } else if (extension === "pdf" || file.type === "application/pdf") {
-      const formData = new FormData();
-      formData.append("file", file);
-      const imported = await api.upload<Pick<KnowledgeDocument, "title" | "content" | "status" | "chunks" | "error">>("/settings/knowledge/import", formData);
-      content = imported.content;
-    } else {
-      throw new Error("Upload a PDF, DOCX, or TXT file");
-    }
-
-    const document = createKnowledgeDocument(file.name.replace(/\.[^.]+$/, ""), content);
-    const nextDocuments = [...knowledgeDocuments, document];
-    setKnowledgeDocuments(nextDocuments);
-    setKnowledgeBaseEnabled(true);
-    await saveBrandSettingsMutation.mutateAsync({
-      knowledgeDocuments: nextDocuments,
-      successMessage: "Knowledge file imported",
-      suppressErrorToast: true,
-    });
-  };
-
-  const handleKnowledgeFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setIsImportingKnowledge(true);
-    try {
-      await importKnowledgeFile(file);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to import knowledge file");
-    } finally {
-      setIsImportingKnowledge(false);
-    }
-  };
-
   const addInternalLinkRule = () => {
     const triggers = internalRuleTriggers.trim();
     const url = internalRuleUrl.trim();
@@ -899,32 +781,6 @@ export default function Settings() {
     return Math.max(8, (indexingStepIndex + 1) * 18);
   })();
 
-  const addCta = () => {
-    const label = ctaLabel.trim();
-    const url = ctaUrl.trim();
-    const description = ctaDescription.trim();
-    if (!label || !description) {
-      toast.error("Add at least a CTA label and description");
-      return;
-    }
-    const normalizedUrl = url ? normalizeHttpUrl(url) : "";
-    if (normalizedUrl) {
-      try {
-        new URL(normalizedUrl);
-      } catch {
-        toast.error("Add a valid CTA URL");
-        return;
-      }
-    }
-    setBrandCtas((current) => [
-      ...current,
-      { id: crypto.randomUUID(), label, url: normalizedUrl, description },
-    ]);
-    setCtaLabel("");
-    setCtaUrl("");
-    setCtaDescription("");
-  };
-
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
@@ -935,10 +791,6 @@ export default function Settings() {
     { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
   ];
 
-  const knowledgeChunkTotal = knowledgeDocuments.reduce((total, document) => total + knowledgeChunkCount(document), 0);
-  const readyKnowledgeCount = knowledgeDocuments.filter((document) => knowledgeStatus(document) === "ready").length;
-  const canAddKnowledge = Boolean(knowledgeTitle.trim() && knowledgeContent.trim());
-  const canAddCta = Boolean(ctaLabel.trim() && ctaDescription.trim());
   const articleWordRangeLabel = articleWordCount > 0
     ? `${articleWordCount.toLocaleString()} target · ${Math.round(articleWordCount * 0.8).toLocaleString()}-${Math.round(articleWordCount * 1.2).toLocaleString()} acceptable`
     : "Smart length · no repair pass";
@@ -2335,7 +2187,7 @@ export default function Settings() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => setKnowledgeDocuments((current) => current.filter((item) => item.id !== document.id))}
+                            onClick={() => removeKnowledgeDocument(document.id)}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -2405,7 +2257,7 @@ export default function Settings() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => setBrandCtas((current) => current.filter((item) => item.id !== cta.id))}
+                            onClick={() => removeCta(cta.id)}
                           >
                             <X className="h-4 w-4" />
                           </Button>
