@@ -47,7 +47,7 @@ export default function AdminUsers() {
   });
 
   const actionMutation = useMutation({
-    mutationFn: ({ path, body }: { path: string; body?: any }) => api.post(path, body),
+    mutationFn: ({ path, body }: { path: string; body?: Record<string, unknown> }) => api.post(path, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       toast.success("User updated");

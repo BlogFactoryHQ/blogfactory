@@ -245,7 +245,7 @@ export function MarkdownEditor({
       }
     }, 500);
     return () => clearTimeout(timeout);
-  }, [value]);
+  }, [value, history, historyIndex]);
 
   const undo = useCallback(() => {
     if (historyIndex > 0) {

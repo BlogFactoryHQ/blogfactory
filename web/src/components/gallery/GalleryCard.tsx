@@ -142,10 +142,10 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
 
       {/* Hover overlay */}
       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5">
-        <p className="text-white text-xs font-medium truncate mb-0.5">{image.post_title || "No post"}</p>
-        {image.post_status && (
+        <p className="text-white text-xs font-medium truncate mb-0.5">{image.postTitle || "No post"}</p>
+        {image.postStatus && (
           <Badge variant="outline" className="w-fit text-[10px] bg-background/20 border-white/20 text-white mb-1">
-            {image.post_status}
+            {image.postStatus}
           </Badge>
         )}
         <p className="text-white/70 text-[10px]">{safeFormatDate(image.created_at, "MMM d, yyyy")}</p>

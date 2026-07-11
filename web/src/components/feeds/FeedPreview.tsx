@@ -29,6 +29,22 @@ interface FeedPreviewProps {
 }
 
 type SortMode = "newest" | "oldest";
+type PreviewSourceItem = {
+  title?: string;
+  url?: string;
+  link?: string;
+  permalink?: string;
+  score?: number;
+  comments?: number;
+  author?: string;
+  createdAt?: string;
+  pubDate?: string;
+  content?: string;
+  summary?: string;
+  thumbnail?: string;
+};
+type PreviewResponse = { items?: PreviewSourceItem[]; error?: string };
+type ExistingPost = { source_content_hash?: string | null; title?: string | null };
 
 export function FeedPreview({ platform, platformConfig, filterType, filterValue, feedSourceUrl, keywords = [] }: FeedPreviewProps) {
   const { user } = useAuth();
@@ -55,7 +71,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
         apiConfig = { channelId: platformConfig?.channelId };
       }
 
-      const data = await api.post<any>("/content/fetch-social", {
+      const data = await api.post<PreviewResponse>("/content/fetch-social", {
         platform: apiPlatform,
         config: apiConfig,
         filterType,
@@ -66,7 +82,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
 
       let rawItems: PreviewFeedItem[] = [];
       if (data?.items) {
-        rawItems = data.items.map((item: any) => ({
+        rawItems = data.items.map((item) => ({
           title: item.title,
           link: item.url || item.link || item.permalink,
           score: item.score,
@@ -85,7 +101,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
       // Check for duplicates if we have a user and feed source
       if (user && rawItems.length > 0) {
         try {
-          const existingPosts = await api.get<any[]>("/posts");
+          const existingPosts = await api.get<ExistingPost[]>("/posts");
 
           const existingHashes = new Set((existingPosts || []).filter((p) => p.source_content_hash).map((p) => p.source_content_hash));
           const existingTitles = new Set((existingPosts || []).map((p) => p.title?.toLowerCase().trim()));
@@ -112,7 +128,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
     } finally {
       setIsLoading(false);
     }
-  }, [platform, platformConfig, filterType, filterValue, keywords, itemLimit, user, feedSourceUrl]);
+  }, [platform, platformConfig, filterType, filterValue, keywords, itemLimit, user]);
 
   const handleOpen = () => {
     setIsOpen(true);

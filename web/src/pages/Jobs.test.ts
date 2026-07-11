@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateJobRows, imageResolutionStatus, jobGroupKey, parseStepProgress } from "./Jobs";
+import { aggregateJobRows, imageResolutionStatus, jobGroupKey, parseStepProgress, type Job } from "./Jobs";
 
 const baseJob = {
   id: "job-1",
@@ -22,7 +22,7 @@ const baseJob = {
 
 describe("job batch grouping", () => {
   it("groups sibling split jobs by batch id", () => {
-    expect(jobGroupKey(baseJob as any)).toBe("batch-batch-1");
+    expect(jobGroupKey(baseJob as Job)).toBe("batch-batch-1");
   });
 
   it("aggregates split draft jobs into one row", () => {
@@ -45,7 +45,7 @@ describe("job batch grouping", () => {
         result_post_ids: [],
         generation_plan: { ...baseJob.generation_plan, variationIndex: 3 },
       },
-    ] as any);
+    ] as Job[]);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("running");

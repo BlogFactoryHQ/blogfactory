@@ -10,16 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Image, Layers, DollarSign } from "lucide-react";
-
-interface GenerationLog {
-  id: string;
-  provider: string | null;
-  model_id: string | null;
-  usage_type?: string | null;
-  cost: number | null;
-  created_at: string;
-  [key: string]: unknown;
-}
+import type { GenerationLog } from "@/lib/types";
 
 interface ImageCostsSectionProps {
   logs: GenerationLog[];

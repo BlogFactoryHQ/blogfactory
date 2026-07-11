@@ -7,7 +7,7 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -43,7 +43,53 @@ const sourceIcons: Record<string, typeof FileText> = {
 
 type StatusFilter = "all" | "pending" | "running" | "completed" | "failed";
 
-interface Job {
+export interface GenerationPlan {
+  failedDrafts?: Array<{ index: number; error: string }>;
+  batchId?: string;
+  variationCount?: number;
+  totalDrafts?: number;
+  variationIndex?: number;
+  imagesEnabled?: boolean;
+  childJobIds?: string[];
+  seoQa?: SeoQaResult[];
+  imageResolution?: ImageResolutionEntry[];
+  imageDeliveryMode?: "generate" | "manual_prompt" | string;
+}
+
+interface JobWire {
+  id: string;
+  status: string;
+  source_type?: string;
+  sourceType?: string;
+  source_value?: string;
+  sourceValue?: string;
+  persona_id?: string | null;
+  personaId?: string | null;
+  model_id?: string;
+  modelId?: string;
+  current_step?: string;
+  currentStep?: string;
+  error_message?: string | null;
+  errorMessage?: string | null;
+  generation_error?: string | null;
+  generationError?: string | null;
+  token_cost?: number | null;
+  tokenCost?: number | null;
+  total_cost?: number | null;
+  totalCost?: number | null;
+  result_post_ids?: string[] | null;
+  resultPostIds?: string[] | null;
+  created_at?: string;
+  createdAt?: string;
+  completed_at?: string | null;
+  completedAt?: string | null;
+  generation_plan?: GenerationPlan | null;
+  generationPlan?: GenerationPlan | null;
+  personas?: { name: string } | null;
+  personaName?: string | null;
+}
+
+export interface Job {
   id: string;
   source_type: string;
   source_value: string;
@@ -58,7 +104,7 @@ interface Job {
   result_post_ids: string[] | null;
   created_at: string;
   completed_at: string | null;
-  generation_plan: any;
+  generation_plan: GenerationPlan;
   site_id?: string | null;
   feed_id?: string | null;
   preferred_integration_id?: string | null;
@@ -113,7 +159,7 @@ export const imageResolutionStatus = (item: Pick<ImageResolutionSlot, "status" |
   return item.status;
 };
 
-const normalizeJob = (job: any): Job => ({
+const normalizeJob = (job: JobWire): Job => ({
   id: job.id,
   source_type: job.source_type ?? job.sourceType ?? "unknown",
   source_value: job.source_value ?? job.sourceValue ?? "",
@@ -128,7 +174,7 @@ const normalizeJob = (job: any): Job => ({
   result_post_ids: job.result_post_ids ?? job.resultPostIds ?? null,
   created_at: job.created_at ?? job.createdAt,
   completed_at: job.completed_at ?? job.completedAt ?? null,
-  generation_plan: job.generation_plan ?? job.generationPlan,
+  generation_plan: job.generation_plan ?? job.generationPlan ?? {},
   personas: job.personas ?? (job.personaName ? { name: job.personaName } : null),
 });
 
@@ -246,7 +292,7 @@ const draftStatsFor = (job: Job) => {
 
 type JobProgressStep = { label: string; done: boolean; active: boolean; failed?: boolean; error?: string };
 
-export const parseStepProgress = (step: string, resultPostIds: string[] | null, generationPlan?: any) => {
+export const parseStepProgress = (step: string, resultPostIds: string[] | null, generationPlan?: GenerationPlan) => {
   const postsCompleted = resultPostIds?.length ?? 0;
   const failedDrafts: Array<{index: number, error: string}> = generationPlan?.failedDrafts || [];
   const failedIndices = new Set(failedDrafts.map(f => f.index));
@@ -369,10 +415,10 @@ export default function Jobs() {
   const retryDraftsMutation = useMutation({
     mutationFn: async ({ jobId, indices, jobIds }: { jobId?: string; indices?: number[]; jobIds?: string[] }) => {
       if (jobIds?.length) {
-        await Promise.all(jobIds.map((id) => api.post<any>(`/jobs/${id}/retry`, {})));
+        await Promise.all(jobIds.map((id) => api.post<unknown>(`/jobs/${id}/retry`, {})));
         return null;
       }
-      const data = await api.post<any>(`/jobs/${jobId}/retry`, { retryIndices: indices || [] });
+      const data = await api.post<unknown>(`/jobs/${jobId}/retry`, { retryIndices: indices || [] });
       return data;
     },
     onSuccess: () => {
@@ -387,7 +433,7 @@ export default function Jobs() {
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => {
-      return (await api.get<any[]>("/jobs")).map(normalizeJob);
+      return (await api.get<JobWire[]>("/jobs")).map(normalizeJob);
     },
     // Always poll every 5s -- lightweight query, ensures we catch state changes
     refetchInterval: 5000,
@@ -462,7 +508,7 @@ export default function Jobs() {
     toast.success("Full prompt copied to clipboard.");
   };
 
-  const getStatusBadgeType = (status: string) => {
+  const getStatusBadgeType = (status: string): StatusType => {
     switch (status) {
       case "completed":
         return "success";
@@ -486,7 +532,7 @@ export default function Jobs() {
       };
     }
 
-    return { status: getStatusBadgeType(job.status) as any, label: undefined };
+    return { status: getStatusBadgeType(job.status), label: undefined };
   };
 
   const formatModelName = (modelId: string) => {

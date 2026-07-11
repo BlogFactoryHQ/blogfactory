@@ -258,7 +258,7 @@ export default function RSSFeedNew() {
       const platformConfig = buildPlatformConfig();
       const feedSourceUrl = buildFeedSourceUrl();
 
-      const feed = await api.post<any>("/feeds", {
+      const feed = await api.post<{ id: string; site_id?: string | null; integration_id?: string | null; routing_status?: "ready" | "needs_routing" }>("/feeds", {
         name: feedName,
         source_url: feedSourceUrl,
         keywords: keywords.length > 0 ? keywords : null,

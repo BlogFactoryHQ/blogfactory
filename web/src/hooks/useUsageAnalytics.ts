@@ -55,6 +55,13 @@ export interface CostAnalytics {
   };
 }
 
+export interface OpenRouterUsage {
+  data?: { limit_remaining?: number; limitRemaining?: number; credits?: number };
+  limit_remaining?: number;
+  limitRemaining?: number;
+  credits?: number;
+}
+
 export const usageDayKey = (value?: string | null) => {
   const date = value ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? format(date, "yyyy-MM-dd") : null;
@@ -89,7 +96,7 @@ export function useUsageAnalytics(days = 30) {
     queryKey: ["openrouter-usage", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      return api.get<any>("/analytics/openrouter-usage").catch(() => null);
+      return api.get<OpenRouterUsage>("/analytics/openrouter-usage").catch(() => null);
     },
     enabled: !!user?.id,
     staleTime: 60 * 1000,

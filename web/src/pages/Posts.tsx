@@ -198,7 +198,7 @@ export default function Posts() {
   const { data: posts = [], isLoading: isLoadingPosts } = useQuery({
     queryKey: ["posts"],
     queryFn: async () => {
-      return api.get<any[]>("/posts");
+      return api.get<Post[]>("/posts");
     },
     refetchInterval: (query) => {
       const data = query.state.data as Post[] | undefined;
@@ -210,7 +210,7 @@ export default function Posts() {
   const { data: feeds = [] } = useQuery({
     queryKey: ["feeds-lookup"],
     queryFn: async () => {
-      return api.get<any[]>("/feeds");
+      return api.get<Array<{ id: string; name: string }>>("/feeds");
     },
   });
 
@@ -333,7 +333,7 @@ export default function Posts() {
 
   // Filter and sort posts
   const filteredPosts = useMemo(() => {
-    let result = enrichedPosts.filter((post) => {
+    const result = enrichedPosts.filter((post) => {
       const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || post.status === statusFilter;
       const matchesSource = sourceFilter === "all" || post.source_type === sourceFilter;
@@ -804,12 +804,7 @@ export default function Posts() {
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-12">
                 <Checkbox
-                  checked={allPageSelected}
-                  ref={(el) => {
-                    if (el) {
-                      (el as any).indeterminate = somePageSelected && !allPageSelected;
-                    }
-                  }}
+                  checked={somePageSelected && !allPageSelected ? "indeterminate" : allPageSelected}
                   onCheckedChange={handleSelectAll}
                   aria-label="Select all on this page"
                 />

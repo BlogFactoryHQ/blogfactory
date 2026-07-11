@@ -118,6 +118,8 @@ interface ContentUserSettings {
   image_delivery_mode?: ImageDeliveryMode | null;
   manual_image_provider?: ManualImageProvider | null;
   image_style_prompt?: string | null;
+  cover_image_resolution?: "512" | "1K" | null;
+  inline_image_resolution?: "512" | "1K" | null;
   article_word_count?: number | null;
   article_language?: string | null;
   include_table_of_contents?: boolean | null;
@@ -496,7 +498,7 @@ export default function ContentCreator() {
       .filter((log) => usageDayKey(log.created_at)?.startsWith(month))
       .reduce((sum, log) => sum + (Number(log.cost) || 0), 0);
   }, [usageLogs]);
-  const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
+  const openRouterData = openRouterUsage?.data || openRouterUsage || {};
   const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? 0) || null;
   const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
     if (preferredModelId && (!textModels.length || textModels.some((model) => model.id === preferredModelId))) {

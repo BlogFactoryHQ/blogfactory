@@ -105,7 +105,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <FileText className="h-4 w-4 shrink-0" />
-              <span className="truncate">{image.post_title || "No post linked"}</span>
+              <span className="truncate">{image.postTitle || "No post linked"}</span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-4 w-4 shrink-0" />
@@ -150,11 +150,11 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
                 <span>{image.resolution}</span>
               </div>
             )}
-            {image.post_status && (
+            {image.postStatus && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs">Post:</span>
-                <Badge variant={image.post_status === "published" ? "default" : "secondary"} className="text-xs">
-                  {image.post_status}
+                <Badge variant={image.postStatus === "published" ? "default" : "secondary"} className="text-xs">
+                  {image.postStatus}
                 </Badge>
               </div>
             )}

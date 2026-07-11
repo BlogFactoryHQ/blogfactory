@@ -17,7 +17,7 @@ export interface Feed {
   name: string;
   source_url: string;
   platform: string;
-  platform_config: any;
+  platform_config: Record<string, unknown>;
   model_id: string;
   persona_id: string | null;
   frequency: string;
@@ -49,12 +49,12 @@ export interface Persona {
   language: string | null;
   category: string | null;
   response_format: string | null;
-  response_schema: any;
-  tools_config: any;
+  response_schema: Record<string, unknown> | null;
+  tools_config: unknown[] | null;
   parallel_tool_calls: boolean | null;
   tool_choice: string | null;
-  plugins_config: any;
-  validation_rules: any;
+  plugins_config: unknown[] | null;
+  validation_rules: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -91,7 +91,7 @@ export interface Job {
   current_step: string;
   error_message: string | null;
   generation_error: string | null;
-  generation_plan: any;
+  generation_plan: Record<string, unknown> | null;
   result_post_ids: string[] | null;
   summary_result: string | null;
   summary_completed_at: string | null;
@@ -118,9 +118,9 @@ export interface GenerationLog {
   latency_ms: number | null;
   trace_id: string | null;
   session_id: string | null;
-  raw_trace: any;
-  request_data: any;
-  response_data: any;
+  raw_trace: unknown;
+  request_data: unknown;
+  response_data: unknown;
   generation_id?: string | null;
   created_at: string;
 }
@@ -209,7 +209,7 @@ export interface SchedulerLog {
   feeds_triggered: number;
   feeds_skipped: number;
   feeds_errored: number;
-  results: any;
+  results: unknown;
   triggered_at: string;
 }
 
