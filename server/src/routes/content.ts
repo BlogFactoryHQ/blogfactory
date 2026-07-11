@@ -8,7 +8,7 @@ import { getOpenRouterKey } from "../services/api-keys.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
-import type { GenerateOpts } from "../services/generate-content.js";
+import type { GenerateOpts } from "../services/generation-types.js";
 import type { ExtractOpts } from "../services/extract-content.js";
 import type { FetchOpts } from "../services/fetch-social-content.js";
 
