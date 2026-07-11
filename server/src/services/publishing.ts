@@ -9,6 +9,8 @@ import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
 import { publishingFailureState } from "./atomic-state.js";
+import { slugify } from "./slugify.js";
+export { slugify } from "./slugify.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -807,41 +809,6 @@ function normalizeStringList(values: string[]) {
 
 export function publishTags(values: string[] = []) {
   return normalizeStringList(values).slice(0, 8);
-}
-
-export function slugify(value: string) {
-  const slug = transliterate(value)
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .split("-")
-    .filter(Boolean)
-    .slice(0, 5)
-    .join("-")
-    .slice(0, 70)
-    .replace(/-+$/g, "");
-  return slug || "article";
-}
-
-function transliterate(value: string) {
-  const map: Record<string, string> = {
-    ç: "c",
-    Ç: "C",
-    ğ: "g",
-    Ğ: "G",
-    ı: "i",
-    I: "I",
-    İ: "I",
-    ö: "o",
-    Ö: "O",
-    ş: "s",
-    Ş: "S",
-    ü: "u",
-    Ü: "U",
-  };
-  return value.replace(/[çÇğĞıİöÖşŞüÜ]/g, (char) => map[char] || char);
 }
 
 function plainText(markdown: string) {
