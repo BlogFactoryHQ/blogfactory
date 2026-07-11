@@ -153,7 +153,7 @@ export default function RSSFeeds() {
   const { data: feeds = [], isLoading: feedsLoading } = useQuery({
     queryKey: ["feeds"],
     queryFn: async () => {
-      return api.get<Feed[]>("/feeds");
+      return api.getArray<Feed>("/feeds");
     },
     enabled: !!user,
   });
@@ -162,7 +162,7 @@ export default function RSSFeeds() {
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      const all = await api.get<Persona[]>("/personas");
+      const all = await api.getArray<Persona>("/personas");
       return all.filter((p) => p.status === "active");
     },
     enabled: !!user,
@@ -199,7 +199,7 @@ export default function RSSFeeds() {
   const { data: lastSchedulerRun } = useQuery({
     queryKey: ["last-scheduler-run"],
     queryFn: async () => {
-      const logs = await api.get<SchedulerRun[]>("/scheduler/logs?limit=1");
+      const logs = await api.getArray<SchedulerRun>("/scheduler/logs?limit=1");
       return logs?.[0] || null;
     },
     enabled: !!user,

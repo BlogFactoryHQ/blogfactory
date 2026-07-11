@@ -81,6 +81,15 @@ class ApiClient {
     return this.request<T>("GET", path);
   }
 
+  async getArray<T>(path: string): Promise<T[]> {
+    const value = await this.request<unknown>("GET", path);
+    if (Array.isArray(value)) return value as T[];
+    if (value && typeof value === "object" && "items" in value && Array.isArray(value.items)) {
+      return value.items as T[];
+    }
+    return [];
+  }
+
   post<T>(path: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>("POST", path, body, options?.signal);
   }

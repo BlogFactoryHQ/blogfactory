@@ -87,7 +87,7 @@ export default function Dashboard() {
   const { data: schedulerLogs = [], isLoading: isLoadingScheduler } = useQuery({
     queryKey: ["scheduler-logs"],
     queryFn: async () => {
-      return api.get<RecentSchedulerLog[]>("/scheduler/logs?limit=5");
+      return api.getArray<RecentSchedulerLog>("/scheduler/logs?limit=5");
     },
   });
 

@@ -1,5 +1,6 @@
 import { normalizeHttpUrl } from "@/lib/url-validation";
 import type { GhostAuthor } from "@/hooks/useIntegrations";
+import { asArray, asRecord, asStringArray } from "@/lib/api-shape";
 
 export const ORTAK_ALAN_CONTENT_TYPES = ["Haber", "Analiz", "Rehber", "Liste", "Röportaj", "Duyuru", "Sponsorlu İçerik"];
 export const ORTAK_ALAN_SOURCE_TYPES = ["Resmi açıklama", "Haber kaynağı", "Rapor", "Veri seti", "Sosyal medya paylaşımı", "Basın bülteni", "Röportaj", "Diğer"];
@@ -52,26 +53,27 @@ export function buildOrtakAlanMetadata(input: {
   coverImageUrl?: string | null;
   imageAssets?: PublishingImageMetadata[];
 }): OrtakAlanMetadata {
-  const stored = input.stored || {};
-  const storedImage = stored.image || { alt: "", source: "", license: "", aiGenerated: false };
-  const coverAsset = input.imageAssets?.find((asset) => asset.storage_path === input.coverImageUrl);
+  const stored = asRecord(input.stored);
+  const storedImage = asRecord(stored.image);
+  const storedSources = asArray<Partial<OrtakAlanSource>>(stored.sources);
+  const coverAsset = asArray<PublishingImageMetadata>(input.imageAssets).find((asset) => asset.storage_path === input.coverImageUrl);
   return {
-    contentType: stored.contentType || "Haber",
-    slug: stored.slug || input.slug,
-    excerpt: stored.excerpt || input.excerpt,
-    metaTitle: stored.metaTitle || input.metaTitle,
-    metaDescription: stored.metaDescription || input.metaDescription,
-    topicTags: stored.topicTags?.length ? stored.topicTags : input.tags,
-    sources: stored.sources?.length ? stored.sources.map((source) => ({ ...emptyOrtakAlanSource(), ...source })) : [emptyOrtakAlanSource()],
-    author: stored.author || input.defaultAuthor || null,
-    editorialOwner: stored.editorialOwner || input.editorialOwner || "",
+    contentType: typeof stored.contentType === "string" && stored.contentType ? stored.contentType : "Haber",
+    slug: typeof stored.slug === "string" && stored.slug ? stored.slug : input.slug,
+    excerpt: typeof stored.excerpt === "string" && stored.excerpt ? stored.excerpt : input.excerpt,
+    metaTitle: typeof stored.metaTitle === "string" && stored.metaTitle ? stored.metaTitle : input.metaTitle,
+    metaDescription: typeof stored.metaDescription === "string" && stored.metaDescription ? stored.metaDescription : input.metaDescription,
+    topicTags: asStringArray(stored.topicTags).length ? asStringArray(stored.topicTags) : asStringArray(input.tags),
+    sources: storedSources.length ? storedSources.map((source) => ({ ...emptyOrtakAlanSource(), ...source })) : [emptyOrtakAlanSource()],
+    author: stored.author && typeof stored.author === "object" ? stored.author as GhostAuthor : input.defaultAuthor || null,
+    editorialOwner: typeof stored.editorialOwner === "string" && stored.editorialOwner ? stored.editorialOwner : input.editorialOwner || "",
     aiAssisted: Boolean(stored.aiAssisted),
-    aiUsageNote: stored.aiUsageNote || "",
+    aiUsageNote: typeof stored.aiUsageNote === "string" ? stored.aiUsageNote : "",
     sponsored: Boolean(stored.sponsored || stored.contentType === "Sponsorlu İçerik"),
     image: {
-      alt: storedImage.alt || coverAsset?.alt_text || "",
-      source: storedImage.source || coverAsset?.credit || coverAsset?.source_url || coverAsset?.provider || "",
-      license: storedImage.license || coverAsset?.license_label || "",
+      alt: typeof storedImage.alt === "string" && storedImage.alt ? storedImage.alt : coverAsset?.alt_text || "",
+      source: typeof storedImage.source === "string" && storedImage.source ? storedImage.source : coverAsset?.credit || coverAsset?.source_url || coverAsset?.provider || "",
+      license: typeof storedImage.license === "string" && storedImage.license ? storedImage.license : coverAsset?.license_label || "",
       aiGenerated: Boolean(storedImage.aiGenerated || coverAsset?.source_kind === "ai"),
     },
   };

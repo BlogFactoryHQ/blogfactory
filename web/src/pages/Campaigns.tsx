@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FileText, Filter, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, Search, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { asArray } from "@/lib/api-shape";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -126,7 +127,7 @@ function CampaignList() {
   const [modeFilter, setModeFilter] = useState<CampaignMode | "all">("all");
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
-    queryFn: () => api.get<Campaign[]>("/campaigns"),
+    queryFn: () => api.getArray<Campaign>("/campaigns"),
     refetchInterval: 5000,
   });
 
@@ -301,7 +302,14 @@ function CampaignDetail({ id }: { id: string }) {
   const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const { data, isLoading } = useQuery({
     queryKey: ["campaign", id],
-    queryFn: () => api.get<{ campaign: Campaign; items: CampaignItem[]; history: CampaignHistory[] }>(`/campaigns/${id}`),
+    queryFn: async () => {
+      const response = await api.get<{ campaign: Campaign; items?: CampaignItem[]; history?: CampaignHistory[] }>(`/campaigns/${id}`);
+      return {
+        ...response,
+        items: asArray<CampaignItem>(response?.items),
+        history: asArray<CampaignHistory>(response?.history),
+      };
+    },
     refetchInterval: 5000,
   });
 

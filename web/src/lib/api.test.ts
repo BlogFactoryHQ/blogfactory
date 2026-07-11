@@ -29,3 +29,16 @@ describe("ApiClient errors", () => {
     await expect(api.get("/html")).rejects.toMatchObject({ status: 502, code: "http_502", message: "Request failed: 502" });
   });
 });
+
+describe("ApiClient collection responses", () => {
+  it("normalizes missing legacy collections instead of exposing a crash-prone shape", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(null), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ id: "enveloped" }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "one" }]), { status: 200 }));
+
+    await expect(api.getArray("/missing")).resolves.toEqual([]);
+    await expect(api.getArray("/legacy-envelope")).resolves.toEqual([{ id: "enveloped" }]);
+    await expect(api.getArray("/items")).resolves.toEqual([{ id: "one" }]);
+  });
+});

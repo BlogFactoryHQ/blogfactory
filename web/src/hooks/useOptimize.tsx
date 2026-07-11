@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { asArray } from "@/lib/api-shape";
 import { useSites } from "@/hooks/useSites";
 
 export type OptimizeStatus = "all" | "needs_attention" | "tracking" | "improved";
@@ -123,7 +124,8 @@ export function useOptimize(status: OptimizeStatus = "all", siteId?: string | nu
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ siteId: resolvedSiteId || "", status });
-      return api.get<{ pages: OptimizePage[] }>(`/optimize/pages?${params.toString()}`);
+      const response = await api.get<{ pages?: OptimizePage[] }>(`/optimize/pages?${params.toString()}`);
+      return { ...response, pages: asArray<OptimizePage>(response?.pages) };
     },
     enabled: !!resolvedSiteId,
     staleTime: 60_000,
@@ -151,7 +153,8 @@ export function useOptimize(status: OptimizeStatus = "all", siteId?: string | nu
       const params = new URLSearchParams({ siteId: resolvedSiteId });
       if (input.pageUrl) params.set("pageUrl", input.pageUrl);
       if (input.targetQuery) params.set("targetQuery", input.targetQuery);
-      return api.get<{ analyses: OptimizeAnalysis[] }>(`/optimize/analyses?${params.toString()}`);
+      const response = await api.get<{ analyses?: OptimizeAnalysis[] }>(`/optimize/analyses?${params.toString()}`);
+      return { ...response, analyses: asArray<OptimizeAnalysis>(response?.analyses) };
     },
   });
 
@@ -181,7 +184,8 @@ export function useOptimizeInsights(status: OptimizeStatus = "all", opportunity:
     queryKey: ["optimize-page-insights", resolvedSiteId, status, opportunity],
     queryFn: async () => {
       const params = new URLSearchParams({ siteId: resolvedSiteId || "", status, opportunity });
-      return api.get<{ pages: OptimizePageInsight[] }>(`/optimize/page-insights?${params.toString()}`);
+      const response = await api.get<{ pages?: OptimizePageInsight[] }>(`/optimize/page-insights?${params.toString()}`);
+      return { ...response, pages: asArray<OptimizePageInsight>(response?.pages) };
     },
     enabled: !!resolvedSiteId,
     staleTime: 60_000,

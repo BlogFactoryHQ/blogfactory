@@ -2,6 +2,7 @@
 import { createContext, ReactNode, useContext, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { asArray, asRecord, asStringArray } from "@/lib/api-shape";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface Site {
@@ -59,17 +60,22 @@ interface SiteContextValue {
 const SiteContext = createContext<SiteContextValue | undefined>(undefined);
 
 function normalizeSite(site: Site): Site {
+  const internalLinkIndex = asRecord(site.internalLinkIndex ?? site.internal_link_index);
   return {
     ...site,
     sitemapUrl: site.sitemapUrl ?? site.sitemap_url,
-    internalLinkIndex: site.internalLinkIndex ?? site.internal_link_index,
+    internalLinkIndex: Object.keys(internalLinkIndex).length ? {
+      ...internalLinkIndex,
+      pages: asArray(internalLinkIndex.pages),
+      sitemapMessages: asStringArray(internalLinkIndex.sitemapMessages),
+    } : null,
     pageCount: site.pageCount ?? site.page_count ?? 0,
     vectorCount: site.vectorCount ?? site.vector_count ?? 0,
     internalLinkLastSyncedAt: site.internalLinkLastSyncedAt ?? site.internal_link_last_synced_at,
     createdAt: site.createdAt ?? site.created_at,
     updatedAt: site.updatedAt ?? site.updated_at,
-    topics: site.topics || [],
-    editorialTopics: site.editorialTopics ?? site.editorial_topics ?? [],
+    topics: asStringArray(site.topics),
+    editorialTopics: asStringArray(site.editorialTopics ?? site.editorial_topics),
   };
 }
 
@@ -79,10 +85,10 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const sitesQuery = useQuery({
     queryKey: ["sites"],
     queryFn: async () => {
-      const response = await api.get<SitesResponse>("/sites");
+      const response = await api.get<Partial<SitesResponse>>("/sites");
       return {
-        sites: response.sites.map(normalizeSite),
-        activeSiteId: response.activeSiteId ?? response.active_site_id,
+        sites: asArray<Site>(response?.sites).map(normalizeSite),
+        activeSiteId: response?.activeSiteId ?? response?.active_site_id ?? null,
       };
     },
     enabled: !!user && (user.role === "admin" || user.approvalStatus === "approved"),

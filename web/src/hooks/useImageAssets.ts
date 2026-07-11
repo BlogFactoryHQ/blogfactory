@@ -89,7 +89,7 @@ export function useDetachImageAsset() {
 export function useImageGenerationRequests(status = "active") {
   return useQuery({
     queryKey: ["image-generation-requests", status],
-    queryFn: async () => api.get<ImageGenerationRequest[]>(`/images/requests?status=${status}`),
+    queryFn: async () => api.getArray<ImageGenerationRequest>(`/images/requests?status=${status}`),
   });
 }
 

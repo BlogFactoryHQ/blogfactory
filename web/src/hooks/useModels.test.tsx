@@ -81,4 +81,18 @@ describe("model catalog requests", () => {
 
     expect(getMock.mock.calls.map(([url]) => url)).toEqual(["/models/text", "/models/image"]);
   });
+
+  it("normalizes partial model capability arrays", async () => {
+    getMock.mockResolvedValueOnce([{
+      id: "image-model",
+      constraints: { resolutions: "1K", aspectRatios: null },
+      modalities: { input: ["text", null], output: "image" },
+      supportedParameters: null,
+    }]);
+
+    const [model] = await fetchImageModels();
+    expect(model.constraints).toMatchObject({ resolutions: [], aspectRatios: [] });
+    expect(model.modalities).toEqual({ input: ["text"], output: [] });
+    expect(model.supportedParameters).toEqual([]);
+  });
 });
