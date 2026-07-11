@@ -5,7 +5,7 @@ const GOOGLE_AI_KEY = process.env.GOOGLE_AI_KEY;
 const URL_FETCH_TIMEOUT_MS = 15_000;
 const AI_EXTRACT_TIMEOUT_MS = 35_000;
 
-interface ExtractOpts {
+export interface ExtractOpts {
   userId: string;
   sourceType: string;
   sourceValue: string;

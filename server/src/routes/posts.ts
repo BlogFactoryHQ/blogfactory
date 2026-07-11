@@ -8,6 +8,7 @@ import { getPostPublications, publishPost } from "../services/publishing.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
+import { optionalEnum, readJsonObject, requiredString, requiredStringArray } from "../http/error-contract.js";
 
 export const postsRoutes = new Hono();
 
@@ -173,18 +174,19 @@ postsRoutes.post("/import-md", async (c) => {
 postsRoutes.post("/:id/publish", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = await c.req.json();
-  const integrationId = String(body.integrationId || body.integration_id || "");
-  if (!integrationId) return c.json({ error: "Integration is required" }, 400);
+  const body = await readJsonObject(c);
+  const integrationId = requiredString(body, "integrationId", ["integration_id"]);
+  const mode = optionalEnum(body, "mode", ["draft", "publish"] as const, "draft");
+  const postType = optionalEnum(body, "postType", ["post", "page"] as const, "post");
   const result = await publishPost(userId, id, integrationId, {
-    mode: body.mode === "publish" ? "publish" : "draft",
-    postType: body.postType === "page" ? "page" : "post",
-    slug: body.slug,
-    tags: Array.isArray(body.tags) ? body.tags : parseList(body.tags),
-    categories: Array.isArray(body.categories) ? body.categories : parseList(body.categories),
-    metaTitle: body.metaTitle || body.meta_title,
-    metaDescription: body.metaDescription || body.meta_description,
-    excerpt: body.excerpt,
+    mode,
+    postType,
+    slug: typeof body.slug === "string" ? body.slug : undefined,
+    tags: parseList(body.tags),
+    categories: parseList(body.categories),
+    metaTitle: typeof (body.metaTitle || body.meta_title) === "string" ? String(body.metaTitle || body.meta_title) : undefined,
+    metaDescription: typeof (body.metaDescription || body.meta_description) === "string" ? String(body.metaDescription || body.meta_description) : undefined,
+    excerpt: typeof body.excerpt === "string" ? body.excerpt : undefined,
     publishingMetadata: body.publishingMetadata || body.publishing_metadata,
   });
   return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);
@@ -350,6 +352,7 @@ postsRoutes.get("/:id", async (c) => {
 });
 
 function parseList(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
   if (typeof value !== "string") return undefined;
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
@@ -394,7 +397,7 @@ function plainText(markdown: string) {
 postsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = await readJsonObject(c);
   const update: Record<string, any> = {};
   if (typeof body.title === "string") update.title = cleanPostTitle(body.title);
   if (typeof body.content === "string") update.content = cleanGeneratedPostContent(body.content);
@@ -435,8 +438,7 @@ postsRoutes.delete("/:id", async (c) => {
 
 postsRoutes.post("/bulk-delete", async (c) => {
   const userId = getUserId(c);
-  const { ids } = await c.req.json();
-  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+  const ids = requiredStringArray(await readJsonObject(c), "ids");
 
   await cleanupPostFiles(ids, userId);
   await db.delete(posts).where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
@@ -445,8 +447,7 @@ postsRoutes.post("/bulk-delete", async (c) => {
 
 postsRoutes.post("/bulk-publish", async (c) => {
   const userId = getUserId(c);
-  const { ids } = await c.req.json();
-  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+  const ids = requiredStringArray(await readJsonObject(c), "ids");
 
   await db
     .update(posts)
@@ -457,8 +458,7 @@ postsRoutes.post("/bulk-publish", async (c) => {
 
 postsRoutes.post("/bulk-draft", async (c) => {
   const userId = getUserId(c);
-  const { ids } = await c.req.json();
-  if (!ids?.length) return c.json({ error: "No ids provided" }, 400);
+  const ids = requiredStringArray(await readJsonObject(c), "ids");
 
   await db
     .update(posts)

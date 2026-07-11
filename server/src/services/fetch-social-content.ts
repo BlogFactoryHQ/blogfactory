@@ -12,7 +12,7 @@ interface FeedItem {
   platform?: string;
 }
 
-interface FetchOpts {
+export interface FetchOpts {
   sourceUrl: string;
   platform?: string;
   platformConfig?: any;

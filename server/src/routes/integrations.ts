@@ -11,6 +11,7 @@ import {
   serializeIntegration,
   testIntegration,
 } from "../services/publishing.js";
+import { readJsonObject, requiredString } from "../http/error-contract.js";
 
 export const integrationsRoutes = new Hono();
 
@@ -23,9 +24,9 @@ integrationsRoutes.get("/", async (c) => {
 
 integrationsRoutes.post("/", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
-  const provider = String(body.provider || "");
-  const siteId = String(body.siteId || body.site_id || "");
+  const body = await readJsonObject(c);
+  const provider = requiredString(body, "provider");
+  const siteId = requiredString(body, "siteId", ["site_id"]);
 
   if (!isPublishingProvider(provider)) return c.json({ error: "Unsupported integration provider" }, 400);
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
@@ -54,7 +55,7 @@ integrationsRoutes.post("/", async (c) => {
 integrationsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = await readJsonObject(c);
 
   const [existing] = await db
     .select()

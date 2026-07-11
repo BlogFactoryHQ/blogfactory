@@ -7,6 +7,7 @@ import { signJwt, getUserId } from "../middleware/auth.js";
 import { randomBytes } from "crypto";
 import { bootstrapUserAccess, isAdminEmail, publicUser } from "../services/access-control.js";
 import { updateGlobalSettings, updateSiteSettings } from "../services/user-settings.js";
+import { readJsonObject, requiredString } from "../http/error-contract.js";
 
 export const authRoutes = new Hono();
 
@@ -123,10 +124,12 @@ authRoutes.post("/dev-login", async (c) => {
 });
 
 authRoutes.post("/signup", async (c) => {
-  const { email, password, displayName, consent, marketingOptIn } = await c.req.json();
-  if (!email || !password) {
-    return c.json({ error: "Email and password are required" }, 400);
-  }
+  const body = await readJsonObject(c);
+  const email = requiredString(body, "email");
+  const password = requiredString(body, "password");
+  const displayName = typeof body.displayName === "string" ? body.displayName : undefined;
+  const consent = body.consent === true;
+  const marketingOptIn = body.marketingOptIn === true;
 
   if (!consent) {
     return c.json({ error: "You must accept the Privacy Policy and Terms of Service" }, 400);
@@ -175,10 +178,10 @@ authRoutes.post("/signup", async (c) => {
 });
 
 authRoutes.post("/login", async (c) => {
-  const { email, password, rememberMe } = await c.req.json();
-  if (!email || !password) {
-    return c.json({ error: "Email and password are required" }, 400);
-  }
+  const body = await readJsonObject(c);
+  const email = requiredString(body, "email");
+  const password = requiredString(body, "password");
+  const rememberMe = body.rememberMe === true;
 
   const [user] = await db
     .select()
@@ -229,10 +232,7 @@ authRoutes.get("/me", async (c) => {
 });
 
 authRoutes.post("/forgot-password", async (c) => {
-  const { email } = await c.req.json();
-  if (!email) {
-    return c.json({ error: "Email is required" }, 400);
-  }
+  const email = requiredString(await readJsonObject(c), "email");
 
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
 
@@ -256,10 +256,9 @@ authRoutes.post("/forgot-password", async (c) => {
 });
 
 authRoutes.post("/reset-password", async (c) => {
-  const { token, password } = await c.req.json();
-  if (!token || !password) {
-    return c.json({ error: "Token and new password are required" }, 400);
-  }
+  const body = await readJsonObject(c);
+  const token = requiredString(body, "token");
+  const password = requiredString(body, "password");
 
   if (password.length < 6) {
     return c.json({ error: "Password must be at least 6 characters" }, 400);
@@ -286,10 +285,7 @@ authRoutes.post("/reset-password", async (c) => {
 });
 
 authRoutes.post("/verify-email", async (c) => {
-  const { token } = await c.req.json();
-  if (!token) {
-    return c.json({ error: "Verification token is required" }, 400);
-  }
+  const token = requiredString(await readJsonObject(c), "token");
 
   const [user] = await db
     .select({ id: users.id })

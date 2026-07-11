@@ -7,8 +7,31 @@ import { getUserId } from "../middleware/auth.js";
 import { getOpenRouterKey } from "../services/api-keys.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
+import { readJsonObject, requiredString } from "../http/error-contract.js";
+import type { GenerateOpts } from "../services/generate-content.js";
+import type { ExtractOpts } from "../services/extract-content.js";
+import type { FetchOpts } from "../services/fetch-social-content.js";
 
 export const contentRoutes = new Hono();
+
+type GenerateRequestBody = Omit<GenerateOpts, "userId" | "jobId"> & {
+  feed_id?: string;
+  site_id?: string;
+  preferred_integration_id?: string;
+  feedRunToken?: string;
+  feed_run_token?: string;
+  feedRunSize?: number;
+  feed_run_size?: number;
+};
+
+async function generationBody(c: Parameters<typeof readJsonObject>[0]) {
+  const raw = await readJsonObject(c);
+  return {
+    ...raw,
+    sourceType: requiredString(raw, "sourceType", ["source_type"]),
+    sourceValue: requiredString(raw, "sourceValue", ["source_value"]),
+  } as GenerateRequestBody;
+}
 
 export function fetchSocialSourceUrl(body: Record<string, any>) {
   if (body.sourceUrl) return body.sourceUrl;
@@ -27,7 +50,7 @@ export function fetchSocialSourceUrl(body: Record<string, any>) {
 
 contentRoutes.post("/generate", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
+  const body = await generationBody(c);
   let feedRunClaim: FeedRunClaim | null = null;
   let releaseScheduled = false;
 
@@ -96,7 +119,7 @@ contentRoutes.post("/generate", async (c) => {
 
 contentRoutes.post("/article-plan", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
+  const body = await generationBody(c);
 
   try {
     const { generateArticlePlan } = await import("../services/generate-content.js");
@@ -114,7 +137,12 @@ contentRoutes.post("/article-plan", async (c) => {
 
 contentRoutes.post("/extract", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
+  const rawBody = await readJsonObject(c);
+  const body: Omit<ExtractOpts, "userId"> = {
+    sourceType: requiredString(rawBody, "sourceType", ["source_type"]),
+    sourceValue: requiredString(rawBody, "sourceValue", ["source_value"]),
+    extractModel: typeof rawBody.extractModel === "string" ? rawBody.extractModel : undefined,
+  };
 
   try {
     const { extractContent } = await import("../services/extract-content.js");
@@ -128,17 +156,17 @@ contentRoutes.post("/extract", async (c) => {
 
 contentRoutes.post("/fetch-social", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
+  const body = await readJsonObject(c);
 
   // Map frontend request shape to service interface
-  const opts = {
+  const opts: FetchOpts = {
     sourceUrl: fetchSocialSourceUrl(body),
-    platform: body.platform,
+    platform: typeof body.platform === "string" ? body.platform : undefined,
     platformConfig: body.config || body.platformConfig,
-    filterType: body.filterType,
-    filterValue: body.filterValue,
-    limit: body.limit,
-    keywords: body.keywords,
+    filterType: typeof body.filterType === "string" ? body.filterType : undefined,
+    filterValue: typeof body.filterValue === "number" ? body.filterValue : undefined,
+    limit: typeof body.limit === "number" ? body.limit : undefined,
+    keywords: Array.isArray(body.keywords) ? body.keywords.filter((value): value is string => typeof value === "string") : undefined,
   };
 
   try {

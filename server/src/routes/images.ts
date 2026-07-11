@@ -10,6 +10,7 @@ import { createManualImagePromptRequestsForPost } from "../services/generate-con
 import { removeInlineImagePath } from "../services/image-placement.js";
 import { partitionSettled } from "../services/atomic-state.js";
 import { parseImageGalleryQuery } from "./image-gallery-query.js";
+import { readJsonObject, requiredEnum, requiredStringArray } from "../http/error-contract.js";
 
 export const imagesRoutes = new Hono();
 
@@ -271,8 +272,7 @@ imagesRoutes.post("/requests/:id/retry", async (c) => {
 imagesRoutes.patch("/requests/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const { status } = await c.req.json();
-  if (!["cancelled", "done"].includes(status)) return c.json({ error: "Invalid status" }, 400);
+  const status = requiredEnum(await readJsonObject(c), "status", ["cancelled", "done"] as const);
 
   const [updated] = await db
     .update(imageGenerationRequests)
@@ -422,8 +422,7 @@ imagesRoutes.delete("/:id", async (c) => {
 
 imagesRoutes.post("/bulk-delete", async (c) => {
   const userId = getUserId(c);
-  const { ids } = await c.req.json();
-  if (!ids?.length) return c.json({ error: "No ids" }, 400);
+  const ids = requiredStringArray(await readJsonObject(c), "ids");
 
   const assets = await db.update(imageAssets).set({ status: "deleting" }).where(and(
     inArray(imageAssets.id, ids),
