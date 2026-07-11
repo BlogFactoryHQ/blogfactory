@@ -7,7 +7,7 @@ import { getUserId } from "../middleware/auth.js";
 import { getOpenRouterKey } from "../services/api-keys.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
-import { readJsonObject, requiredString } from "../http/error-contract.js";
+import { readJsonObject, requiredString, safeError } from "../http/error-contract.js";
 import type { GenerateOpts } from "../services/generation-types.js";
 import type { ExtractOpts } from "../services/extract-content.js";
 import type { FetchOpts } from "../services/fetch-social-content.js";
@@ -89,7 +89,7 @@ contentRoutes.post("/generate", async (c) => {
     const { generateContent } = await import("../services/generate-content.js");
     const generation = generateContent({ ...body, userId, jobId: job.id, modelId })
       .catch(async (err) => {
-        console.error("generate background error:", err);
+        console.error("generate background error", safeError(err));
         await db.update(jobs).set({
           status: "failed",
           errorMessage: err?.message || "Content generation failed",
@@ -109,11 +109,11 @@ contentRoutes.post("/generate", async (c) => {
     const feedId = body.feedId || body.feed_id || null;
     if (feedRunClaim && feedId && !releaseScheduled) {
       await releaseFeedRun({ feedId, userId, token: feedRunClaim.token }).catch((releaseError) => {
-        console.error("feed run lease release error:", releaseError);
+        console.error("feed run lease release error", safeError(releaseError));
       });
     }
-    console.error("generate error:", err);
-    return c.json({ error: err.message || "Content generation failed" }, 500);
+    console.error("generate error", safeError(err));
+    return c.json({ error: "Content generation failed" }, 500);
   }
 });
 
@@ -130,8 +130,8 @@ contentRoutes.post("/article-plan", async (c) => {
     if (message.includes("only supports") || message.includes("is required")) {
       return c.json({ error: message }, 400);
     }
-    console.error("article plan error:", err);
-    return c.json({ error: message }, 500);
+    console.error("article plan error", safeError(err));
+    return c.json({ error: "Article plan generation failed" }, 500);
   }
 });
 
@@ -149,8 +149,8 @@ contentRoutes.post("/extract", async (c) => {
     const result = await extractContent({ ...body, userId });
     return c.json(result);
   } catch (err: any) {
-    console.error("extract error:", err);
-    return c.json({ error: err.message || "Content extraction failed" }, 500);
+    console.error("extract error", safeError(err));
+    return c.json({ error: "Content extraction failed" }, 500);
   }
 });
 
@@ -186,8 +186,8 @@ contentRoutes.post("/fetch-social", async (c) => {
       return c.json({ error: "Could not reach the feed URL. Please check the URL and try again.", items: [] }, 502);
     }
 
-    console.error("fetch-social error:", err);
-    return c.json({ error: message || "Failed to fetch feed content.", items: [] }, 500);
+    console.error("fetch-social error", safeError(err));
+    return c.json({ error: "Failed to fetch feed content.", items: [] }, 500);
   }
 });
 

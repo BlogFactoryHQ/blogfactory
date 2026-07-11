@@ -40,6 +40,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useGhostAuthors, useIntegrations, IntegrationProvider, SiteIntegration } from "@/hooks/useIntegrations";
 import { useSites } from "@/hooks/useSites";
+import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { cn } from "@/lib/utils";
 
 const providerDetails: Record<IntegrationProvider, {
@@ -124,7 +125,7 @@ export default function Integrations() {
   const [providerToConnect, setProviderToConnect] = useState<IntegrationProvider | null>(null);
   const [editing, setEditing] = useState<SiteIntegration | null>(null);
 
-  const connectedCount = integrations.filter((integration) => integration.status === "connected").length;
+  const connectedCount = integrations.filter(connectionReady).length;
   const lastPublish = useMemo(() => {
     const dates = integrations.map((integration) => integration.lastPublishAt).filter(Boolean) as string[];
     return dates.sort().at(-1) || null;
@@ -204,7 +205,7 @@ export default function Integrations() {
                           {integration.config?.profile === "ortak_alan_news" && (
                             <Badge variant="outline">Ortak Alan Haber</Badge>
                           )}
-                          <Badge variant={integration.status === "connected" ? "default" : "destructive"}>{integration.status}</Badge>
+                          <Badge variant={connectionReady(integration) ? "default" : "destructive"}>{displayConnectionStatus(integration)}</Badge>
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {integration.credentialHint ? `Credential: ${integration.credentialHint}` : details.description}

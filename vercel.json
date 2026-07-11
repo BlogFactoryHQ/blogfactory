@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npm run db:migrate; fi && npm run build",
   "outputDirectory": "web/dist",
   "installCommand": "npm install",
   "functions": {

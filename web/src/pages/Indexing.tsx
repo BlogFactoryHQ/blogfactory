@@ -33,6 +33,7 @@ import { IndexingIntegration, IndexingProvider, useIndexing } from "@/hooks/useI
 import { useSearchConsole } from "@/hooks/useSearchConsole";
 import { useSites } from "@/hooks/useSites";
 import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
+import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { cn } from "@/lib/utils";
 
 const providerDetails: Record<IndexingProvider, {
@@ -178,15 +179,15 @@ export function IndexingPanel() {
             },
             {
               label: "Search Console",
-              value: searchConsoleIntegration?.status === "connected" ? "Connected" : "Not connected",
+              value: connectionReady(searchConsoleIntegration) ? "Connected" : searchConsoleIntegration ? displayConnectionStatus(searchConsoleIntegration) : "Not connected",
               detail: searchConsoleIntegration ? "Performance data can confirm edits after the next sync." : "Connect GSC from Optimize to measure the result.",
-              state: searchConsoleIntegration?.status === "connected" ? "ready" : "idle",
+              state: connectionReady(searchConsoleIntegration) ? "ready" : "idle",
             },
             {
               label: "Indexing providers",
               value: articleIntegrations.length ? `${articleIntegrations.length} configured` : "Not connected",
               detail: articleIntegrations.length ? `${articleStats.accepted} accepted, ${articleStats.queued} queued, ${articleStats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal article URLs.",
-              state: articleIntegrations.some((item) => item.status === "connected") ? "ready" : "warning",
+              state: articleIntegrations.some(connectionReady) ? "ready" : "warning",
             },
           ]}
         />
@@ -205,7 +206,7 @@ export function IndexingPanel() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-foreground">{details.name}</h3>
                         <Badge variant="secondary" className="bg-byword-blue-soft text-byword-blue">{details.badge}</Badge>
-                        {integration && <Badge variant={integration.status === "connected" ? "default" : "destructive"}>{integration.status}</Badge>}
+                        {integration && <Badge variant={connectionReady(integration) ? "default" : "destructive"}>{displayConnectionStatus(integration)}</Badge>}
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground">{integration?.credentialHint ? `Credential: ${integration.credentialHint}` : details.description}</p>
                       <p className="mt-1 text-xs text-muted-foreground">

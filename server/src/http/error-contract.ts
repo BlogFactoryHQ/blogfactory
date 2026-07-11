@@ -75,8 +75,21 @@ export function handleApiError(error: Error, c: Context) {
     return errorResponse(c, error.status as ContentfulStatusCode, codeForStatus(error.status), error.message || "Request failed");
   }
   if (error instanceof SyntaxError) return errorResponse(c, 400, "invalid_json", "Request body must contain valid JSON");
-  console.error("[api] Unhandled request error", error);
+  console.error("[api] Unhandled request error", safeError(error));
   return errorResponse(c, 500, "internal_error", "An unexpected error occurred");
+}
+
+export function safeError(error: unknown) {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : null;
+  const cause = value?.cause && typeof value.cause === "object" ? value.cause as Record<string, unknown> : null;
+  const code = value?.code;
+  const causeCode = cause?.code;
+  return {
+    name: error instanceof Error ? error.name : "UnknownError",
+    ...(typeof code === "string" || typeof code === "number" ? { code } : {}),
+    ...(cause ? { causeName: cause instanceof Error ? cause.name : "UnknownError" } : {}),
+    ...(typeof causeCode === "string" || typeof causeCode === "number" ? { causeCode } : {}),
+  };
 }
 
 export async function readJsonObject(c: Context): Promise<Record<string, unknown>> {

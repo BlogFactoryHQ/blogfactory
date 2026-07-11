@@ -12,6 +12,8 @@ export interface IndexingIntegration {
   displayName: string;
   display_name: string;
   status: "connected" | "error" | string;
+  credentialStatus?: "usable" | "missing" | "undecryptable" | string;
+  credential_status?: "usable" | "missing" | "undecryptable" | string;
   autoSubmit: boolean;
   auto_submit: boolean;
   credentialHint: string | null;

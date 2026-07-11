@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
+import { connectionReady } from "@/lib/credential-status";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -174,7 +175,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const { integrations, isLoading } = useIntegrations(siteId);
   const queryClient = useQueryClient();
 
-  const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+  const connected = useMemo(() => integrations.filter(connectionReady), [integrations]);
   const requestedIntegrationId = integrationId || preferredIntegrationId || "";
   const selected = connected.find((integration) => integration.id === requestedIntegrationId)
     || (!siteId && !requestedIntegrationId ? connected[0] : undefined);

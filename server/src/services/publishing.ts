@@ -5,7 +5,7 @@ import { connect } from "framer-api";
 import { and, eq, desc, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
-import { decryptSecret, encryptSecret } from "./api-keys.js";
+import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
 import { publishingFailureState } from "./atomic-state.js";
@@ -151,6 +151,8 @@ export function serializeIntegration(row: IntegrationRow) {
     displayName: row.displayName,
     display_name: row.displayName,
     status: row.status,
+    credentialStatus: encryptedCredentialStatus(row.credentialsEncrypted),
+    credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
     credentialHint: row.credentialHint,
     credential_hint: row.credentialHint,
     config,

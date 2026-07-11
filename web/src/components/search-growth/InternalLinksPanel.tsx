@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { useIndexing } from "@/hooks/useIndexing";
 import { useSearchConsole } from "@/hooks/useSearchConsole";
 import { useSites } from "@/hooks/useSites";
+import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 
 interface ApiKeyMetadata {
   hasOpenaiKey: boolean;
@@ -234,15 +235,15 @@ export function InternalLinksPanel() {
           },
           {
             label: "Search Console",
-            value: searchConsoleIntegration?.status === "connected" ? "Connected" : "Not connected",
+            value: connectionReady(searchConsoleIntegration) ? "Connected" : searchConsoleIntegration ? displayConnectionStatus(searchConsoleIntegration) : "Not connected",
             detail: searchConsoleIntegration ? "Query data can identify pages that need internal-link support." : "Connect GSC from Optimize to prioritize link targets.",
-            state: searchConsoleIntegration?.status === "connected" ? "ready" : "idle",
+            state: connectionReady(searchConsoleIntegration) ? "ready" : "idle",
           },
           {
             label: "Indexing",
-            value: articleIndexingIntegrations.some((item) => item.status === "connected") ? "Provider ready" : "Not connected",
+            value: articleIndexingIntegrations.some(connectionReady) ? "Provider ready" : "Not connected",
             detail: articleIndexingIntegrations.length ? "Edited pages can be submitted after link updates." : "Connect Bing Webmaster or IndexNow to close the edit-submit loop.",
-            state: articleIndexingIntegrations.some((item) => item.status === "connected") ? "ready" : "idle",
+            state: articleIndexingIntegrations.some(connectionReady) ? "ready" : "idle",
           },
         ]}
       />

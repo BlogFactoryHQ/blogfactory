@@ -140,6 +140,9 @@ Vercel builds `web/`, serves `web/dist`, and routes `/api/*` requests through th
 
 Run `npm run db:migrate` with the production `DATABASE_URL` before or after the first deploy so the database schema is ready.
 Migrations are locked, checksummed, and recorded in `schema_migrations`. For an existing database created before the ledger was introduced, verify that every checked-in migration is already present, then run once with `MIGRATION_BASELINE_EXISTING=true`; this records the baseline without replaying historical SQL.
+Production Vercel builds run this migration step before compiling the application. Preview and local builds do not migrate databases.
+
+To check saved credential decryptability without printing secret values, run `npm run credentials:check --workspace=server` with the target environment loaded. Keep `API_KEY_ENCRYPTION_SECRET` stable; changing it requires users to re-save every encrypted API key and integration credential.
 
 ## Contributor Notes
 

@@ -8,6 +8,7 @@ import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampai
 import { reconcileStaleCampaignItems, retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
 import { materializeProgrammaticItems } from "../services/programmatic.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
+import { safeError } from "../http/error-contract.js";
 
 export const campaignsRoutes = new Hono();
 
@@ -246,7 +247,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
     .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)))
     .returning();
 
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed:", err)));
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed", safeError(err))));
   return c.json({ campaign });
 });
 
@@ -260,7 +261,7 @@ campaignsRoutes.post("/:id/run-next", async (c) => {
   }
 
   await reconcileStaleCampaignItems(id, userId);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed:", err)));
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed", safeError(err))));
   const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   return c.json({ campaign, queued: true }, 202);
 });
@@ -277,7 +278,7 @@ campaignsRoutes.post("/:id/retry-failed", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry failed:", err)));
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry failed", safeError(err))));
   return c.json({ campaign });
 });
 
@@ -286,7 +287,7 @@ campaignsRoutes.post("/:id/items/:itemId/retry", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId, [c.req.param("itemId")]);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry item failed:", err)));
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry item failed", safeError(err))));
   return c.json({ campaign });
 });
 

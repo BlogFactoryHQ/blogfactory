@@ -4,6 +4,7 @@ import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
 import { drainDeferredImages } from "../services/low-cost-images.js";
+import { safeError } from "../http/error-contract.js";
 
 export const cronRoutes = new Hono();
 
@@ -70,7 +71,7 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
   if (task === "campaigns") {
     waitUntil(drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign).catch((err) => {
-      console.error("[cron] Campaign drain failed:", err);
+      console.error("[cron] Campaign drain failed", safeError(err));
     }));
     return c.json({ ok: true, campaigns: { queued: true } }, 202);
   }

@@ -13,6 +13,8 @@ export interface SiteIntegration {
   displayName: string;
   display_name: string;
   status: "connected" | "error" | string;
+  credentialStatus?: "usable" | "missing" | "undecryptable" | string;
+  credential_status?: "usable" | "missing" | "undecryptable" | string;
   credentialHint: string | null;
   credential_hint: string | null;
   config: Record<string, unknown>;

@@ -5,6 +5,7 @@ import { ExternalLink, FileText, Filter, Grid2X2, History, Megaphone, Play, Plus
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { asArray } from "@/lib/api-shape";
+import { connectionReady } from "@/lib/credential-status";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -299,7 +300,7 @@ function CampaignDetail({ id }: { id: string }) {
   });
   const autoRunRequestKey = useRef("");
   const { integrations } = useIntegrations();
-  const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+  const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
   const { data, isLoading } = useQuery({
     queryKey: ["campaign", id],
     queryFn: async () => {

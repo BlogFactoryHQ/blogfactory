@@ -51,6 +51,7 @@ import {
   type SemanticTone,
 } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
+import { connectionReady } from "@/lib/credential-status";
 import { postListPath, type ListPagination } from "@/lib/list-query";
 
 interface FailedDraft {
@@ -210,7 +211,7 @@ export default function Posts() {
   const { bulkDelete, bulkPublish, bulkDraft, isDeleting, isPublishing, isDrafting, isLoading } = useBulkPostActions();
   const { integrations } = useIntegrations();
   const createManualImagePrompts = useCreateManualImagePrompts();
-  const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+  const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
 
   const { data: postList, isLoading: isLoadingPosts, error: postsError } = useQuery({
     queryKey: ["posts", currentPage, postsPerPage, deferredSearchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection],

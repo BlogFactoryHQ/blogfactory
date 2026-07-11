@@ -3,6 +3,7 @@ import { feeds, schedulerLogs } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { getPinnedSiteSettings } from "./user-settings.js";
 import { claimFeedRun, releaseFeedRun, type FeedRunClaim } from "./feed-run-lease.js";
+import { safeError } from "../http/error-contract.js";
 
 type SchedulerOptions = {
   maxFeeds?: number;
@@ -131,7 +132,7 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
 
       if (options.awaitGeneration) await completion;
       else void completion.catch((err) => {
-        console.error(`[scheduler] Feed "${feed.name}" completion error:`, err);
+        console.error("[scheduler] Feed completion error", { feedId: feed.id, ...safeError(err) });
       });
 
       results.push({ feedId: feed.id, feedName: feed.name, status: "triggered" });
@@ -143,7 +144,7 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
           token: claim.token,
           slots: claim.activeCount,
         }).catch((releaseError) => {
-          console.error(`[scheduler] Feed "${feed.name}" lease release failed:`, releaseError);
+          console.error("[scheduler] Feed lease release failed", { feedId: feed.id, ...safeError(releaseError) });
         });
       }
       results.push({ feedId: feed.id, feedName: feed.name, status: "error", error: error.message });
@@ -173,7 +174,7 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         results: userResults,
       });
     } catch (logError) {
-      console.error(`[scheduler] Failed to log run for user ${uid}:`, logError);
+      console.error("[scheduler] Failed to log run", { userId: uid, ...safeError(logError) });
     }
   }
 

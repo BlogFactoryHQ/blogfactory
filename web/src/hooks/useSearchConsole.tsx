@@ -9,6 +9,8 @@ export interface SearchConsoleIntegration {
   propertyUrl: string;
   property_url: string;
   status: "connected" | "error" | string;
+  credentialStatus?: "usable" | "missing" | "undecryptable" | string;
+  credential_status?: "usable" | "missing" | "undecryptable" | string;
   credentialHint: string | null;
   credential_hint: string | null;
   lastTestedAt: string | null;

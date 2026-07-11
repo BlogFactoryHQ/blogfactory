@@ -22,6 +22,7 @@ import {
 } from "../services/internal-linking.js";
 import { analyzeVoiceProfile } from "../services/voice-content.js";
 import { chunkKnowledgeContent } from "../services/knowledge.js";
+import { safeError } from "../http/error-contract.js";
 import { normalizeOpenRouterImageModelId } from "../services/openrouter-models.js";
 import {
   ensureGlobalSettings,
@@ -676,7 +677,7 @@ settingsRoutes.post("/internal-linking/index", async (c) => {
       excludePatterns,
       openAiKey,
       hadExistingIndex: Boolean(existing?.internalLinkIndex),
-    }).catch((err) => console.error("[internal-linking] Background indexing error:", err));
+    }).catch((err) => console.error("[internal-linking] Background indexing error", safeError(err)));
 
     return c.json(serializeSettings(result), 202);
   } catch (err: any) {

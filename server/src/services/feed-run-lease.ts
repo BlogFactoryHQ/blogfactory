@@ -39,6 +39,7 @@ export async function claimFeedRun(input: {
   const token = input.token || randomUUID();
   const slots = normalizeFeedRunSlots(input.slots);
   const now = input.now || new Date();
+  const nowIso = now.toISOString();
   const leaseUntil = new Date(now.getTime() + feedRunLeaseMs());
 
   const [claimed] = await db
@@ -47,7 +48,7 @@ export async function claimFeedRun(input: {
       runClaimToken: token,
       runLeaseUntil: leaseUntil,
       runActiveCount: sql<number>`CASE
-        WHEN ${feeds.runClaimToken} = ${token} AND ${feeds.runLeaseUntil} >= ${now}
+        WHEN ${feeds.runClaimToken} = ${token} AND ${feeds.runLeaseUntil} >= ${nowIso}::timestamptz
           THEN ${feeds.runActiveCount}
         ELSE ${slots}
       END`,

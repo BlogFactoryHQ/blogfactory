@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
+import { connectionReady } from "@/lib/credential-status";
 import { ORTAK_ALAN_CONTENT_TYPES } from "@/components/posts/ortak-alan-publishing";
 import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, parseFeedTagList, routeReady, type FeedEditorialDefaults, type FeedRouteValue } from "@/lib/feed-routing";
 
@@ -34,7 +35,7 @@ export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; 
           const integration = integrations.find((item) => item.id === integrationId);
           const isOrtakAlan = integration?.config?.profile === "ortak_alan_news";
           onChange({ ...value, integrationId, editorialDefaults: { ...EMPTY_FEED_DEFAULTS, profile: isOrtakAlan ? "ortak_alan_news" : "generic", contentType: isOrtakAlan ? "Haber" : "" } });
-        }} disabled={!value.siteId || isLoading}><SelectTrigger><SelectValue placeholder={isLoading ? "Loading targets" : "Select target"} /></SelectTrigger><SelectContent>{integrations.filter((item) => item.status === "connected").map((integration) => <SelectItem key={integration.id} value={integration.id}>{integration.displayName} · {integration.provider}</SelectItem>)}</SelectContent></Select></div>
+        }} disabled={!value.siteId || isLoading}><SelectTrigger><SelectValue placeholder={isLoading ? "Loading targets" : "Select target"} /></SelectTrigger><SelectContent>{integrations.filter(connectionReady).map((integration) => <SelectItem key={integration.id} value={integration.id}>{integration.displayName} · {integration.provider}</SelectItem>)}</SelectContent></Select></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label>Delivery</Label><div className="flex h-9 items-center rounded-sm border border-input bg-card px-3 text-sm">BlogFactory draft</div></div>

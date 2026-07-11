@@ -41,6 +41,7 @@ import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGro
 import { IndexingPanel } from "@/pages/Indexing";
 import { OptimizePanel } from "@/pages/Optimize";
 import { api } from "@/lib/api";
+import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
 
@@ -146,7 +147,7 @@ function SearchGrowthOverview({
     queryFn: () => api.get<InternalLinkSettings>("/settings"),
   });
 
-  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected" && integration.provider !== "google").length;
+  const connectedIndexing = indexingIntegrations.filter((integration) => connectionReady(integration) && integration.provider !== "google").length;
   const internalStatus = internalLinks?.internal_link_status || (internalLinks?.internal_link_index ? "connected" : "disconnected");
   const internalPageCount = internalLinks?.internal_link_index?.pageCount || 0;
   const supportCards = (
@@ -230,9 +231,9 @@ function SearchGrowthOverview({
           items={[
             {
               label: "Search Console",
-              value: searchConsole.status === "connected" ? "Connected" : searchConsole.status,
+              value: connectionReady(searchConsole) ? "Connected" : displayConnectionStatus(searchConsole),
               detail: `Last sync: ${searchConsole.lastSyncAt || searchConsole.last_sync_at || "none yet"}`,
-              state: searchConsole.status === "connected" ? "ready" : "warning",
+              state: connectionReady(searchConsole) ? "ready" : "warning",
               action: <Button variant="outline" size="sm" onClick={() => onSelectTab("optimize")}>Manage GSC</Button>,
             },
             {

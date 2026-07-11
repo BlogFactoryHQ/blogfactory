@@ -14,6 +14,7 @@
     "build": "npm run build --workspace=server && npm run build --workspace=web",
     "typecheck": "npm run typecheck --workspace=web",
     "test:server": "npm run test:self --workspace=server",
+    "test:postgres": "npm run test:postgres --workspace=server",
     "cron:deploy": "npx wrangler deploy --config wrangler.cron.jsonc",
     "cron:dry-run": "npx wrangler deploy --config wrangler.cron.jsonc --dry-run",
     "db:generate": "npm run db:generate --workspace=server",

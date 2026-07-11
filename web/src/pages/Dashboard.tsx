@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { formatCompactCurrency, formatCompactNumber, safePercent, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { connectionReady } from "@/lib/credential-status";
 import { recentJobsFromResponse, type JobListEnvelope } from "@/lib/dashboard-query";
 
 interface DashboardStats {
@@ -72,8 +73,8 @@ export default function Dashboard() {
   const { activeSite } = useSites();
   const { integrations } = useIntegrations();
   const { integrations: indexingIntegrations } = useIndexing();
-  const connectedIntegrations = integrations.filter((integration) => integration.status === "connected");
-  const connectedIndexing = indexingIntegrations.filter((integration) => integration.status === "connected" && integration.provider !== "google");
+  const connectedIntegrations = integrations.filter(connectionReady);
+  const connectedIndexing = indexingIntegrations.filter((integration) => connectionReady(integration) && integration.provider !== "google");
   const internalLinksReady = Boolean(activeSite?.internalLinkIndex?.pages?.length || activeSite?.vectorCount);
 
   const { data: recentJobs = [], isLoading: isLoadingJobs } = useQuery({
