@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,62 +10,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Image, Layers, DollarSign } from "lucide-react";
-import type { GenerationLog } from "@/lib/types";
+import { summarizeImageCosts, type ImageCostRow } from "@/lib/image-costs";
 
 interface ImageCostsSectionProps {
-  logs: GenerationLog[];
+  breakdown: ImageCostRow[];
   days: number;
 }
 
-interface ImageProviderSummary {
-  provider: string;
-  label: string;
-  imageCount: number;
-  totalCost: number;
-  models: Map<string, { count: number; cost: number }>;
-}
-
-const PROVIDER_LABELS: Record<string, string> = {
-  "openrouter-image": "OpenRouter",
-  "openai-image": "OpenAI",
-};
-
-export function ImageCostsSection({ logs, days }: ImageCostsSectionProps) {
-  const imageLogs = useMemo(
-    () => logs.filter((l) => l.usage_type === "image" || l.provider?.includes("image")),
-    [logs]
-  );
-
-  const providerSummaries = useMemo(() => {
-    const map = new Map<string, ImageProviderSummary>();
-
-    for (const log of imageLogs) {
-      const provider = log.provider || "unknown";
-      const model = log.model_id || "unknown";
-      const cost = Number(log.cost) || 0;
-
-      if (!map.has(provider)) {
-        map.set(provider, {
-          provider,
-          label: PROVIDER_LABELS[provider] || provider,
-          imageCount: 0,
-          totalCost: 0,
-          models: new Map(),
-        });
-      }
-
-      const summary = map.get(provider)!;
-      summary.imageCount += 1;
-      summary.totalCost += cost;
-
-      const modelEntry = summary.models.get(model) || { count: 0, cost: 0 };
-      modelEntry.count += 1;
-      modelEntry.cost += cost;
-      summary.models.set(model, modelEntry);
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.totalCost - a.totalCost);
-  }, [imageLogs]);
+export function ImageCostsSection({ breakdown, days }: ImageCostsSectionProps) {
+  const providerSummaries = summarizeImageCosts(breakdown);
 
   const totalImageCost = providerSummaries.reduce((s, p) => s + p.totalCost, 0);
   const totalImageCount = providerSummaries.reduce((s, p) => s + p.imageCount, 0);
@@ -135,7 +88,7 @@ export function ImageCostsSection({ logs, days }: ImageCostsSectionProps) {
             </TableHeader>
             <TableBody>
               {providerSummaries.map((provider) => (
-                <>
+                <Fragment key={provider.provider}>
                   {/* Provider row */}
                   <TableRow key={provider.provider} className="font-medium bg-muted/30">
                     <TableCell>{provider.label}</TableCell>
@@ -156,7 +109,7 @@ export function ImageCostsSection({ logs, days }: ImageCostsSectionProps) {
                       </TableCell>
                     </TableRow>
                   ))}
-                </>
+                </Fragment>
               ))}
             </TableBody>
           </Table>
