@@ -33,7 +33,7 @@ export async function fetchTextModels(refresh = false): Promise<LiveTextModel[]>
 export function useTextModels() {
   return useQuery<LiveTextModel[]>({
     queryKey: ["text-models"],
-    queryFn: fetchTextModels,
+    queryFn: () => fetchTextModels(),
     staleTime: 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
     retry: 2,
