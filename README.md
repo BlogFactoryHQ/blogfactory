@@ -117,6 +117,7 @@ Copy `.env.example` to `.env` for local development. The main values are:
 | `ADMIN_EMAILS`              | Comma-separated admin email list                 |
 | `API_KEY_ENCRYPTION_SECRET` | Secret used to encrypt stored API keys           |
 | `CRON_SECRET`               | Bearer token for protected cron drains           |
+| `OPENROUTER_WEBHOOK_SECRET` | Bearer token configured in OpenRouter Broadcast headers |
 | `S3_ENDPOINT`               | S3-compatible endpoint URL                       |
 | `S3_ACCESS_KEY_ID`          | Storage access key                               |
 | `S3_SECRET_ACCESS_KEY`      | Storage secret key                               |
@@ -124,6 +125,8 @@ Copy `.env.example` to `.env` for local development. The main values are:
 | `S3_REGION`                 | Storage region, or `auto` for Cloudflare R2      |
 | `S3_PUBLIC_URL`             | Optional public CDN URL for stored assets        |
 OpenRouter, Google Gemini, and publishing integration credentials are stored per user from the app's Settings and Integrations areas.
+For OpenRouter Broadcast, use `/api/webhooks/openrouter` as the webhook URL and configure
+`{"Authorization":"Bearer <OPENROUTER_WEBHOOK_SECRET>"}` as its custom headers.
 
 ## Deploying to Vercel
 
