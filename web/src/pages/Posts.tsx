@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useMemo } from "react";
+import { Fragment, useDeferredValue, useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -51,6 +51,7 @@ import {
   type SemanticTone,
 } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
+import { postListPath, type ListPagination } from "@/lib/list-query";
 
 interface FailedDraft {
   index: number;
@@ -69,7 +70,6 @@ interface GenerationPlan {
 interface Post {
   id: string;
   title: string;
-  content: string;
   status: string;
   source_type: string;
   source_ref_id: string | null;
@@ -91,6 +91,18 @@ interface Post {
   feed_id?: string | null;
   site_name?: string | null;
   feed_name?: string | null;
+}
+
+interface PostListResponse {
+  items: Post[];
+  pagination: ListPagination;
+  facets: {
+    statusCounts: { total: number; draft: number; published: number };
+    sourceTypes: string[];
+    models: string[];
+    personas: Array<{ id: string; name: string }>;
+    campaigns: Array<{ id: string; name: string }>;
+  };
 }
 
 type DisplayRow =
@@ -124,6 +136,11 @@ const sortDraftPosts = (a: Post, b: Post) => {
 
 const statusFromParam = (value: string | null): StatusFilter =>
   value === "draft" || value === "published" || value === "all" ? value : "all";
+
+const positiveListNumber = (value: string | null, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
 
 const hasPostImageWork = (post: Pick<Post, "cover_image_url" | "inline_images" | "image_asset_count" | "image_prompt_count">) => Boolean(
   post.cover_image_url
@@ -168,23 +185,23 @@ export default function Posts() {
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectAllAcrossPages, setSelectAllAcrossPages] = useState(false);
 
   // Filter state
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") || "");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => statusFromParam(searchParams.get("status")));
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [modelFilter, setModelFilter] = useState("all");
-  const [personaFilter, setPersonaFilter] = useState("all");
-  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get("source") || "all");
+  const [modelFilter, setModelFilter] = useState(() => searchParams.get("model") || "all");
+  const [personaFilter, setPersonaFilter] = useState(() => searchParams.get("persona") || "all");
+  const [campaignFilter, setCampaignFilter] = useState(() => searchParams.get("campaign") || "all");
 
   // Sort state
-  const [sortField, setSortField] = useState<SortField>("created_at");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [sortField, setSortField] = useState<SortField>(() => searchParams.get("sort") === "title" ? "title" : "created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => searchParams.get("direction") === "asc" ? "asc" : "desc");
 
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => positiveListNumber(searchParams.get("page"), 1));
   const [quickDeletePost, setQuickDeletePost] = useState<Post | null>(null);
-  const [postsPerPage, setPostsPerPage] = useState(25);
+  const [postsPerPage, setPostsPerPage] = useState(() => Math.min(100, positiveListNumber(searchParams.get("limit"), 25)));
   const [bulkIntegrationId, setBulkIntegrationId] = useState("");
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   const [creatingImagePromptPostId, setCreatingImagePromptPostId] = useState<string | null>(null);
@@ -195,41 +212,38 @@ export default function Posts() {
   const createManualImagePrompts = useCreateManualImagePrompts();
   const connectedIntegrations = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
 
-  const { data: posts = [], isLoading: isLoadingPosts } = useQuery({
-    queryKey: ["posts"],
+  const { data: postList, isLoading: isLoadingPosts, error: postsError } = useQuery({
+    queryKey: ["posts", currentPage, postsPerPage, deferredSearchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection],
     queryFn: async () => {
-      return api.get<Post[]>("/posts");
+      return api.get<PostListResponse>(postListPath({
+        page: currentPage,
+        limit: postsPerPage,
+        search: deferredSearchQuery,
+        status: statusFilter,
+        sourceType: sourceFilter,
+        modelId: modelFilter,
+        personaId: personaFilter,
+        campaignId: campaignFilter,
+        sort: sortField,
+        direction: sortDirection,
+      }));
     },
     refetchInterval: (query) => {
-      const data = query.state.data as Post[] | undefined;
-      return data?.some(hasSettlingImageWork) ? 5000 : false;
+      const data = query.state.data as PostListResponse | undefined;
+      return data?.items.some(hasSettlingImageWork) ? 5000 : false;
     },
   });
-
-  // Fetch feeds to map source_ref_id to feed names
-  const { data: feeds = [] } = useQuery({
-    queryKey: ["feeds-lookup"],
-    queryFn: async () => {
-      return api.get<Array<{ id: string; name: string }>>("/feeds");
-    },
-  });
-
-  // Create a lookup map for feed names
-  const feedNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    feeds.forEach((feed) => map.set(feed.id, feed.name));
-    return map;
-  }, [feeds]);
+  const posts = useMemo(() => postList?.items || [], [postList?.items]);
+  const postPagination = postList?.pagination;
+  const facets = postList?.facets;
 
   // Enrich posts with feed names
   const enrichedPosts: Post[] = useMemo(() => {
     return posts.map((post) => ({
       ...post,
-      feeds: post.source_ref_id && feedNameMap.has(post.source_ref_id)
-        ? { name: feedNameMap.get(post.source_ref_id)! }
-        : null,
+      feeds: post.feed_name ? { name: post.feed_name } : null,
     }));
-  }, [posts, feedNameMap]);
+  }, [posts]);
 
   // Quick delete mutation
   const quickDeleteMutation = useMutation({
@@ -305,65 +319,11 @@ export default function Posts() {
     },
   });
 
-  // Derive unique filter options from data
-  const { sourceTypes, models, personas, campaigns } = useMemo(() => {
-    const sourceSet = new Set<string>();
-    const modelSet = new Set<string>();
-    const personaMap = new Map<string, string>();
-    const campaignMap = new Map<string, string>();
-
-    enrichedPosts.forEach((post) => {
-      if (post.source_type) sourceSet.add(post.source_type);
-      if (post.model_id) modelSet.add(post.model_id);
-      if (post.persona_id && post.personas?.name) {
-        personaMap.set(post.persona_id, post.personas.name);
-      }
-      if (post.campaign_id && post.campaigns?.name) {
-        campaignMap.set(post.campaign_id, post.campaigns.name);
-      }
-    });
-
-    return {
-      sourceTypes: Array.from(sourceSet).sort(),
-      models: Array.from(modelSet).sort(),
-      personas: Array.from(personaMap.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
-      campaigns: Array.from(campaignMap.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
-    };
-  }, [enrichedPosts]);
-
-  // Filter and sort posts
-  const filteredPosts = useMemo(() => {
-    const result = enrichedPosts.filter((post) => {
-      const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "all" || post.status === statusFilter;
-      const matchesSource = sourceFilter === "all" || post.source_type === sourceFilter;
-      const matchesModel = modelFilter === "all" || post.model_id === modelFilter;
-      const matchesPersona =
-        personaFilter === "all" ||
-        (personaFilter === "none" && !post.persona_id) ||
-        post.persona_id === personaFilter;
-      const matchesCampaign =
-        campaignFilter === "all" ||
-        (campaignFilter === "none" && !post.campaign_id) ||
-        post.campaign_id === campaignFilter;
-
-      return matchesSearch && matchesStatus && matchesSource && matchesModel && matchesPersona && matchesCampaign;
-    });
-
-    // Sort
-    result.sort((a, b) => {
-      if (sortField === "created_at") {
-        const dateA = new Date(a.created_at).getTime();
-        const dateB = new Date(b.created_at).getTime();
-        return sortDirection === "desc" ? dateB - dateA : dateA - dateB;
-      } else {
-        const comparison = a.title.localeCompare(b.title);
-        return sortDirection === "asc" ? comparison : -comparison;
-      }
-    });
-
-    return result;
-  }, [enrichedPosts, searchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection]);
+  const sourceTypes = facets?.sourceTypes || [];
+  const models = facets?.models || [];
+  const personas = facets?.personas || [];
+  const campaigns = facets?.campaigns || [];
+  const filteredPosts = enrichedPosts;
 
   const displayRows = useMemo<DisplayRow[]>(() => {
     const postsByGroup = new Map<string, Post[]>();
@@ -394,10 +354,7 @@ export default function Posts() {
     });
   }, [filteredPosts]);
 
-  const statusCounts = useMemo(() => ({
-    draft: enrichedPosts.filter((post) => post.status === "draft").length,
-    published: enrichedPosts.filter((post) => post.status === "published").length,
-  }), [enrichedPosts]);
+  const statusCounts = facets?.statusCounts || { total: 0, draft: 0, published: 0 };
 
   const inventoryInsights = useMemo(() => {
     const newestTime = enrichedPosts.reduce((max, post) => Math.max(max, new Date(post.created_at).getTime()), 0);
@@ -412,11 +369,8 @@ export default function Posts() {
     };
   }, [enrichedPosts]);
 
-  const totalPages = Math.max(1, Math.ceil(displayRows.length / postsPerPage));
-  const paginatedRows = displayRows.slice(
-    (currentPage - 1) * postsPerPage,
-    currentPage * postsPerPage
-  );
+  const totalPages = postPagination?.pages || 1;
+  const paginatedRows = displayRows;
   const paginatedSelectablePosts = paginatedRows.flatMap((row) => row.type === "draftGroup" ? row.posts : [row.post]);
 
   // Selection helpers
@@ -432,13 +386,7 @@ export default function Posts() {
       const newSelected = new Set(selectedIds);
       paginatedSelectablePosts.forEach((p) => newSelected.delete(p.id));
       setSelectedIds(newSelected);
-      setSelectAllAcrossPages(false);
     }
-  };
-
-  const handleSelectAllAcrossPages = () => {
-    setSelectedIds(new Set(filteredPosts.map((p) => p.id)));
-    setSelectAllAcrossPages(true);
   };
 
   const handleRowSelect = (postId: string, checked: boolean) => {
@@ -447,7 +395,6 @@ export default function Posts() {
       newSelected.add(postId);
     } else {
       newSelected.delete(postId);
-      setSelectAllAcrossPages(false);
     }
     setSelectedIds(newSelected);
   };
@@ -458,41 +405,43 @@ export default function Posts() {
       if (checked) newSelected.add(post.id);
       else newSelected.delete(post.id);
     });
-    if (!checked) setSelectAllAcrossPages(false);
     setSelectedIds(newSelected);
   };
 
   const clearSelection = () => {
     setSelectedIds(new Set());
-    setSelectAllAcrossPages(false);
   };
 
   useEffect(() => {
-    const nextStatus = statusFromParam(searchParams.get("status"));
-    setStatusFilter((current) => current === nextStatus ? current : nextStatus);
-    setCurrentPage(1);
-    clearSelection();
-  }, [searchParams]);
+    const next = new URLSearchParams();
+    if (statusFilter !== "all") next.set("status", statusFilter);
+    if (searchQuery.trim()) next.set("search", searchQuery.trim());
+    if (sourceFilter !== "all") next.set("source", sourceFilter);
+    if (modelFilter !== "all") next.set("model", modelFilter);
+    if (personaFilter !== "all") next.set("persona", personaFilter);
+    if (campaignFilter !== "all") next.set("campaign", campaignFilter);
+    if (sortField !== "created_at") next.set("sort", sortField);
+    if (sortDirection !== "desc") next.set("direction", sortDirection);
+    if (currentPage !== 1) next.set("page", String(currentPage));
+    if (postsPerPage !== 25) next.set("limit", String(postsPerPage));
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [campaignFilter, currentPage, modelFilter, personaFilter, postsPerPage, searchParams, searchQuery, setSearchParams, sortDirection, sortField, sourceFilter, statusFilter]);
 
   // Bulk action handlers
   const handleBulkDelete = () => {
-    const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
-    bulkDelete(ids, { onSuccess: clearSelection });
+    bulkDelete(Array.from(selectedIds), { onSuccess: clearSelection });
   };
 
   const handleBulkPublish = () => {
-    const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
-    bulkPublish(ids, { onSuccess: clearSelection });
+    bulkPublish(Array.from(selectedIds), { onSuccess: clearSelection });
   };
 
   const handleBulkDraft = () => {
-    const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
-    bulkDraft(ids, { onSuccess: clearSelection });
+    bulkDraft(Array.from(selectedIds), { onSuccess: clearSelection });
   };
 
   const handleBulkPushIntegration = () => {
-    const ids = selectAllAcrossPages ? filteredPosts.map((p) => p.id) : Array.from(selectedIds);
-    bulkPushIntegrationMutation.mutate(ids);
+    bulkPushIntegrationMutation.mutate(Array.from(selectedIds));
   };
 
   const activeFiltersCount = [
@@ -507,25 +456,29 @@ export default function Posts() {
     setModelFilter("all");
     setPersonaFilter("all");
     setCampaignFilter("all");
+    setCurrentPage(1);
+    clearSelection();
   };
 
   const handleSortChange = (field: SortField, direction: SortDirection) => {
     setSortField(field);
     setSortDirection(direction);
+    setCurrentPage(1);
+    clearSelection();
   };
 
   // Reset page when filters change
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
-    const next = new URLSearchParams(searchParams);
-    if (value === "all") next.delete("status");
-    else next.set("status", value);
-    setSearchParams(next, { replace: true });
     setCurrentPage(1);
     clearSelection();
   };
 
-  const selectedCount = selectAllAcrossPages ? filteredPosts.length : selectedIds.size;
+  useEffect(() => {
+    if (postPagination && currentPage > postPagination.pages) setCurrentPage(postPagination.pages);
+  }, [currentPage, postPagination]);
+
+  const selectedCount = selectedIds.size;
 
   const toggleJobExpanded = (jobId: string) => {
     setExpandedJobIds((current) => {
@@ -719,7 +672,7 @@ export default function Posts() {
       </PageHeader>
 
       <InventoryInsights
-        totalPosts={enrichedPosts.length}
+        totalPosts={statusCounts.total}
         draftCount={statusCounts.draft}
         publishedCount={statusCounts.published}
         selectedCount={selectedCount}
@@ -739,15 +692,15 @@ export default function Posts() {
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={(value) => { setSearchQuery(value); setCurrentPage(1); clearSelection(); }}
           sourceFilter={sourceFilter}
-          onSourceFilterChange={setSourceFilter}
+          onSourceFilterChange={(value) => { setSourceFilter(value); setCurrentPage(1); clearSelection(); }}
           modelFilter={modelFilter}
-          onModelFilterChange={setModelFilter}
+          onModelFilterChange={(value) => { setModelFilter(value); setCurrentPage(1); clearSelection(); }}
           personaFilter={personaFilter}
-          onPersonaFilterChange={setPersonaFilter}
+          onPersonaFilterChange={(value) => { setPersonaFilter(value); setCurrentPage(1); clearSelection(); }}
           campaignFilter={campaignFilter}
-          onCampaignFilterChange={setCampaignFilter}
+          onCampaignFilterChange={(value) => { setCampaignFilter(value); setCurrentPage(1); clearSelection(); }}
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
@@ -762,7 +715,7 @@ export default function Posts() {
         {selectedIds.size > 0 && (
           <div>
             <BulkActionsBar
-              selectedCount={selectAllAcrossPages ? filteredPosts.length : selectedIds.size}
+              selectedCount={selectedIds.size}
               onDelete={handleBulkDelete}
               onPublish={handleBulkPublish}
               onPushIntegration={handleBulkPushIntegration}
@@ -776,18 +729,7 @@ export default function Posts() {
               isPushingIntegration={bulkPushIntegrationMutation.isPending}
               isDrafting={isDrafting}
             />
-            {allPageSelected && !selectAllAcrossPages && filteredPosts.length > postsPerPage && (
-              <div className="mb-2 text-center text-sm text-muted-foreground">
-                All {paginatedSelectablePosts.length} posts on this page are selected.{" "}
-                <Button
-                  variant="link"
-                  className="h-auto p-0 text-primary"
-                  onClick={handleSelectAllAcrossPages}
-                >
-                  Select all {filteredPosts.length} posts
-                </Button>
-              </div>
-            )}
+            {allPageSelected && <p className="mb-2 text-center text-sm text-muted-foreground">All {paginatedSelectablePosts.length} posts on this page are selected.</p>}
           </div>
         )}
       </div>
@@ -796,7 +738,7 @@ export default function Posts() {
         <SectionHeader
           icon={FileText}
           title="Inventory table"
-          description={`${formatCompactNumber(displayRows.length)} visible row${displayRows.length === 1 ? "" : "s"} after filters.`}
+          description={`${formatCompactNumber(postPagination?.total || 0)} matching post${postPagination?.total === 1 ? "" : "s"}. Bulk selection is page-scoped.`}
           action={<Badge variant="outline">{postsPerPage} / page</Badge>}
         />
         <Table>
@@ -823,6 +765,12 @@ export default function Posts() {
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                </TableCell>
+              </TableRow>
+            ) : postsError ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-12 text-center text-destructive">
+                  {postsError instanceof Error ? postsError.message : "Posts could not be loaded."}
                 </TableCell>
               </TableRow>
             ) : paginatedRows.length === 0 ? (
@@ -857,12 +805,12 @@ export default function Posts() {
         </Table>
 
         {/* Pagination */}
-        {displayRows.length > 0 && (
+        {(postPagination?.total || 0) > 0 && (
           <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
-              {Math.min(currentPage * postsPerPage, displayRows.length)} of{" "}
-              {displayRows.length} rows
+              {(currentPage - 1) * postsPerPage + enrichedPosts.length} of{" "}
+              {postPagination?.total || 0} posts
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Select

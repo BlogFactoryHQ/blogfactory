@@ -24,7 +24,6 @@ const sourceIcons: Record<string, typeof FileText> = {
 interface Post {
   id: string;
   title: string;
-  content: string;
   status: string;
   source_type: string;
   source_ref_id: string | null;

@@ -44,7 +44,6 @@ type PreviewSourceItem = {
   thumbnail?: string;
 };
 type PreviewResponse = { items?: PreviewSourceItem[]; error?: string };
-type ExistingPost = { source_content_hash?: string | null; title?: string | null };
 
 export function FeedPreview({ platform, platformConfig, filterType, filterValue, feedSourceUrl, keywords = [] }: FeedPreviewProps) {
   const { user } = useAuth();
@@ -101,10 +100,10 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
       // Check for duplicates if we have a user and feed source
       if (user && rawItems.length > 0) {
         try {
-          const existingPosts = await api.get<ExistingPost[]>("/posts");
-
-          const existingHashes = new Set((existingPosts || []).filter((p) => p.source_content_hash).map((p) => p.source_content_hash));
-          const existingTitles = new Set((existingPosts || []).map((p) => p.title?.toLowerCase().trim()));
+          const duplicates = await api.post<{ titles: string[]; hashes: string[] }>("/posts/duplicate-check", {
+            titles: rawItems.map((item) => item.title?.toLowerCase().trim()).filter(Boolean),
+          });
+          const existingTitles = new Set(duplicates.titles);
 
           rawItems = rawItems.map((item) => {
             // Simple hash simulation: check title match as proxy

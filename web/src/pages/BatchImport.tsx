@@ -19,6 +19,7 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { safeLocaleString } from "@/lib/date-format";
+import type { ListPagination } from "@/lib/list-query";
 
 type ZipEntry = JSZip.JSZipObject;
 
@@ -49,6 +50,11 @@ interface ImportedPost {
   cover_image_url: string | null;
   inline_images: string[] | null;
   created_at: string;
+}
+
+interface ImportedPostList {
+  items: ImportedPost[];
+  pagination: ListPagination;
 }
 
 const imageExt = /\.(png|jpe?g|webp|gif)$/i;
@@ -106,10 +112,11 @@ export default function BatchImport() {
   const [mode, setMode] = useState<"draft" | "publish">("draft");
   const { integrations, isLoading } = useIntegrations();
   const queryClient = useQueryClient();
-  const { data: posts = [], isLoading: isLoadingHistory } = useQuery({
-    queryKey: ["posts"],
-    queryFn: () => api.get<ImportedPost[]>("/posts"),
+  const { data: postList, isLoading: isLoadingHistory } = useQuery({
+    queryKey: ["posts", "batch-import-history"],
+    queryFn: () => api.get<ImportedPostList>("/posts?sourceType=batch_import&limit=100&page=1"),
   });
+  const posts = useMemo(() => postList?.items || [], [postList?.items]);
 
   const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
   const batchImports = useMemo(() => posts.filter((post) => post.source_type === "batch_import"), [posts]);
