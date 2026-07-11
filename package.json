@@ -13,6 +13,7 @@
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
     "build": "npm run build --workspace=server && npm run build --workspace=web",
     "typecheck": "npm run typecheck --workspace=web",
+    "test:server": "npm run test:self --workspace=server",
     "cron:deploy": "npx wrangler deploy --config wrangler.cron.jsonc",
     "cron:dry-run": "npx wrangler deploy --config wrangler.cron.jsonc --dry-run",
     "db:generate": "npm run db:generate --workspace=server",
