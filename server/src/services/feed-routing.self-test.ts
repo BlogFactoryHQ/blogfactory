@@ -9,6 +9,15 @@ assert.deepEqual(sanitizeClassifiedTopics(["yapay zeka", "Unknown", "Teknoloji",
 assert.equal(rssPublicationDate("Fri, 11 Jul 2026 10:00:00 GMT"), "2026-07-11");
 assert.equal(rssPublicationDate("not-a-date"), "");
 assert.deepEqual(normalizeFeedEditorialDefaults({ postType: "page", defaultTags: ["Tech", "Tech"] }, false).defaultTags, ["Tech"]);
+assert.deepEqual(normalizeFeedEditorialDefaults({}, false), {
+  profile: "generic",
+  postType: "post",
+  contentType: "",
+  defaultTopicTags: [],
+  defaultTags: [],
+  defaultCategories: [],
+  aiTopicsEnabled: true,
+});
 assert.equal(normalizeFeedEditorialDefaults({ contentType: "Analiz" }, true).contentType, "Analiz");
 
 console.log("feed routing self-check passed");

@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { feeds, siteIntegrations, sites } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { inspectFeedRouting } from "../services/feed-routing.js";
+import { inspectFeedRouting, normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
 
 export const feedsRoutes = new Hono();
@@ -45,13 +45,21 @@ function feedValues(body: Record<string, unknown>) {
 
 function serializeFeed(row: typeof feeds.$inferSelect, route?: { siteName?: string | null; integrationName?: string | null; provider?: string | null; integrationConfig?: unknown; ready?: boolean }) {
   const routeReady = route?.ready ?? Boolean(row.siteId && row.integrationId);
+  const integrationConfig = route?.integrationConfig && typeof route.integrationConfig === "object"
+    ? route.integrationConfig as Record<string, unknown>
+    : {};
+  const storedDefaults = row.editorialDefaults && typeof row.editorialDefaults === "object"
+    ? row.editorialDefaults as Record<string, unknown>
+    : {};
+  const ortakAlan = integrationConfig.profile === "ortak_alan_news" || storedDefaults.profile === "ortak_alan_news";
+  const editorialDefaults = normalizeFeedEditorialDefaults(row.editorialDefaults, ortakAlan);
   const { runClaimToken: _runClaimToken, runLeaseUntil: _runLeaseUntil, runActiveCount: _runActiveCount, ...publicRow } = row;
   return {
     ...publicRow,
     user_id: row.userId,
     site_id: row.siteId,
     integration_id: row.integrationId,
-    editorial_defaults: row.editorialDefaults || {},
+    editorial_defaults: editorialDefaults,
     routing_version: row.routingVersion,
     routing_status: routeReady ? "ready" : "needs_routing",
     site_name: route?.siteName || null,

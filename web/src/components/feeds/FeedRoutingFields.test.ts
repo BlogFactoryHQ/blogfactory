@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_FEED_DEFAULTS, routeReady } from "@/lib/feed-routing";
+import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, routeReady } from "@/lib/feed-routing";
 
 describe("feed routing readiness", () => {
+  it("fills array defaults for legacy feeds", () => {
+    expect(normalizeFeedEditorialDefaults({})).toEqual(EMPTY_FEED_DEFAULTS);
+    expect(normalizeFeedEditorialDefaults({ defaultTags: ["Tech", " Tech ", null] })).toMatchObject({
+      defaultTags: ["Tech"],
+      defaultCategories: [],
+      defaultTopicTags: [],
+    });
+  });
+
   it("accepts a connected generic CMS route", () => {
     expect(routeReady({ siteId: "site", integrationId: "integration", editorialDefaults: { ...EMPTY_FEED_DEFAULTS } }, { id: "integration", config: {}, status: "connected" } as never)).toBe(true);
   });
