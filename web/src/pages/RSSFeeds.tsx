@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { addHours, addDays, addWeeks, isPast } from "date-fns";
@@ -65,6 +66,8 @@ import {
   type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 import { cn } from "@/lib/utils";
+import type { FeedEditorialDefaults } from "@/lib/feed-routing";
+import { useSites } from "@/hooks/useSites";
 import {
   formatCompactNumber,
   safePercent,
@@ -92,6 +95,15 @@ interface Feed {
   extract_full_content?: boolean;
   posts_per_run?: number | null;
   filter_old_posts_days?: number | null;
+  site_id?: string | null;
+  integration_id?: string | null;
+  editorial_defaults?: FeedEditorialDefaults | null;
+  routing_version?: number;
+  routing_status?: "ready" | "needs_routing";
+  site_name?: string | null;
+  integration_name?: string | null;
+  integration_provider?: string | null;
+  integration_config?: Record<string, unknown>;
 }
 
 interface Persona {
@@ -110,7 +122,9 @@ export default function RSSFeeds() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "news" | "active" | "paused">("all");
+  const [filter, setFilter] = useState<"all" | "news" | "active" | "paused" | "routing">("all");
+  const [siteFilter, setSiteFilter] = useState("all");
+  const { sites } = useSites();
   const [selectedFeed, setSelectedFeed] = useState<Feed | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null);
@@ -178,7 +192,7 @@ export default function RSSFeeds() {
 
   const updateFeedMutation = useMutation({
     mutationFn: async (feed: Partial<Feed> & { id: string }) => {
-      await api.put(`/feeds/${feed.id}`, {
+      return api.put<Feed>(`/feeds/${feed.id}`, {
         name: feed.name,
         source_url: feed.source_url,
         keywords: feed.keywords,
@@ -192,13 +206,18 @@ export default function RSSFeeds() {
         posts_per_run: feed.posts_per_run,
         filter_old_posts_days: feed.filter_old_posts_days,
         platform_config: feed.platform_config,
+        site_id: feed.site_id,
+        integration_id: feed.integration_id,
+        editorial_defaults: feed.editorial_defaults,
+        routing_version: feed.routing_version,
       });
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (updated, variables) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       // Only close dialog and show detailed toast if saving from the editor
       if (selectedFeed && variables.id === selectedFeed.id && variables.name !== undefined) {
-        toast.success("Feed saved. Scheduler will run this feed on the next cycle.");
+        if (updated.routing_status === "needs_routing" && updated.routing_version !== 0) toast.warning("Feed saved and paused. Complete destination routing before running it.");
+        else toast.success("Feed saved. Scheduler will run this feed on the next cycle.");
         setSelectedFeed(null);
       } else {
         toast.success("Feed status updated.");
@@ -212,7 +231,7 @@ export default function RSSFeeds() {
   const batchUpdateFeedsMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
       const selected = feeds.filter((feed) => selectedFeedIds.includes(feed.id));
-      await Promise.all(selected.map((feed) => api.put(`/feeds/${feed.id}`, {
+      const updated = await Promise.all(selected.map((feed) => api.put<Feed>(`/feeds/${feed.id}`, {
         name: feed.name,
         source_url: feed.source_url,
         keywords: feed.keywords,
@@ -226,12 +245,17 @@ export default function RSSFeeds() {
         posts_per_run: feed.posts_per_run,
         filter_old_posts_days: feed.filter_old_posts_days,
         platform_config: feed.platform_config,
+        site_id: feed.site_id,
+        integration_id: feed.integration_id,
+        editorial_defaults: feed.editorial_defaults,
+        routing_version: feed.routing_version,
       })));
-      return selected.length;
+      return { count: selected.length, needsRouting: updated.filter((feed) => feed.routing_status === "needs_routing" && feed.routing_version !== 0).length };
     },
-    onSuccess: (count, isActive) => {
+    onSuccess: ({ count, needsRouting }, isActive) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
-      toast.success(`${count} feed${count === 1 ? "" : "s"} ${isActive ? "resumed" : "paused"}.`);
+      if (isActive && needsRouting) toast.warning(`${needsRouting} feed${needsRouting === 1 ? " remains" : "s remain"} paused until routing is complete.`);
+      else toast.success(`${count} feed${count === 1 ? "" : "s"} ${isActive ? "resumed" : "paused"}.`);
       setSelectedFeedIds([]);
     },
     onError: (error) => {
@@ -276,6 +300,15 @@ export default function RSSFeeds() {
     mutationFn: async ({ feed, imgConfig, imageMode }: { feed: Feed; imgConfig?: SplitImageConfig; imageMode?: ImageDeliveryMode }) => {
       setRunningFeedId(feed.id);
 
+      const savedFeed = await api.put<Feed>(`/feeds/${feed.id}`, {
+        ...feed,
+        site_id: feed.site_id,
+        integration_id: feed.integration_id,
+        editorial_defaults: feed.editorial_defaults,
+        routing_version: feed.routing_version ?? 1,
+      });
+      if (savedFeed.routing_status === "needs_routing" && savedFeed.routing_version !== 0) throw new Error("Complete destination routing before running this feed");
+
       const ic = imgConfig ?? defaultImageConfig;
       const inlineEnabled = ic.inline.enabled && ic.inline.count > 0;
       const imagesEnabled = ic.cover.enabled || inlineEnabled;
@@ -290,6 +323,8 @@ export default function RSSFeeds() {
         postsPerRun: 1,
         feedItemOffset,
         feedId: feed.id,
+        siteId: feed.site_id,
+        preferredIntegrationId: feed.integration_id,
         filterType: feed.filter_type,
         filterValue: feed.filter_value,
         keywords: feed.keywords || undefined,
@@ -322,6 +357,7 @@ export default function RSSFeeds() {
   });
 
   const isNewsFeed = (feed: Feed) => {
+    if (feed.editorial_defaults?.profile === "ortak_alan_news") return feed.editorial_defaults.contentType === "Haber";
     const mode = feed.platform_config?.editorialMode;
     return mode === "news" || mode === "sports_news";
   };
@@ -333,9 +369,11 @@ export default function RSSFeeds() {
     const matchesFilter =
       filter === "all" ||
       (filter === "news" && isNewsFeed(feed)) ||
+      (filter === "routing" && feed.routing_status === "needs_routing") ||
       (filter === "active" && feed.is_active) ||
       (filter === "paused" && !feed.is_active);
-    return matchesSearch && matchesFilter;
+    const matchesSite = siteFilter === "all" || feed.site_id === siteFilter;
+    return matchesSearch && matchesFilter && matchesSite;
   });
 
   const totalPages = Math.ceil(filteredFeeds.length / feedsPerPage);
@@ -525,9 +563,17 @@ export default function RSSFeeds() {
                 <span className="h-2 w-2 rounded-full bg-status-warning" />
                 Paused
               </TabsTrigger>
+              <TabsTrigger value="routing" className="gap-2">
+                <AlertCircle className="h-3.5 w-3.5" /> Needs routing
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
+          <div className="flex w-full gap-2 lg:w-auto">
+            <Select value={siteFilter} onValueChange={setSiteFilter}>
+              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All sites</SelectItem>{sites.map((site) => <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>)}</SelectContent>
+            </Select>
           <div className="relative w-full lg:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -536,6 +582,7 @@ export default function RSSFeeds() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
             />
+          </div>
           </div>
         </div>
 
@@ -586,6 +633,7 @@ export default function RSSFeeds() {
               </TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Assigned Persona</TableHead>
+              <TableHead>Destination</TableHead>
               <TableHead>Last Run</TableHead>
               <TableHead>Next Run</TableHead>
               <TableHead className="text-center">Posts</TableHead>
@@ -609,7 +657,7 @@ export default function RSSFeeds() {
               ))
             ) : paginatedFeeds.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                   No sources configured yet. Add your first content source to get started.
                 </TableCell>
               </TableRow>
@@ -654,6 +702,13 @@ export default function RSSFeeds() {
                           {feedIsNews ? "News RSS Feed" : getPlatformLabel(feed.platform)}
                         </span>
                       </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{feed.site_name || "Unassigned site"}</p>
+                      <p className="text-xs text-muted-foreground">{feed.integration_name || "No publishing target"}</p>
+                      <div className="flex flex-wrap gap-1">{feed.editorial_defaults?.contentType && <Badge variant="outline" className="text-[10px]">{feed.editorial_defaults.contentType}</Badge>}{(feed.editorial_defaults?.defaultTopicTags || feed.editorial_defaults?.defaultTags || []).slice(0, 2).map((tag) => <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>)}</div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -708,7 +763,7 @@ export default function RSSFeeds() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />
+                    {feed.routing_status === "needs_routing" ? <Badge variant="outline" className="border-amber-300 text-amber-800">Needs routing</Badge> : <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />}
                   </TableCell>
                   <TableCell>
                     <Tooltip>
@@ -717,7 +772,7 @@ export default function RSSFeeds() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          disabled={updateFeedMutation.isPending}
+                          disabled={updateFeedMutation.isPending || (!feed.is_active && feed.routing_status === "needs_routing" && feed.routing_version !== 0)}
                           onClick={(e) => {
                             e.stopPropagation();
                             updateFeedMutation.mutate({

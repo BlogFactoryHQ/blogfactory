@@ -31,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { useIntegrations, IntegrationProvider, SiteIntegration } from "@/hooks/useIntegrations";
+import { useGhostAuthors, useIntegrations, IntegrationProvider, SiteIntegration } from "@/hooks/useIntegrations";
 import { useSites } from "@/hooks/useSites";
 import { cn } from "@/lib/utils";
 
@@ -194,6 +194,9 @@ export default function Integrations() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-foreground">{integration.displayName}</h3>
                           <Badge variant="secondary" className="bg-byword-blue-soft text-byword-blue">{details.name}</Badge>
+                          {integration.config?.profile === "ortak_alan_news" && (
+                            <Badge variant="outline">Ortak Alan Haber</Badge>
+                          )}
                           <Badge variant={integration.status === "connected" ? "default" : "destructive"}>{integration.status}</Badge>
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -312,18 +315,30 @@ function IntegrationSetupDialog({
     excerpt: "Excerpt",
     coverImage: "Image",
   });
+  const [ghostProfile, setGhostProfile] = useState("general");
+  const [editorialOwner, setEditorialOwner] = useState("");
+  const [defaultAuthorId, setDefaultAuthorId] = useState("");
 
   const open = Boolean(activeProvider);
+  const isOrtakAlan = activeProvider === "ghost" && ghostProfile === "ortak_alan_news";
+  const { authors: ghostAuthors, isLoading: authorsLoading } = useGhostAuthors(integration?.id, isOrtakAlan && Boolean(integration));
 
   useEffect(() => {
     if (integration) {
       setDisplayName(integration.displayName);
+      setGhostProfile(integration.config?.profile === "ortak_alan_news" ? "ortak_alan_news" : "general");
+      setEditorialOwner(typeof integration.config?.editorialOwner === "string" ? integration.config.editorialOwner : "");
+      const savedAuthor = integration.config?.defaultAuthor;
+      setDefaultAuthorId(savedAuthor && typeof savedAuthor === "object" && "id" in savedAuthor ? String((savedAuthor as { id?: string }).id || "") : "");
       const fieldMapping = integration.config?.fieldMapping;
       if (fieldMapping && typeof fieldMapping === "object") {
         setMapping((current) => ({ ...current, ...(fieldMapping as Record<string, string>) }));
       }
     } else if (details) {
       setDisplayName(details.name);
+      setGhostProfile("general");
+      setEditorialOwner("");
+      setDefaultAuthorId("");
     }
   }, [details, integration]);
 
@@ -333,6 +348,9 @@ function IntegrationSetupDialog({
     if (!nextOpen) {
       setDisplayName("");
       setCredentials({});
+      setGhostProfile("general");
+      setEditorialOwner("");
+      setDefaultAuthorId("");
       onClose();
     } else if (integration) {
       setDisplayName(integration.displayName);
@@ -344,12 +362,22 @@ function IntegrationSetupDialog({
   const handleSubmit = async () => {
     if (!activeProvider || !details) return;
     const hasAnyCredential = Object.values(credentials).some(Boolean);
+    const savedDefaultAuthor = integration?.config?.defaultAuthor && typeof integration.config.defaultAuthor === "object"
+      ? integration.config.defaultAuthor as { id?: string; email?: string; slug?: string; name?: string; status?: string }
+      : null;
+    const defaultAuthor = ghostAuthors.find((author) => author.id === defaultAuthorId)
+      || (savedDefaultAuthor?.id === defaultAuthorId ? savedDefaultAuthor : null);
+    const config = activeProvider === "framer"
+      ? { fieldMapping: mapping }
+      : activeProvider === "ghost" && isOrtakAlan
+        ? { profile: "ortak_alan_news", editorialOwner, ...(defaultAuthor ? { defaultAuthor } : {}) }
+        : {};
     await onSave({
       id: integration?.id,
       provider: activeProvider,
       displayName: displayName || details.name,
       credentials: integration && !hasAnyCredential ? undefined : credentials,
-      config: activeProvider === "framer" ? { fieldMapping: mapping } : {},
+      config,
     });
     setDisplayName("");
     setCredentials({});
@@ -398,6 +426,50 @@ function IntegrationSetupDialog({
               </div>
             ))}
           </div>
+
+          {activeProvider === "ghost" && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Publishing profile</Label>
+                  <Select value={ghostProfile} onValueChange={(value) => {
+                    setGhostProfile(value);
+                    if (!integration && value === "ortak_alan_news") setDisplayName("Ghost – Ortak Alan");
+                    if (!integration && value === "general") setDisplayName("Ghost");
+                  }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General Ghost</SelectItem>
+                      <SelectItem value="ortak_alan_news">Ghost – Ortak Alan Haber</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Ortak Alan profili haber metadata’sını, kaynakları ve yazar eşleşmesini zorunlu yayın kontrolüne ekler.</p>
+                </div>
+                {isOrtakAlan && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Editöryal sorumlu</Label>
+                      <Input value={editorialOwner} onChange={(event) => setEditorialOwner(event.target.value)} placeholder="Ortak Alan" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Varsayılan Ghost yazarı</Label>
+                      {integration ? (
+                        <Select value={defaultAuthorId} onValueChange={setDefaultAuthorId} disabled={authorsLoading}>
+                          <SelectTrigger><SelectValue placeholder={authorsLoading ? "Yazarlar yükleniyor" : "Yazar seç"} /></SelectTrigger>
+                          <SelectContent>
+                            {ghostAuthors.map((author) => <SelectItem key={author.id} value={author.id}>{author.name} · {author.email}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="rounded-sm border border-dashed border-byword-border p-2 text-xs text-muted-foreground">Bağlantıyı kaydettikten sonra Manage ekranından varsayılan yazarı seçebilirsiniz.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {activeProvider === "framer" && (
             <>

@@ -7,6 +7,15 @@ import { imageAssets, postPublications, posts, siteIntegrations, sites, userSett
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
+import {
+  appendOrtakAlanDisclosures,
+  isOrtakAlanProfile,
+  normalizeOrtakAlanMetadata,
+  ortakAlanFeatureImageCaption,
+  ortakAlanTags,
+  validateOrtakAlanMetadata,
+  type OrtakAlanPublishingMetadata,
+} from "./ortak-alan-publishing.js";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
 export type PublishMode = "draft" | "publish";
@@ -50,6 +59,7 @@ interface PublishOptions {
   metaTitle?: string;
   metaDescription?: string;
   excerpt?: string;
+  publishingMetadata?: unknown;
 }
 
 interface BrandCta {
@@ -72,6 +82,8 @@ interface ArticlePayload {
   metaDescription: string;
   coverImageUrl: string | null;
   coverAltText: string;
+  coverCaption: string;
+  authorId: string | null;
   inlineImages: PlacementImage[];
   appendedCta?: BrandCta | null;
 }
@@ -81,6 +93,19 @@ interface PublishingImageAsset {
   altText: string | null;
   type: string;
   position: number | null;
+  provider: string | null;
+  sourceKind: string | null;
+  sourceUrl: string | null;
+  credit: string | null;
+  licenseLabel: string | null;
+}
+
+export interface GhostAuthor {
+  id: string;
+  email: string;
+  slug: string;
+  name: string;
+  status: string;
 }
 
 interface PublishResult {
@@ -220,6 +245,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .limit(1);
   if (!integration) throw new Error("Integration not found");
   if (integration.status !== "connected") throw new Error("Integration is not connected");
+  if (post.siteId && integration.siteId !== post.siteId) throw new Error("Publishing target does not belong to this post's destination site");
 
   const [site] = await db
     .select({ id: sites.id })
@@ -236,14 +262,76 @@ export async function publishPost(userId: string, postId: string, integrationId:
       altText: imageAssets.altText,
       type: imageAssets.type,
       position: imageAssets.position,
+      provider: imageAssets.provider,
+      sourceKind: imageAssets.sourceKind,
+      sourceUrl: imageAssets.sourceUrl,
+      credit: imageAssets.credit,
+      licenseLabel: imageAssets.licenseLabel,
     })
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
   const brandCtas = await publishingBrandCtas(userId, integration.siteId);
-  const article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas);
+  let article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas);
   const mode = options.mode === "publish" ? "publish" : "draft";
+  let validation = { errors: [] as string[], warnings: [] as string[] };
 
   try {
+    if (provider === "ghost" && isOrtakAlanProfile(integration.config)) {
+      const config = (integration.config || {}) as Record<string, unknown>;
+      const defaultAuthor = config.defaultAuthor && typeof config.defaultAuthor === "object"
+        ? config.defaultAuthor as Record<string, unknown>
+        : null;
+      const coverAsset = assetRows.find((asset) => asset.storagePath === article.coverImageUrl);
+      const metadata = normalizeOrtakAlanMetadata(options.publishingMetadata ?? post.publishingMetadata, {
+        slug: article.slug,
+        excerpt: article.excerpt,
+        metaTitle: article.metaTitle,
+        metaDescription: article.metaDescription,
+        topicTags: article.tags,
+        editorialOwner: String(config.editorialOwner || ""),
+        author: defaultAuthor,
+        imageAlt: coverAsset?.altText || "",
+        imageSource: coverAsset?.credit || coverAsset?.sourceUrl || coverAsset?.provider || "",
+        imageLicense: coverAsset?.licenseLabel || "",
+        imageAiGenerated: coverAsset?.sourceKind === "ai",
+      });
+
+      await db
+        .update(posts)
+        .set({ publishingMetadata: metadata })
+        .where(and(eq(posts.id, postId), eq(posts.userId, userId)));
+
+      const ghostAuthors = await listGhostAuthors(credentials as GhostCredentials);
+      const matchedAuthor = metadata.author?.id
+        ? ghostAuthors.find((author) => author.id === metadata.author?.id && author.status === "active")
+        : null;
+      if (matchedAuthor) {
+        metadata.author = matchedAuthor;
+        await db
+          .update(posts)
+          .set({ publishingMetadata: metadata })
+          .where(and(eq(posts.id, postId), eq(posts.userId, userId)));
+      }
+      validation = validateOrtakAlanMetadata(metadata, {
+        mode,
+        title: article.title,
+        hasCoverImage: Boolean(article.coverImageUrl),
+        authorMatched: Boolean(matchedAuthor),
+      });
+      if (validation.errors.length) {
+        return {
+          success: false,
+          error: validation.errors[0],
+          validation,
+          validationFailed: true,
+        };
+      }
+
+      article = applyOrtakAlanMetadata(article, metadata);
+    } else if (options.publishingMetadata && typeof options.publishingMetadata === "object") {
+      await db.update(posts).set({ publishingMetadata: options.publishingMetadata }).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
+    }
+
     const result =
       provider === "wordpress"
         ? await publishWordPress(credentials as WordPressCredentials, article, mode, options)
@@ -293,6 +381,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     return {
       success: true,
       publication: serializePublication(publication),
+      validation,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publishing failed";
@@ -314,8 +403,24 @@ export async function publishPost(userId: string, postId: string, integrationId:
       success: false,
       error: message,
       publication: serializePublication(publication),
+      validation,
     };
   }
+}
+
+function applyOrtakAlanMetadata(article: ArticlePayload, metadata: OrtakAlanPublishingMetadata): ArticlePayload {
+  return {
+    ...article,
+    slug: metadata.slug,
+    excerpt: metadata.excerpt,
+    metaTitle: metadata.metaTitle,
+    metaDescription: metadata.metaDescription,
+    tags: ortakAlanTags(metadata),
+    html: appendOrtakAlanDisclosures(article.html, metadata),
+    coverAltText: metadata.image.alt,
+    coverCaption: ortakAlanFeatureImageCaption(metadata),
+    authorId: metadata.author?.id || null,
+  };
 }
 
 export async function getPostPublications(userId: string, postId: string) {
@@ -474,6 +579,8 @@ function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacem
     metaDescription,
     coverImageUrl,
     coverAltText,
+    coverCaption: "",
+    authorId: null,
     inlineImages,
     appendedCta: ctaResult.cta,
   };
@@ -1072,8 +1179,28 @@ async function testGhost(credentials: GhostCredentials) {
   return { success: true, message: `Connected to ${data.site?.title || domainFromUrl(credentials.url)}` };
 }
 
+export async function getGhostAuthors(row: IntegrationRow) {
+  if (row.provider !== "ghost") throw new Error("Ghost authors are only available for Ghost integrations");
+  return listGhostAuthors(decryptProviderCredentials(row) as GhostCredentials);
+}
+
+async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAuthor[]> {
+  const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
+  });
+  if (!response.ok) throw new Error(`Ghost authors could not be loaded: ${response.status}`);
+  const data = await response.json() as { users?: Array<Partial<GhostAuthor>> };
+  return (data.users || []).map((author) => ({
+    id: String(author.id || ""),
+    email: String(author.email || ""),
+    slug: String(author.slug || ""),
+    name: String(author.name || author.email || "Ghost author"),
+    status: String(author.status || "active"),
+  })).filter((author) => author.id && author.status === "active");
+}
+
 async function publishGhost(credentials: GhostCredentials, article: ArticlePayload, mode: PublishMode, options: PublishOptions): Promise<PublishResult> {
-  const postType = options.postType === "page" ? "pages" : "posts";
+  const postType = article.authorId ? "posts" : options.postType === "page" ? "pages" : "posts";
   const featureImage = article.coverImageUrl ? await uploadGhostImage(credentials, article.coverImageUrl, article.title) : null;
   const uploadedInlineImages = await Promise.all(
     article.inlineImages.map(async (image, index) => ({
@@ -1089,18 +1216,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      [postType]: [{
-        title: article.title,
-        html,
-        status: mode === "publish" ? "published" : "draft",
-        slug: article.slug,
-        excerpt: article.excerpt,
-        custom_excerpt: article.excerpt,
-        meta_title: article.metaTitle,
-        meta_description: article.metaDescription,
-        tags: article.tags.map((name) => ({ name })),
-        ...(featureImage ? { feature_image: featureImage } : {}),
-      }],
+      [postType]: [ghostPostFields({ ...article, html }, mode, featureImage)],
     }),
   });
   if (!response.ok) throw new Error(`Ghost publish failed: ${await response.text()}`);
@@ -1111,6 +1227,24 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     externalId: row?.id || null,
     externalUrl: row?.url || null,
     responseData: { id: row?.id, status: row?.status },
+  };
+}
+
+export function ghostPostFields(article: ArticlePayload, mode: PublishMode, featureImage: string | null = article.coverImageUrl) {
+  return {
+    title: article.title,
+    html: article.html,
+    status: mode === "publish" ? "published" : "draft",
+    slug: article.slug,
+    excerpt: article.excerpt,
+    custom_excerpt: article.excerpt,
+    meta_title: article.metaTitle,
+    meta_description: article.metaDescription,
+    tags: article.tags.map((name) => ({ name })),
+    ...(article.authorId ? { authors: [{ id: article.authorId }] } : {}),
+    ...(featureImage ? { feature_image: featureImage } : {}),
+    ...(featureImage && article.coverAltText ? { feature_image_alt: article.coverAltText } : {}),
+    ...(featureImage && article.coverCaption ? { feature_image_caption: article.coverCaption } : {}),
   };
 }
 

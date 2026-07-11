@@ -38,6 +38,10 @@ export const users = pgTable("users", {
 export const feeds = pgTable("feeds", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references((): AnyPgColumn => sites.id, { onDelete: "set null" }),
+  integrationId: uuid("integration_id").references((): AnyPgColumn => siteIntegrations.id, { onDelete: "set null" }),
+  editorialDefaults: jsonb("editorial_defaults"),
+  routingVersion: integer("routing_version").default(0).notNull(),
   name: text("name").notNull(),
   sourceUrl: text("source_url"),
   platform: text("platform").default("rss").notNull(),
@@ -132,6 +136,9 @@ export const programmaticDatasets = pgTable("programmatic_datasets", {
 export const posts = pgTable("posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references((): AnyPgColumn => sites.id, { onDelete: "set null" }),
+  feedId: uuid("feed_id").references(() => feeds.id, { onDelete: "set null" }),
+  preferredIntegrationId: uuid("preferred_integration_id").references((): AnyPgColumn => siteIntegrations.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   content: text("content").notNull(),
   summary: text("summary"),
@@ -146,6 +153,7 @@ export const posts = pgTable("posts", {
   modelId: text("model_id").notNull(),
   coverImageUrl: text("cover_image_url"),
   inlineImages: text("inline_images").array(),
+  publishingMetadata: jsonb("publishing_metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -154,6 +162,9 @@ export const posts = pgTable("posts", {
 export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references((): AnyPgColumn => sites.id, { onDelete: "set null" }),
+  feedId: uuid("feed_id").references(() => feeds.id, { onDelete: "set null" }),
+  preferredIntegrationId: uuid("preferred_integration_id").references((): AnyPgColumn => siteIntegrations.id, { onDelete: "set null" }),
   sourceType: text("source_type").notNull(),
   sourceValue: text("source_value").notNull(),
   modelId: text("model_id").notNull(),
@@ -281,6 +292,7 @@ export const sites = pgTable("sites", {
   pageCount: integer("page_count").default(0),
   vectorCount: integer("vector_count").default(0),
   topics: text("topics").array(),
+  editorialTopics: text("editorial_topics").array(),
   language: text("language"),
   cta: text("cta"),
   internalLinkIndex: jsonb("internal_link_index"),

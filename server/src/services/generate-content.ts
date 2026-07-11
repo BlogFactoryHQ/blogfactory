@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings } from "../db/schema.js";
+import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings, sites, siteIntegrations } from "../db/schema.js";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
@@ -16,11 +16,13 @@ import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
 import { slugify } from "./publishing.js";
 import { retrieveKnowledgeChunks } from "./knowledge.js";
 import { buildVoiceContentInstructions } from "./voice-content.js";
-import { getEffectiveSettings, getGlobalSettings, updateGlobalSettings } from "./user-settings.js";
+import { getEffectiveSettings, getGlobalSettings, getPinnedSiteSettings, updateGlobalSettings } from "./user-settings.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings, type SportsNewsDecision } from "./sports-news.js";
 import { fetchSocialContent } from "./fetch-social-content.js";
 import { imageTargets } from "./image-slots.js";
+import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
+import { isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 
 interface GenerateOpts {
   userId: string;
@@ -38,6 +40,8 @@ interface GenerateOpts {
   draftVariationIndex?: number;
   draftVariationCount?: number;
   feedId?: string;
+  siteId?: string | null;
+  preferredIntegrationId?: string | null;
   extractFullContent?: boolean;
   filterOldPostsDays?: number;
   platformConfig?: any;
@@ -1341,11 +1345,51 @@ export async function generateContent(opts: GenerateOpts) {
     throw new Error("Add your OpenRouter API key in Settings before generating content");
   }
 
+  const [existingJob] = opts.jobId
+    ? await db.select().from(jobs).where(and(eq(jobs.id, opts.jobId), eq(jobs.userId, userId))).limit(1)
+    : [];
+  if (opts.jobId && !existingJob) throw new Error("Job not found");
+
+  const requestedFeedId = existingJob?.feedId || opts.feedId;
+  const [feedRecord] = requestedFeedId
+    ? await db.select().from(feeds).where(and(eq(feeds.id, requestedFeedId), eq(feeds.userId, userId))).limit(1)
+    : [];
+  if (requestedFeedId && !feedRecord) throw new Error("Feed not found");
+
+  const hasJobRoutingSnapshot = Boolean(existingJob && (existingJob.feedId || existingJob.siteId || existingJob.preferredIntegrationId));
+  let resolvedSiteId = hasJobRoutingSnapshot ? existingJob?.siteId || null : feedRecord?.siteId || opts.siteId || null;
+  let resolvedIntegrationId = hasJobRoutingSnapshot ? existingJob?.preferredIntegrationId || null : feedRecord?.integrationId || opts.preferredIntegrationId || null;
+
+  if (feedRecord && !hasJobRoutingSnapshot && feedRecord.routingVersion > 0) {
+    const route = await inspectFeedRouting(userId, feedRecord.siteId, feedRecord.integrationId, feedRecord.editorialDefaults);
+    if (!route.valid) {
+      await db.update(feeds).set({ isActive: false }).where(and(eq(feeds.id, feedRecord.id), eq(feeds.userId, userId)));
+      throw new Error(`Feed needs routing before it can run: ${route.errors.join("; ")}`);
+    }
+    resolvedSiteId = route.site?.id || null;
+    resolvedIntegrationId = route.integration?.id || null;
+  } else if (!feedRecord && !hasJobRoutingSnapshot) {
+    const [requestedSite] = resolvedSiteId
+      ? await db.select({ id: sites.id }).from(sites).where(and(eq(sites.id, resolvedSiteId), eq(sites.userId, userId))).limit(1)
+      : [];
+    if (resolvedSiteId && !requestedSite) throw new Error("Site not found");
+    const [requestedIntegration] = resolvedIntegrationId
+      ? await db.select({ id: siteIntegrations.id, siteId: siteIntegrations.siteId, status: siteIntegrations.status }).from(siteIntegrations).where(and(eq(siteIntegrations.id, resolvedIntegrationId), eq(siteIntegrations.userId, userId))).limit(1)
+      : [];
+    if (resolvedIntegrationId && !requestedIntegration) throw new Error("Integration not found");
+    if (requestedIntegration && resolvedSiteId && requestedIntegration.siteId !== resolvedSiteId) throw new Error("Publishing target does not belong to the selected site");
+    if (requestedIntegration && requestedIntegration.status !== "connected") throw new Error("Publishing target is not connected");
+    if (requestedIntegration && !resolvedSiteId) resolvedSiteId = requestedIntegration.siteId;
+  }
+
   // Get or create job
   let jobId = opts.jobId;
   if (!jobId) {
     const [job] = await db.insert(jobs).values({
       userId,
+      siteId: resolvedSiteId,
+      feedId: feedRecord?.id || null,
+      preferredIntegrationId: resolvedIntegrationId,
       sourceType: opts.sourceType,
       sourceValue: opts.sourceValue,
       modelId: opts.modelId || "openai/gpt-4o",
@@ -1360,13 +1404,21 @@ export async function generateContent(opts: GenerateOpts) {
       await db.update(campaignItems).set({ jobId }).where(eq(campaignItems.id, opts.campaignItemId));
     }
   } else {
-    await db.update(jobs).set({ status: "running", currentStep: "starting" }).where(eq(jobs.id, jobId));
+    await db.update(jobs).set({
+      siteId: resolvedSiteId,
+      feedId: feedRecord?.id || existingJob?.feedId || null,
+      preferredIntegrationId: resolvedIntegrationId,
+      status: "running",
+      currentStep: "starting",
+    }).where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)));
   }
 
   try {
-    // Budget is account-level; generation defaults are resolved from the active site profile.
+    // Budget is account-level; feed generation resolves defaults from its pinned site.
     const accountSettings = await getGlobalSettings(userId);
-    const settings = await getEffectiveSettings(userId);
+    const settings = feedRecord || hasJobRoutingSnapshot
+      ? await getPinnedSiteSettings(userId, resolvedSiteId)
+      : await getEffectiveSettings(userId, resolvedSiteId);
     if (accountSettings?.budgetPaused) {
       await db.update(jobs).set({ status: "failed", errorMessage: "Generation paused — monthly budget exceeded", completedAt: new Date() }).where(eq(jobs.id, jobId));
       return { jobId, status: "failed", error: "Budget exceeded" };
@@ -1408,10 +1460,6 @@ export async function generateContent(opts: GenerateOpts) {
     const requestedModelId = opts.modelId || personaModel;
     const modelId = await resolveOpenRouterTextModel(openRouterKey, requestedModelId);
 
-    const [feedRecord] = opts.feedId
-      ? await db.select().from(feeds).where(and(eq(feeds.id, opts.feedId), eq(feeds.userId, userId))).limit(1)
-      : [];
-
     const sourceValue = opts.sourceValue || feedRecord?.sourceUrl || "";
     const feedFilterType = opts.filterType ?? feedRecord?.filterType ?? "none";
     const feedFilterValue = opts.filterValue ?? feedRecord?.filterValue ?? undefined;
@@ -1421,8 +1469,8 @@ export async function generateContent(opts: GenerateOpts) {
     const feedExtractFullContent = opts.extractFullContent ?? feedRecord?.extractFullContent ?? false;
 
     // Update feed last_run_at
-    if (opts.feedId) {
-      await db.update(feeds).set({ lastRunAt: new Date() }).where(eq(feeds.id, opts.feedId));
+    if (feedRecord) {
+      await db.update(feeds).set({ lastRunAt: new Date() }).where(and(eq(feeds.id, feedRecord.id), eq(feeds.userId, userId)));
     }
 
     await db.update(jobs).set({ currentStep: "fetching_content" }).where(eq(jobs.id, jobId));
@@ -1787,8 +1835,72 @@ export async function generateContent(opts: GenerateOpts) {
         totalCost += cost;
         totalTokens += usageTotals.total;
 
+        const [destinationSite] = resolvedSiteId
+          ? await db.select().from(sites).where(and(eq(sites.id, resolvedSiteId), eq(sites.userId, userId))).limit(1)
+          : [];
+        const [destinationIntegration] = resolvedIntegrationId
+          ? await db.select().from(siteIntegrations).where(and(eq(siteIntegrations.id, resolvedIntegrationId), eq(siteIntegrations.userId, userId))).limit(1)
+          : [];
+        const ortakAlan = Boolean(destinationIntegration && isOrtakAlanProfile(destinationIntegration.config));
+        const editorialDefaults = normalizeFeedEditorialDefaults(feedRecord?.editorialDefaults, ortakAlan);
+        const topicResult = feedRecord && editorialDefaults.aiTopicsEnabled && destinationSite?.editorialTopics?.length
+          ? await classifyEditorialTopics({ apiKey: openRouterKey, model: modelId, title: postTitle, content: genContent, vocabulary: destinationSite.editorialTopics })
+          : { topics: [] as string[], warning: null as string | null };
+        const topicTags = mergeTopicTags(
+          ortakAlan ? editorialDefaults.defaultTopicTags : editorialDefaults.defaultTags,
+          topicResult.topics,
+          ortakAlan ? 7 : 8,
+        );
+        const articleText = plainText(genContent, 500);
+        const excerpt = truncateAtWord(articleText, 180);
+        const metaTitle = truncateAtWord(postTitle, 60);
+        const metaDescription = truncateAtWord(articleText, 155);
+        let publishingMetadata: Record<string, unknown> | null = null;
+        if (feedRecord && ortakAlan) {
+          const integrationConfig = (destinationIntegration?.config || {}) as Record<string, unknown>;
+          publishingMetadata = {
+            ...normalizeOrtakAlanMetadata({
+              contentType: editorialDefaults.contentType,
+              slug: slugify(postTitle),
+              excerpt,
+              metaTitle,
+              metaDescription,
+              topicTags,
+              sources: [{
+                name: feedRecord.name,
+                url: article.url || "",
+                type: "Haber kaynağı",
+                publishedAt: rssPublicationDate(article.pubDate),
+                note: `Bu içerik ${feedRecord.name} kaynağındaki orijinal yayından hazırlanmıştır.`,
+              }],
+              author: integrationConfig.defaultAuthor || null,
+              editorialOwner: integrationConfig.editorialOwner || "",
+              aiAssisted: true,
+              aiUsageNote: "Kaynak tarama ve taslak hazırlamada yapay zeka kullanılmıştır; yayın öncesi editöryal kontrol gereklidir.",
+              image: { alt: "", source: "", license: "", aiGenerated: false },
+            }),
+            profile: "ortak_alan_news",
+            routingWarnings: [topicResult.warning, rssPublicationDate(article.pubDate) ? null : "RSS item has no valid original publication date", "Cover image metadata will be completed when the image is attached"].filter(Boolean),
+          };
+        } else if (feedRecord) {
+          publishingMetadata = {
+            profile: "generic",
+            postType: editorialDefaults.postType,
+            slug: slugify(postTitle),
+            excerpt,
+            metaTitle,
+            metaDescription,
+            tags: topicTags,
+            categories: editorialDefaults.defaultCategories,
+            routingWarnings: [topicResult.warning].filter(Boolean),
+          };
+        }
+
         const [post] = await db.insert(posts).values({
           userId,
+          siteId: resolvedSiteId,
+          feedId: feedRecord?.id || null,
+          preferredIntegrationId: resolvedIntegrationId,
           title: postTitle,
           content: genContent,
           status: "draft",
@@ -1800,6 +1912,8 @@ export async function generateContent(opts: GenerateOpts) {
           campaignItemId: opts.campaignItemId || null,
           personaId: opts.personaId || null,
           modelId,
+          summary: excerpt,
+          publishingMetadata,
         }).returning();
 
         const contractMetadata = {

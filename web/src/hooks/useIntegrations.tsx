@@ -41,6 +41,14 @@ export interface Publication {
   published_at: string | null;
 }
 
+export interface GhostAuthor {
+  id: string;
+  email: string;
+  slug: string;
+  name: string;
+  status: string;
+}
+
 interface IntegrationInput {
   id?: string;
   provider: IntegrationProvider;
@@ -95,4 +103,17 @@ export function useIntegrations(siteId?: string | null) {
     testIntegration,
     deleteIntegration,
   };
+}
+
+export function useGhostAuthors(integrationId?: string | null, enabled = true) {
+  const query = useQuery({
+    queryKey: ["ghost-authors", integrationId],
+    queryFn: async () => {
+      const response = await api.get<{ authors: GhostAuthor[] }>(`/integrations/${integrationId}/authors`);
+      return response.authors;
+    },
+    enabled: Boolean(integrationId && enabled),
+    staleTime: 60_000,
+  });
+  return { authors: query.data || [], isLoading: query.isLoading, error: query.error };
 }

@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs } from "../db/schema.js";
+import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs, sites, feeds, siteIntegrations } from "../db/schema.js";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
+import { attachPostImage } from "../services/image-post-attachments.js";
 
 export const postsRoutes = new Hono();
 
@@ -16,6 +17,9 @@ postsRoutes.get("/", async (c) => {
   const rows = await db
     .select({
       id: posts.id,
+      site_id: posts.siteId,
+      feed_id: posts.feedId,
+      preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
       content: posts.content,
       summary: posts.summary,
@@ -35,11 +39,20 @@ postsRoutes.get("/", async (c) => {
       generation_plan: jobs.generationPlan,
       persona_name: personas.name,
       campaign_name: campaigns.name,
+      site_name: sites.name,
+      feed_name: feeds.name,
+      integration_name: siteIntegrations.displayName,
+      integration_provider: siteIntegrations.provider,
+      integration_status: siteIntegrations.status,
+      integration_site_id: siteIntegrations.siteId,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
     .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
     .leftJoin(jobs, eq(posts.jobId, jobs.id))
+    .leftJoin(sites, and(eq(posts.siteId, sites.id), eq(sites.userId, userId)))
+    .leftJoin(feeds, and(eq(posts.feedId, feeds.id), eq(feeds.userId, userId)))
+    .leftJoin(siteIntegrations, and(eq(posts.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
     .where(ids.length ? and(eq(posts.userId, userId), inArray(posts.id, ids)) : eq(posts.userId, userId))
     .orderBy(desc(posts.createdAt));
 
@@ -77,8 +90,9 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  return c.json(rows.map(({ persona_name, campaign_name, ...post }) => ({
+  return c.json(rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => ({
     ...post,
+    routing_status: post.site_id && post.preferred_integration_id && integration_site_id === post.site_id && post.integration_status === "connected" ? "ready" : "needs_routing",
     image_asset_count: imageCounts.get(post.id) || 0,
     image_prompt_count: promptCounts.get(post.id) || 0,
     personas: persona_name ? { name: persona_name } : null,
@@ -171,8 +185,9 @@ postsRoutes.post("/:id/publish", async (c) => {
     metaTitle: body.metaTitle || body.meta_title,
     metaDescription: body.metaDescription || body.meta_description,
     excerpt: body.excerpt,
+    publishingMetadata: body.publishingMetadata || body.publishing_metadata,
   });
-  return c.json(result, result.success ? 200 : 502);
+  return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);
 });
 
 postsRoutes.post("/:id/images", async (c) => {
@@ -204,10 +219,18 @@ postsRoutes.post("/:id/images", async (c) => {
     } as any)
     .where(eq(imageAssets.id, asset.id));
 
-  const update: Record<string, any> = {};
-  if (type === "cover") update.coverImageUrl = asset.storagePath;
-  else update.inlineImages = [...(post.inlineImages || []), asset.storagePath];
-  await db.update(posts).set(update).where(and(eq(posts.id, id), eq(posts.userId, userId)));
+  if (type === "cover") {
+    await attachPostImage(id, {
+      type: "cover",
+      position: Number.isFinite(position) ? position : 0,
+      aspectRatio: "16:9",
+      resolution: "1K",
+      prompt: "",
+      altText: "",
+    }, asset.storagePath, "auto", userId);
+  } else {
+    await db.update(posts).set({ inlineImages: [...(post.inlineImages || []), asset.storagePath] }).where(and(eq(posts.id, id), eq(posts.userId, userId)));
+  }
 
   return c.json({
     asset: {
@@ -226,6 +249,9 @@ postsRoutes.get("/:id", async (c) => {
   const [post] = await db
     .select({
       id: posts.id,
+      site_id: posts.siteId,
+      feed_id: posts.feedId,
+      preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
       content: posts.content,
       summary: posts.summary,
@@ -240,23 +266,34 @@ postsRoutes.get("/:id", async (c) => {
       model_id: posts.modelId,
       cover_image_url: posts.coverImageUrl,
       inline_images: posts.inlineImages,
+      publishing_metadata: posts.publishingMetadata,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
       persona_name: personas.name,
       campaign_name: campaigns.name,
+      site_name: sites.name,
+      feed_name: feeds.name,
+      integration_name: siteIntegrations.displayName,
+      integration_provider: siteIntegrations.provider,
+      integration_status: siteIntegrations.status,
+      integration_site_id: siteIntegrations.siteId,
     })
     .from(posts)
     .leftJoin(personas, eq(posts.personaId, personas.id))
     .leftJoin(campaigns, eq(posts.campaignId, campaigns.id))
+    .leftJoin(sites, and(eq(posts.siteId, sites.id), eq(sites.userId, userId)))
+    .leftJoin(feeds, and(eq(posts.feedId, feeds.id), eq(feeds.userId, userId)))
+    .leftJoin(siteIntegrations, and(eq(posts.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
     .where(and(eq(posts.id, id), eq(posts.userId, userId)))
     .limit(1);
 
   if (!post) return c.json({ error: "Post not found" }, 404);
-  const { persona_name, campaign_name, ...result } = post;
+  const { persona_name, campaign_name, integration_site_id, ...result } = post;
   const storedInlineImages = normalizeInlineImages(result.inline_images, result.cover_image_url);
   const postImageAssets = await db
     .select({
       storage_path: imageAssets.storagePath,
+      alt_text: imageAssets.altText,
       type: imageAssets.type,
       provider: imageAssets.provider,
       model_id: imageAssets.modelId,
@@ -286,6 +323,7 @@ postsRoutes.get("/:id", async (c) => {
     ? await db
       .select({
         storage_path: imageAssets.storagePath,
+        alt_text: imageAssets.altText,
         type: imageAssets.type,
         provider: imageAssets.provider,
         model_id: imageAssets.modelId,
@@ -300,6 +338,7 @@ postsRoutes.get("/:id", async (c) => {
     : [];
   return c.json({
     ...result,
+    routing_status: result.site_id && result.preferred_integration_id && integration_site_id === result.site_id && result.integration_status === "connected" ? "ready" : "needs_routing",
     content: inlineImages.length > 1
       ? reflowInlineImages(result.content || "", inlineImages.map((url) => ({ url })), "auto")
       : result.content,

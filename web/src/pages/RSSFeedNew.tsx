@@ -38,6 +38,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { FeedPreview } from "@/components/feeds/FeedPreview";
 import { normalizeHttpUrl, stripHttpProtocol, validateSourceUrl, validatePlatformInput } from "@/lib/url-validation";
 import { feedDraftQueueLabel, queueFeedDraftJobs } from "@/lib/feed-generation";
+import { FeedRoutingFields } from "@/components/feeds/FeedRoutingFields";
+import { EMPTY_FEED_DEFAULTS, routeReady, type FeedRouteValue } from "@/lib/feed-routing";
+import { useIntegrations } from "@/hooks/useIntegrations";
+import { useSites } from "@/hooks/useSites";
 import {
   SplitImageGenerationSettings,
   SplitImageConfig,
@@ -119,6 +123,10 @@ export default function RSSFeedNew() {
   const [modelId, setModelId] = useState("");
   const [frequency, setFrequency] = useState("daily");
   const [isActive, setIsActive] = useState(true);
+  const { activeSiteId } = useSites();
+  const [routing, setRouting] = useState<FeedRouteValue>({ siteId: "", integrationId: "", editorialDefaults: { ...EMPTY_FEED_DEFAULTS } });
+  const { integrations: routingIntegrations } = useIntegrations(routing.siteId);
+  const routingIsReady = routeReady(routing, routingIntegrations.find((integration) => integration.id === routing.integrationId));
 
   // UI state
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -187,6 +195,10 @@ export default function RSSFeedNew() {
   useEffect(() => {
     if (!modelId && fallbackTextModelId) setModelId(fallbackTextModelId);
   }, [fallbackTextModelId, modelId]);
+
+  useEffect(() => {
+    if (!routing.siteId && activeSiteId) setRouting((current) => ({ ...current, siteId: activeSiteId }));
+  }, [activeSiteId, routing.siteId]);
 
   useEffect(() => {
     if (!selectedModelUnavailable || !fallbackTextModelId) return;
@@ -261,6 +273,10 @@ export default function RSSFeedNew() {
         filter_old_posts_days: filterOldPostsDays || null,
         extract_full_content: extractFullContent,
         posts_per_run: postsPerRun,
+        site_id: routing.siteId || null,
+        integration_id: routing.integrationId || null,
+        editorial_defaults: routing.editorialDefaults,
+        routing_version: 1,
       });
 
       if (runNow && personaId) {
@@ -277,6 +293,8 @@ export default function RSSFeedNew() {
             postsPerRun: 1,
             feedItemOffset,
             feedId: feed.id,
+            siteId: feed.site_id,
+            preferredIntegrationId: feed.integration_id,
             platformConfig,
             filterType,
             filterValue,
@@ -309,7 +327,10 @@ export default function RSSFeedNew() {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
-      if (result.ranNow) {
+      if (result.feed?.routing_status === "needs_routing") {
+        toast.warning("Feed saved in a paused state. Complete destination routing before running it.");
+        navigate("/rss-feeds");
+      } else if (result.ranNow) {
         toast.success(`Feed saved and ${feedDraftQueueLabel(result.queuedJobs || 1)} queued. Check the Job Queue for progress.`);
         navigate("/jobs");
       } else {
@@ -653,6 +674,8 @@ export default function RSSFeedNew() {
             </div>
           </section>
 
+          <FeedRoutingFields value={routing} onChange={setRouting} />
+
           {/* Filtering */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
@@ -918,7 +941,7 @@ export default function RSSFeedNew() {
               <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable}>
+              <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable || !routingIsReady}>
                 {isSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (

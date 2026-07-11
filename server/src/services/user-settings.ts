@@ -140,6 +140,13 @@ export async function getEffectiveSettings(userId: string, siteId?: string | nul
   return mergeAccountFields(scoped, global);
 }
 
+export async function getPinnedSiteSettings(userId: string, siteId: string | null) {
+  const global = await ensureGlobalSettings(userId);
+  if (!siteId) return global;
+  const scoped = await ensureSiteSettings(userId, siteId);
+  return mergeAccountFields(scoped, global);
+}
+
 export async function updateSiteSettings(userId: string, siteId: string, update: UserSettingsUpdate) {
   const existing = await ensureSiteSettings(userId, siteId);
   const [updated] = await db

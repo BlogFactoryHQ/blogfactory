@@ -87,6 +87,10 @@ interface Post {
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
   campaigns?: { name: string } | null;
+  site_id?: string | null;
+  feed_id?: string | null;
+  site_name?: string | null;
+  feed_name?: string | null;
 }
 
 type DisplayRow =

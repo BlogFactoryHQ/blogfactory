@@ -18,6 +18,8 @@ export interface Site {
   vectorCount: number;
   vector_count?: number;
   topics: string[];
+  editorialTopics: string[];
+  editorial_topics?: string[];
   language?: string | null;
   cta?: string | null;
   internalLinkLastSyncedAt?: string | null;
@@ -51,6 +53,7 @@ interface SiteContextValue {
   activateSite: (siteId: string) => Promise<void>;
   refreshSite: (siteId: string) => Promise<Site>;
   deleteSite: (siteId: string) => Promise<void>;
+  updateEditorialTopics: (siteId: string, topics: string[]) => Promise<Site>;
 }
 
 const SiteContext = createContext<SiteContextValue | undefined>(undefined);
@@ -66,6 +69,7 @@ function normalizeSite(site: Site): Site {
     createdAt: site.createdAt ?? site.created_at,
     updatedAt: site.updatedAt ?? site.updated_at,
     topics: site.topics || [],
+    editorialTopics: site.editorialTopics ?? site.editorial_topics ?? [],
   };
 }
 
@@ -128,6 +132,14 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const editorialTopicsMutation = useMutation({
+    mutationFn: async ({ siteId, topics }: { siteId: string; topics: string[] }) => {
+      const response = await api.put<{ site: Site }>(`/sites/${siteId}/editorial-topics`, { topics });
+      return normalizeSite(response.site);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sites"] }),
+  });
+
   const value = useMemo<SiteContextValue>(() => {
     const sites = sitesQuery.data?.sites || [];
     const activeSiteId = sitesQuery.data?.activeSiteId || null;
@@ -145,6 +157,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       activateSite: async (siteId) => { await activateSiteMutation.mutateAsync(siteId); },
       refreshSite: async (siteId) => refreshSiteMutation.mutateAsync(siteId),
       deleteSite: async (siteId) => { await deleteSiteMutation.mutateAsync(siteId); },
+      updateEditorialTopics: async (siteId, topics) => editorialTopicsMutation.mutateAsync({ siteId, topics }),
     };
   }, [
     sitesQuery.data,
@@ -153,6 +166,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     activateSiteMutation,
     refreshSiteMutation,
     deleteSiteMutation,
+    editorialTopicsMutation,
   ]);
 
   return <SiteContext.Provider value={value}>{children}</SiteContext.Provider>;

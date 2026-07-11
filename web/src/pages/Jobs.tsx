@@ -59,6 +59,11 @@ interface Job {
   created_at: string;
   completed_at: string | null;
   generation_plan: any;
+  site_id?: string | null;
+  feed_id?: string | null;
+  preferred_integration_id?: string | null;
+  site_name?: string | null;
+  feed_name?: string | null;
   personas?: { name: string } | null;
   child_jobs?: Job[];
   is_batch?: boolean;
@@ -618,6 +623,7 @@ export default function Jobs() {
                         <SourceIcon className="h-4 w-4 text-muted-foreground" />
                         <span className="capitalize">{job.source_type.replace("_", " ")}</span>
                       </div>
+                      {(job.site_name || job.feed_name) && <p className="mt-1 text-[11px] text-muted-foreground">{[job.site_name, job.feed_name].filter(Boolean).join(" · ")}</p>}
                     </TableCell>
                     <TableCell>{job.personas?.name || "—"}</TableCell>
                     <TableCell>

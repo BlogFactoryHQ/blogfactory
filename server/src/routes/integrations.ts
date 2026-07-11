@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { siteIntegrations, sites } from "../db/schema.js";
+import { feeds, siteIntegrations, sites } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import {
   encryptProviderCredentials,
+  getGhostAuthors,
   isPublishingProvider,
   listUserIntegrations,
   serializeIntegration,
@@ -112,9 +113,28 @@ integrationsRoutes.post("/:id/test", async (c) => {
   }
 });
 
+integrationsRoutes.get("/:id/authors", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const [integration] = await db
+    .select()
+    .from(siteIntegrations)
+    .where(and(eq(siteIntegrations.id, id), eq(siteIntegrations.userId, userId)))
+    .limit(1);
+  if (!integration) return c.json({ error: "Integration not found" }, 404);
+  if (integration.provider !== "ghost") return c.json({ error: "Authors are only available for Ghost integrations" }, 400);
+
+  try {
+    return c.json({ authors: await getGhostAuthors(integration) });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Ghost authors could not be loaded" }, 502);
+  }
+});
+
 integrationsRoutes.delete("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
+  await db.update(feeds).set({ isActive: false, integrationId: null }).where(and(eq(feeds.integrationId, id), eq(feeds.userId, userId)));
   const [deleted] = await db
     .delete(siteIntegrations)
     .where(and(eq(siteIntegrations.id, id), eq(siteIntegrations.userId, userId)))

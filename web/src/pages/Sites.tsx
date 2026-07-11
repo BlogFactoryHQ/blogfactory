@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Check, Globe2, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Globe2, Loader2, Plus, RefreshCw, Tags, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
@@ -8,13 +8,19 @@ import { InputAffordance } from "@/components/ui/input-affordance";
 import { Badge } from "@/components/ui/badge";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useSites } from "@/hooks/useSites";
+import type { Site } from "@/hooks/useSites";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 export default function Sites() {
-  const { sites, activeSiteId, createSite, activateSite, refreshSite, deleteSite, isCreating, isRefreshing } = useSites();
+  const { sites, activeSiteId, createSite, activateSite, refreshSite, deleteSite, updateEditorialTopics, isCreating, isRefreshing } = useSites();
   const [siteUrl, setSiteUrl] = useState("");
+  const [topicSite, setTopicSite] = useState<Site | null>(null);
+  const [topicInput, setTopicInput] = useState("");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -114,6 +120,7 @@ export default function Sites() {
                           {site.pageCount} pages, {site.vectorCount} vectors
                           {site.topics.length ? ` · ${site.topics.slice(0, 3).join(", ")}` : ""}
                         </p>
+                        {site.editorialTopics.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{site.editorialTopics.slice(0, 6).map((topic) => <Badge key={topic} variant="outline" className="text-[10px]">{topic}</Badge>)}</div>}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => activateSite(site.id)} disabled={active}>
@@ -123,6 +130,9 @@ export default function Sites() {
                         <Button variant="outline" size="sm" onClick={() => refreshSite(site.id)} disabled={isRefreshing}>
                           <RefreshCw className="mr-2 h-4 w-4" />
                           Refresh
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => { setTopicSite(site); setTopicInput(site.editorialTopics.join(", ")); }}>
+                          <Tags className="mr-2 h-4 w-4" /> Topics
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => deleteSite(site.id)}>
                           <Trash2 className="mr-2 h-4 w-4" />
@@ -137,6 +147,13 @@ export default function Sites() {
           </BywordCard>
         </div>
       </div>
+      <Dialog open={Boolean(topicSite)} onOpenChange={(open) => !open && setTopicSite(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editorial Topics · {topicSite?.name}</DialogTitle><DialogDescription>Controlled labels used by RSS topic suggestions. Sitemap topics remain separate.</DialogDescription></DialogHeader>
+          <div className="space-y-2"><Label>Topic vocabulary</Label><Input value={topicInput} onChange={(event) => setTopicInput(event.target.value)} placeholder="Teknoloji, Yapay Zeka, İş Dünyası" /><p className="text-xs text-muted-foreground">Comma-separated, up to 50 topics.</p></div>
+          <DialogFooter><Button variant="outline" onClick={() => setTopicSite(null)}>Cancel</Button><Button onClick={async () => { if (!topicSite) return; await updateEditorialTopics(topicSite.id, topicInput.split(",").map((item) => item.trim()).filter(Boolean)); toast.success("Editorial topics saved"); setTopicSite(null); }}>Save topics</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </BywordPageShell>
   );
 }
