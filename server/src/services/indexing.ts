@@ -2,7 +2,7 @@ import { importPKCS8, jwtVerify, SignJWT } from "jose";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { indexingIntegrations, indexingSubmissions, sites } from "../db/schema.js";
-import { decryptSecret, encryptSecret } from "./api-keys.js";
+import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
 
 const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const GOOGLE_INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
@@ -49,6 +49,8 @@ export function serializeIndexingIntegration(row: IntegrationRow) {
     displayName: row.displayName,
     display_name: row.displayName,
     status: row.status,
+    credentialStatus: encryptedCredentialStatus(row.credentialsEncrypted),
+    credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
     autoSubmit: row.autoSubmit,
     auto_submit: row.autoSubmit,
     credentialHint: row.credentialHint,

@@ -22,7 +22,7 @@ describe("queueFeedDraftJobs", () => {
   it("reports failed queue attempts with the feed draft total", async () => {
     await expect(queueFeedDraftJobs(3, async (offset) => {
       if (offset === 1) throw new Error("nope");
-    })).rejects.toThrow("1/3 feed draft jobs failed to queue");
+    })).rejects.toThrow("1/3 feed draft jobs failed to queue: nope");
   });
 });
 

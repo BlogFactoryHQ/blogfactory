@@ -18,6 +18,7 @@ import {
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { connectionReady } from "@/lib/credential-status";
 import { safeLocaleString } from "@/lib/date-format";
 import type { ListPagination } from "@/lib/list-query";
 
@@ -118,7 +119,7 @@ export default function BatchImport() {
   });
   const posts = useMemo(() => postList?.items || [], [postList?.items]);
 
-  const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
+  const connected = useMemo(() => integrations.filter(connectionReady), [integrations]);
   const batchImports = useMemo(() => posts.filter((post) => post.source_type === "batch_import"), [posts]);
 
   const updateItem = (id: string, patch: Partial<ImportItem>) => {

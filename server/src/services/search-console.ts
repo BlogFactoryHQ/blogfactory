@@ -2,7 +2,7 @@ import { importPKCS8, jwtVerify, SignJWT } from "jose";
 import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
-import { decryptSecret, encryptSecret } from "./api-keys.js";
+import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
 import { refreshOptimizePages } from "./optimize.js";
 
 const SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
@@ -117,6 +117,8 @@ export function serializeSearchConsoleIntegration(row: IntegrationRow) {
     propertyUrl: row.propertyUrl,
     property_url: row.propertyUrl,
     status: row.status,
+    credentialStatus: encryptedCredentialStatus(row.credentialsEncrypted),
+    credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
     credentialHint: row.credentialHint,
     credential_hint: row.credentialHint,
     lastTestedAt: row.lastTestedAt,

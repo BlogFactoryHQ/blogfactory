@@ -85,14 +85,19 @@ import {
 interface ApiKeyMetadata {
   hasOpenrouterKey: boolean;
   openrouterKeyLast4: string | null;
+  openrouterCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   hasGoogleAiKey: boolean;
   googleKeyLast4: string | null;
+  googleAiCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   hasOpenaiKey: boolean;
   openaiKeyLast4: string | null;
+  openaiCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   hasPexelsKey: boolean;
   pexelsKeyLast4: string | null;
+  pexelsCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   hasPixabayKey: boolean;
   pixabayKeyLast4: string | null;
+  pixabayCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   updatedAt: string | null;
 }
 
@@ -198,6 +203,14 @@ const formatSavedAt = (value?: string | null) => {
   if (!value) return "Never saved";
   return `Saved ${new Date(value).toLocaleDateString()}`;
 };
+
+const keyBadgeText = (saved: boolean | undefined, last4?: string | null, status?: string) => {
+  if (status === "undecryptable") return "Needs re-save";
+  return saved ? `Saved ****${last4}` : "Missing";
+};
+
+const keyBadgeVariant = (saved: boolean | undefined, status?: string) =>
+  status === "undecryptable" ? "destructive" : saved ? "default" : "secondary";
 
 const unsavedBadge = (state: DirtyState) =>
   state === "dirty" ? (
@@ -952,8 +965,8 @@ export default function Settings() {
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="openrouter-key">OpenRouter</Label>
-                    <Badge variant={apiKeys?.hasOpenrouterKey ? "default" : "secondary"}>
-                      {apiKeys?.hasOpenrouterKey ? `Saved ****${apiKeys.openrouterKeyLast4}` : "Missing"}
+                    <Badge variant={keyBadgeVariant(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterCredentialStatus)}>
+                      {keyBadgeText(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterKeyLast4, apiKeys?.openrouterCredentialStatus)}
                     </Badge>
                   </div>
                   <Input
@@ -1000,8 +1013,8 @@ export default function Settings() {
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="google-key">Google PDF Import</Label>
-                    <Badge variant={apiKeys?.hasGoogleAiKey ? "default" : "secondary"}>
-                      {apiKeys?.hasGoogleAiKey ? `Saved ****${apiKeys.googleKeyLast4}` : "Missing"}
+                    <Badge variant={keyBadgeVariant(apiKeys?.hasGoogleAiKey, apiKeys?.googleAiCredentialStatus)}>
+                      {keyBadgeText(apiKeys?.hasGoogleAiKey, apiKeys?.googleKeyLast4, apiKeys?.googleAiCredentialStatus)}
                     </Badge>
                   </div>
                   <Input
@@ -1048,8 +1061,8 @@ export default function Settings() {
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="openai-key">OpenAI Internal Linking</Label>
-                    <Badge variant={apiKeys?.hasOpenaiKey ? "default" : "secondary"}>
-                      {apiKeys?.hasOpenaiKey ? `Saved ****${apiKeys.openaiKeyLast4}` : "Missing"}
+                    <Badge variant={keyBadgeVariant(apiKeys?.hasOpenaiKey, apiKeys?.openaiCredentialStatus)}>
+                      {keyBadgeText(apiKeys?.hasOpenaiKey, apiKeys?.openaiKeyLast4, apiKeys?.openaiCredentialStatus)}
                     </Badge>
                   </div>
                   <Input
@@ -1096,8 +1109,8 @@ export default function Settings() {
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="pixabay-key">Pixabay Stock Photos</Label>
-                    <Badge variant={apiKeys?.hasPixabayKey ? "default" : "secondary"}>
-                      {apiKeys?.hasPixabayKey ? `Saved ****${apiKeys.pixabayKeyLast4}` : "Missing"}
+                    <Badge variant={keyBadgeVariant(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)}>
+                      {keyBadgeText(apiKeys?.hasPixabayKey, apiKeys?.pixabayKeyLast4, apiKeys?.pixabayCredentialStatus)}
                     </Badge>
                   </div>
                   <Input
@@ -1135,8 +1148,8 @@ export default function Settings() {
                 <div className="space-y-3 rounded-lg border border-byword-border p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="pexels-key">Pexels Stock Photos</Label>
-                    <Badge variant={apiKeys?.hasPexelsKey ? "default" : "secondary"}>
-                      {apiKeys?.hasPexelsKey ? `Saved ****${apiKeys.pexelsKeyLast4}` : "Missing"}
+                    <Badge variant={keyBadgeVariant(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)}>
+                      {keyBadgeText(apiKeys?.hasPexelsKey, apiKeys?.pexelsKeyLast4, apiKeys?.pexelsCredentialStatus)}
                     </Badge>
                   </div>
                   <Input
@@ -1863,11 +1876,11 @@ export default function Settings() {
                         <div className="space-y-2">
                           <Label>Stock Providers</Label>
                           <div className="flex flex-wrap gap-2">
-                            <Badge variant={apiKeys?.hasPixabayKey ? "secondary" : "outline"}>
-                              Pixabay {apiKeys?.hasPixabayKey ? "saved" : "missing"}
+                            <Badge variant={keyBadgeVariant(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)}>
+                              Pixabay {apiKeys?.pixabayCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPixabayKey ? "saved" : "missing"}
                             </Badge>
-                            <Badge variant={apiKeys?.hasPexelsKey ? "secondary" : "outline"}>
-                              Pexels {apiKeys?.hasPexelsKey ? "saved" : "missing"}
+                            <Badge variant={keyBadgeVariant(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)}>
+                              Pexels {apiKeys?.pexelsCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPexelsKey ? "saved" : "missing"}
                             </Badge>
                             <Badge variant="secondary">Openverse available</Badge>
                           </div>

@@ -18,18 +18,21 @@ export async function queueFeedDraftJobs(
   const run = { token: crypto.randomUUID(), size: safeTotal };
   let queued = 0;
   let failed = 0;
+  let firstError: unknown = null;
 
   for (let index = 0; index < safeTotal; index += 1) {
     try {
       await queueOneDraft(index, { ...run, remaining: safeTotal - index });
       queued += 1;
-    } catch {
+    } catch (error) {
+      firstError ??= error;
       failed += 1;
     }
   }
 
   if (failed) {
-    throw new Error(`${failed}/${safeTotal} feed draft job${safeTotal === 1 ? "" : "s"} failed to queue`);
+    const message = firstError instanceof Error ? `: ${firstError.message}` : "";
+    throw new Error(`${failed}/${safeTotal} feed draft job${safeTotal === 1 ? "" : "s"} failed to queue${message}`);
   }
 
   return { queued, failed, total: safeTotal };

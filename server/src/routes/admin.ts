@@ -3,10 +3,13 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys, users } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
+import { accountCredentialStatus } from "../services/api-keys.js";
 
 export const adminRoutes = new Hono();
 
 function userRow(row: any) {
+  const openrouterCredentialStatus = accountCredentialStatus("openrouter", row.openrouterApiKeyEncrypted);
+  const googleAiCredentialStatus = accountCredentialStatus("google", row.googleAiKeyEncrypted);
   return {
     id: row.id,
     email: row.email,
@@ -19,10 +22,12 @@ function userRow(row: any) {
     rejectedReason: row.rejectedReason,
     lastLoginAt: row.lastLoginAt,
     createdAt: row.createdAt,
-    hasOpenrouterKey: Boolean(row.openrouterApiKeyEncrypted),
-    openrouterKeyLast4: row.openrouterKeyLast4 || null,
-    hasGoogleAiKey: Boolean(row.googleAiKeyEncrypted),
-    googleKeyLast4: row.googleKeyLast4 || null,
+    hasOpenrouterKey: openrouterCredentialStatus === "usable",
+    openrouterKeyLast4: openrouterCredentialStatus === "usable" ? row.openrouterKeyLast4 || null : null,
+    openrouterCredentialStatus,
+    hasGoogleAiKey: googleAiCredentialStatus === "usable",
+    googleKeyLast4: googleAiCredentialStatus === "usable" ? row.googleKeyLast4 || null : null,
+    googleAiCredentialStatus,
   };
 }
 

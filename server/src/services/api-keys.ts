@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
 export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay";
+export type CredentialStatus = "usable" | "missing" | "undecryptable";
 
 function encryptionKey(): Buffer {
   const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
@@ -39,32 +40,62 @@ export function decryptSecret(value: string): string {
   ]).toString("utf8");
 }
 
-function decryptStoredSecret(value?: string | null): string | null {
+function decryptStoredSecret(value?: string | null, warn = true): string | null {
   if (!value) return null;
   try {
     return decryptSecret(value);
   } catch {
-    console.warn("[api-keys] Stored API key could not be decrypted; re-save it.");
+    if (warn) console.warn("[api-keys] Stored API key could not be decrypted; re-save it.");
     return null;
   }
 }
 
-function last4(value: string): string {
+export function encryptedCredentialStatus(value?: string | null): CredentialStatus {
+  if (!value) return "missing";
+  try {
+    decryptSecret(value);
+    return "usable";
+  } catch {
+    return "undecryptable";
+  }
+}
+
+export function accountCredentialStatus(_provider: Provider, value?: string | null): CredentialStatus {
+  return encryptedCredentialStatus(value);
+}
+
+function last4(value: string) {
   return value.slice(-4);
 }
 
 function metadata(row?: typeof userApiKeys.$inferSelect | null) {
+  const openrouterStatus = encryptedCredentialStatus(row?.openrouterApiKeyEncrypted);
+  const googleStatus = encryptedCredentialStatus(row?.googleAiKeyEncrypted);
+  const openaiStatus = encryptedCredentialStatus(row?.openaiApiKeyEncrypted);
+  const pexelsStatus = encryptedCredentialStatus(row?.pexelsApiKeyEncrypted);
+  const pixabayStatus = encryptedCredentialStatus(row?.pixabayApiKeyEncrypted);
+
   return {
-    hasOpenrouterKey: Boolean(row?.openrouterApiKeyEncrypted),
-    openrouterKeyLast4: row?.openrouterKeyLast4 || null,
-    hasGoogleAiKey: Boolean(row?.googleAiKeyEncrypted),
-    googleKeyLast4: row?.googleKeyLast4 || null,
-    hasOpenaiKey: Boolean(row?.openaiApiKeyEncrypted),
-    openaiKeyLast4: row?.openaiKeyLast4 || null,
-    hasPexelsKey: Boolean(row?.pexelsApiKeyEncrypted),
-    pexelsKeyLast4: row?.pexelsKeyLast4 || null,
-    hasPixabayKey: Boolean(row?.pixabayApiKeyEncrypted),
-    pixabayKeyLast4: row?.pixabayKeyLast4 || null,
+    hasOpenrouterKey: openrouterStatus === "usable",
+    openrouterKeyLast4: openrouterStatus === "usable" ? row?.openrouterKeyLast4 || null : null,
+    openrouterCredentialStatus: openrouterStatus,
+    openrouter_credential_status: openrouterStatus,
+    hasGoogleAiKey: googleStatus === "usable",
+    googleKeyLast4: googleStatus === "usable" ? row?.googleKeyLast4 || null : null,
+    googleAiCredentialStatus: googleStatus,
+    google_ai_credential_status: googleStatus,
+    hasOpenaiKey: openaiStatus === "usable",
+    openaiKeyLast4: openaiStatus === "usable" ? row?.openaiKeyLast4 || null : null,
+    openaiCredentialStatus: openaiStatus,
+    openai_credential_status: openaiStatus,
+    hasPexelsKey: pexelsStatus === "usable",
+    pexelsKeyLast4: pexelsStatus === "usable" ? row?.pexelsKeyLast4 || null : null,
+    pexelsCredentialStatus: pexelsStatus,
+    pexels_credential_status: pexelsStatus,
+    hasPixabayKey: pixabayStatus === "usable",
+    pixabayKeyLast4: pixabayStatus === "usable" ? row?.pixabayKeyLast4 || null : null,
+    pixabayCredentialStatus: pixabayStatus,
+    pixabay_credential_status: pixabayStatus,
     updatedAt: row?.updatedAt || null,
   };
 }

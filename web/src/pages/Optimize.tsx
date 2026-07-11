@@ -38,6 +38,7 @@ import {
 } from "@/hooks/useOptimize";
 import { useIndexing } from "@/hooks/useIndexing";
 import { useSites } from "@/hooks/useSites";
+import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { cn } from "@/lib/utils";
 
 const statuses: Array<{ value: OptimizeStatus; label: string }> = [
@@ -174,7 +175,7 @@ export function OptimizePanel() {
   const hasNoSearchConsole = !isLoading && !integration;
   const insightCounts = summary?.opportunityCounts || summary?.opportunity_counts || {};
   const insightStatusCounts = summary?.statusCounts || summary?.status_counts || statusCounts;
-  const connectedIndexing = indexingIntegrations.some((item) => item.status === "connected");
+  const connectedIndexing = indexingIntegrations.some(connectionReady);
   const totalOpportunityCount = Object.values(insightCounts).reduce((sum, value) => sum + value, 0);
   const currentViewLabel = showOpportunities
     ? opportunityFilters.find((item) => item.value === opportunity)?.label || "Opportunities"
@@ -313,7 +314,7 @@ export function OptimizePanel() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold text-foreground">{integration.propertyUrl}</h3>
-                      <Badge variant={integration.status === "connected" ? "default" : "destructive"}>{integration.status}</Badge>
+                      <Badge variant={connectionReady(integration) ? "default" : "destructive"}>{displayConnectionStatus(integration)}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">Credential: {integration.credentialHint || "saved"}</p>
                     <p className="mt-1 text-xs text-muted-foreground">

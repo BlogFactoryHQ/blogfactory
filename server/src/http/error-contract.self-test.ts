@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hono } from "hono";
-import { ApiError, codeForStatus, errorResponse, handleApiError, normalizeApiErrors, readJsonObject, requiredEnum, requiredStringArray } from "./error-contract.js";
+import { ApiError, codeForStatus, errorResponse, handleApiError, normalizeApiErrors, readJsonObject, requiredEnum, requiredStringArray, safeError } from "./error-contract.js";
 
 const app = new Hono();
 app.use("*", normalizeApiErrors);
@@ -37,6 +37,14 @@ assert.equal(codeForStatus(404), "not_found");
 assert.equal(codeForStatus(409), "conflict");
 assert.equal(codeForStatus(429), "rate_limited");
 assert.equal(codeForStatus(502), "upstream_failure");
+const privateError = Object.assign(new Error("Failed query: select secret\nparams: private-content"), {
+  code: "QUERY_FAILED",
+  cause: Object.assign(new Error("private provider response"), { code: "22000" }),
+});
+const safe = JSON.stringify(safeError(privateError));
+assert.equal(safe.includes("private-content"), false);
+assert.equal(safe.includes("provider response"), false);
+assert.deepEqual(JSON.parse(safe), { name: "Error", code: "QUERY_FAILED", causeName: "Error", causeCode: "22000" });
 assert.throws(() => requiredEnum({ status: "bad" }, "status", ["draft", "published"] as const), /Invalid status/);
 assert.throws(() => requiredStringArray({ ids: [] }, "ids"), /at least one/);
 

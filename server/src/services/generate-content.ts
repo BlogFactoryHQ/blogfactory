@@ -1,4 +1,5 @@
 import { db } from "../db/index.js";
+import { safeError } from "../http/error-contract.js";
 import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings, sites, siteIntegrations } from "../db/schema.js";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
@@ -194,7 +195,7 @@ async function getOpenRouterCost(openRouterKey: string, responseData: any) {
       });
       if (resp.ok) stats = ((await resp.json()) as any).data;
     } catch (err) {
-      console.warn("[openrouter] Cost lookup failed:", err);
+      console.warn("[openrouter] Cost lookup failed", safeError(err));
     }
   }
 
@@ -1038,7 +1039,7 @@ export async function generateContent(opts: GenerateOpts) {
                 languageRepaired = true;
               }
             } catch (languageErr) {
-              console.warn("[generate] Language repair failed:", languageErr instanceof Error ? languageErr.message : languageErr);
+              console.warn("[generate] Language repair failed", safeError(languageErr));
             }
           } else {
             console.warn(`[generate] Skipping language repair for draft ${i + 1}: function budget nearly exhausted`);
@@ -1071,7 +1072,7 @@ export async function generateContent(opts: GenerateOpts) {
                 lengthRepaired = true;
               }
             } catch (repairErr) {
-              console.warn("[generate] Length repair failed:", repairErr instanceof Error ? repairErr.message : repairErr);
+              console.warn("[generate] Length repair failed", safeError(repairErr));
             }
           } else {
             console.warn(`[generate] Skipping length repair for draft ${i + 1}: function budget nearly exhausted`);
@@ -1241,7 +1242,7 @@ export async function generateContent(opts: GenerateOpts) {
                   });
                 } catch (manualPromptErr) {
                   const reason = manualPromptErr instanceof Error ? manualPromptErr.message : "Manual image prompt model timed out";
-                  console.warn(`[images] Manual prompt model failed for draft ${i + 1}, using fallback prompt rows:`, reason);
+                  console.warn(`[images] Manual prompt model failed for draft ${i + 1}, using fallback prompt rows`, safeError(reason));
                   manualRequest = await createFallbackManualImagePromptRequest({
                     ...sharedManualPromptOpts,
                     reason,
@@ -1284,7 +1285,7 @@ export async function generateContent(opts: GenerateOpts) {
             }
           } catch (imageErr: any) {
             const imageError = imageErr?.message || "Image resolution failed";
-            console.warn(`[images] Resolution failed for draft ${i + 1}:`, imageError);
+            console.warn(`[images] Resolution failed for draft ${i + 1}`, safeError(imageError));
             imageResolutionResults.push({ postId: post.id, title: postTitle, error: imageError });
           }
           await db.update(jobs).set({
@@ -1300,7 +1301,7 @@ export async function generateContent(opts: GenerateOpts) {
 
       } catch (draftErr: any) {
         lastGenerationError = generationErrorMessage(draftErr);
-        console.error(`[generate] Error on draft ${i + 1}:`, lastGenerationError);
+        console.error(`[generate] Error on draft ${i + 1}`, safeError(lastGenerationError));
         failedDrafts.push({ index: i, error: lastGenerationError });
         await db.update(jobs).set({
           generationError: lastGenerationError,
@@ -1349,7 +1350,7 @@ export async function generateContent(opts: GenerateOpts) {
     return { jobId, status: "completed", postIds: createdPostIds };
 
   } catch (err: any) {
-    console.error("[generate] Fatal error:", err);
+    console.error("[generate] Fatal error", safeError(err));
     await db.update(jobs).set({
       status: "failed",
       errorMessage: err.message,

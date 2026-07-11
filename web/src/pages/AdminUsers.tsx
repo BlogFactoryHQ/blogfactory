@@ -27,14 +27,21 @@ interface AdminUser {
   createdAt: string;
   hasOpenrouterKey: boolean;
   openrouterKeyLast4: string | null;
+  openrouterCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   hasGoogleAiKey: boolean;
   googleKeyLast4: string | null;
+  googleAiCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
 }
 
 function statusVariant(status: AdminUser["approvalStatus"]) {
   if (status === "approved") return "default";
   if (status === "rejected") return "destructive";
   return "secondary";
+}
+
+function keyStatus(saved: boolean, last4: string | null, status?: string) {
+  if (status === "undecryptable") return "needs re-save";
+  return saved ? `••••${last4}` : "missing";
 }
 
 export default function AdminUsers() {
@@ -121,10 +128,10 @@ export default function AdminUsers() {
                       <TableCell>
                         <div className="space-y-1 text-xs">
                           <p>
-                            OpenRouter: {target.hasOpenrouterKey ? `••••${target.openrouterKeyLast4}` : "missing"}
+                            OpenRouter: {keyStatus(target.hasOpenrouterKey, target.openrouterKeyLast4, target.openrouterCredentialStatus)}
                           </p>
                           <p>
-                            Google: {target.hasGoogleAiKey ? `••••${target.googleKeyLast4}` : "missing"}
+                            Google: {keyStatus(target.hasGoogleAiKey, target.googleKeyLast4, target.googleAiCredentialStatus)}
                           </p>
                         </div>
                       </TableCell>
