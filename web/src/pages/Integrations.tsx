@@ -30,6 +30,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useGhostAuthors, useIntegrations, IntegrationProvider, SiteIntegration } from "@/hooks/useIntegrations";
 import { useSites } from "@/hooks/useSites";
