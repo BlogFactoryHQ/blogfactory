@@ -15,18 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   useImageAssets,
-  useImageAssetStats,
   useCancelImageGenerationRequest,
   useCreateManualImagePrompts,
   useDeleteImageAssets,
@@ -387,9 +376,9 @@ export default function ImageGallery() {
   const initialPostId = searchParams.get("postId") || "";
   const requestPostId = searchParams.get("postId") || "";
   const [filters, setFilters] = useState<GalleryFiltersType>(defaultFilters);
+  const [galleryPage, setGalleryPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailImage, setDetailImage] = useState<ImageAsset | null>(null);
-  const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
   const [requestPage, setRequestPage] = useState(1);
   const [manualGroupPage, setManualGroupPage] = useState(1);
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>(() => initialPostId ? "all" : "active");
@@ -398,8 +387,10 @@ export default function ImageGallery() {
   const [bulkImportState, setBulkImportState] = useState<BulkImportState>({});
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
 
-  const { data: images, isLoading } = useImageAssets(filters);
-  const { data: stats } = useImageAssetStats();
+  const { data: gallery, isLoading } = useImageAssets(filters, galleryPage);
+  const images = gallery?.items;
+  const stats = gallery?.stats;
+  const galleryPagination = gallery?.pagination;
   const { data: imageRequests = [] } = useImageGenerationRequests("all");
   const deleteImages = useDeleteImageAssets();
   const detachImage = useDetachImageAsset();
@@ -543,6 +534,10 @@ export default function ImageGallery() {
   }, [requestPageCount]);
 
   useEffect(() => {
+    if (galleryPagination && galleryPage > galleryPagination.pages) setGalleryPage(galleryPagination.pages);
+  }, [galleryPage, galleryPagination]);
+
+  useEffect(() => {
     setManualGroupPage((page) => Math.min(page, manualGroupPageCount));
   }, [manualGroupPageCount]);
 
@@ -596,11 +591,11 @@ export default function ImageGallery() {
     }
   }, [images, selectedIds.size]);
 
-  const handleDeleteOrphaned = () => {
-    const orphanedIds = (images || []).filter((i) => i.status === "orphaned").map((i) => i.id);
-    if (orphanedIds.length > 0) deleteImages.mutate(orphanedIds);
-    setShowOrphanCleanup(false);
-  };
+  const updateGalleryFilters = useCallback((next: GalleryFiltersType) => {
+    setFilters(next);
+    setGalleryPage(1);
+    setSelectedIds(new Set());
+  }, []);
 
   const handleBulkManualImport = useCallback(async (group: ManualImportGroup, selectedFiles: FileList | File[]) => {
     const files = Array.from(selectedFiles).filter((file) => file.type.startsWith("image/"));
@@ -670,15 +665,15 @@ export default function ImageGallery() {
               variant="outline"
               size="sm"
               className="border-destructive/30 text-destructive"
-              onClick={() => setShowOrphanCleanup(true)}
+              onClick={() => updateGalleryFilters({ ...filters, status: "orphaned" })}
             >
               <Trash2 className="h-4 w-4" />
-              Clean {orphanedCount} orphaned
+              Review {orphanedCount} orphaned
             </Button>
           )}
           {(images?.length || 0) > 0 && (
             <Button variant="outline" size="sm" onClick={handleSelectAll}>
-              {selectedIds.size === (images?.length || 0) ? "Deselect all" : "Select all"}
+              {selectedIds.size === (images?.length || 0) ? "Deselect page" : "Select page"}
             </Button>
           )}
         </div>
@@ -930,7 +925,7 @@ export default function ImageGallery() {
         </BywordCard>
       )}
 
-      <GalleryFilters filters={filters} onChange={setFilters} />
+      <GalleryFilters filters={filters} onChange={updateGalleryFilters} />
 
       {/* Grid */}
       <BywordCard className="p-4">
@@ -962,6 +957,38 @@ export default function ImageGallery() {
       )}
       </BywordCard>
 
+      {galleryPagination && galleryPagination.pages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            {galleryPagination.total} matching images · page {galleryPagination.page} of {galleryPagination.pages}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={galleryPage === 1}
+              onClick={() => {
+                setGalleryPage((page) => Math.max(1, page - 1));
+                setSelectedIds(new Set());
+              }}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={galleryPage >= galleryPagination.pages}
+              onClick={() => {
+                setGalleryPage((page) => Math.min(galleryPagination.pages, page + 1));
+                setSelectedIds(new Set());
+              }}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Bulk actions */}
       <GalleryBulkActions
         selectedImages={selectedImages}
@@ -983,28 +1010,6 @@ export default function ImageGallery() {
           setDetailImage(null);
         }}
       />
-
-      {/* Orphan cleanup dialog */}
-      <AlertDialog open={showOrphanCleanup} onOpenChange={setShowOrphanCleanup}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete all orphaned images?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove {orphanedCount} orphaned image{orphanedCount !== 1 ? "s" : ""} from storage.
-              These images belong to posts that have been deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDeleteOrphaned}
-            >
-              Delete orphaned images
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </BywordPageShell>
   );
 }

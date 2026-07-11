@@ -24,57 +24,27 @@ export const defaultFilters: GalleryFilters = {
   search: "",
 };
 
-export function useImageAssets(filters: GalleryFilters) {
-  return useQuery({
-    queryKey: ["image-assets", filters],
-    queryFn: async () => {
-      let assets = await api.get<ImageAsset[]>("/images");
-
-      // Client-side filtering
-      if (filters.type !== "all") assets = assets.filter((a) => a.type === filters.type);
-      if (filters.status !== "all") assets = assets.filter((a) => a.status === filters.status);
-      if (filters.aspectRatio !== "all") assets = assets.filter((a) => a.aspect_ratio === filters.aspectRatio);
-
-      if (filters.dateRange !== "all") {
-        const days = filters.dateRange === "7d" ? 7 : filters.dateRange === "30d" ? 30 : 90;
-        const since = new Date(Date.now() - days * 86400000).toISOString();
-        assets = assets.filter((a) => a.created_at >= since);
-      }
-
-      if (filters.postStatus !== "all") {
-        assets = assets.filter((a) =>
-          filters.postStatus === "draft" ? a.postStatus === "draft" : a.postStatus === "published"
-        );
-      }
-
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        assets = assets.filter(
-          (a) =>
-            a.postTitle?.toLowerCase().includes(q) ||
-            a.prompt?.toLowerCase().includes(q) ||
-            a.model_id?.toLowerCase().includes(q)
-        );
-      }
-
-      return assets;
-    },
-  });
+export interface ImageGalleryResponse {
+  items: ImageAsset[];
+  stats: { total: number; cover: number; inline: number; orphaned: number; unused: number; totalCost: number };
+  pagination: { page: number; limit: number; total: number; pages: number };
 }
 
-export function useImageAssetStats() {
+export function imageGalleryPath(filters: GalleryFilters, page: number, limit = 25) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters.type !== "all") params.set("type", filters.type);
+  if (filters.status !== "all") params.set("status", filters.status);
+  if (filters.postStatus !== "all") params.set("postStatus", filters.postStatus);
+  if (filters.dateRange !== "all") params.set("dateRange", filters.dateRange);
+  if (filters.aspectRatio !== "all") params.set("aspectRatio", filters.aspectRatio);
+  if (filters.search.trim()) params.set("search", filters.search.trim());
+  return `/images?${params.toString()}`;
+}
+
+export function useImageAssets(filters: GalleryFilters, page = 1) {
   return useQuery({
-    queryKey: ["image-asset-stats"],
-    queryFn: async () => {
-      const data = await api.get<ImageAsset[]>("/images");
-      const total = data.length;
-      const cover = data.filter((d) => d.type === "cover").length;
-      const inline = data.filter((d) => d.type === "inline").length;
-      const orphaned = data.filter((d) => d.status === "orphaned").length;
-      const unused = data.filter((d) => d.status === "unused").length;
-      const totalCost = data.reduce((sum, d) => sum + (d.cost || 0), 0);
-      return { total, cover, inline, orphaned, unused, totalCost };
-    },
+    queryKey: ["image-assets", filters, page],
+    queryFn: () => api.get<ImageGalleryResponse>(imageGalleryPath(filters, page)),
   });
 }
 

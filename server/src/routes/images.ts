@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db, type Database } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
-import { eq, and, inArray, desc, or, lt, ne } from "drizzle-orm";
+import { eq, and, inArray, desc, or, lt, ne, gte, ilike, sql, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, imageAssetValues, storeImageBuffer } from "../services/image-storage.js";
 import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
@@ -9,6 +9,7 @@ import { canRestartImageRequest } from "./image-request-controls.js";
 import { createManualImagePromptRequestsForPost } from "../services/generate-content.js";
 import { removeInlineImagePath } from "../services/image-placement.js";
 import { partitionSettled } from "../services/atomic-state.js";
+import { parseImageGalleryQuery } from "./image-gallery-query.js";
 
 export const imagesRoutes = new Hono();
 
@@ -80,8 +81,23 @@ function serializeRequest(row: any) {
 
 imagesRoutes.get("/", async (c) => {
   const userId = getUserId(c);
+  const query = parseImageGalleryQuery(c.req.query());
+  const conditions: SQL[] = [eq(imageAssets.userId, userId)];
+  if (query.type) conditions.push(eq(imageAssets.type, query.type));
+  if (query.status) conditions.push(eq(imageAssets.status, query.status));
+  if (query.postStatus) conditions.push(eq(posts.status, query.postStatus));
+  if (query.aspectRatio) conditions.push(eq(imageAssets.aspectRatio, query.aspectRatio));
+  if (query.createdAfter) conditions.push(gte(imageAssets.createdAt, query.createdAfter));
+  if (query.search) {
+    const pattern = `%${query.search}%`;
+    conditions.push(or(
+      ilike(posts.title, pattern),
+      ilike(imageAssets.prompt, pattern),
+      ilike(imageAssets.modelId, pattern),
+    )!);
+  }
 
-  const rows = await db
+  const listQuery = db
     .select({
       id: imageAssets.id,
       storagePath: imageAssets.storagePath,
@@ -109,10 +125,39 @@ imagesRoutes.get("/", async (c) => {
     })
     .from(imageAssets)
     .leftJoin(posts, eq(imageAssets.postId, posts.id))
-    .where(eq(imageAssets.userId, userId))
-    .orderBy(desc(imageAssets.createdAt));
+    .where(and(...conditions));
 
-  return c.json(rows.map(serializeAsset));
+  const [rows, [filtered], [stats]] = await Promise.all([
+    listQuery.orderBy(desc(imageAssets.createdAt), desc(imageAssets.id)).limit(query.limit).offset((query.page - 1) * query.limit),
+    db.select({ total: sql<number>`count(*)::int` }).from(imageAssets).leftJoin(posts, eq(imageAssets.postId, posts.id)).where(and(...conditions)),
+    db.select({
+      total: sql<number>`count(*)::int`,
+      cover: sql<number>`count(*) filter (where ${imageAssets.type} = 'cover')::int`,
+      inline: sql<number>`count(*) filter (where ${imageAssets.type} = 'inline')::int`,
+      orphaned: sql<number>`count(*) filter (where ${imageAssets.status} = 'orphaned')::int`,
+      unused: sql<number>`count(*) filter (where ${imageAssets.status} = 'unused')::int`,
+      totalCost: sql<number>`coalesce(sum(${imageAssets.cost}), 0)::float8`,
+    }).from(imageAssets).where(eq(imageAssets.userId, userId)),
+  ]);
+
+  const total = Number(filtered?.total || 0);
+  return c.json({
+    items: rows.map(serializeAsset),
+    stats: {
+      total: Number(stats?.total || 0),
+      cover: Number(stats?.cover || 0),
+      inline: Number(stats?.inline || 0),
+      orphaned: Number(stats?.orphaned || 0),
+      unused: Number(stats?.unused || 0),
+      totalCost: Number(stats?.totalCost || 0),
+    },
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      pages: Math.max(1, Math.ceil(total / query.limit)),
+    },
+  });
 });
 
 imagesRoutes.get("/requests", async (c) => {
