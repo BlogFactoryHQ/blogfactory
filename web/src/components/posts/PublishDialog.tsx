@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
-import { useIntegrations } from "@/hooks/useIntegrations";
+import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,12 +25,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { OrtakAlanPublishFields } from "./OrtakAlanPublishFields";
+import {
+  buildOrtakAlanMetadata,
+  normalizeOrtakAlanForRequest,
+  ortakAlanClientChecks,
+  type OrtakAlanMetadata,
+  type PublishingImageMetadata,
+} from "./ortak-alan-publishing";
 
 interface PublishDialogProps {
   postId: string;
   title: string;
   content: string;
   summary?: string | null;
+  publishingMetadata?: Partial<OrtakAlanMetadata> | null;
+  siteId?: string | null;
+  preferredIntegrationId?: string | null;
+  coverImageUrl?: string | null;
+  imageAssets?: PublishingImageMetadata[];
   disabled?: boolean;
   disabledReason?: string;
 }
@@ -139,10 +152,11 @@ export function buildPublishDefaults(title: string, content: string, summary?: s
     tags: explicitTags(content),
     metaTitle: truncate(meta.metaTitle || titleFallback, SEO_LIMITS.metaTitle),
     metaDescription: truncate(meta.metaDescription || fallbackDescription, SEO_LIMITS.metaDescription),
+    excerpt: truncate(summary || bodyText, 180),
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, disabled, disabledReason }: PublishDialogProps) {
+export function PublishDialog({ postId, title, content, summary, publishingMetadata, siteId, preferredIntegrationId, coverImageUrl, imageAssets, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -152,11 +166,19 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
   const [slug, setSlug] = useState("");
   const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
-  const { integrations, isLoading } = useIntegrations();
+  const initializedTargetRef = useRef("");
+  const [ortakAlanMetadata, setOrtakAlanMetadata] = useState<OrtakAlanMetadata>(() => buildOrtakAlanMetadata({
+    slug: "", excerpt: "", metaTitle: "", metaDescription: "", tags: [],
+  }));
+  const { integrations, isLoading } = useIntegrations(siteId);
   const queryClient = useQueryClient();
 
   const connected = useMemo(() => integrations.filter((integration) => integration.status === "connected"), [integrations]);
-  const selected = connected.find((integration) => integration.id === integrationId) || connected[0];
+  const requestedIntegrationId = integrationId || preferredIntegrationId || "";
+  const selected = connected.find((integration) => integration.id === requestedIntegrationId)
+    || (!siteId && !requestedIntegrationId ? connected[0] : undefined);
+  const isOrtakAlan = selected?.provider === "ghost" && selected.config?.profile === "ortak_alan_news";
+  const { authors: ghostAuthors, isLoading: authorsLoading, error: authorsError } = useGhostAuthors(selected?.id, Boolean(open && isOrtakAlan));
   const seoChecks = useMemo(() => {
     const tagCount = commaList(tags).length;
     const slugValid = Boolean(slug) && slug.length <= SEO_LIMITS.slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
@@ -170,28 +192,72 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
     ];
   }, [metaDescription, metaTitle, slug, tags]);
   const hasSeoError = seoChecks.some((check) => !check.ok);
+  const inheritedWarnings = publishingMetadata && Array.isArray((publishingMetadata as Record<string, unknown>).routingWarnings)
+    ? ((publishingMetadata as Record<string, unknown>).routingWarnings as unknown[]).filter((warning): warning is string => typeof warning === "string")
+    : [];
+  const ortakAlanChecks = useMemo(
+    () => ortakAlanClientChecks(ortakAlanMetadata, title, Boolean(coverImageUrl)),
+    [coverImageUrl, ortakAlanMetadata, title],
+  );
+  const authorMatched = Boolean(ortakAlanMetadata.author?.id && ghostAuthors.some((author) => author.id === ortakAlanMetadata.author?.id));
+  const hasOrtakAlanBlocker = authorsLoading || !authorMatched || (mode === "publish" && ortakAlanChecks.some((check) => !check.ok));
 
-  const fillDefaults = () => {
+  const fillOrtakAlanDefaults = useCallback((integration?: SiteIntegration) => {
     const defaults = buildPublishDefaults(title, content, summary);
-    setSlug(defaults.slug);
-    setTags(defaults.tags);
-    setMetaTitle(defaults.metaTitle);
-    setMetaDescription(defaults.metaDescription);
-  };
+    const configuredAuthor = integration?.config?.defaultAuthor && typeof integration.config.defaultAuthor === "object"
+      ? integration.config.defaultAuthor as GhostAuthor
+      : null;
+    setOrtakAlanMetadata(buildOrtakAlanMetadata({
+      stored: publishingMetadata,
+      slug: defaults.slug,
+      excerpt: defaults.excerpt,
+      metaTitle: defaults.metaTitle,
+      metaDescription: defaults.metaDescription,
+      tags: commaList(defaults.tags),
+      editorialOwner: typeof integration?.config?.editorialOwner === "string" ? integration.config.editorialOwner : "",
+      defaultAuthor: configuredAuthor,
+      coverImageUrl,
+      imageAssets,
+    }));
+  }, [content, coverImageUrl, imageAssets, publishingMetadata, summary, title]);
+
+  const fillDefaults = useCallback(() => {
+    const defaults = buildPublishDefaults(title, content, summary);
+    const generic = publishingMetadata && (publishingMetadata as Record<string, unknown>).profile === "generic"
+      ? publishingMetadata as Record<string, unknown>
+      : null;
+    setPostType(generic?.postType === "page" ? "page" : "post");
+    setSlug(typeof generic?.slug === "string" ? generic.slug : defaults.slug);
+    setTags(Array.isArray(generic?.tags) ? generic.tags.join(", ") : defaults.tags);
+    setCategories(Array.isArray(generic?.categories) ? generic.categories.join(", ") : "");
+    setMetaTitle(typeof generic?.metaTitle === "string" ? generic.metaTitle : defaults.metaTitle);
+    setMetaDescription(typeof generic?.metaDescription === "string" ? generic.metaDescription : defaults.metaDescription);
+  }, [content, publishingMetadata, summary, title]);
+
+  useEffect(() => {
+    if (!open || !selected || initializedTargetRef.current === selected.id) return;
+    initializedTargetRef.current = selected.id;
+    if (selected.provider === "ghost" && selected.config?.profile === "ortak_alan_news") fillOrtakAlanDefaults(selected);
+  }, [fillOrtakAlanDefaults, open, selected]);
 
   const publishMutation = useMutation({
     mutationFn: async () => {
       const target = integrationId || selected?.id;
       if (!target) throw new Error("Önce bir yayın entegrasyonu bağlayın");
-      return api.post<{ success: boolean; error?: string; publication?: { externalUrl?: string | null; status: string } }>(`/posts/${postId}/publish`, {
+      return api.post<{ success: boolean; error?: string; validation?: { errors: string[]; warnings: string[] }; publication?: { externalUrl?: string | null; status: string } }>(`/posts/${postId}/publish`, {
         integrationId: target,
         mode,
-        postType,
-        tags,
+        postType: isOrtakAlan ? "post" : postType,
+        tags: isOrtakAlan ? ortakAlanMetadata.topicTags : tags,
         categories,
-        slug,
-        metaTitle,
-        metaDescription,
+        slug: isOrtakAlan ? ortakAlanMetadata.slug : slug,
+        excerpt: isOrtakAlan ? ortakAlanMetadata.excerpt : undefined,
+        metaTitle: isOrtakAlan ? ortakAlanMetadata.metaTitle : metaTitle,
+        metaDescription: isOrtakAlan ? ortakAlanMetadata.metaDescription : metaDescription,
+        publishingMetadata: isOrtakAlan ? normalizeOrtakAlanForRequest(ortakAlanMetadata) : {
+          profile: "generic", postType, slug, excerpt: summary || "", metaTitle, metaDescription,
+          tags: commaList(tags), categories: commaList(categories),
+        },
       });
     },
     onSuccess: (result) => {
@@ -203,6 +269,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
         return;
       }
       toast.success(mode === "publish" ? "Yayına gönderildi" : "Taslak oluşturuldu", {
+        description: result.validation?.warnings?.length ? `${result.validation.warnings.length} metadata uyarısı Ghost taslağıyla birlikte kaydedildi.` : undefined,
         action: result.publication?.externalUrl
           ? { label: "Aç", onClick: () => window.open(result.publication?.externalUrl || "", "_blank") }
           : undefined,
@@ -227,7 +294,11 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => {
-      if (nextOpen) fillDefaults();
+      if (nextOpen) {
+        setIntegrationId("");
+        initializedTargetRef.current = "";
+        fillDefaults();
+      }
       setOpen(nextOpen);
     }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -257,14 +328,19 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Hedef</Label>
-                <Select value={integrationId || selected?.id} onValueChange={setIntegrationId}>
+                <Select value={selected?.id || ""} onValueChange={(value) => {
+                  setIntegrationId(value);
+                  const target = connected.find((integration) => integration.id === value);
+                  initializedTargetRef.current = value;
+                  if (target?.config?.profile === "ortak_alan_news") fillOrtakAlanDefaults(target);
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Entegrasyon seç" />
                   </SelectTrigger>
                   <SelectContent>
                     {connected.map((integration) => (
                       <SelectItem key={integration.id} value={integration.id}>
-                        {providerLabels[integration.provider]} · {integration.displayName}
+                        {integration.config?.profile === "ortak_alan_news" ? "Ghost – Ortak Alan" : providerLabels[integration.provider]} · {integration.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -291,6 +367,30 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
               </RadioGroup>
             </div>
 
+            {isOrtakAlan ? (
+              <>
+                <OrtakAlanPublishFields
+                  metadata={ortakAlanMetadata}
+                  onChange={setOrtakAlanMetadata}
+                  authors={ghostAuthors}
+                  authorsLoading={authorsLoading}
+                  coverImageUrl={coverImageUrl}
+                />
+                {authorsError && <p className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">Ghost yazarları yüklenemedi. Entegrasyon bağlantısını test edip tekrar deneyin.</p>}
+                {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+                <div className="grid gap-2 rounded-sm border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-2">
+                  {ortakAlanChecks.map((check) => (
+                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" ? "text-destructive" : "text-amber-700"}>
+                      <span className="font-medium">{check.label}</span><span className="ml-2">{check.value}</span>
+                    </div>
+                  ))}
+                </div>
+                {mode === "draft" && ortakAlanChecks.some((check) => !check.ok) && (
+                  <p className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Eksik metadata uyarı olarak kaydedilecek. Ghost yazarı eşleşmeden taslak gönderilemez.</p>
+                )}
+              </>
+            ) : (
+              <>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>İçerik tipi</Label>
@@ -346,6 +446,9 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
                 </div>
               ))}
             </div>
+            {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+              </>
+            )}
           </div>
           )}
         </div>
@@ -354,7 +457,7 @@ export function PublishDialog({ postId, title, content, summary, disabled, disab
           <Button variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>
-          <Button onClick={() => publishMutation.mutate()} disabled={connected.length === 0 || publishMutation.isPending || hasSeoError}>
+          <Button onClick={() => publishMutation.mutate()} disabled={!selected || publishMutation.isPending || (isOrtakAlan ? hasOrtakAlanBlocker : hasSeoError)}>
             {publishMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
             {mode === "publish" ? "Canlı yayınla" : "Taslak oluştur"}
           </Button>

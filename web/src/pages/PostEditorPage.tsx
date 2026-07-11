@@ -10,7 +10,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { MarkdownEditor } from "@/components/posts/MarkdownEditor";
 import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
+import type { OrtakAlanMetadata } from "@/components/posts/ortak-alan-publishing";
 import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
@@ -47,8 +49,15 @@ interface Post {
   created_at: string;
   cover_image_url?: string | null;
   inline_images?: string[] | null;
+  publishing_metadata?: Partial<OrtakAlanMetadata> | null;
+  site_id?: string | null;
+  feed_id?: string | null;
+  preferred_integration_id?: string | null;
+  site_name?: string | null;
+  feed_name?: string | null;
   image_assets?: Array<{
     storage_path: string;
+    alt_text?: string | null;
     type: string | null;
     provider: string | null;
     model_id: string | null;
@@ -300,6 +309,8 @@ export default function PostEditorPage() {
               status={status === "published" ? "success" : "draft"}
               label={status === "published" ? "Published" : "Draft"}
             />
+            {post?.site_name && <Badge variant="outline">{post.site_name}</Badge>}
+            {post?.feed_name && <Badge variant="secondary">{post.feed_name}</Badge>}
             {hasChanges && (
               <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-foreground">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
@@ -377,6 +388,11 @@ export default function PostEditorPage() {
               title={title}
               content={content}
               summary={post?.summary}
+              publishingMetadata={post?.publishing_metadata}
+              siteId={post?.site_id}
+              preferredIntegrationId={post?.preferred_integration_id}
+              coverImageUrl={coverImageUrl}
+              imageAssets={post?.image_assets || []}
               disabled={isSaving || Boolean(hasChanges)}
               disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}
             />

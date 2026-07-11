@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { feeds } from "../db/schema.js";
+import { feeds, siteIntegrations, sites } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
+import { inspectFeedRouting } from "../services/feed-routing.js";
 
 export const feedsRoutes = new Hono();
 
@@ -15,6 +16,10 @@ function feedValues(body: Record<string, any>) {
   };
 
   set("name", "name");
+  set("siteId", "site_id");
+  set("integrationId", "integration_id");
+  set("editorialDefaults", "editorial_defaults");
+  set("routingVersion", "routing_version");
   set("sourceUrl", "source_url");
   set("platform", "platform");
   set("platformConfig", "platform_config");
@@ -37,10 +42,20 @@ function feedValues(body: Record<string, any>) {
   return values;
 }
 
-function serializeFeed(row: typeof feeds.$inferSelect) {
+function serializeFeed(row: typeof feeds.$inferSelect, route?: { siteName?: string | null; integrationName?: string | null; provider?: string | null; integrationConfig?: unknown; ready?: boolean }) {
+  const routeReady = route?.ready ?? Boolean(row.siteId && row.integrationId);
   return {
     ...row,
     user_id: row.userId,
+    site_id: row.siteId,
+    integration_id: row.integrationId,
+    editorial_defaults: row.editorialDefaults || {},
+    routing_version: row.routingVersion,
+    routing_status: routeReady ? "ready" : "needs_routing",
+    site_name: route?.siteName || null,
+    integration_name: route?.integrationName || null,
+    integration_provider: route?.provider || null,
+    integration_config: route?.integrationConfig || {},
     source_url: row.sourceUrl,
     platform_config: row.platformConfig,
     model_id: row.modelId,
@@ -66,11 +81,20 @@ function serializeFeed(row: typeof feeds.$inferSelect) {
 feedsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
   const rows = await db
-    .select()
+    .select({ feed: feeds, siteName: sites.name, integrationName: siteIntegrations.displayName, provider: siteIntegrations.provider, integrationStatus: siteIntegrations.status, integrationSiteId: siteIntegrations.siteId, integrationConfig: siteIntegrations.config })
     .from(feeds)
+    .leftJoin(sites, and(eq(feeds.siteId, sites.id), eq(sites.userId, userId)))
+    .leftJoin(siteIntegrations, and(eq(feeds.integrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
     .where(eq(feeds.userId, userId))
     .orderBy(desc(feeds.createdAt));
-  return c.json(rows.map(serializeFeed));
+  return c.json(rows.map((row) => {
+    const config = row.integrationConfig && typeof row.integrationConfig === "object" ? row.integrationConfig as Record<string, unknown> : {};
+    const defaults = row.feed.editorialDefaults && typeof row.feed.editorialDefaults === "object" ? row.feed.editorialDefaults as Record<string, unknown> : {};
+    const ortakAlan = config.profile === "ortak_alan_news";
+    const author = config.defaultAuthor && typeof config.defaultAuthor === "object" ? config.defaultAuthor as Record<string, unknown> : {};
+    const ready = Boolean(row.feed.siteId && row.feed.integrationId && row.integrationSiteId === row.feed.siteId && row.integrationStatus === "connected" && (!ortakAlan || (defaults.contentType && author.id && config.editorialOwner)));
+    return serializeFeed(row.feed, { ...row, ready });
+  }));
 });
 
 feedsRoutes.post("/", async (c) => {
@@ -78,26 +102,55 @@ feedsRoutes.post("/", async (c) => {
   const body = await c.req.json();
   const values = feedValues(body);
   if (!values.name) return c.json({ error: "Feed name is required" }, 400);
+  const route = await inspectFeedRouting(userId, values.siteId || null, values.integrationId || null, values.editorialDefaults);
+  values.siteId = route.site?.id || null;
+  values.integrationId = route.integration?.siteId === route.site?.id ? route.integration.id : null;
+  values.editorialDefaults = route.editorialDefaults;
+  values.routingVersion = 1;
+  if (!route.valid) values.isActive = false;
   const [feed] = await db
     .insert(feeds)
     .values({ ...values, userId, name: values.name })
     .returning();
-  return c.json(serializeFeed(feed), 201);
+  return c.json({ ...serializeFeed(feed, { ready: route.valid }), routing_errors: route.errors }, 201);
 });
 
 feedsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
   const body = await c.req.json();
+  const existing = await db.select().from(feeds).where(and(eq(feeds.id, id), eq(feeds.userId, userId))).limit(1);
+  if (!existing[0]) return c.json({ error: "Feed not found" }, 404);
+  const values = feedValues(body);
+  const hasSubmittedRouteFields = body.siteId !== undefined || body.site_id !== undefined || body.integrationId !== undefined || body.integration_id !== undefined || body.editorialDefaults !== undefined || body.editorial_defaults !== undefined;
+  const submittedRoutingVersion = Number(body.routingVersion ?? body.routing_version ?? 0);
+  const routeFieldsSubmitted = existing[0].routingVersion > 0
+    ? hasSubmittedRouteFields
+    : submittedRoutingVersion > 0 || Boolean(values.integrationId);
+  let routeErrors: string[] = [];
+  if (routeFieldsSubmitted || existing[0].routingVersion > 0) {
+    const route = await inspectFeedRouting(
+      userId,
+      values.siteId !== undefined ? values.siteId : existing[0].siteId,
+      values.integrationId !== undefined ? values.integrationId : existing[0].integrationId,
+      values.editorialDefaults !== undefined ? values.editorialDefaults : existing[0].editorialDefaults,
+    );
+    values.siteId = route.site?.id || null;
+    values.integrationId = route.integration?.siteId === route.site?.id ? route.integration.id : null;
+    values.editorialDefaults = route.editorialDefaults;
+    values.routingVersion = 1;
+    routeErrors = route.errors;
+    if (!route.valid) values.isActive = false;
+  }
 
   const [updated] = await db
     .update(feeds)
-    .set(feedValues(body))
+    .set(values)
     .where(and(eq(feeds.id, id), eq(feeds.userId, userId)))
     .returning();
 
   if (!updated) return c.json({ error: "Feed not found" }, 404);
-  return c.json(serializeFeed(updated));
+  return c.json({ ...serializeFeed(updated, { ready: routeErrors.length === 0 && Boolean(updated.siteId && updated.integrationId) }), routing_errors: routeErrors });
 });
 
 feedsRoutes.delete("/:id", async (c) => {

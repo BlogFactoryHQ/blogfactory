@@ -46,6 +46,9 @@ import {
   type ImageDeliveryMode,
   type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
+import { FeedRoutingFields } from "./FeedRoutingFields";
+import { EMPTY_FEED_DEFAULTS, routeReady, type FeedEditorialDefaults } from "@/lib/feed-routing";
+import { useIntegrations } from "@/hooks/useIntegrations";
 
 interface Feed {
   id: string;
@@ -66,6 +69,10 @@ interface Feed {
   extract_full_content?: boolean;
   posts_per_run?: number | null;
   filter_old_posts_days?: number | null;
+  site_id?: string | null;
+  integration_id?: string | null;
+  editorial_defaults?: FeedEditorialDefaults | null;
+  routing_version?: number;
 }
 
 interface Persona {
@@ -190,6 +197,7 @@ export function FeedEditorDialog({
   const [imageConfig, setImageConfig] = useState<SplitImageConfig>(DEFAULT_SPLIT_CONFIG);
   const [activeImageDeliveryMode, setActiveImageDeliveryMode] = useState<ImageDeliveryMode>(imageDeliveryMode);
   const [keywordInput, setKeywordInput] = useState("");
+  const { integrations: routingIntegrations } = useIntegrations(editedFeed?.site_id);
 
   // Sync local state when dialog opens with a feed
   useEffect(() => {
@@ -217,6 +225,12 @@ export function FeedEditorDialog({
   const platformConfig = editedFeed.platform_config || {};
   const availableFilterTypes = filterTypesForPlatform(platform, editedFeed.filter_type);
   const imageSectionTitle = activeImageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
+  const routingIsReady = routeReady({
+    siteId: editedFeed.site_id || "",
+    integrationId: editedFeed.integration_id || "",
+    editorialDefaults: editedFeed.editorial_defaults || { ...EMPTY_FEED_DEFAULTS },
+  }, routingIntegrations.find((integration) => integration.id === editedFeed.integration_id));
+  const canRunDraft = routingIsReady || editedFeed.routing_version === 0;
 
   const setPlatformConfig = (updates: Record<string, unknown>) => {
     setEditedFeed({
@@ -457,6 +471,23 @@ export function FeedEditorDialog({
 
               {validationError && <p className="text-xs text-destructive">{validationError}</p>}
             </section>
+
+            <Separator />
+
+            <FeedRoutingFields
+              value={{
+                siteId: editedFeed.site_id || "",
+                integrationId: editedFeed.integration_id || "",
+                editorialDefaults: editedFeed.editorial_defaults || { ...EMPTY_FEED_DEFAULTS },
+              }}
+              onChange={(routing) => setEditedFeed({
+                ...editedFeed,
+                site_id: routing.siteId,
+                integration_id: routing.integrationId,
+                editorial_defaults: routing.editorialDefaults,
+                routing_version: 1,
+              })}
+            />
 
             <Separator />
 
@@ -862,7 +893,7 @@ export function FeedEditorDialog({
               <Button
                 variant="outline"
                 onClick={handleRunNow}
-                disabled={isRunning || !editedFeed.persona_id || selectedModelUnavailable || Boolean(validationError)}
+                disabled={isRunning || !editedFeed.persona_id || selectedModelUnavailable || Boolean(validationError) || !canRunDraft}
                 className="gap-2"
               >
                 {isRunning ? (

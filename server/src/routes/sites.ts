@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { sites } from "../db/schema.js";
+import { feeds, sites } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { buildInternalLinkIndex, sanitizeInternalLinkIndex, type InternalLinkIndex } from "../services/internal-linking.js";
 import { getActiveSiteId, getGlobalSettings, updateGlobalSettings, updateSiteSettings } from "../services/user-settings.js";
@@ -101,6 +101,8 @@ function serializeSite(site: typeof sites.$inferSelect) {
     vector_count: site.vectorCount || 0,
     vectorCount: site.vectorCount || 0,
     topics: site.topics || [],
+    editorial_topics: site.editorialTopics || [],
+    editorialTopics: site.editorialTopics || [],
     language: site.language,
     cta: site.cta,
     internal_link_index: sanitizeInternalLinkIndex(site.internalLinkIndex),
@@ -325,11 +327,37 @@ sitesRoutes.post("/:id/refresh", async (c) => {
   }
 });
 
+sitesRoutes.put("/:id/editorial-topics", async (c) => {
+  const userId = getUserId(c);
+  const siteId = c.req.param("id");
+  const body = await c.req.json();
+  const rawTopics: unknown[] = Array.isArray(body.topics) ? body.topics : [];
+  const seen = new Set<string>();
+  const editorialTopics = rawTopics
+    .map(asText)
+    .filter((topic) => {
+      if (!topic) return false;
+      const key = topic.toLocaleLowerCase("tr-TR");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 50);
+  const [site] = await db
+    .update(sites)
+    .set({ editorialTopics, updatedAt: new Date() })
+    .where(and(eq(sites.id, siteId), eq(sites.userId, userId)))
+    .returning();
+  if (!site) return c.json({ error: "Site not found" }, 404);
+  return c.json({ site: serializeSite(site) });
+});
+
 sitesRoutes.delete("/:id", async (c) => {
   const userId = getUserId(c);
   const siteId = c.req.param("id");
   const activeSiteId = await getActiveSiteId(userId);
 
+  await db.update(feeds).set({ isActive: false, integrationId: null }).where(and(eq(feeds.siteId, siteId), eq(feeds.userId, userId)));
   await db.delete(sites).where(and(eq(sites.id, siteId), eq(sites.userId, userId)));
 
   if (activeSiteId === siteId) {

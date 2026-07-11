@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { jobs, personas, userSettings } from "../db/schema.js";
+import { jobs, personas, userSettings, sites, feeds, siteIntegrations } from "../db/schema.js";
 import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { getEffectiveSettings } from "../services/user-settings.js";
+import { getPinnedSiteSettings } from "../services/user-settings.js";
 import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
 
 export const jobsRoutes = new Hono();
@@ -66,6 +66,9 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
   const staleJobs = await db
     .select({
       id: jobs.id,
+      site_id: jobs.siteId,
+      feed_id: jobs.feedId,
+      preferred_integration_id: jobs.preferredIntegrationId,
       generationPlan: jobs.generationPlan,
       resultPostIds: jobs.resultPostIds,
       currentStep: jobs.currentStep,
@@ -114,6 +117,9 @@ jobsRoutes.get("/", async (c) => {
   const rows = await db
     .select({
       id: jobs.id,
+      site_id: jobs.siteId,
+      feed_id: jobs.feedId,
+      preferred_integration_id: jobs.preferredIntegrationId,
       source_type: jobs.sourceType,
       source_value: jobs.sourceValue,
       model_id: jobs.modelId,
@@ -133,14 +139,24 @@ jobsRoutes.get("/", async (c) => {
       created_at: jobs.createdAt,
       completed_at: jobs.completedAt,
       persona_name: personas.name,
+      site_name: sites.name,
+      feed_name: feeds.name,
+      integration_name: siteIntegrations.displayName,
+      integration_provider: siteIntegrations.provider,
+      integration_status: siteIntegrations.status,
+      integration_site_id: siteIntegrations.siteId,
     })
     .from(jobs)
     .leftJoin(personas, eq(jobs.personaId, personas.id))
+    .leftJoin(sites, and(eq(jobs.siteId, sites.id), eq(sites.userId, userId)))
+    .leftJoin(feeds, and(eq(jobs.feedId, feeds.id), eq(feeds.userId, userId)))
+    .leftJoin(siteIntegrations, and(eq(jobs.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
     .where(eq(jobs.userId, userId))
     .orderBy(desc(jobs.createdAt));
 
-  return c.json(rows.map(({ persona_name, ...job }) => ({
+  return c.json(rows.map(({ persona_name, integration_site_id, ...job }) => ({
     ...job,
+    routing_status: job.site_id && job.preferred_integration_id && integration_site_id === job.site_id && job.integration_status === "connected" ? "ready" : "needs_routing",
     personas: persona_name ? { name: persona_name } : null,
   })));
 });
@@ -153,6 +169,9 @@ jobsRoutes.get("/:id", async (c) => {
   const [job] = await db
     .select({
       id: jobs.id,
+      site_id: jobs.siteId,
+      feed_id: jobs.feedId,
+      preferred_integration_id: jobs.preferredIntegrationId,
       user_id: jobs.userId,
       source_type: jobs.sourceType,
       source_value: jobs.sourceValue,
@@ -172,13 +191,26 @@ jobsRoutes.get("/:id", async (c) => {
       total_cost: jobs.totalCost,
       created_at: jobs.createdAt,
       completed_at: jobs.completedAt,
+      site_name: sites.name,
+      feed_name: feeds.name,
+      integration_name: siteIntegrations.displayName,
+      integration_provider: siteIntegrations.provider,
+      integration_status: siteIntegrations.status,
+      integration_site_id: siteIntegrations.siteId,
     })
     .from(jobs)
+    .leftJoin(sites, and(eq(jobs.siteId, sites.id), eq(sites.userId, userId)))
+    .leftJoin(feeds, and(eq(jobs.feedId, feeds.id), eq(feeds.userId, userId)))
+    .leftJoin(siteIntegrations, and(eq(jobs.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
     .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
     .limit(1);
 
   if (!job) return c.json({ error: "Job not found" }, 404);
-  return c.json(job);
+  const { integration_site_id, ...result } = job;
+  return c.json({
+    ...result,
+    routing_status: result.site_id && result.preferred_integration_id && integration_site_id === result.site_id && result.integration_status === "connected" ? "ready" : "needs_routing",
+  });
 });
 
 jobsRoutes.put("/:id/stop", async (c) => {
@@ -207,25 +239,47 @@ jobsRoutes.post("/:id/retry", async (c) => {
     .limit(1);
 
   if (!job) return c.json({ error: "Job not found" }, 404);
-  const settings = await getEffectiveSettings(userId);
+  const settings = await getPinnedSiteSettings(userId, job.siteId);
   const imageSettings = imageConfigFromSettings(settings);
   const retryIndices = retryIndicesFromBody(body);
 
   if (retryIndices.length && FEED_SOURCE_TYPES.has(job.sourceType)) {
     const { generateContent } = await import("../services/generate-content.js");
-    const retries = retryIndices.map((index) => generateContent({
-      userId,
-      sourceType: job.sourceType,
-      sourceValue: job.sourceValue,
-      modelId: job.modelId,
-      personaId: job.personaId,
-      postsPerRun: 1,
-      variations: 1,
-      feedItemOffset: index,
-      generateImages: imageSettings.generateImages,
-      imageConfig: imageSettings.imageConfig,
-    }).catch((err) => console.error(`[retry] Feed draft ${index + 1} error:`, err)));
-    retries.forEach((retry) => void retry);
+    const retries = retryIndices.map(async (index) => {
+      const plan = job.generationPlan && typeof job.generationPlan === "object" && !Array.isArray(job.generationPlan)
+        ? { ...job.generationPlan as Record<string, unknown>, feedItemOffset: index, requestedSourceItems: 1 }
+        : { feedItemOffset: index, requestedSourceItems: 1 };
+      const [retryJob] = await db.insert(jobs).values({
+        userId,
+        siteId: job.siteId,
+        feedId: job.feedId,
+        preferredIntegrationId: job.preferredIntegrationId,
+        sourceType: job.sourceType,
+        sourceValue: job.sourceValue,
+        modelId: job.modelId,
+        personaId: job.personaId,
+        status: "pending",
+        currentStep: "queued",
+        generationPlan: plan,
+      }).returning();
+      return generateContent({
+        jobId: retryJob.id,
+        userId,
+        sourceType: job.sourceType,
+        sourceValue: job.sourceValue,
+        modelId: job.modelId,
+        personaId: job.personaId,
+        postsPerRun: 1,
+        variations: 1,
+        feedItemOffset: index,
+        feedId: job.feedId || undefined,
+        siteId: job.siteId,
+        preferredIntegrationId: job.preferredIntegrationId,
+        generateImages: imageSettings.generateImages,
+        imageConfig: imageSettings.imageConfig,
+      });
+    });
+    retries.forEach((retry, index) => void retry.catch((err) => console.error(`[retry] Feed draft ${index + 1} error:`, err)));
     return c.json({ status: "retrying", retryCount: retryIndices.length });
   }
 
@@ -254,6 +308,9 @@ jobsRoutes.post("/:id/retry", async (c) => {
     postsPerRun: requestedSourceItemsFromPlan(updated.generationPlan),
     variations: requestedSourceItemsFromPlan(updated.generationPlan),
     feedItemOffset: feedItemOffsetFromPlan(updated.generationPlan),
+    feedId: updated.feedId || undefined,
+    siteId: updated.siteId,
+    preferredIntegrationId: updated.preferredIntegrationId,
     generateImages: imageSettings.generateImages,
     imageConfig: imageSettings.imageConfig,
   }).catch((err) => console.error("[retry] Generation error:", err));

@@ -1,0 +1,125 @@
+import { Plus, Trash2 } from "lucide-react";
+import type { GhostAuthor } from "@/hooks/useIntegrations";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { InputAffordance } from "@/components/ui/input-affordance";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { stripHttpProtocol } from "@/lib/url-validation";
+import {
+  emptyOrtakAlanSource,
+  ORTAK_ALAN_CONTENT_TYPES,
+  ORTAK_ALAN_SOURCE_TYPES,
+  type OrtakAlanMetadata,
+} from "./ortak-alan-publishing";
+
+interface Props {
+  metadata: OrtakAlanMetadata;
+  onChange: (metadata: OrtakAlanMetadata) => void;
+  authors: GhostAuthor[];
+  authorsLoading: boolean;
+  coverImageUrl?: string | null;
+}
+
+export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoading, coverImageUrl }: Props) {
+  const update = <K extends keyof OrtakAlanMetadata>(key: K, value: OrtakAlanMetadata[K]) => onChange({ ...metadata, [key]: value });
+  const updateSource = (index: number, patch: Partial<OrtakAlanMetadata["sources"][number]>) => {
+    update("sources", metadata.sources.map((source, sourceIndex) => sourceIndex === index ? { ...source, ...patch } : source));
+  };
+  const topicTags = metadata.topicTags.join(", ");
+
+  return (
+    <div className="space-y-4">
+      <FieldGroup label="01 · Haber kimliği" description="Ghost sıralamasında içerik tipi ilk, konu etiketleri devamında yer alır.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>İçerik tipi</Label>
+            <Select value={metadata.contentType} onValueChange={(value) => onChange({ ...metadata, contentType: value, sponsored: value === "Sponsorlu İçerik" })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{ORTAK_ALAN_CONTENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>URL slug</Label>
+            <Input value={metadata.slug} onChange={(event) => update("slug", event.target.value)} placeholder="haber-basligi" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Konu etiketleri</Label>
+          <Input value={topicTags} onChange={(event) => update("topicTags", event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))} placeholder="Teknoloji, Yapay Zeka, OpenAI" />
+        </div>
+        <div className="space-y-2">
+          <Label>Excerpt</Label>
+          <Textarea value={metadata.excerpt} onChange={(event) => update("excerpt", event.target.value)} className="min-h-[72px] resize-none" />
+        </div>
+      </FieldGroup>
+
+      <FieldGroup label="02 · SEO" description="Bu alanlar Ortak Alan Neo tarafından sayfa ve NewsArticle açıklamasında kullanılır.">
+        <div className="space-y-2">
+          <Label>Meta başlık</Label>
+          <Textarea value={metadata.metaTitle} onChange={(event) => update("metaTitle", event.target.value)} className="min-h-[60px] resize-none" />
+        </div>
+        <div className="space-y-2">
+          <Label>Meta açıklama</Label>
+          <Textarea value={metadata.metaDescription} onChange={(event) => update("metaDescription", event.target.value)} className="min-h-[84px] resize-none" />
+        </div>
+      </FieldGroup>
+
+      <FieldGroup label="03 · Kaynaklar" description="Kaynaklar yazının sonunda okura görünür bir bölüm olarak eklenir.">
+        {metadata.sources.map((source, index) => (
+          <div key={index} className="space-y-3 rounded-sm border border-byword-border bg-card p-3">
+            <div className="flex items-center justify-between gap-3">
+              <Badge variant="outline">{index === 0 ? "Birincil kaynak" : `İkincil kaynak ${index}`}</Badge>
+              {index > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => update("sources", metadata.sources.filter((_, sourceIndex) => sourceIndex !== index))}><Trash2 className="mr-1 h-3.5 w-3.5" />Kaldır</Button>}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Kaynak adı</Label><Input value={source.name} onChange={(event) => updateSource(index, { name: event.target.value })} /></div>
+              <div className="space-y-2"><Label>Kaynak türü</Label><Select value={source.type} onValueChange={(value) => updateSource(index, { type: value })}><SelectTrigger><SelectValue placeholder="Tür seç" /></SelectTrigger><SelectContent>{ORTAK_ALAN_SOURCE_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2 sm:col-span-2"><Label>Kaynak URL</Label><InputAffordance prefix="https://" value={stripHttpProtocol(source.url)} onChange={(event) => updateSource(index, { url: event.target.value })} placeholder="example.com/haber" /></div>
+              <div className="space-y-2"><Label>Orijinal yayın tarihi</Label><Input type="date" value={source.publishedAt} onChange={(event) => updateSource(index, { publishedAt: event.target.value })} /></div>
+              <div className="space-y-2"><Label>Kaynak notu</Label><Input value={source.note} onChange={(event) => updateSource(index, { note: event.target.value })} placeholder="Kısa bağlam notu" /></div>
+            </div>
+          </div>
+        ))}
+        <Button type="button" variant="outline" size="sm" onClick={() => update("sources", [...metadata.sources, emptyOrtakAlanSource()])}><Plus className="mr-1.5 h-4 w-4" />İkincil kaynak ekle</Button>
+      </FieldGroup>
+
+      <FieldGroup label="04 · Editöryal sorumluluk" description="Yazar Ghost staff hesabıyla doğrulanır; şeffaflık notları içerikte görünür.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Ghost yazarı</Label>
+            <Select value={metadata.author?.id || ""} onValueChange={(id) => update("author", authors.find((author) => author.id === id) || null)} disabled={authorsLoading}>
+              <SelectTrigger><SelectValue placeholder={authorsLoading ? "Yazarlar yükleniyor" : "Yazar seç"} /></SelectTrigger>
+              <SelectContent>{authors.map((author) => <SelectItem key={author.id} value={author.id}>{author.name} · {author.email}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2"><Label>Editöryal sorumlu</Label><Input value={metadata.editorialOwner} onChange={(event) => update("editorialOwner", event.target.value)} placeholder="Ortak Alan" /></div>
+        </div>
+        <ToggleRow label="AI destekli" description="Kaynak tarama veya taslak hazırlamada AI kullanıldı." checked={metadata.aiAssisted} onCheckedChange={(checked) => update("aiAssisted", checked)} />
+        {metadata.aiAssisted && <div className="space-y-2"><Label>AI kullanım notu</Label><Textarea value={metadata.aiUsageNote} onChange={(event) => update("aiUsageNote", event.target.value)} className="min-h-[78px] resize-none" /></div>}
+        <ToggleRow label="Sponsorlu içerik" description="Görünür sponsorlu içerik bildirimi eklenir." checked={metadata.sponsored} onCheckedChange={(checked) => onChange({ ...metadata, sponsored: checked, contentType: checked ? "Sponsorlu İçerik" : metadata.contentType === "Sponsorlu İçerik" ? "Haber" : metadata.contentType })} />
+      </FieldGroup>
+
+      <FieldGroup label="05 · Kapak görseli" description="Mevcut post kapak görseli Ghost’a yüklenir; caption kaynak ve lisanstan oluşturulur.">
+        <div className="rounded-sm border border-byword-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground break-all">{coverImageUrl || "Kapak görseli seçilmedi"}</div>
+        <div className="space-y-2"><Label>Görsel alt metni</Label><Input value={metadata.image.alt} onChange={(event) => update("image", { ...metadata.image, alt: event.target.value })} /></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2"><Label>Görsel kaynağı</Label><Input value={metadata.image.source} onChange={(event) => update("image", { ...metadata.image, source: event.target.value })} /></div>
+          <div className="space-y-2"><Label>Görsel lisansı</Label><Input value={metadata.image.license} onChange={(event) => update("image", { ...metadata.image, license: event.target.value })} /></div>
+        </div>
+        <ToggleRow label="AI görsel" description="Caption içinde AI destekli temsili görsel olarak açıklanır." checked={metadata.image.aiGenerated} onCheckedChange={(checked) => update("image", { ...metadata.image, aiGenerated: checked })} />
+      </FieldGroup>
+    </div>
+  );
+}
+
+function FieldGroup({ label, description, children }: { label: string; description: string; children: React.ReactNode }) {
+  return <section className="space-y-3 rounded-sm border border-byword-border bg-muted/15 p-4"><div><p className="font-mono text-xs font-semibold uppercase tracking-wide text-foreground">{label}</p><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>{children}</section>;
+}
+
+function ToggleRow({ label, description, checked, onCheckedChange }: { label: string; description: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+  return <div className="flex items-center justify-between gap-4 rounded-sm border border-byword-border bg-card p-3"><div><Label>{label}</Label><p className="mt-1 text-xs text-muted-foreground">{description}</p></div><Switch checked={checked} onCheckedChange={onCheckedChange} /></div>;
+}

@@ -41,6 +41,8 @@ interface Post {
   personas?: { name: string } | null;
   feeds?: { name: string } | null;
   campaigns?: { name: string } | null;
+  site_name?: string | null;
+  feed_name?: string | null;
 }
 
 interface PostTableRowProps {
@@ -116,6 +118,11 @@ export function PostTableRow({
           {post.feeds?.name && (
             <span className="text-xs text-muted-foreground/70 truncate max-w-[150px]" title={post.feeds.name}>
               {post.feeds.name}
+            </span>
+          )}
+          {(post.site_name || post.feed_name) && (
+            <span className="max-w-[180px] truncate text-xs text-muted-foreground/70" title={[post.site_name, post.feed_name].filter(Boolean).join(" · ")}>
+              {[post.site_name, post.feed_name].filter(Boolean).join(" · ")}
             </span>
           )}
           {post.campaigns?.name && (

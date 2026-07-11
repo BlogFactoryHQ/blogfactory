@@ -1,7 +1,7 @@
 import { db } from "../db/index.js";
 import { feeds, jobs, schedulerLogs } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
-import { getEffectiveSettings } from "./user-settings.js";
+import { getPinnedSiteSettings } from "./user-settings.js";
 
 type SchedulerOptions = {
   maxFeeds?: number;
@@ -72,7 +72,7 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
       }
 
       // Get user's image settings
-      const settings = await getEffectiveSettings(feed.userId);
+      const settings = await getPinnedSiteSettings(feed.userId, feed.siteId);
 
       const imageConfig: any = {};
       const imageOptions = settings?.imageAdvancedOptions && typeof settings.imageAdvancedOptions === "object" && !Array.isArray(settings.imageAdvancedOptions)
@@ -110,6 +110,8 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         postsPerRun: 1,
         feedItemOffset,
         feedId: feed.id,
+        siteId: feed.siteId,
+        preferredIntegrationId: feed.integrationId,
         filterType: feed.filterType,
         filterValue: feed.filterValue,
         keywords: feed.keywords,
