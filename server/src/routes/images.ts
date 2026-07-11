@@ -1,14 +1,40 @@
 import { Hono } from "hono";
-import { db } from "../db/index.js";
+import { db, type Database } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, or, lt, ne } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
-import { deleteFile, saveImageBuffer } from "../services/image-storage.js";
+import { deleteFile, imageAssetValues, storeImageBuffer } from "../services/image-storage.js";
 import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
 import { canRestartImageRequest } from "./image-request-controls.js";
 import { createManualImagePromptRequestsForPost } from "../services/generate-content.js";
+import { removeInlineImagePath } from "../services/image-placement.js";
+import { partitionSettled } from "../services/atomic-state.js";
 
 export const imagesRoutes = new Hono();
+
+type ImageMutationDatabase = Pick<Database, "select" | "update">;
+
+async function detachDeletedAsset(executor: ImageMutationDatabase, asset: typeof imageAssets.$inferSelect, userId: string) {
+  if (!asset.postId) return;
+  const [post] = await executor.select({
+    coverImageUrl: posts.coverImageUrl,
+    inlineImages: posts.inlineImages,
+    content: posts.content,
+  }).from(posts).where(and(eq(posts.id, asset.postId), eq(posts.userId, userId))).limit(1);
+  if (!post) return;
+
+  const changes: Partial<typeof posts.$inferInsert> = {};
+  if (post.coverImageUrl === asset.storagePath) changes.coverImageUrl = null;
+  if ((post.inlineImages || []).includes(asset.storagePath)) {
+    changes.inlineImages = (post.inlineImages || []).filter((path) => path !== asset.storagePath);
+  }
+  if ((post.content || "").includes(asset.storagePath)) {
+    changes.content = removeInlineImagePath(post.content || "", asset.storagePath);
+  }
+  if (Object.keys(changes).length) {
+    await executor.update(posts).set(changes).where(and(eq(posts.id, asset.postId), eq(posts.userId, userId)));
+  }
+}
 
 function serializeAsset(row: any) {
   return {
@@ -228,7 +254,31 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
 
   if (!request) return c.json({ error: "Image request not found" }, 404);
   if (request.status === "cancelled") return c.json({ error: "Cancelled requests cannot be imported" }, 400);
-  if (request.status === "done") return c.json({ error: "Image request was already imported" }, 400);
+  if (request.status === "done" && request.importedAssetId) {
+    const [asset] = await db.select().from(imageAssets).where(and(
+      eq(imageAssets.id, request.importedAssetId),
+      eq(imageAssets.userId, userId),
+    )).limit(1);
+    if (asset) return c.json({ request: serializeRequest(request), asset: serializeAsset(asset), idempotent: true });
+  }
+
+  const staleImport = new Date(Date.now() - 15 * 60 * 1000);
+  const [claimedRequest] = await db
+    .update(imageGenerationRequests)
+    .set({ status: "importing", lastError: null, updatedAt: new Date() })
+    .where(and(
+      eq(imageGenerationRequests.id, id),
+      eq(imageGenerationRequests.userId, userId),
+      or(
+        inArray(imageGenerationRequests.status, ["pending", "queued", "processing", "failed"]),
+        and(eq(imageGenerationRequests.status, "importing"), lt(imageGenerationRequests.updatedAt, staleImport)),
+      ),
+    ))
+    .returning();
+
+  if (!claimedRequest) {
+    return c.json({ error: request.status === "done" ? "Imported image metadata is incomplete" : "This image request is already being imported" }, 409);
+  }
 
   let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
   try {
@@ -236,7 +286,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
     buffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
   } catch {}
 
-  const { asset, storagePath } = await saveImageBuffer(buffer, userId, {
+  const assetOptions = {
     type: request.type,
     prompt: request.prompt,
     altText: request.altText || undefined,
@@ -253,33 +303,75 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
     sourceKind: "manual",
     jobId: request.jobId || undefined,
     postId: request.postId || undefined,
-  });
+  };
 
-  await attachImageRequestToPost(request, storagePath, "auto", userId);
-
-  const [updated] = await db
-    .update(imageGenerationRequests)
-    .set({ status: "done", importedAssetId: asset.id, completedVia: "manual", lastError: null, updatedAt: new Date() })
-    .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
-    .returning();
-
-  return c.json({ request: serializeRequest(updated), asset: serializeAsset(asset) }, 201);
+  let storagePath: string | null = null;
+  try {
+    storagePath = await storeImageBuffer(buffer, userId, `${userId}/manual-imports/${id}.webp`);
+    const result = await db.transaction(async (tx) => {
+      const [asset] = await tx.insert(imageAssets).values(imageAssetValues(buffer, userId, storagePath!, assetOptions)).returning();
+      await attachImageRequestToPost(claimedRequest, storagePath!, "auto", userId, tx);
+      const [updated] = await tx
+        .update(imageGenerationRequests)
+        .set({ status: "done", importedAssetId: asset.id, completedVia: "manual", lastError: null, updatedAt: new Date() })
+        .where(and(
+          eq(imageGenerationRequests.id, id),
+          eq(imageGenerationRequests.userId, userId),
+          eq(imageGenerationRequests.status, "importing"),
+        ))
+        .returning();
+      if (!updated) throw new Error("Image import claim expired before completion");
+      return { asset, updated };
+    });
+    return c.json({ request: serializeRequest(result.updated), asset: serializeAsset(result.asset) }, 201);
+  } catch (error) {
+    let message = error instanceof Error ? error.message : "Image import failed";
+    if (storagePath) {
+      try {
+        await deleteFile(storagePath);
+      } catch (cleanupError) {
+        const cleanupMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        message = `${message}; storage cleanup failed: ${cleanupMessage}`;
+      }
+    }
+    await db.update(imageGenerationRequests).set({ status: "failed", lastError: message, updatedAt: new Date() }).where(and(
+      eq(imageGenerationRequests.id, id),
+      eq(imageGenerationRequests.userId, userId),
+      eq(imageGenerationRequests.status, "importing"),
+    ));
+    return c.json({ error: message }, 500);
+  }
 });
 
 imagesRoutes.delete("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
 
-  const [asset] = await db
-    .select({ storagePath: imageAssets.storagePath })
-    .from(imageAssets)
-    .where(and(eq(imageAssets.id, id), eq(imageAssets.userId, userId)))
-    .limit(1);
+  const [asset] = await db.update(imageAssets).set({ status: "deleting" }).where(and(
+    eq(imageAssets.id, id),
+    eq(imageAssets.userId, userId),
+    ne(imageAssets.status, "deleting"),
+  )).returning();
 
   if (!asset) return c.json({ error: "Image not found" }, 404);
 
-  await deleteFile(asset.storagePath);
-  await db.delete(imageAssets).where(eq(imageAssets.id, id));
+  try {
+    await deleteFile(asset.storagePath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Storage deletion failed";
+    await db.update(imageAssets).set({ status: "delete_failed" }).where(and(eq(imageAssets.id, id), eq(imageAssets.userId, userId)));
+    return c.json({ error: message, failed: [id] }, 502);
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await detachDeletedAsset(tx, asset, userId);
+      await tx.delete(imageAssets).where(and(eq(imageAssets.id, id), eq(imageAssets.userId, userId)));
+    });
+  } catch (error) {
+    await db.update(imageAssets).set({ status: "delete_failed" }).where(and(eq(imageAssets.id, id), eq(imageAssets.userId, userId)));
+    return c.json({ error: error instanceof Error ? error.message : "Image metadata deletion failed", failed: [id] }, 500);
+  }
   return c.json({ success: true });
 });
 
@@ -288,15 +380,44 @@ imagesRoutes.post("/bulk-delete", async (c) => {
   const { ids } = await c.req.json();
   if (!ids?.length) return c.json({ error: "No ids" }, 400);
 
-  const assets = await db
-    .select({ id: imageAssets.id, storagePath: imageAssets.storagePath })
-    .from(imageAssets)
-    .where(and(inArray(imageAssets.id, ids), eq(imageAssets.userId, userId)));
+  const assets = await db.update(imageAssets).set({ status: "deleting" }).where(and(
+    inArray(imageAssets.id, ids),
+    eq(imageAssets.userId, userId),
+    ne(imageAssets.status, "deleting"),
+  )).returning();
 
-  await Promise.all(assets.map((a) => deleteFile(a.storagePath)));
+  const deletionResults = await Promise.allSettled(assets.map((asset) => deleteFile(asset.storagePath)));
+  const partition = partitionSettled(assets, deletionResults);
+  const deletedAssets = partition.completed;
+  const failedAssets = partition.failed.map(({ item }) => item);
 
-  await db.delete(imageAssets).where(and(inArray(imageAssets.id, ids), eq(imageAssets.userId, userId)));
-  return c.json({ success: true, deleted: assets.length });
+  if (failedAssets.length) {
+    await db.update(imageAssets).set({ status: "delete_failed" }).where(and(
+      inArray(imageAssets.id, failedAssets.map((asset) => asset.id)),
+      eq(imageAssets.userId, userId),
+    ));
+  }
+
+  try {
+    if (deletedAssets.length) {
+      await db.transaction(async (tx) => {
+        for (const asset of deletedAssets) await detachDeletedAsset(tx, asset, userId);
+        await tx.delete(imageAssets).where(and(
+          inArray(imageAssets.id, deletedAssets.map((asset) => asset.id)),
+          eq(imageAssets.userId, userId),
+        ));
+      });
+    }
+  } catch (error) {
+    await db.update(imageAssets).set({ status: "delete_failed" }).where(and(
+      inArray(imageAssets.id, deletedAssets.map((asset) => asset.id)),
+      eq(imageAssets.userId, userId),
+    ));
+    return c.json({ error: error instanceof Error ? error.message : "Image metadata deletion failed", deleted: 0, failed: assets.map((asset) => asset.id) }, 500);
+  }
+
+  const failed = partition.failed.map(({ item, error }) => ({ id: item.id, error }));
+  return c.json({ success: failed.length === 0, deleted: deletedAssets.length, failed }, failed.length ? 207 : 200);
 });
 
 imagesRoutes.post("/:id/detach", async (c) => {

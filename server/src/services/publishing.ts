@@ -1,12 +1,14 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
-import { and, eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { getObject } from "./s3-client.js";
+import { publishingFailureState } from "./atomic-state.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -177,6 +179,8 @@ export function serializePublication(row: typeof postPublications.$inferSelect) 
     provider: row.provider,
     publishMode: row.publishMode,
     publish_mode: row.publishMode,
+    idempotencyKey: row.idempotencyKey,
+    idempotency_key: row.idempotencyKey,
     status: row.status,
     externalId: row.externalId,
     external_id: row.externalId,
@@ -196,6 +200,83 @@ export function serializePublication(row: typeof postPublications.$inferSelect) 
     updatedAt: row.updatedAt,
     updated_at: row.updatedAt,
   };
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+export function publishingIdempotencyKey(input: {
+  userId: string;
+  postId: string;
+  integrationId: string;
+  postUpdatedAt: Date;
+  options: PublishOptions;
+}) {
+  return createHash("sha256").update(stableJson({
+    userId: input.userId,
+    postId: input.postId,
+    integrationId: input.integrationId,
+    postUpdatedAt: input.postUpdatedAt.toISOString(),
+    options: input.options,
+  })).digest("hex");
+}
+
+async function claimPublication(input: {
+  key: string;
+  userId: string;
+  postId: string;
+  siteId: string;
+  integrationId: string;
+  provider: IntegrationProvider;
+  mode: PublishMode;
+  title: string;
+}) {
+  const values = {
+    userId: input.userId,
+    postId: input.postId,
+    siteId: input.siteId,
+    integrationId: input.integrationId,
+    provider: input.provider,
+    publishMode: input.mode,
+    idempotencyKey: input.key,
+    status: "processing",
+    title: input.title,
+  };
+  const [created] = await db.insert(postPublications).values(values).onConflictDoNothing().returning();
+  if (created) return { publication: created, claimed: true };
+
+  const [existing] = await db.select().from(postPublications).where(eq(postPublications.idempotencyKey, input.key)).limit(1);
+  if (!existing) throw new Error("Publishing request could not be reserved");
+  if (existing.status === "processing" && existing.updatedAt < new Date(Date.now() - 15 * 60 * 1000)) {
+    const [reconciliation] = await db.update(postPublications).set({
+      status: "reconciliation_required",
+      errorMessage: "Publishing did not finish recording its result; verify the external CMS before retrying",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(postPublications.id, existing.id),
+      eq(postPublications.status, "processing"),
+      lt(postPublications.updatedAt, new Date(Date.now() - 15 * 60 * 1000)),
+    )).returning();
+    if (reconciliation) return { publication: reconciliation, claimed: false };
+  }
+  if (existing.status !== "failed") return { publication: existing, claimed: false };
+
+  const [reclaimed] = await db.update(postPublications).set({
+    status: "processing",
+    errorMessage: null,
+    updatedAt: new Date(),
+  }).where(and(eq(postPublications.id, existing.id), eq(postPublications.status, "failed"))).returning();
+  if (reclaimed) return { publication: reclaimed, claimed: true };
+  const [current] = await db.select().from(postPublications).where(eq(postPublications.id, existing.id)).limit(1);
+  return { publication: current || existing, claimed: false };
 }
 
 export function encryptProviderCredentials(provider: IntegrationProvider, input: unknown, existing?: IntegrationRow) {
@@ -274,6 +355,44 @@ export async function publishPost(userId: string, postId: string, integrationId:
   let article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas);
   const mode = options.mode === "publish" ? "publish" : "draft";
   let validation = { errors: [] as string[], warnings: [] as string[] };
+  const idempotencyKey = publishingIdempotencyKey({
+    userId,
+    postId,
+    integrationId,
+    postUpdatedAt: post.updatedAt,
+    options: { ...options, mode },
+  });
+  const claim = await claimPublication({
+    key: idempotencyKey,
+    userId,
+    postId,
+    siteId: integration.siteId,
+    integrationId: integration.id,
+    provider,
+    mode,
+    title: post.title,
+  });
+
+  if (!claim.claimed) {
+    const completed = claim.publication.status === "draft" || claim.publication.status === "published";
+    return {
+      success: completed,
+      error: completed
+        ? undefined
+        : claim.publication.status === "reconciliation_required"
+          ? claim.publication.errorMessage || "Publishing succeeded externally but requires reconciliation"
+          : "An identical publishing request is already in progress",
+      publication: serializePublication(claim.publication),
+      validation,
+      idempotent: completed,
+      inProgress: claim.publication.status === "processing",
+      reconciliationRequired: claim.publication.status === "reconciliation_required",
+    };
+  }
+
+  let publication = claim.publication;
+  let externalResult: PublishResult | null = null;
+  let publishingMetadata: unknown | undefined;
 
   try {
     if (provider === "ghost" && isOrtakAlanProfile(integration.config)) {
@@ -296,22 +415,14 @@ export async function publishPost(userId: string, postId: string, integrationId:
         imageAiGenerated: coverAsset?.sourceKind === "ai",
       });
 
-      await db
-        .update(posts)
-        .set({ publishingMetadata: metadata })
-        .where(and(eq(posts.id, postId), eq(posts.userId, userId)));
-
       const ghostAuthors = await listGhostAuthors(credentials as GhostCredentials);
       const matchedAuthor = metadata.author?.id
         ? ghostAuthors.find((author) => author.id === metadata.author?.id && author.status === "active")
         : null;
       if (matchedAuthor) {
         metadata.author = matchedAuthor;
-        await db
-          .update(posts)
-          .set({ publishingMetadata: metadata })
-          .where(and(eq(posts.id, postId), eq(posts.userId, userId)));
       }
+      publishingMetadata = metadata;
       validation = validateOrtakAlanMetadata(metadata, {
         mode,
         title: article.title,
@@ -319,9 +430,15 @@ export async function publishPost(userId: string, postId: string, integrationId:
         authorMatched: Boolean(matchedAuthor),
       });
       if (validation.errors.length) {
+        [publication] = await db
+          .update(postPublications)
+          .set({ status: "failed", errorMessage: validation.errors[0], updatedAt: new Date() })
+          .where(and(eq(postPublications.id, publication.id), eq(postPublications.status, "processing")))
+          .returning();
         return {
           success: false,
           error: validation.errors[0],
+          publication: serializePublication(publication),
           validation,
           validationFailed: true,
         };
@@ -329,10 +446,10 @@ export async function publishPost(userId: string, postId: string, integrationId:
 
       article = applyOrtakAlanMetadata(article, metadata);
     } else if (options.publishingMetadata && typeof options.publishingMetadata === "object") {
-      await db.update(posts).set({ publishingMetadata: options.publishingMetadata }).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
+      publishingMetadata = options.publishingMetadata;
     }
 
-    const result =
+    externalResult =
       provider === "wordpress"
         ? await publishWordPress(credentials as WordPressCredentials, article, mode, options)
         : provider === "ghost"
@@ -341,33 +458,38 @@ export async function publishPost(userId: string, postId: string, integrationId:
             ? await publishWix(credentials as WixCredentials, article, mode)
             : await publishFramer(credentials as FramerCredentials, article, mode, integration.config as Record<string, unknown> | null);
 
-    const [publication] = await db
-      .insert(postPublications)
-      .values({
-        userId,
-        postId,
-        siteId: integration.siteId,
-        integrationId: integration.id,
-        provider,
-        publishMode: mode,
-        status: result.status,
-        externalId: result.externalId,
-        externalUrl: result.externalUrl,
-        externalEditUrl: result.externalEditUrl,
-        title: post.title,
-        responseData: redactResponseData(result.responseData),
-        publishedAt: new Date(),
-      })
-      .returning();
+    const result = externalResult;
+    const publishedAt = new Date();
+    publication = await db.transaction(async (tx) => {
+      const [updatedPublication] = await tx
+        .update(postPublications)
+        .set({
+          status: result.status,
+          externalId: result.externalId,
+          externalUrl: result.externalUrl,
+          externalEditUrl: result.externalEditUrl,
+          responseData: redactResponseData(result.responseData),
+          errorMessage: null,
+          publishedAt,
+          updatedAt: publishedAt,
+        })
+        .where(and(eq(postPublications.id, publication.id), eq(postPublications.status, "processing")))
+        .returning();
+      if (!updatedPublication) throw new Error("Publishing reservation was no longer active");
 
-    await db
-      .update(siteIntegrations)
-      .set({ lastPublishAt: new Date(), status: "connected" })
-      .where(eq(siteIntegrations.id, integration.id));
+      await tx
+        .update(siteIntegrations)
+        .set({ lastPublishAt: publishedAt, status: "connected", updatedAt: publishedAt })
+        .where(and(eq(siteIntegrations.id, integration.id), eq(siteIntegrations.userId, userId)));
 
-    if (mode === "publish") {
-      await db.update(posts).set({ status: "published" }).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
-    }
+      const postChanges: Partial<typeof posts.$inferInsert> = {};
+      if (publishingMetadata !== undefined) postChanges.publishingMetadata = publishingMetadata;
+      if (mode === "publish") postChanges.status = "published";
+      if (Object.keys(postChanges).length) {
+        await tx.update(posts).set(postChanges).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
+      }
+      return updatedPublication;
+    });
 
     if (mode === "publish" && result.externalUrl) {
       try {
@@ -384,26 +506,29 @@ export async function publishPost(userId: string, postId: string, integrationId:
       validation,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Publishing failed";
-    const [publication] = await db
-      .insert(postPublications)
-      .values({
-        userId,
-        postId,
-        siteId: integration.siteId,
-        integrationId: integration.id,
-        provider,
-        publishMode: mode,
-        status: "failed",
-        title: post.title,
-        errorMessage: message,
+    const reconciliationRequired = externalResult !== null;
+    const failure = publishingFailureState(reconciliationRequired, error);
+    const [updatedPublication] = await db
+      .update(postPublications)
+      .set({
+        status: failure.status,
+        externalId: externalResult?.externalId,
+        externalUrl: externalResult?.externalUrl,
+        externalEditUrl: externalResult?.externalEditUrl,
+        responseData: redactResponseData(externalResult?.responseData),
+        publishedAt: reconciliationRequired ? new Date() : null,
+        errorMessage: failure.errorMessage,
+        updatedAt: new Date(),
       })
+      .where(and(eq(postPublications.id, publication.id), eq(postPublications.status, "processing")))
       .returning();
+    publication = updatedPublication || publication;
     return {
       success: false,
-      error: message,
+      error: failure.publicError,
       publication: serializePublication(publication),
       validation,
+      reconciliationRequired,
     };
   }
 }

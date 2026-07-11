@@ -82,12 +82,18 @@ export function useDeleteImageAssets() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      await api.post("/images/bulk-delete", { ids });
+      return api.post<{ success: boolean; deleted: number; failed: Array<{ id: string; error: string }> }>("/images/bulk-delete", { ids });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
-      toast.success("Images deleted", { description: "Selected images have been removed." });
+      if (result.failed.length) {
+        toast.warning("Some images could not be deleted", {
+          description: `${result.deleted} removed; ${result.failed.length} retained for retry.`,
+        });
+      } else {
+        toast.success("Images deleted", { description: "Selected images have been removed." });
+      }
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Unable to delete selected images.";

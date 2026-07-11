@@ -330,6 +330,7 @@ export const postPublications = pgTable("post_publications", {
   integrationId: uuid("integration_id").references(() => siteIntegrations.id, { onDelete: "set null" }),
   provider: text("provider").notNull(),
   publishMode: text("publish_mode").default("draft").notNull(),
+  idempotencyKey: text("idempotency_key"),
   status: text("status").notNull(),
   externalId: text("external_id"),
   externalUrl: text("external_url"),
