@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -409,8 +410,8 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="slug gir" />
               </div>
               <div className="space-y-2">
-                <Label>Etiketler</Label>
-                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="opsiyonel" />
+                <Label htmlFor="publish-tags">Etiketler</Label>
+                <TagInput id="publish-tags" value={commaList(tags)} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" />
               </div>
               <div className="space-y-2">
                 <Label>Kategoriler</Label>

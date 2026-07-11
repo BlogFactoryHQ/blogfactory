@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { stripHttpProtocol } from "@/lib/url-validation";
@@ -29,7 +30,6 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
   const updateSource = (index: number, patch: Partial<OrtakAlanMetadata["sources"][number]>) => {
     update("sources", metadata.sources.map((source, sourceIndex) => sourceIndex === index ? { ...source, ...patch } : source));
   };
-  const topicTags = metadata.topicTags.join(", ");
 
   return (
     <div className="space-y-4">
@@ -48,8 +48,8 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Konu etiketleri</Label>
-          <Input value={topicTags} onChange={(event) => update("topicTags", event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))} placeholder="Teknoloji, Yapay Zeka, OpenAI" />
+          <Label htmlFor="ortak-alan-topic-tags">Konu etiketleri</Label>
+          <TagInput id="ortak-alan-topic-tags" value={metadata.topicTags} onChange={(tags) => update("topicTags", tags)} placeholder="Teknoloji, Yapay Zeka, OpenAI" />
         </div>
         <div className="space-y-2">
           <Label>Excerpt</Label>
