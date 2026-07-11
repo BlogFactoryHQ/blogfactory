@@ -29,11 +29,10 @@ import {
   Image,
   AlertTriangle,
 } from "lucide-react";
-import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { UsageTokenChart } from "@/components/usage/UsageTokenChart";
 import { ModelBreakdownTable } from "@/components/usage/ModelBreakdownTable";
 import { BudgetCard } from "@/components/usage/BudgetCard";
-import { startOfMonth, format } from "date-fns";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatIsoDate } from "@/lib/date-format";
@@ -48,18 +47,8 @@ import {
 
 export default function UsageAnalytics() {
   const [days, setDays] = useState(30);
-  const { summary, modelBreakdown, dailyUsage, isLoading, logs, costs, openRouterUsage } = useUsageAnalytics(days);
-
-  // Calculate current month spend from logs
-  const currentMonthSpend = useMemo(() => {
-    const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
-    return logs
-      .filter((l) => {
-        const date = usageDayKey(l.created_at);
-        return date && date >= monthStart;
-      })
-      .reduce((sum, l) => sum + (Number(l.cost) || 0), 0);
-  }, [logs]);
+  const { summary, modelBreakdown, dailyUsage, isLoading, error, costs, openRouterUsage } = useUsageAnalytics(days);
+  const currentMonthSpend = costs?.monthToDateSpend || 0;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(amount);
@@ -71,21 +60,9 @@ export default function UsageAnalytics() {
   const imageSummary = costs?.imageSummary;
 
   const dailyCostBreakdown = useMemo(() => {
-    const byDate = new Map<string, { text: number; image: number }>();
-    logs.forEach((log) => {
-      const date = usageDayKey(log.created_at);
-      if (!date) return;
-      const existing = byDate.get(date) || { text: 0, image: 0 };
-      const usageType = log.usage_type || (log.provider?.includes("image") ? "image" : "text");
-      if (usageType === "image") existing.image += Number(log.cost) || 0;
-      else existing.text += Number(log.cost) || 0;
-      byDate.set(date, existing);
-    });
-
     return dailyUsage.map((day) => {
-      const fromLogs = byDate.get(day.date);
-      const textCost = day.text_cost ?? fromLogs?.text ?? Math.max(0, day.cost - (day.image_cost ?? fromLogs?.image ?? 0));
-      const imageCost = day.image_cost ?? fromLogs?.image ?? Math.max(0, day.cost - textCost);
+      const textCost = day.text_cost ?? Math.max(0, day.cost - (day.image_cost || 0));
+      const imageCost = day.image_cost ?? Math.max(0, day.cost - textCost);
       return {
         date: day.date,
         textCost,
@@ -93,7 +70,7 @@ export default function UsageAnalytics() {
         total: textCost + imageCost,
       };
     });
-  }, [dailyUsage, logs]);
+  }, [dailyUsage]);
 
   const openRouterCapacity = openRouterRemaining > 0 ? currentMonthSpend + openRouterRemaining : 0;
   const openRouterUsedPercent = safePercent(currentMonthSpend, openRouterCapacity);
@@ -198,7 +175,15 @@ export default function UsageAnalytics() {
         </Select>
       </PageHeader>
 
-      {isLoading ? (
+      {error ? (
+        <BywordCard className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+          <AlertTriangle className="h-8 w-8 text-destructive" />
+          <div>
+            <p className="font-medium text-foreground">Usage analytics could not be loaded</p>
+            <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "Try again shortly."}</p>
+          </div>
+        </BywordCard>
+      ) : isLoading ? (
         <BywordCard className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </BywordCard>
@@ -370,7 +355,7 @@ export default function UsageAnalytics() {
 
           {/* Image Generation Costs */}
           <div className="mt-8">
-            <ImageCostsSection logs={logs} days={days} />
+            <ImageCostsSection breakdown={costs?.imageBreakdown || []} days={days} />
           </div>
         </>
       )}

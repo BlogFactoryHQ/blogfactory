@@ -70,7 +70,7 @@ import {
 } from "@/components/layout/BywordSurface";
 import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
-import { usageDayKey, useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 import { ProgrammaticPanel } from "@/pages/Programmatic";
@@ -491,13 +491,8 @@ export default function ContentCreator() {
   );
   const selectedImageModel = imageModels.find((model) => model.id === selectedImageModelId);
   const selectedInlineImageModel = imageModels.find((model) => model.id === selectedInlineImageModelId);
-  const { logs: usageLogs, openRouterUsage } = useUsageAnalytics(30);
-  const currentMonthSpend = useMemo(() => {
-    const month = new Date().toISOString().slice(0, 7);
-    return usageLogs
-      .filter((log) => usageDayKey(log.created_at)?.startsWith(month))
-      .reduce((sum, log) => sum + (Number(log.cost) || 0), 0);
-  }, [usageLogs]);
+  const { costs: usageCosts, openRouterUsage } = useUsageAnalytics(30);
+  const currentMonthSpend = usageCosts?.monthToDateSpend || 0;
   const openRouterData = openRouterUsage?.data || openRouterUsage || {};
   const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? 0) || null;
   const resolveLiveModelId = useCallback((preferredModelId?: string | null) => {
