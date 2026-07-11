@@ -342,7 +342,11 @@ export default function RSSFeeds() {
           } : null,
         } : undefined,
       });
-      return queueFeedDraftJobs(postsPerRun, (index) => api.post<any>("/content/generate", buildGenerationPayload(index)));
+      return queueFeedDraftJobs(postsPerRun, (index, run) => api.post<any>("/content/generate", {
+        ...buildGenerationPayload(index),
+        feedRunToken: run.token,
+        feedRunSize: run.remaining,
+      }));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

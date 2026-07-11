@@ -4,12 +4,18 @@ import { feedDraftQueueLabel, queueFeedDraftJobs } from "./feed-generation";
 describe("queueFeedDraftJobs", () => {
   it("queues feed drafts sequentially", async () => {
     const offsets: number[] = [];
+    const runs: Array<{ token: string; size: number; remaining: number }> = [];
 
-    const result = await queueFeedDraftJobs(3, async (offset) => {
+    const result = await queueFeedDraftJobs(3, async (offset, run) => {
       offsets.push(offset);
+      runs.push(run);
     });
 
     expect(offsets).toEqual([0, 1, 2]);
+    expect(runs.map((run) => run.size)).toEqual([3, 3, 3]);
+    expect(runs.map((run) => run.remaining)).toEqual([3, 2, 1]);
+    expect(new Set(runs.map((run) => run.token)).size).toBe(1);
+    expect(runs[0].token).toMatch(/^[0-9a-f-]{36}$/i);
     expect(result).toEqual({ queued: 3, failed: 0, total: 3 });
   });
 

@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
-import { feeds, jobs, schedulerLogs } from "../db/schema.js";
+import { feeds, schedulerLogs } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { getPinnedSiteSettings } from "./user-settings.js";
+import { claimFeedRun, releaseFeedRun, type FeedRunClaim } from "./feed-run-lease.js";
 
 type SchedulerOptions = {
   maxFeeds?: number;
@@ -58,15 +59,13 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
   const results: Array<{ feedId: string; feedName: string; status: string; error?: string }> = [];
 
   for (const feed of dueFeeds) {
+    let claim: FeedRunClaim | null = null;
+    let releaseScheduled = false;
     try {
-      // Check for already-running jobs
-      const runningJobs = await db
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(and(eq(jobs.sourceValue, feed.sourceUrl as string), eq(jobs.status, "running")))
-        .limit(1);
-
-      if (runningJobs.length > 0) {
+      const configuredPostsPerRun = maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5;
+      const postsPerRun = Math.min(configuredPostsPerRun, 20);
+      claim = await claimFeedRun({ feedId: feed.id, userId: feed.userId, slots: postsPerRun });
+      if (!claim) {
         results.push({ feedId: feed.id, feedName: feed.name, status: "skipped", error: "Already running" });
         continue;
       }
@@ -99,7 +98,6 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
       const sourceType = feed.platform === "reddit" || feed.platform === "hackernews" || feed.platform === "github"
         ? feed.platform
         : "rss_feed";
-      const postsPerRun = maxPostsPerFeed ? Math.min(feed.postsPerRun ?? 5, maxPostsPerFeed) : feed.postsPerRun ?? 5;
       const generationPayload = (feedItemOffset: number) => ({
         userId: feed.userId,
         sourceType,
@@ -122,14 +120,32 @@ export async function runScheduler(userId?: string, options: SchedulerOptions = 
         imageConfig: Object.keys(imageConfig).length > 0 ? imageConfig : undefined,
       });
       const generations = Array.from({ length: postsPerRun }, (_, index) => generateContent(generationPayload(index)));
+      const completion = Promise.allSettled(generations)
+        .finally(() => releaseFeedRun({
+          feedId: feed.id,
+          userId: feed.userId,
+          token: claim!.token,
+          slots: postsPerRun,
+        }));
+      releaseScheduled = true;
 
-      if (options.awaitGeneration) await Promise.allSettled(generations);
-      else generations.forEach((generation, index) => {
-        generation.catch((err) => console.error(`[scheduler] Feed "${feed.name}" item ${index + 1} error:`, err));
+      if (options.awaitGeneration) await completion;
+      else void completion.catch((err) => {
+        console.error(`[scheduler] Feed "${feed.name}" completion error:`, err);
       });
 
       results.push({ feedId: feed.id, feedName: feed.name, status: "triggered" });
     } catch (error: any) {
+      if (claim && !releaseScheduled) {
+        await releaseFeedRun({
+          feedId: feed.id,
+          userId: feed.userId,
+          token: claim.token,
+          slots: claim.activeCount,
+        }).catch((releaseError) => {
+          console.error(`[scheduler] Feed "${feed.name}" lease release failed:`, releaseError);
+        });
+      }
       results.push({ feedId: feed.id, feedName: feed.name, status: "error", error: error.message });
     }
   }

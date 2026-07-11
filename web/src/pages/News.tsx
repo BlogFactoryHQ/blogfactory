@@ -326,7 +326,11 @@ export default function News() {
         platformConfig: feed.platform_config || { url: feed.source_url, editorialMode: "news" },
         generateImages: false,
       });
-      return queueFeedDraftJobs(postsPerRun, (index) => api.post("/content/generate", buildGenerationPayload(index)));
+      return queueFeedDraftJobs(postsPerRun, (index, run) => api.post("/content/generate", {
+        ...buildGenerationPayload(index),
+        feedRunToken: run.token,
+        feedRunSize: run.remaining,
+      }));
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
