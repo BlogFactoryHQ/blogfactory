@@ -47,7 +47,7 @@ import {
   type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
 import { FeedRoutingFields } from "./FeedRoutingFields";
-import { EMPTY_FEED_DEFAULTS, routeReady, type FeedEditorialDefaults } from "@/lib/feed-routing";
+import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, routeReady, type FeedEditorialDefaults } from "@/lib/feed-routing";
 import { useIntegrations } from "@/hooks/useIntegrations";
 
 interface Feed {
@@ -207,6 +207,7 @@ export function FeedEditorDialog({
       setEditedFeed({
         ...feed,
         platform,
+        editorial_defaults: normalizeFeedEditorialDefaults(feed.editorial_defaults),
         source_url: platform === "rss" ? stripHttpProtocol(feed.source_url) : feed.source_url,
         filter_type: feed.filter_type || "none",
         platform_config: normalizedConfigFor(platform, feed),
