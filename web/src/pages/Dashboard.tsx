@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { formatCompactCurrency, formatCompactNumber, safePercent, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { recentJobsFromResponse, type JobListEnvelope } from "@/lib/dashboard-query";
 
 interface DashboardStats {
   totalPosts: number;
@@ -78,7 +79,8 @@ export default function Dashboard() {
   const { data: recentJobs = [], isLoading: isLoadingJobs } = useQuery({
     queryKey: ["recent-jobs"],
     queryFn: async () => {
-      return api.get<RecentJob[]>("/jobs?limit=5");
+      const response = await api.get<RecentJob[] | JobListEnvelope<RecentJob>>("/jobs?limit=5");
+      return recentJobsFromResponse(response);
     },
   });
 
