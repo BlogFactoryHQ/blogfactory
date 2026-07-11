@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, routeReady } from "@/lib/feed-routing";
+import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, parseFeedTagList, routeReady } from "@/lib/feed-routing";
 
 describe("feed routing readiness", () => {
   it("fills array defaults for legacy feeds", () => {
@@ -9,6 +9,10 @@ describe("feed routing readiness", () => {
       defaultCategories: [],
       defaultTopicTags: [],
     });
+  });
+
+  it("splits comma-separated tags and removes duplicates", () => {
+    expect(parseFeedTagList("Haber, Spor, Haber,  Teknoloji ")).toEqual(["Haber", "Spor", "Teknoloji"]);
   });
 
   it("accepts a connected generic CMS route", () => {

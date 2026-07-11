@@ -20,6 +20,10 @@ export const EMPTY_FEED_DEFAULTS: FeedEditorialDefaults = {
   profile: "generic", postType: "post", contentType: "", defaultTopicTags: [], defaultTags: [], defaultCategories: [], aiTopicsEnabled: true,
 };
 
+export function parseFeedTagList(input: string) {
+  return [...new Set(input.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
 export function normalizeFeedEditorialDefaults(value: unknown): FeedEditorialDefaults {
   const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const stringList = (input: unknown) => Array.isArray(input)
