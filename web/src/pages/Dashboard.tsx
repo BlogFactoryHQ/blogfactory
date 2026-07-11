@@ -35,6 +35,26 @@ interface DashboardStats {
   monthCost: number;
 }
 
+interface RecentJob {
+  id: string;
+  status: string;
+  source_type?: string;
+  sourceType?: string;
+  model_id?: string;
+  modelId?: string;
+  created_at?: string;
+  createdAt?: string;
+}
+
+interface RecentSchedulerLog {
+  id: string;
+  feeds_checked: number;
+  feeds_triggered: number;
+  feeds_skipped: number;
+  feeds_errored: number;
+  triggered_at: string;
+}
+
 export default function Dashboard() {
   const { data: dashStats } = useQuery({
     queryKey: ["dashboard-stats"],
@@ -58,22 +78,22 @@ export default function Dashboard() {
   const { data: recentJobs = [], isLoading: isLoadingJobs } = useQuery({
     queryKey: ["recent-jobs"],
     queryFn: async () => {
-      return api.get<any[]>("/jobs?limit=5");
+      return api.get<RecentJob[]>("/jobs?limit=5");
     },
   });
 
   const { data: schedulerLogs = [], isLoading: isLoadingScheduler } = useQuery({
     queryKey: ["scheduler-logs"],
     queryFn: async () => {
-      return api.get<any[]>("/scheduler/logs?limit=5");
+      return api.get<RecentSchedulerLog[]>("/scheduler/logs?limit=5");
     },
   });
 
   const jobStatusSummary = {
-    completed: recentJobs.filter((job: any) => job.status === "completed").length,
-    running: recentJobs.filter((job: any) => job.status === "running").length,
-    pending: recentJobs.filter((job: any) => job.status === "pending").length,
-    failed: recentJobs.filter((job: any) => job.status === "failed").length,
+    completed: recentJobs.filter((job) => job.status === "completed").length,
+    running: recentJobs.filter((job) => job.status === "running").length,
+    pending: recentJobs.filter((job) => job.status === "pending").length,
+    failed: recentJobs.filter((job) => job.status === "failed").length,
   };
   const scaleChecklist = [
     {
@@ -206,7 +226,7 @@ export default function Dashboard() {
                 No jobs yet. Generate content to see activity here.
               </div>
             ) : (
-              recentJobs.map((job: any) => {
+              recentJobs.map((job) => {
                 const sourceType = job.source_type ?? job.sourceType ?? "unknown";
                 const modelId = job.model_id ?? job.modelId ?? "";
                 const createdAt = job.created_at ?? job.createdAt;
@@ -294,7 +314,7 @@ export default function Dashboard() {
                   No scheduler runs yet.
                 </div>
               ) : (
-                schedulerLogs.map((log: any) => (
+                schedulerLogs.map((log) => (
                   <div key={log.id} className="px-4 py-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium">

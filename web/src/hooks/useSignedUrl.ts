@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 /**
  * Constructs the direct storage URL for a given path.
@@ -31,17 +31,7 @@ export function useSignedUrl(urlOrPath: string | null | undefined): string | nul
 }
 
 export function useSignedUrls(urlsOrPaths: string[] | null | undefined): (string | null)[] {
-  const [urls, setUrls] = useState<(string | null)[]>([]);
-
-  useEffect(() => {
-    if (!urlsOrPaths || urlsOrPaths.length === 0) {
-      setUrls([]);
-      return;
-    }
-    setUrls(urlsOrPaths.map(resolveImagePath));
-  }, [JSON.stringify(urlsOrPaths)]);
-
-  return urls;
+  return useMemo(() => urlsOrPaths?.map(resolveImagePath) || [], [urlsOrPaths]);
 }
 
 export async function resolveSignedUrl(urlOrPath: string): Promise<string> {

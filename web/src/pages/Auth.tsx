@@ -61,8 +61,8 @@ export default function Auth() {
       await login(email, password, rememberMe);
       toast.success("Welcome back!");
       navigate("/");
-    } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -79,8 +79,8 @@ export default function Auth() {
       await signup(signupEmail, signupPassword, displayName, consent, marketingOptIn);
       toast.success("Account request created");
       navigate("/");
-    } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -92,8 +92,8 @@ export default function Auth() {
       await devLogin();
       toast.success("Local workspace ready");
       navigate("/");
-    } catch (err: any) {
-      toast.error(err.message || "Start the local backend, then try again");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Start the local backend, then try again");
     } finally {
       setIsDevLoading(false);
     }
@@ -112,8 +112,8 @@ export default function Auth() {
       if (!resp.ok) throw new Error(data.error);
       toast.success(data.message);
       setView("reset-password");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send reset email");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to send reset email");
     } finally {
       setIsLoading(false);
     }
@@ -132,8 +132,8 @@ export default function Auth() {
       if (!resp.ok) throw new Error(data.error);
       toast.success(data.message);
       setView("signin");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to reset password");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
       setIsLoading(false);
     }

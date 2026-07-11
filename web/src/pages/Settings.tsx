@@ -108,6 +108,8 @@ interface UserSettings {
   image_delivery_mode?: ImageDeliveryMode | null;
   manual_image_provider?: ManualImageProvider | null;
   manual_prompt_suffix?: string | null;
+  cover_image_resolution?: "512" | "1K" | null;
+  inline_image_resolution?: "512" | "1K" | null;
   cover_enabled?: boolean | null;
   inline_enabled?: boolean | null;
   inline_count?: number | null;
@@ -2108,7 +2110,7 @@ export default function Settings() {
                 description="Your brand identity for article integration."
                 action={
                   <Button
-                    onClick={() => saveBrandSettingsMutation.mutate()}
+                    onClick={() => saveBrandSettingsMutation.mutate(undefined)}
                     disabled={saveBrandSettingsMutation.isPending}
                   >
                     {unsavedBadge(brandDirty)}
@@ -2245,7 +2247,7 @@ export default function Settings() {
                       aria-label="Use knowledge documents"
                     />
                     <Button
-                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      onClick={() => saveBrandSettingsMutation.mutate(undefined)}
                       disabled={saveBrandSettingsMutation.isPending}
                     >
                       {unsavedBadge(brandDirty)}
@@ -2356,7 +2358,7 @@ export default function Settings() {
                       Add
                     </Button>
                     <Button
-                      onClick={() => saveBrandSettingsMutation.mutate()}
+                      onClick={() => saveBrandSettingsMutation.mutate(undefined)}
                       disabled={saveBrandSettingsMutation.isPending}
                     >
                       {unsavedBadge(brandDirty)}

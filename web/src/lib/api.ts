@@ -21,7 +21,7 @@ class ApiClient {
     return this.token;
   }
 
-  private async request<T>(method: string, path: string, body?: any, signal?: AbortSignal): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const headers: Record<string, string> = {};
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
     if (body && !(body instanceof FormData)) {
@@ -42,8 +42,9 @@ class ApiClient {
     }
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-      throw new Error(err.error || `Request failed: ${resp.status}`);
+      const err: unknown = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      const message = err && typeof err === "object" && "error" in err && typeof err.error === "string" ? err.error : null;
+      throw new Error(message || `Request failed: ${resp.status}`);
     }
 
     return resp.json();
@@ -53,15 +54,15 @@ class ApiClient {
     return this.request<T>("GET", path);
   }
 
-  post<T>(path: string, body?: any, options?: { signal?: AbortSignal }): Promise<T> {
+  post<T>(path: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>("POST", path, body, options?.signal);
   }
 
-  put<T>(path: string, body?: any): Promise<T> {
+  put<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>("PUT", path, body);
   }
 
-  patch<T>(path: string, body?: any): Promise<T> {
+  patch<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>("PATCH", path, body);
   }
 

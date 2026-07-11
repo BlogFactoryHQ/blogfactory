@@ -14,8 +14,8 @@ export function useBulkPostActions() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       toast.success(`${count} post${count > 1 ? "s" : ""} deleted`);
     },
-    onError: (error: any) => {
-      toast.error("Failed to delete posts: " + error.message);
+    onError: (error: unknown) => {
+      toast.error("Failed to delete posts: " + (error instanceof Error ? error.message : "Unknown error"));
     },
   });
 
@@ -28,8 +28,8 @@ export function useBulkPostActions() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       toast.success(`${count} post${count > 1 ? "s" : ""} published`);
     },
-    onError: (error: any) => {
-      toast.error("Failed to publish posts: " + error.message);
+    onError: (error: unknown) => {
+      toast.error("Failed to publish posts: " + (error instanceof Error ? error.message : "Unknown error"));
     },
   });
 
@@ -42,8 +42,8 @@ export function useBulkPostActions() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       toast.success(`${count} post${count > 1 ? "s" : ""} moved to drafts`);
     },
-    onError: (error: any) => {
-      toast.error("Failed to update posts: " + error.message);
+    onError: (error: unknown) => {
+      toast.error("Failed to update posts: " + (error instanceof Error ? error.message : "Unknown error"));
     },
   });
 

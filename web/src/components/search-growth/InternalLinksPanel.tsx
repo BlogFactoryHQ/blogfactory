@@ -352,7 +352,7 @@ export function InternalLinksPanel() {
               <Progress value={progress} className="h-2" />
               <div className="grid gap-2 md:grid-cols-4">
                 {indexingSteps.map((step, index) => {
-                  const done = indexingStepIndex > index || status === "connected";
+                  const done = indexingStepIndex > index;
                   const active = indexingStepIndex === index && isIndexing;
                   return (
                     <div

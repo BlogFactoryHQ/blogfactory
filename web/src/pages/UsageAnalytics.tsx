@@ -65,7 +65,7 @@ export default function UsageAnalytics() {
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(amount);
 
   const formatNumber = (num: number) => new Intl.NumberFormat("en-US").format(Math.round(num));
-  const openRouterData = (openRouterUsage as any)?.data || openRouterUsage || {};
+  const openRouterData = openRouterUsage?.data || openRouterUsage || {};
   const openRouterRemaining = Number(openRouterData.limit_remaining ?? openRouterData.limitRemaining ?? openRouterData.credits ?? 0);
   const recentCalls = costs?.recentCalls || [];
   const imageSummary = costs?.imageSummary;

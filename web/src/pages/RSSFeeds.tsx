@@ -91,7 +91,7 @@ interface Feed {
   platform?: string;
   filter_type?: string;
   filter_value?: number;
-  platform_config?: Record<string, any>;
+  platform_config?: Record<string, string | number | boolean | null | undefined>;
   extract_full_content?: boolean;
   posts_per_run?: number | null;
   filter_old_posts_days?: number | null;
@@ -111,6 +111,22 @@ interface Persona {
   name: string;
   status: string;
   base_model: string;
+}
+
+interface RssUserSettings {
+  cover_enabled?: boolean | null;
+  inline_enabled?: boolean | null;
+  inline_count?: number | null;
+  cover_image_resolution?: ImageResolution | null;
+  inline_image_resolution?: ImageResolution | null;
+  inline_image_source?: InlineImageSource | null;
+  image_delivery_mode?: ImageDeliveryMode | null;
+}
+
+interface SchedulerRun {
+  feeds_triggered: number;
+  feeds_errored: number;
+  triggered_at: string;
 }
 
 function normalizeImageResolution(value?: string | null): ImageResolution {
@@ -156,7 +172,7 @@ export default function RSSFeeds() {
   const { data: userSettings } = useQuery({
     queryKey: ["user-settings"],
     queryFn: async () => {
-      return api.get<any>("/settings");
+      return api.get<RssUserSettings>("/settings");
     },
     enabled: !!user,
   });
@@ -183,7 +199,7 @@ export default function RSSFeeds() {
   const { data: lastSchedulerRun } = useQuery({
     queryKey: ["last-scheduler-run"],
     queryFn: async () => {
-      const logs = await api.get<any[]>("/scheduler/logs?limit=1");
+      const logs = await api.get<SchedulerRun[]>("/scheduler/logs?limit=1");
       return logs?.[0] || null;
     },
     enabled: !!user,
@@ -342,7 +358,7 @@ export default function RSSFeeds() {
           } : null,
         } : undefined,
       });
-      return queueFeedDraftJobs(postsPerRun, (index, run) => api.post<any>("/content/generate", {
+      return queueFeedDraftJobs(postsPerRun, (index, run) => api.post<unknown>("/content/generate", {
         ...buildGenerationPayload(index),
         feedRunToken: run.token,
         feedRunSize: run.remaining,

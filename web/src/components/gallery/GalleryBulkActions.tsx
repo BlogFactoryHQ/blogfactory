@@ -29,7 +29,7 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
 
   if (selectedImages.length === 0) return null;
 
-  const publishedCount = selectedImages.filter((i) => i.post_status === "published").length;
+  const publishedCount = selectedImages.filter((i) => i.postStatus === "published").length;
 
   const handleBulkDownload = async () => {
     const count = selectedImages.length;

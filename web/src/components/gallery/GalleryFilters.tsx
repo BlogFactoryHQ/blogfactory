@@ -33,7 +33,7 @@ export function GalleryFilters({ filters, onChange }: GalleryFiltersProps) {
         </div>
 
         {/* Type */}
-        <Select value={filters.type} onValueChange={(v) => update({ type: v as any })}>
+        <Select value={filters.type} onValueChange={(v: GalleryFiltersType["type"]) => update({ type: v })}>
           <SelectTrigger className="w-[130px]">
             <SelectValue />
           </SelectTrigger>
@@ -45,7 +45,7 @@ export function GalleryFilters({ filters, onChange }: GalleryFiltersProps) {
         </Select>
 
         {/* Status */}
-        <Select value={filters.status} onValueChange={(v) => update({ status: v as any })}>
+        <Select value={filters.status} onValueChange={(v: GalleryFiltersType["status"]) => update({ status: v })}>
           <SelectTrigger className="w-[130px]">
             <SelectValue />
           </SelectTrigger>
@@ -58,7 +58,7 @@ export function GalleryFilters({ filters, onChange }: GalleryFiltersProps) {
         </Select>
 
         {/* Post status */}
-        <Select value={filters.postStatus} onValueChange={(v) => update({ postStatus: v as any })}>
+        <Select value={filters.postStatus} onValueChange={(v: GalleryFiltersType["postStatus"]) => update({ postStatus: v })}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
@@ -70,7 +70,7 @@ export function GalleryFilters({ filters, onChange }: GalleryFiltersProps) {
         </Select>
 
         {/* Date range */}
-        <Select value={filters.dateRange} onValueChange={(v) => update({ dateRange: v as any })}>
+        <Select value={filters.dateRange} onValueChange={(v: GalleryFiltersType["dateRange"]) => update({ dateRange: v })}>
           <SelectTrigger className="w-[130px]">
             <SelectValue />
           </SelectTrigger>

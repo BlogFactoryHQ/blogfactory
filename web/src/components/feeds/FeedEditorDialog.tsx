@@ -65,7 +65,7 @@ interface Feed {
   platform?: string;
   filter_type?: string;
   filter_value?: number;
-  platform_config?: Record<string, any>;
+  platform_config?: Record<string, string | number | boolean | null | undefined>;
   extract_full_content?: boolean;
   posts_per_run?: number | null;
   filter_old_posts_days?: number | null;
@@ -131,7 +131,7 @@ function extractHost(sourceUrl?: string) {
   }
 }
 
-function normalizedConfigFor(platform: SourcePlatform, feed: Feed): Record<string, unknown> {
+function normalizedConfigFor(platform: SourcePlatform, feed: Feed): Record<string, string | number | boolean> {
   const config = feed.platform_config || {};
   switch (platform) {
     case "youtube":
@@ -158,12 +158,13 @@ function normalizedConfigFor(platform: SourcePlatform, feed: Feed): Record<strin
   }
 }
 
-function feedSourceUrlFor(platform: SourcePlatform, sourceUrl: string, config: Record<string, any>) {
+function feedSourceUrlFor(platform: SourcePlatform, sourceUrl: string, config: Record<string, string | number | boolean | null | undefined>) {
   switch (platform) {
     case "youtube":
       return `https://www.youtube.com/feeds/videos.xml?channel_id=${String(config.channelId || "").trim()}`;
     case "reddit": {
-      const domain = REDDIT_DOMAINS.includes(config.redditDomain) ? config.redditDomain : "www.reddit.com";
+      const requestedDomain = String(config.redditDomain || "");
+      const domain = REDDIT_DOMAINS.includes(requestedDomain) ? requestedDomain : "www.reddit.com";
       return `https://${domain}/r/${String(config.subreddit || "").replace(/^r\//, "").trim()}/`;
     }
     case "hackernews":
@@ -217,7 +218,7 @@ export function FeedEditorDialog({
       setEditedFeed(null);
       setKeywordInput("");
     }
-  }, [isOpen, feed?.id, defaultImageConfig, imageDeliveryMode]);
+  }, [isOpen, feed, defaultImageConfig, imageDeliveryMode]);
 
   if (!editedFeed) return null;
   const selectedModelUnavailable = isUnavailableModel(editedFeed.model_id, textModels);
@@ -232,7 +233,7 @@ export function FeedEditorDialog({
   }, routingIntegrations.find((integration) => integration.id === editedFeed.integration_id));
   const canRunDraft = routingIsReady || editedFeed.routing_version === 0;
 
-  const setPlatformConfig = (updates: Record<string, unknown>) => {
+  const setPlatformConfig = (updates: Record<string, string | number | boolean>) => {
     setEditedFeed({
       ...editedFeed,
       platform_config: { ...platformConfig, ...updates },

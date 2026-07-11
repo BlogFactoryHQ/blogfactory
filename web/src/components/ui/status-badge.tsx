@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { CheckCircle, Clock, AlertCircle, Loader2, Circle } from "lucide-react";
 
-type StatusType = "success" | "warning" | "error" | "pending" | "running" | "draft" | "active" | "paused";
+export type StatusType = "success" | "warning" | "error" | "pending" | "running" | "draft" | "active" | "paused";
 
 interface StatusBadgeProps {
   status: StatusType;
