@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -18,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3 } from "lucide-react";
+import { Search, RotateCcw, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatDistanceToNow } from "@/lib/date-format";
@@ -30,6 +31,7 @@ import {
   semanticToneClass,
   type SemanticTone,
 } from "@/lib/search-insights";
+import { jobListPath, type ListPagination } from "@/lib/list-query";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -87,6 +89,20 @@ interface JobWire {
   generationPlan?: GenerationPlan | null;
   personas?: { name: string } | null;
   personaName?: string | null;
+  site_id?: string | null;
+  feed_id?: string | null;
+  preferred_integration_id?: string | null;
+  site_name?: string | null;
+  feed_name?: string | null;
+}
+
+interface JobListResponse {
+  items: JobWire[];
+  pagination: ListPagination;
+  facets: {
+    statusCounts: Record<StatusFilter, number>;
+    totalCost: number;
+  };
 }
 
 export interface Job {
@@ -176,6 +192,11 @@ const normalizeJob = (job: JobWire): Job => ({
   completed_at: job.completed_at ?? job.completedAt ?? null,
   generation_plan: job.generation_plan ?? job.generationPlan ?? {},
   personas: job.personas ?? (job.personaName ? { name: job.personaName } : null),
+  site_id: job.site_id ?? null,
+  feed_id: job.feed_id ?? null,
+  preferred_integration_id: job.preferred_integration_id ?? null,
+  site_name: job.site_name ?? null,
+  feed_name: job.feed_name ?? null,
 });
 
 const failedDraftsFor = (job: Job): Array<{ index: number; error: string }> => {
@@ -393,8 +414,12 @@ const draftProgressForJob = (job: Job): DraftProgress | null => {
 };
 
 export default function Jobs() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") || "");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [filter, setFilter] = useState<StatusFilter>(() => ["pending", "running", "completed", "failed"].includes(searchParams.get("status") || "") ? searchParams.get("status") as StatusFilter : "all");
+  const [currentPage, setCurrentPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
+  const [jobsPerPage, setJobsPerPage] = useState(() => Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 25)));
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const queryClient = useQueryClient();
 
@@ -430,14 +455,17 @@ export default function Jobs() {
     },
   });
 
-  const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ["jobs"],
+  const { data: jobList, isLoading, error: jobsError } = useQuery({
+    queryKey: ["jobs", currentPage, jobsPerPage, deferredSearchQuery, filter],
     queryFn: async () => {
-      return (await api.get<JobWire[]>("/jobs")).map(normalizeJob);
+      return api.get<JobListResponse>(jobListPath({ page: currentPage, limit: jobsPerPage, search: deferredSearchQuery, status: filter }));
     },
     // Always poll every 5s -- lightweight query, ensures we catch state changes
     refetchInterval: 5000,
   });
+  const jobs = useMemo(() => (jobList?.items || []).map(normalizeJob), [jobList?.items]);
+  const jobPagination = jobList?.pagination;
+  const jobFacets = jobList?.facets;
 
   // Fetch posts for selected job
   const { data: jobPosts = [] } = useQuery({
@@ -452,34 +480,32 @@ export default function Jobs() {
   });
 
   const jobRows = useMemo(() => aggregateJobRows(jobs), [jobs]);
+  const selectedJobId = selectedJob?.id;
+  const selectedBatchId = selectedJob?.generation_plan?.batchId;
 
   useEffect(() => {
-    if (!selectedJob) return;
-    const selectedBatchId = selectedJob.generation_plan?.batchId;
-    const updated = jobRows.find((job) => job.id === selectedJob.id || (selectedBatchId && job.generation_plan?.batchId === selectedBatchId));
-    if (updated) setSelectedJob(updated);
-  }, [jobRows, selectedJob]);
+    if (!selectedJobId) return;
+    const updated = jobRows.find((job) => job.id === selectedJobId || (selectedBatchId && job.generation_plan?.batchId === selectedBatchId));
+    if (updated) setSelectedJob((current) => current ? {
+      ...current,
+      ...updated,
+      generation_plan: {
+        ...current.generation_plan,
+        ...updated.generation_plan,
+        ...(current.generation_plan.seoQa ? { seoQa: current.generation_plan.seoQa } : {}),
+        ...(current.generation_plan.imageResolution ? { imageResolution: current.generation_plan.imageResolution } : {}),
+      },
+    } : updated);
+  }, [jobRows, selectedBatchId, selectedJobId]);
 
-  const statusCounts = {
-    all: jobRows.length,
-    pending: jobRows.filter((j) => j.status === "pending").length,
-    running: jobRows.filter((j) => j.status === "running").length,
-    completed: jobRows.filter((j) => j.status === "completed").length,
-    failed: jobRows.filter((j) => j.status === "failed").length,
-  };
+  const statusCounts = jobFacets?.statusCounts || { all: 0, pending: 0, running: 0, completed: 0, failed: 0 };
 
-  const filteredJobs = jobRows.filter((job) => {
-    const query = searchQuery.toLowerCase();
-    const ids = [job.id, ...(job.child_jobs || []).map((child) => child.id)].join(" ").toLowerCase();
-    const matchesSearch = ids.includes(query);
-    const matchesFilter = filter === "all" || job.status === filter;
-    return matchesSearch && matchesFilter;
-  });
+  const filteredJobs = jobRows;
 
   const reliabilityInsights = useMemo(() => {
     const partialJobs = jobRows.filter((job) => draftStatsFor(job).partial);
     const failedOrPartial = jobRows.filter((job) => job.status === "failed" || draftStatsFor(job).partial);
-    const totalCost = jobRows.reduce((sum, job) => sum + (Number(job.total_cost) || 0), 0);
+    const totalCost = jobFacets?.totalCost || 0;
     const expensiveJobs = [...jobRows]
       .filter((job) => Number(job.total_cost) > 0)
       .sort((a, b) => Number(b.total_cost) - Number(a.total_cost))
@@ -502,7 +528,45 @@ export default function Jobs() {
       expensiveJobs,
       slowJobs,
     };
-  }, [jobRows]);
+  }, [jobFacets?.totalCost, jobRows]);
+
+  const selectJob = (job: Job) => {
+    setSelectedJob(job);
+    api.get<JobWire>(`/jobs/${job.id}`).then((wire) => {
+      const detail = normalizeJob(wire);
+      setSelectedJob((current) => current?.id === job.id ? {
+        ...current,
+        ...detail,
+        generation_plan: {
+          ...detail.generation_plan,
+          ...current.generation_plan,
+          ...(detail.generation_plan.seoQa ? { seoQa: detail.generation_plan.seoQa } : {}),
+          ...(detail.generation_plan.imageResolution ? { imageResolution: detail.generation_plan.imageResolution } : {}),
+        },
+        child_jobs: current.child_jobs,
+        is_batch: current.is_batch,
+        personas: detail.personas || current.personas,
+      } : current);
+    }).catch((error) => toast.error(error instanceof Error ? error.message : "Job details could not be loaded"));
+  };
+
+  const updateFilter = (value: StatusFilter) => {
+    setFilter(value);
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    if (jobPagination && currentPage > jobPagination.pages) setCurrentPage(jobPagination.pages);
+  }, [currentPage, jobPagination]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (filter !== "all") next.set("status", filter);
+    if (searchQuery.trim()) next.set("search", searchQuery.trim());
+    if (currentPage !== 1) next.set("page", String(currentPage));
+    if (jobsPerPage !== 25) next.set("limit", String(jobsPerPage));
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [currentPage, filter, jobsPerPage, searchParams, searchQuery, setSearchParams]);
 
   const copyPrompt = () => {
     toast.success("Full prompt copied to clipboard.");
@@ -561,8 +625,8 @@ export default function Jobs() {
         slowJobs={reliabilityInsights.slowJobs}
         retryableJob={reliabilityInsights.failedOrPartial[0]}
         runningJobs={jobRows.filter((job) => job.status === "running" || job.status === "pending")}
-        onFilter={setFilter}
-        onSelectJob={setSelectedJob}
+        onFilter={updateFilter}
+        onSelectJob={selectJob}
         onRetry={(job) => {
           const failedDrafts = failedDraftsFor(job);
           const jobIds = failedJobIdsFor(job);
@@ -575,7 +639,7 @@ export default function Jobs() {
 
       <BywordCard className="mb-6">
         <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as StatusFilter)}>
+          <Tabs value={filter} onValueChange={(v) => updateFilter(v as StatusFilter)}>
             <TabsList className="h-auto flex-wrap justify-start">
               <TabsTrigger value="all" className="gap-2">
                 All Jobs
@@ -604,7 +668,7 @@ export default function Jobs() {
             <Input
               placeholder="Search Job ID..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               className="pl-9"
             />
           </div>
@@ -615,7 +679,7 @@ export default function Jobs() {
         <SectionHeader
           icon={BarChart3}
           title="Queue table"
-          description={`${formatCompactNumber(filteredJobs.length)} visible job${filteredJobs.length === 1 ? "" : "s"}. Select a row for progress, cost, and recovery controls.`}
+          description={`${formatCompactNumber(jobPagination?.total || 0)} matching job${jobPagination?.total === 1 ? "" : "s"}. Select a row for progress, cost, and recovery controls.`}
         />
         <Table>
           <TableHeader>
@@ -636,6 +700,12 @@ export default function Jobs() {
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
+            ) : jobsError ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-12 text-center text-destructive">
+                  {jobsError instanceof Error ? jobsError.message : "Jobs could not be loaded."}
+                </TableCell>
+              </TableRow>
             ) : filteredJobs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
@@ -654,7 +724,7 @@ export default function Jobs() {
                       "table-row-calm cursor-pointer",
                       selectedJob?.id === job.id && "bg-muted/50"
                     )}
-                    onClick={() => setSelectedJob(job)}
+                    onClick={() => selectJob(job)}
                   >
                     <TableCell className="font-mono text-sm">
                       #{job.id.slice(0, 8)}
@@ -694,6 +764,27 @@ export default function Jobs() {
             )}
           </TableBody>
         </Table>
+        {(jobPagination?.total || 0) > 0 && (
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {(currentPage - 1) * jobsPerPage + 1} to {(currentPage - 1) * jobsPerPage + jobs.length} of {jobPagination?.total || 0} jobs
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={String(jobsPerPage)} onValueChange={(value) => { setJobsPerPage(Number(value)); setCurrentPage(1); }}>
+                <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map((count) => <SelectItem key={count} value={String(count)}>{count} / page</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.min(jobPagination?.pages || 1, page + 1))} disabled={currentPage >= (jobPagination?.pages || 1)}>
+                Next <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </BywordCard>
 
       {/* Job Detail Sheet */}

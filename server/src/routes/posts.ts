@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs, sites, feeds, siteIntegrations } from "../db/schema.js";
-import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
@@ -9,21 +9,37 @@ import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-clea
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
 import { optionalEnum, readJsonObject, requiredString, requiredStringArray } from "../http/error-contract.js";
+import { pagination, parsePostListQuery } from "./list-query.js";
 
 export const postsRoutes = new Hono();
 
 postsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
   const ids = c.req.query("ids")?.split(",").map((id) => id.trim()).filter(Boolean).slice(0, 100) || [];
-  const rows = await db
+  const query = parsePostListQuery(c.req.query());
+  const conditions: SQL[] = [eq(posts.userId, userId)];
+  if (ids.length) conditions.push(inArray(posts.id, ids));
+  else {
+    if (query.search) conditions.push(ilike(posts.title, `%${query.search}%`));
+    if (query.status) conditions.push(eq(posts.status, query.status));
+    if (query.sourceType) conditions.push(eq(posts.sourceType, query.sourceType));
+    if (query.modelId) conditions.push(eq(posts.modelId, query.modelId));
+    if (query.personaId === null) conditions.push(isNull(posts.personaId));
+    else if (query.personaId) conditions.push(eq(posts.personaId, query.personaId));
+    if (query.campaignId === null) conditions.push(isNull(posts.campaignId));
+    else if (query.campaignId) conditions.push(eq(posts.campaignId, query.campaignId));
+    if (query.siteId) conditions.push(eq(posts.siteId, query.siteId));
+    if (query.feedId) conditions.push(eq(posts.feedId, query.feedId));
+  }
+  const sortColumn = query.sort === "title" ? posts.title : posts.createdAt;
+  const sortDirection = query.direction === "asc" ? asc : desc;
+  const rowsQuery = db
     .select({
       id: posts.id,
       site_id: posts.siteId,
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
-      content: posts.content,
-      summary: posts.summary,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -37,7 +53,14 @@ postsRoutes.get("/", async (c) => {
       inline_images: posts.inlineImages,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
-      generation_plan: jobs.generationPlan,
+      generation_plan: sql<Record<string, unknown> | null>`case when ${jobs.generationPlan} is null then null else jsonb_build_object(
+        'totalDrafts', ${jobs.generationPlan}->'totalDrafts',
+        'failedDrafts', ${jobs.generationPlan}->'failedDrafts',
+        'batchId', ${jobs.generationPlan}->'batchId',
+        'variationCount', ${jobs.generationPlan}->'variationCount',
+        'imagesEnabled', ${jobs.generationPlan}->'imagesEnabled',
+        'imageDeliveryMode', ${jobs.generationPlan}->'imageDeliveryMode'
+      ) end`,
       persona_name: personas.name,
       campaign_name: campaigns.name,
       site_name: sites.name,
@@ -54,8 +77,11 @@ postsRoutes.get("/", async (c) => {
     .leftJoin(sites, and(eq(posts.siteId, sites.id), eq(sites.userId, userId)))
     .leftJoin(feeds, and(eq(posts.feedId, feeds.id), eq(feeds.userId, userId)))
     .leftJoin(siteIntegrations, and(eq(posts.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
-    .where(ids.length ? and(eq(posts.userId, userId), inArray(posts.id, ids)) : eq(posts.userId, userId))
-    .orderBy(desc(posts.createdAt));
+    .where(and(...conditions))
+    .orderBy(sortDirection(sortColumn), sortDirection(posts.id));
+  const rows = ids.length
+    ? await rowsQuery
+    : await rowsQuery.limit(query.limit).offset((query.page - 1) * query.limit);
 
   const postIds = rows.map((row) => row.id);
   const promptCounts = new Map<string, number>();
@@ -91,20 +117,69 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  return c.json(rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => ({
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => ({
     ...post,
     routing_status: post.site_id && post.preferred_integration_id && integration_site_id === post.site_id && post.integration_status === "connected" ? "ready" : "needs_routing",
     image_asset_count: imageCounts.get(post.id) || 0,
     image_prompt_count: promptCounts.get(post.id) || 0,
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,
-  })));
+  }));
+  if (ids.length) return c.json(items);
+
+  const [[countRow], [statusRow], sourceRows, modelRows, personaRows, campaignRows] = await Promise.all([
+    db.select({ total: sql<number>`count(*)::int` }).from(posts).where(and(...conditions)),
+    db.select({
+      draft: sql<number>`count(*) filter (where ${posts.status} = 'draft')::int`,
+      published: sql<number>`count(*) filter (where ${posts.status} = 'published')::int`,
+      total: sql<number>`count(*)::int`,
+    }).from(posts).where(eq(posts.userId, userId)),
+    db.select({ value: posts.sourceType }).from(posts).where(eq(posts.userId, userId)).groupBy(posts.sourceType).orderBy(posts.sourceType),
+    db.select({ value: posts.modelId }).from(posts).where(eq(posts.userId, userId)).groupBy(posts.modelId).orderBy(posts.modelId),
+    db.select({ id: personas.id, name: personas.name }).from(personas).where(eq(personas.userId, userId)).orderBy(personas.name),
+    db.select({ id: campaigns.id, name: campaigns.name }).from(campaigns).where(eq(campaigns.userId, userId)).orderBy(campaigns.name),
+  ]);
+  const total = Number(countRow?.total || 0);
+  return c.json({
+    items,
+    pagination: pagination(query.page, query.limit, total),
+    facets: {
+      statusCounts: { total: Number(statusRow?.total || 0), draft: Number(statusRow?.draft || 0), published: Number(statusRow?.published || 0) },
+      sourceTypes: sourceRows.map((row) => row.value).filter(Boolean),
+      models: modelRows.map((row) => row.value).filter(Boolean),
+      personas: personaRows,
+      campaigns: campaignRows,
+    },
+  });
 });
 
 postsRoutes.get("/:id/publications", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
   return c.json({ publications: await getPostPublications(userId, id) });
+});
+
+postsRoutes.post("/duplicate-check", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const titles = Array.isArray(body.titles)
+    ? body.titles.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim().toLowerCase()).slice(0, 50)
+    : [];
+  const hashes = Array.isArray(body.hashes)
+    ? body.hashes.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim()).slice(0, 50)
+    : [];
+  if (!titles.length && !hashes.length) return c.json({ titles: [], hashes: [] });
+  const matches = await db.select({ title: posts.title, hash: posts.sourceContentHash }).from(posts).where(and(
+    eq(posts.userId, userId),
+    or(
+      titles.length ? inArray(sql`lower(${posts.title})`, titles) : undefined,
+      hashes.length ? inArray(posts.sourceContentHash, hashes) : undefined,
+    ),
+  ));
+  return c.json({
+    titles: matches.map((match) => match.title.toLowerCase()),
+    hashes: matches.map((match) => match.hash).filter(Boolean),
+  });
 });
 
 postsRoutes.post("/import-md", async (c) => {

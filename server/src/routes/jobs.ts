@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { jobs, personas, userSettings, sites, feeds, siteIntegrations } from "../db/schema.js";
-import { eq, and, desc, lt, isNull } from "drizzle-orm";
+import { eq, and, desc, lt, isNull, ilike, or, sql, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { getPinnedSiteSettings } from "../services/user-settings.js";
 import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
 import { readJsonObject } from "../http/error-contract.js";
+import { pagination, parseJobListQuery } from "./list-query.js";
 
 export const jobsRoutes = new Hono();
 const STALE_RUNNING_MS = 10 * 60 * 1000;
@@ -114,6 +115,16 @@ async function markStaleRunningJobs(userId: string, jobId?: string) {
 jobsRoutes.get("/", async (c) => {
   const userId = getUserId(c);
   await markStaleRunningJobs(userId);
+  const query = parseJobListQuery(c.req.query());
+  const conditions: SQL[] = [eq(jobs.userId, userId)];
+  if (query.status) conditions.push(eq(jobs.status, query.status));
+  if (query.siteId) conditions.push(eq(jobs.siteId, query.siteId));
+  if (query.feedId) conditions.push(eq(jobs.feedId, query.feedId));
+  if (query.campaignId) conditions.push(eq(jobs.campaignId, query.campaignId));
+  if (query.search) conditions.push(or(
+    sql`${jobs.id}::text ilike ${`%${query.search}%`}`,
+    ilike(jobs.sourceValue, `%${query.search}%`),
+  )!);
 
   const rows = await db
     .select({
@@ -129,12 +140,16 @@ jobsRoutes.get("/", async (c) => {
       current_step: jobs.currentStep,
       error_message: jobs.errorMessage,
       generation_error: jobs.generationError,
-      generation_plan: jobs.generationPlan,
+      generation_plan: sql<Record<string, unknown>>`coalesce(jsonb_build_object(
+        'failedDrafts', ${jobs.generationPlan}->'failedDrafts',
+        'batchId', ${jobs.generationPlan}->'batchId',
+        'variationCount', ${jobs.generationPlan}->'variationCount',
+        'totalDrafts', ${jobs.generationPlan}->'totalDrafts',
+        'variationIndex', ${jobs.generationPlan}->'variationIndex',
+        'imagesEnabled', ${jobs.generationPlan}->'imagesEnabled',
+        'imageDeliveryMode', ${jobs.generationPlan}->'imageDeliveryMode'
+      ), '{}'::jsonb)`,
       result_post_ids: jobs.resultPostIds,
-      summary_result: jobs.summaryResult,
-      summary_completed_at: jobs.summaryCompletedAt,
-      campaign_id: jobs.campaignId,
-      campaign_item_id: jobs.campaignItemId,
       token_cost: jobs.tokenCost,
       total_cost: jobs.totalCost,
       created_at: jobs.createdAt,
@@ -152,14 +167,39 @@ jobsRoutes.get("/", async (c) => {
     .leftJoin(sites, and(eq(jobs.siteId, sites.id), eq(sites.userId, userId)))
     .leftJoin(feeds, and(eq(jobs.feedId, feeds.id), eq(feeds.userId, userId)))
     .leftJoin(siteIntegrations, and(eq(jobs.preferredIntegrationId, siteIntegrations.id), eq(siteIntegrations.userId, userId)))
-    .where(eq(jobs.userId, userId))
-    .orderBy(desc(jobs.createdAt));
+    .where(and(...conditions))
+    .orderBy(desc(jobs.createdAt), desc(jobs.id))
+    .limit(query.limit)
+    .offset((query.page - 1) * query.limit);
 
-  return c.json(rows.map(({ persona_name, integration_site_id, ...job }) => ({
+  const items = rows.map(({ persona_name, integration_site_id, ...job }) => ({
     ...job,
     routing_status: job.site_id && job.preferred_integration_id && integration_site_id === job.site_id && job.integration_status === "connected" ? "ready" : "needs_routing",
     personas: persona_name ? { name: persona_name } : null,
-  })));
+  }));
+  const [[countRow], [stats]] = await Promise.all([
+    db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...conditions)),
+    db.select({
+      total: sql<number>`count(*)::int`,
+      pending: sql<number>`count(*) filter (where ${jobs.status} = 'pending')::int`,
+      running: sql<number>`count(*) filter (where ${jobs.status} = 'running')::int`,
+      completed: sql<number>`count(*) filter (where ${jobs.status} = 'completed')::int`,
+      failed: sql<number>`count(*) filter (where ${jobs.status} = 'failed')::int`,
+      totalCost: sql<number>`coalesce(sum(${jobs.totalCost}), 0)::float8`,
+    }).from(jobs).where(eq(jobs.userId, userId)),
+  ]);
+  const total = Number(countRow?.total || 0);
+  return c.json({
+    items,
+    pagination: pagination(query.page, query.limit, total),
+    facets: {
+      statusCounts: {
+        all: Number(stats?.total || 0), pending: Number(stats?.pending || 0), running: Number(stats?.running || 0),
+        completed: Number(stats?.completed || 0), failed: Number(stats?.failed || 0),
+      },
+      totalCost: Number(stats?.totalCost || 0),
+    },
+  });
 });
 
 jobsRoutes.get("/:id", async (c) => {
