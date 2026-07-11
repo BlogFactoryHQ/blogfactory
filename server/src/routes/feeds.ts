@@ -4,10 +4,11 @@ import { feeds, siteIntegrations, sites } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { inspectFeedRouting } from "../services/feed-routing.js";
+import { readJsonObject, requiredString } from "../http/error-contract.js";
 
 export const feedsRoutes = new Hono();
 
-function feedValues(body: Record<string, any>) {
+function feedValues(body: Record<string, unknown>) {
   const value = (snake: string, camel = snake.replace(/_([a-z])/g, (_, char) => char.toUpperCase())) => body[camel] ?? body[snake];
   const values: Record<string, any> = {};
   const set = (key: string, snake: string) => {
@@ -100,9 +101,9 @@ feedsRoutes.get("/", async (c) => {
 
 feedsRoutes.post("/", async (c) => {
   const userId = getUserId(c);
-  const body = await c.req.json();
+  const body = await readJsonObject(c);
   const values = feedValues(body);
-  if (!values.name) return c.json({ error: "Feed name is required" }, 400);
+  values.name = requiredString(body, "name");
   const route = await inspectFeedRouting(userId, values.siteId || null, values.integrationId || null, values.editorialDefaults);
   values.siteId = route.site?.id || null;
   values.integrationId = route.integration?.siteId === route.site?.id ? route.integration.id : null;
@@ -119,7 +120,7 @@ feedsRoutes.post("/", async (c) => {
 feedsRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = await readJsonObject(c);
   const existing = await db.select().from(feeds).where(and(eq(feeds.id, id), eq(feeds.userId, userId))).limit(1);
   if (!existing[0]) return c.json({ error: "Feed not found" }, 404);
   const values = feedValues(body);

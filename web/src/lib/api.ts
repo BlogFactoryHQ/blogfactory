@@ -1,6 +1,23 @@
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const TOKEN_KEY = "ef_token";
 
+export interface ApiFieldError {
+  field: string;
+  message: string;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code: string,
+    public details: ApiFieldError[] = [],
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -35,16 +52,26 @@ class ApiClient {
       signal,
     });
 
-    if (resp.status === 401) {
-      this.setToken(null);
-      window.location.href = "/auth";
-      throw new Error("Unauthorized");
-    }
-
     if (!resp.ok) {
-      const err: unknown = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-      const message = err && typeof err === "object" && "error" in err && typeof err.error === "string" ? err.error : null;
-      throw new Error(message || `Request failed: ${resp.status}`);
+      const err: unknown = await resp.json().catch(() => null);
+      const envelope = err && typeof err === "object" ? err as Record<string, unknown> : {};
+      const message = typeof envelope.message === "string"
+        ? envelope.message
+        : typeof envelope.error === "string"
+          ? envelope.error
+          : `Request failed: ${resp.status}`;
+      const code = typeof envelope.code === "string" ? envelope.code : `http_${resp.status}`;
+      const details = Array.isArray(envelope.details)
+        ? envelope.details.filter((item): item is ApiFieldError => Boolean(
+            item && typeof item === "object" && "field" in item && typeof item.field === "string" && "message" in item && typeof item.message === "string",
+          ))
+        : [];
+      const apiError = new ApiError(message, resp.status, code, details);
+      if (resp.status === 401) {
+        this.setToken(null);
+        window.location.href = "/auth";
+      }
+      throw apiError;
     }
 
     return resp.json();

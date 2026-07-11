@@ -5,6 +5,7 @@ import { eq, and, desc, lt, isNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { getPinnedSiteSettings } from "../services/user-settings.js";
 import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
+import { readJsonObject } from "../http/error-contract.js";
 
 export const jobsRoutes = new Hono();
 const STALE_RUNNING_MS = 10 * 60 * 1000;
@@ -230,7 +231,7 @@ jobsRoutes.put("/:id/stop", async (c) => {
 jobsRoutes.post("/:id/retry", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
+  const body = await readJsonObject(c);
 
   const [job] = await db
     .select()

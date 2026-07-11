@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { authMiddleware } from "./middleware/auth.js";
+import { errorResponse, handleApiError, normalizeApiErrors } from "./http/error-contract.js";
 
 import { authRoutes } from "./routes/auth.js";
 import { postsRoutes } from "./routes/posts.js";
@@ -31,6 +32,7 @@ const app = new Hono();
 
 app.use("*", cors());
 app.use("*", logger());
+app.use("/api/*", normalizeApiErrors);
 app.use("/api/*", authMiddleware);
 
 app.route("/api/auth", authRoutes);
@@ -60,6 +62,9 @@ app.route("/api/programmatic", programmaticRoutes);
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0" })
 );
+
+app.notFound((c) => errorResponse(c, 404, "not_found", "API route not found"));
+app.onError(handleApiError);
 
 // Named export for Vercel serverless entrypoint
 export { app };

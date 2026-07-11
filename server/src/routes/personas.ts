@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { personas } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
+import { readJsonObject, requiredString } from "../http/error-contract.js";
 
 export const personasRoutes = new Hono();
 
@@ -52,7 +53,9 @@ personasRoutes.get("/", async (c) => {
 
 personasRoutes.post("/", async (c) => {
   const userId = getUserId(c);
-  const body = mapPersonaBody(await c.req.json());
+  const rawBody = await readJsonObject(c);
+  requiredString(rawBody, "name");
+  const body = mapPersonaBody(rawBody);
   const [persona] = await db
     .insert(personas)
     .values({ ...body, userId } as any)
@@ -63,7 +66,7 @@ personasRoutes.post("/", async (c) => {
 personasRoutes.put("/:id", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const body = mapPersonaBody(await c.req.json());
+  const body = mapPersonaBody(await readJsonObject(c));
 
   const [updated] = await db
     .update(personas)
@@ -112,7 +115,9 @@ personasRoutes.post("/:id/duplicate", async (c) => {
 personasRoutes.post("/:id/test", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
-  const { prompt, sourceUrl } = await c.req.json();
+  const testBody = await readJsonObject(c);
+  const prompt = requiredString(testBody, "prompt");
+  const sourceUrl = typeof testBody.sourceUrl === "string" ? testBody.sourceUrl : undefined;
 
   // Delegate to test-persona service
   const { testPersona } = await import("../services/test-persona.js");

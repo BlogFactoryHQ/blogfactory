@@ -24,7 +24,7 @@ import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
 import { isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 
-interface GenerateOpts {
+export interface GenerateOpts {
   userId: string;
   sourceType: string;
   sourceValue: string;
