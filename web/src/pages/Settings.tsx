@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
+import { asArray, asStringArray } from "@/lib/api-shape";
 import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
@@ -468,9 +469,9 @@ export default function Settings() {
     enableInternalLinks !== (userSettings.enable_internal_links ?? false) ||
     internalLinkMode !== (userSettings.internal_link_mode || "all") ||
     internalLinkDensity !== (userSettings.internal_link_density || "balanced") ||
-    internalLinkIncludePatterns !== ((userSettings.internal_link_include_patterns || []).join(", ")) ||
-    internalLinkExcludePatterns !== ((userSettings.internal_link_exclude_patterns || []).join(", ")) ||
-    JSON.stringify(internalLinkRules) !== JSON.stringify(userSettings.internal_link_rules || [])
+    internalLinkIncludePatterns !== asStringArray(userSettings.internal_link_include_patterns).join(", ") ||
+    internalLinkExcludePatterns !== asStringArray(userSettings.internal_link_exclude_patterns).join(", ") ||
+    JSON.stringify(internalLinkRules) !== JSON.stringify(asArray<InternalLinkRule>(userSettings.internal_link_rules))
   ) ? "dirty" : "clean";
 
   const imageGenerationDirty: DirtyState = userSettings && (
@@ -523,9 +524,9 @@ export default function Settings() {
       setInternalLinkStatus(userSettings.internal_link_status || (userSettings.internal_link_index ? "connected" : "disconnected"));
       setInternalLinkMode(userSettings.internal_link_mode || "all");
       setInternalLinkDensity(userSettings.internal_link_density || "balanced");
-      setInternalLinkIncludePatterns((userSettings.internal_link_include_patterns || []).join(", "));
-      setInternalLinkExcludePatterns((userSettings.internal_link_exclude_patterns || []).join(", "));
-      setInternalLinkRules(userSettings.internal_link_rules || []);
+      setInternalLinkIncludePatterns(asStringArray(userSettings.internal_link_include_patterns).join(", "));
+      setInternalLinkExcludePatterns(asStringArray(userSettings.internal_link_exclude_patterns).join(", "));
+      setInternalLinkRules(asArray<InternalLinkRule>(userSettings.internal_link_rules));
       setInternalLinkIndex(userSettings.internal_link_index || null);
       setInternalLinkIndexingState(userSettings.internal_link_indexing_state || null);
       setInternalLinkLastSyncedAt(userSettings.internal_link_last_synced_at || null);

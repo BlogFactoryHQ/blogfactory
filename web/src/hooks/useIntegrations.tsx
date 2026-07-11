@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { asArray } from "@/lib/api-shape";
 import { useSites } from "@/hooks/useSites";
 
 export type IntegrationProvider = "wordpress" | "ghost" | "wix" | "framer";
@@ -67,7 +68,7 @@ export function useIntegrations(siteId?: string | null) {
     queryFn: async () => {
       const params = resolvedSiteId ? `?siteId=${encodeURIComponent(resolvedSiteId)}` : "";
       const response = await api.get<{ integrations: SiteIntegration[] }>(`/integrations${params}`);
-      return response.integrations;
+      return asArray<SiteIntegration>(response?.integrations);
     },
     enabled: !!resolvedSiteId,
   });
@@ -110,7 +111,7 @@ export function useGhostAuthors(integrationId?: string | null, enabled = true) {
     queryKey: ["ghost-authors", integrationId],
     queryFn: async () => {
       const response = await api.get<{ authors: GhostAuthor[] }>(`/integrations/${integrationId}/authors`);
-      return response.authors;
+      return asArray<GhostAuthor>(response?.authors);
     },
     enabled: Boolean(integrationId && enabled),
     staleTime: 60_000,

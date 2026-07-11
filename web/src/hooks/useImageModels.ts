@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { asArray, asStringArray } from "@/lib/api-shape";
 import type { ImageModelConstraints } from "@/lib/types";
 
 export interface LiveImageModel {
@@ -32,7 +33,19 @@ export interface LiveImageModel {
 
 export async function fetchImageModels(refresh = false): Promise<LiveImageModel[]> {
   const models = await api.get<LiveImageModel[]>(`/models/image${refresh ? "?refresh=true" : ""}`);
-  return Array.isArray(models) ? models : [];
+  return asArray<LiveImageModel>(models).map((model) => ({
+    ...model,
+    constraints: model.constraints ? {
+      ...model.constraints,
+      resolutions: asStringArray(model.constraints.resolutions).filter((value): value is "512" | "1K" => value === "512" || value === "1K"),
+      aspectRatios: asStringArray(model.constraints.aspectRatios),
+    } : null,
+    modalities: model.modalities ? {
+      input: asStringArray(model.modalities.input),
+      output: asStringArray(model.modalities.output),
+    } : undefined,
+    supportedParameters: asStringArray(model.supportedParameters),
+  }));
 }
 
 export function useImageModels() {

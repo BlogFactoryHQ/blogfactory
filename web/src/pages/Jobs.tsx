@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
+import { asArray, asRecord, asStringArray } from "@/lib/api-shape";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
@@ -187,10 +188,10 @@ const normalizeJob = (job: JobWire): Job => ({
   generation_error: job.generation_error ?? job.generationError ?? null,
   token_cost: job.token_cost ?? job.tokenCost ?? null,
   total_cost: job.total_cost ?? job.totalCost ?? null,
-  result_post_ids: job.result_post_ids ?? job.resultPostIds ?? null,
-  created_at: job.created_at ?? job.createdAt,
+  result_post_ids: asStringArray(job.result_post_ids ?? job.resultPostIds),
+  created_at: typeof (job.created_at ?? job.createdAt) === "string" ? (job.created_at ?? job.createdAt) as string : "",
   completed_at: job.completed_at ?? job.completedAt ?? null,
-  generation_plan: job.generation_plan ?? job.generationPlan ?? {},
+  generation_plan: asRecord(job.generation_plan ?? job.generationPlan) as GenerationPlan,
   personas: job.personas ?? (job.personaName ? { name: job.personaName } : null),
   site_id: job.site_id ?? null,
   feed_id: job.feed_id ?? null,
@@ -463,7 +464,7 @@ export default function Jobs() {
     // Always poll every 5s -- lightweight query, ensures we catch state changes
     refetchInterval: 5000,
   });
-  const jobs = useMemo(() => (jobList?.items || []).map(normalizeJob), [jobList?.items]);
+  const jobs = useMemo(() => asArray<JobWire>(jobList?.items).map(normalizeJob), [jobList?.items]);
   const jobPagination = jobList?.pagination;
   const jobFacets = jobList?.facets;
 
@@ -474,7 +475,7 @@ export default function Jobs() {
       if (!selectedJob?.result_post_ids?.length) return [];
       // Fetch each post by ID - the API should support this
       const postIds = selectedJob.result_post_ids.join(",");
-      return api.get<Post[]>(`/posts?ids=${postIds}`);
+      return api.getArray<Post>(`/posts?ids=${postIds}`);
     },
     enabled: !!selectedJob?.result_post_ids?.length,
   });

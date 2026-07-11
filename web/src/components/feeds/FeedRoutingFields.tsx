@@ -7,17 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ORTAK_ALAN_CONTENT_TYPES } from "@/components/posts/ortak-alan-publishing";
-import { EMPTY_FEED_DEFAULTS, routeReady, type FeedEditorialDefaults, type FeedRouteValue } from "@/lib/feed-routing";
+import { EMPTY_FEED_DEFAULTS, normalizeFeedEditorialDefaults, routeReady, type FeedEditorialDefaults, type FeedRouteValue } from "@/lib/feed-routing";
 
 export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; onChange: (value: FeedRouteValue) => void }) {
+  const editorialDefaults = normalizeFeedEditorialDefaults(value.editorialDefaults);
+  const normalizedValue = { ...value, editorialDefaults };
   const { sites } = useSites();
   const { integrations, isLoading } = useIntegrations(value.siteId);
   const selectedIntegration = integrations.find((integration) => integration.id === value.integrationId);
   const selectedSite = sites.find((site) => site.id === value.siteId);
   const ortakAlan = selectedIntegration?.config?.profile === "ortak_alan_news";
-  const ready = routeReady(value, selectedIntegration);
-  const tags = ortakAlan ? value.editorialDefaults.defaultTopicTags : value.editorialDefaults.defaultTags;
-  const setDefaults = (patch: Partial<FeedEditorialDefaults>) => onChange({ ...value, editorialDefaults: { ...value.editorialDefaults, ...patch } });
+  const ready = routeReady(normalizedValue, selectedIntegration);
+  const tags = ortakAlan ? editorialDefaults.defaultTopicTags : editorialDefaults.defaultTags;
+  const setDefaults = (patch: Partial<FeedEditorialDefaults>) => onChange({ ...value, editorialDefaults: { ...editorialDefaults, ...patch } });
   const parseList = (input: string) => [...new Set(input.split(",").map((item) => item.trim()).filter(Boolean))];
 
   return (
@@ -36,14 +38,14 @@ export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; 
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label>Delivery</Label><div className="flex h-9 items-center rounded-sm border border-input bg-card px-3 text-sm">BlogFactory draft</div></div>
-        {ortakAlan ? <div className="space-y-2"><Label>Content type</Label><Select value={value.editorialDefaults.contentType || "Haber"} onValueChange={(contentType) => setDefaults({ contentType, profile: "ortak_alan_news" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ORTAK_ALAN_CONTENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div> : <div className="space-y-2"><Label>CMS content type</Label><Select value={value.editorialDefaults.postType} onValueChange={(postType) => setDefaults({ postType: postType as "post" | "page" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="post">Post</SelectItem><SelectItem value="page">Page</SelectItem></SelectContent></Select></div>}
+        {ortakAlan ? <div className="space-y-2"><Label>Content type</Label><Select value={editorialDefaults.contentType || "Haber"} onValueChange={(contentType) => setDefaults({ contentType, profile: "ortak_alan_news" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ORTAK_ALAN_CONTENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div> : <div className="space-y-2"><Label>CMS content type</Label><Select value={editorialDefaults.postType} onValueChange={(postType) => setDefaults({ postType: postType as "post" | "page" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="post">Post</SelectItem><SelectItem value="page">Page</SelectItem></SelectContent></Select></div>}
       </div>
       <div className="space-y-2"><Label>{ortakAlan ? "Default topic tags" : "Default tags"}</Label><Input value={tags.join(", ")} onChange={(event) => setDefaults(ortakAlan ? { defaultTopicTags: parseList(event.target.value) } : { defaultTags: parseList(event.target.value) })} placeholder="Teknoloji, Yapay Zeka" /><p className="text-xs text-muted-foreground">AI may add up to three labels from {selectedSite?.name || "the site"}’s editorial topic vocabulary.</p></div>
       <div className="flex items-center justify-between gap-4 rounded-sm border border-byword-border bg-card px-3 py-2.5">
         <div><Label htmlFor="ai-topic-selection">AI topic selection</Label><p className="mt-0.5 text-xs text-muted-foreground">Only labels in the destination site’s controlled vocabulary can be added.</p></div>
-        <Switch id="ai-topic-selection" checked={value.editorialDefaults.aiTopicsEnabled} onCheckedChange={(aiTopicsEnabled) => setDefaults({ aiTopicsEnabled })} />
+        <Switch id="ai-topic-selection" checked={editorialDefaults.aiTopicsEnabled} onCheckedChange={(aiTopicsEnabled) => setDefaults({ aiTopicsEnabled })} />
       </div>
-      {selectedIntegration?.provider === "wordpress" && !ortakAlan && <div className="space-y-2"><Label>Default WordPress categories</Label><Input value={value.editorialDefaults.defaultCategories.join(", ")} onChange={(event) => setDefaults({ defaultCategories: parseList(event.target.value) })} placeholder="Technology, AI" /></div>}
+      {selectedIntegration?.provider === "wordpress" && !ortakAlan && <div className="space-y-2"><Label>Default WordPress categories</Label><Input value={editorialDefaults.defaultCategories.join(", ")} onChange={(event) => setDefaults({ defaultCategories: parseList(event.target.value) })} placeholder="Technology, AI" /></div>}
       {!ready && value.siteId && value.integrationId && ortakAlan && <p className="text-xs text-amber-800">Ortak Alan feeds also require a default Ghost author and editorial owner on the selected integration.</p>}
     </section>
   );

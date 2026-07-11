@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { asArray, asStringArray } from "@/lib/api-shape";
 
 export interface LiveTextModel {
   id: string;
@@ -27,7 +28,14 @@ export interface LiveTextModel {
 
 export async function fetchTextModels(refresh = false): Promise<LiveTextModel[]> {
   const models = await api.get<LiveTextModel[]>(`/models/text${refresh ? "?refresh=true" : ""}`);
-  return Array.isArray(models) ? models : [];
+  return asArray<LiveTextModel>(models).map((model) => ({
+    ...model,
+    modalities: model.modalities ? {
+      input: asStringArray(model.modalities.input),
+      output: asStringArray(model.modalities.output),
+    } : undefined,
+    supportedParameters: asStringArray(model.supportedParameters),
+  }));
 }
 
 export function useTextModels() {

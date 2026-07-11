@@ -308,15 +308,15 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["programmatic-templates"],
-    queryFn: () => api.get<ProgrammaticTemplate[]>("/programmatic/templates"),
+    queryFn: () => api.getArray<ProgrammaticTemplate>("/programmatic/templates"),
   });
   const { data: datasets = [] } = useQuery({
     queryKey: ["programmatic-datasets"],
-    queryFn: () => api.get<ProgrammaticDataset[]>("/programmatic/datasets"),
+    queryFn: () => api.getArray<ProgrammaticDataset>("/programmatic/datasets"),
   });
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
-    queryFn: () => api.get<PersonaOption[]>("/personas"),
+    queryFn: () => api.getArray<PersonaOption>("/personas"),
   });
   const { data: textModels = [] } = useTextModels();
   const activePersonas = useMemo(() => personas.filter((persona) => persona.status === "active"), [personas]);

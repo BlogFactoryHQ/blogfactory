@@ -16,6 +16,19 @@ describe("Ortak Alan publishing metadata", () => {
     expect(metadata.editorialOwner).toBe("Ortak Alan");
   });
 
+  it("normalizes malformed persisted arrays without crashing the editor", () => {
+    const metadata = buildOrtakAlanMetadata({
+      stored: { topicTags: "legacy" as never, sources: {} as never },
+      slug: "generated-slug",
+      excerpt: "Generated excerpt",
+      metaTitle: "Generated title",
+      metaDescription: "Generated description",
+      tags: [" Teknoloji ", "Teknoloji"],
+    });
+    expect(metadata.topicTags).toEqual(["Teknoloji"]);
+    expect(metadata.sources).toEqual([expect.objectContaining({ name: "", url: "" })]);
+  });
+
   it("normalizes source URLs and sponsored content before sending", () => {
     const metadata = buildOrtakAlanMetadata({ slug: "slug", excerpt: "excerpt", metaTitle: "title", metaDescription: "description", tags: [] });
     metadata.contentType = "Sponsorlu İçerik";

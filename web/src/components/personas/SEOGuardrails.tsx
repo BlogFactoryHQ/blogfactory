@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { asStringArray } from "@/lib/api-shape";
 
 interface ValidationRules {
   requireMetaTitle?: boolean;
@@ -81,7 +82,7 @@ export function SEOGuardrails({
     });
   };
 
-  const blockedPhrasesText = (rules.blockedPhrases || []).join("\n");
+  const blockedPhrasesText = asStringArray(rules.blockedPhrases).join("\n");
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border border-border rounded-lg">

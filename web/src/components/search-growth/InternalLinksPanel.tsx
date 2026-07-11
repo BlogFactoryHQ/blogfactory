@@ -20,6 +20,7 @@ import {
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { asArray, asStringArray } from "@/lib/api-shape";
 import { BywordCard, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { Badge } from "@/components/ui/badge";
@@ -122,9 +123,9 @@ export function InternalLinksPanel() {
     setSitemapUrl(settings.internal_link_sitemap_url || "");
     setMode(settings.internal_link_mode || "all");
     setDensity(settings.internal_link_density || "balanced");
-    setIncludePatterns((settings.internal_link_include_patterns || []).join(", "));
-    setExcludePatterns((settings.internal_link_exclude_patterns || []).join(", "));
-    setRules(settings.internal_link_rules || []);
+    setIncludePatterns(asStringArray(settings.internal_link_include_patterns).join(", "));
+    setExcludePatterns(asStringArray(settings.internal_link_exclude_patterns).join(", "));
+    setRules(asArray<InternalLinkRule>(settings.internal_link_rules));
   }, [settings]);
 
   useEffect(() => {
@@ -143,7 +144,7 @@ export function InternalLinksPanel() {
   const hasOpenAiKey = Boolean(apiKeys?.hasOpenaiKey);
   const isIndexing = status === "indexing";
   const lastSyncLabel = formatRelativeLabel(settings?.internal_link_last_synced_at || null);
-  const indexedPagePreview = index?.pages?.slice(0, 5) || [];
+  const indexedPagePreview = asArray<NonNullable<InternalLinkIndex["pages"]>[number]>(index?.pages).slice(0, 5);
 
   const refreshAvailableAt = settings?.internal_link_last_synced_at
     ? new Date(new Date(settings.internal_link_last_synced_at).getTime() + 14 * 24 * 60 * 60 * 1000)

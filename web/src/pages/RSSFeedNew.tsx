@@ -144,7 +144,7 @@ export default function RSSFeedNew() {
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      const all = await api.get<PersonaOption[]>("/personas");
+      const all = await api.getArray<PersonaOption>("/personas");
       return all.filter((p) => p.status === "active");
     },
     enabled: !!user,

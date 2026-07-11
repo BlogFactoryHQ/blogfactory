@@ -43,7 +43,7 @@ export default function AdminUsers() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users"],
-    queryFn: () => api.get<AdminUser[]>("/admin/users"),
+    queryFn: () => api.getArray<AdminUser>("/admin/users"),
   });
 
   const actionMutation = useMutation({

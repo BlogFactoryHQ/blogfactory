@@ -247,7 +247,7 @@ export default function Personas() {
   const { data: personas = [], isLoading } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      const data = await api.get<Persona[]>("/personas");
+      const data = await api.getArray<Persona>("/personas");
       return (data || []).map((p) => ({
         ...p,
         tools_config: (Array.isArray(p.tools_config) ? p.tools_config : []) as unknown as ToolDefinition[],

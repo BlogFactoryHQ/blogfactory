@@ -470,7 +470,7 @@ export default function ContentCreator() {
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
     queryFn: async () => {
-      return api.get<PersonaOption[]>("/personas");
+      return api.getArray<PersonaOption>("/personas");
     },
   });
 
@@ -540,7 +540,7 @@ export default function ContentCreator() {
   const { data: recentPosts = [], refetch: refetchPosts } = useQuery({
     queryKey: ["recent-posts"],
     queryFn: async () => {
-      return api.get<RecentPost[]>("/posts?limit=3");
+      return api.getArray<RecentPost>("/posts?limit=3");
     },
   });
 

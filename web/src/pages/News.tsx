@@ -136,13 +136,13 @@ export default function News() {
 
   const { data: feeds = [] } = useQuery({
     queryKey: ["feeds"],
-    queryFn: () => api.get<Feed[]>("/feeds"),
+    queryFn: () => api.getArray<Feed>("/feeds"),
     enabled: !!user,
   });
 
   const { data: personas = [] } = useQuery({
     queryKey: ["personas"],
-    queryFn: async () => (await api.get<Persona[]>("/personas")).filter((persona) => persona.status === "active"),
+    queryFn: async () => (await api.getArray<Persona>("/personas")).filter((persona) => persona.status === "active"),
     enabled: !!user,
   });
 
