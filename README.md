@@ -145,6 +145,8 @@ Migrations are locked, checksummed, and recorded in `schema_migrations`. For an 
 
 Run `npm run typecheck`, `npm run lint --workspace=web`, `npm run test --workspace=web`, and `npm run build` before publishing frontend changes. ESLint retains only Fast Refresh warnings for files that intentionally export shared helpers or component primitives alongside React components; these exports are consumed directly by tests or other modules.
 
+Pull requests and pushes to `main` run independent GitHub checks for server/web builds, frontend typecheck/lint/tests, and every recursively discovered backend self-test. Run the backend suite locally with `npm run test:server`; newly added `*.self-test.ts` files are included automatically.
+
 - Keep API shapes, route behavior, and database schema stable unless the change explicitly needs them.
 - Prefer shared surfaces and shadcn-style primitives before adding page-specific UI.
 - URL/domain inputs should use `InputAffordance` and helpers from `web/src/lib/url-validation.ts`.
