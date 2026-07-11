@@ -4,17 +4,24 @@ export type FeedDraftQueueResult = {
   total: number;
 };
 
+export type FeedRunBatch = {
+  token: string;
+  size: number;
+  remaining: number;
+};
+
 export async function queueFeedDraftJobs(
   total: number,
-  queueOneDraft: (feedItemOffset: number) => Promise<unknown>
+  queueOneDraft: (feedItemOffset: number, run: FeedRunBatch) => Promise<unknown>
 ): Promise<FeedDraftQueueResult> {
   const safeTotal = Math.max(1, Math.floor(Number(total) || 1));
+  const run = { token: crypto.randomUUID(), size: safeTotal };
   let queued = 0;
   let failed = 0;
 
   for (let index = 0; index < safeTotal; index += 1) {
     try {
-      await queueOneDraft(index);
+      await queueOneDraft(index, { ...run, remaining: safeTotal - index });
       queued += 1;
     } catch {
       failed += 1;

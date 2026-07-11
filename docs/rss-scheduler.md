@@ -50,6 +50,12 @@ Runtime safety knobs in backend env:
 ```text
 RSS_CRON_MAX_FEEDS=1
 RSS_CRON_MAX_POSTS_PER_FEED=1
+RSS_FEED_RUN_LEASE_MINUTES=15
 ```
 
 Raise those only if cron runs finish comfortably under the backend function limit.
+
+Each feed run is claimed atomically in PostgreSQL before generation starts. Manual
+and scheduled runs share the same claim, so only one batch can run for a feed at a
+time while feeds with the same source URL remain independent. Claims are released
+when their generation jobs settle; the lease duration is a crash-recovery fallback.

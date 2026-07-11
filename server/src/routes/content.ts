@@ -5,6 +5,7 @@ import { db } from "../db/index.js";
 import { jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { getOpenRouterKey } from "../services/api-keys.js";
+import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 
 export const contentRoutes = new Hono();
@@ -27,14 +28,33 @@ export function fetchSocialSourceUrl(body: Record<string, any>) {
 contentRoutes.post("/generate", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
+  let feedRunClaim: FeedRunClaim | null = null;
+  let releaseScheduled = false;
 
   try {
     const openRouterKey = await getOpenRouterKey(userId);
     if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
     const modelId = await resolveOpenRouterTextModel(openRouterKey, body.modelId || "openai/gpt-4o");
+    const feedId = body.feedId || body.feed_id || null;
+    const requestedFeedRunToken = body.feedRunToken || body.feed_run_token;
+    if (requestedFeedRunToken && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(requestedFeedRunToken))) {
+      return c.json({ error: "Invalid feed run token" }, 400);
+    }
+    if (feedId) {
+      feedRunClaim = await claimFeedRun({
+        feedId,
+        userId,
+        token: requestedFeedRunToken ? String(requestedFeedRunToken) : undefined,
+        slots: normalizeFeedRunSlots(body.feedRunSize || body.feed_run_size),
+      });
+      if (!feedRunClaim) return c.json({ error: "Feed is already running" }, 409);
+    }
 
     const [job] = await db.insert(jobs).values({
       userId,
+      siteId: body.siteId || body.site_id || null,
+      feedId,
+      preferredIntegrationId: body.preferredIntegrationId || body.preferred_integration_id || null,
       sourceType: body.sourceType,
       sourceValue: body.sourceValue,
       modelId,
@@ -44,18 +64,31 @@ contentRoutes.post("/generate", async (c) => {
     }).returning();
 
     const { generateContent } = await import("../services/generate-content.js");
-    waitUntil(generateContent({ ...body, userId, jobId: job.id, modelId }).catch(async (err) => {
-      console.error("generate background error:", err);
-      await db.update(jobs).set({
-        status: "failed",
-        errorMessage: err?.message || "Content generation failed",
-        generationError: err?.message || "Content generation failed",
-        completedAt: new Date(),
-      }).where(eq(jobs.id, job.id));
-    }));
+    const generation = generateContent({ ...body, userId, jobId: job.id, modelId })
+      .catch(async (err) => {
+        console.error("generate background error:", err);
+        await db.update(jobs).set({
+          status: "failed",
+          errorMessage: err?.message || "Content generation failed",
+          generationError: err?.message || "Content generation failed",
+          completedAt: new Date(),
+        }).where(eq(jobs.id, job.id));
+      })
+      .finally(async () => {
+        if (!feedRunClaim || !feedId) return;
+        await releaseFeedRun({ feedId, userId, token: feedRunClaim.token });
+      });
+    releaseScheduled = true;
+    waitUntil(generation);
 
     return c.json({ jobId: job.id, status: "running", postIds: [] }, 202);
   } catch (err: any) {
+    const feedId = body.feedId || body.feed_id || null;
+    if (feedRunClaim && feedId && !releaseScheduled) {
+      await releaseFeedRun({ feedId, userId, token: feedRunClaim.token }).catch((releaseError) => {
+        console.error("feed run lease release error:", releaseError);
+      });
+    }
     console.error("generate error:", err);
     return c.json({ error: err.message || "Content generation failed" }, 500);
   }

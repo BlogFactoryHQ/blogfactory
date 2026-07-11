@@ -44,8 +44,9 @@ function feedValues(body: Record<string, any>) {
 
 function serializeFeed(row: typeof feeds.$inferSelect, route?: { siteName?: string | null; integrationName?: string | null; provider?: string | null; integrationConfig?: unknown; ready?: boolean }) {
   const routeReady = route?.ready ?? Boolean(row.siteId && row.integrationId);
+  const { runClaimToken: _runClaimToken, runLeaseUntil: _runLeaseUntil, runActiveCount: _runActiveCount, ...publicRow } = row;
   return {
-    ...row,
+    ...publicRow,
     user_id: row.userId,
     site_id: row.siteId,
     integration_id: row.integrationId,

@@ -312,7 +312,11 @@ export default function RSSFeedNew() {
               } : null,
             } : undefined,
           });
-          const queueResult = await queueFeedDraftJobs(postsPerRun, (index) => api.post("/content/generate", buildGenerationPayload(index)));
+          const queueResult = await queueFeedDraftJobs(postsPerRun, (index, run) => api.post("/content/generate", {
+            ...buildGenerationPayload(index),
+            feedRunToken: run.token,
+            feedRunSize: run.remaining,
+          }));
           return { feed, ranNow: true, queuedJobs: queueResult.queued };
         } catch (genErr) {
           console.error("Generation error:", genErr);
