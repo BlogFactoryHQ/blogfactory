@@ -222,7 +222,7 @@ export function useImportImageGenerationRequest() {
       }>(`/images/requests/${id}/import`, formData);
       return { ...result, postId: result.request?.post_id || postId || null };
     },
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });
