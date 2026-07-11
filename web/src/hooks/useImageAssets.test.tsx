@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useDeleteImageAssets, useImportImageGenerationRequest } from "./useImageAssets";
+import { defaultFilters, imageGalleryPath, useDeleteImageAssets, useImportImageGenerationRequest } from "./useImageAssets";
 
 const { uploadMock, postMock, successToast, warningToast, errorToast } = vi.hoisted(() => ({
   uploadMock: vi.fn(),
@@ -85,6 +85,21 @@ describe("useDeleteImageAssets", () => {
       ["image-assets"],
       ["image-asset-stats"],
     ]);
+  });
+});
+
+describe("imageGalleryPath", () => {
+  it("sends only active filters with bounded pagination", () => {
+    expect(imageGalleryPath({
+      ...defaultFilters,
+      type: "cover",
+      status: "unused",
+      postStatus: "draft",
+      dateRange: "30d",
+      aspectRatio: "16:9",
+      search: "  launch plan  ",
+    }, 3)).toBe("/images?page=3&limit=25&type=cover&status=unused&postStatus=draft&dateRange=30d&aspectRatio=16%3A9&search=launch+plan");
+    expect(imageGalleryPath(defaultFilters, 1)).toBe("/images?page=1&limit=25");
   });
 });
 
