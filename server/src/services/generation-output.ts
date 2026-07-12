@@ -136,13 +136,15 @@ function shouldLocalizeTitle(title: string, content: string, settings?: Generati
 
 function titleFromTurkishBody(content: string, topic: string) {
   const withoutTitle = content.replace(/^#\s+.+\n*/m, "");
-  const sentence = plainArticleText(withoutTitle).split(/(?<=[.!?])\s+/)[0] || topic;
-  const polished = sentence
+  const blocks = withoutTitle.split(/\n{2,}/).map(plainArticleText).filter(Boolean);
+  const titleBlock = blocks[0] && blocks.length > 1 && blocks[0].length <= 120 && !/[.!]$/.test(blocks[0]) ? blocks[0] : "";
+  const sentence = titleBlock || plainArticleText(withoutTitle).split(/(?<=[.!?])\s+/)[0] || topic;
+  let polished = sentence
     .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
     .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
-    .replace(/,\s+.*$/, "")
     .trim();
-  return truncateAtWord(cleanPostTitle(polished || topic), 62) || cleanPostTitle(topic || "Untitled Post");
+  if (!titleBlock) polished = polished.replace(/,\s+.*$/, "").trim();
+  return truncateAtWord(cleanPostTitle(polished || topic), 90) || cleanPostTitle(topic || "Untitled Post");
 }
 
 const TITLE_STOPWORDS = new Set(["and", "the", "for", "with", "from", "that", "this", "why", "how", "what", "bir", "ile", "ve", "veya", "için", "icin", "olarak", "neden", "nasıl", "nasil", "yeni"]);

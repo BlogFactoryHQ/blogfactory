@@ -1080,6 +1080,13 @@ export async function generateContent(opts: GenerateOpts) {
         }
         const genLatency = Date.now() - genStart;
 
+        genContent = enforceGeneratedArticleContracts(genContent, {
+          sourceType: opts.sourceType,
+          topic: opts.articleTitleOverride || article.title || opts.sourceValue,
+          settings: promptSettings,
+        });
+        genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
+
         // Extract title from generated content
         const titleMatch = genContent.match(/^#\s+(.+)/m);
         const generatedTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");

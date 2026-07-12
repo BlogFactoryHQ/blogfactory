@@ -421,6 +421,17 @@ Biyolojide yapay zeka ajanlarının karşılaştığı temel engellerden biri, i
 
 assert.match(localized, /^# Biyolojide yapay zeka ajanlarının önündeki temel/m);
 assert.doesNotMatch(localized, /^# Paving the way/m);
+const localizedModelSubtitle = enforceGeneratedArticleContracts(`# Meta Ordered by E.U. to Alter ‘Addictive Design’ of Instagram and Facebook
+
+Meta, Instagram ve Facebook’un Bağımlılık Yaratan Tasarımlarını Değiştirmek Zorunda
+
+Avrupa Birliği yetkilileri, Meta’nın sosyal medya platformlarındaki bağımlılık yaratan tasarım özelliklerini yasaya aykırı buldu.
+`, {
+  sourceType: "rss_feed",
+  topic: "Meta Ordered by E.U. to Alter ‘Addictive Design’ of Instagram and Facebook",
+  settings: { articleLanguage: "Turkish" },
+});
+assert.match(localizedModelSubtitle, /^# Meta, Instagram ve Facebook’un Bağımlılık Yaratan Tasarımlarını Değiştirmek Zorunda/m);
 assert.equal(
   slugify("Biyolojide yapay zeka ajanlarının önündeki temel engeller"),
   "biyolojide-yapay-zeka-ajanlarinin-onundeki"
