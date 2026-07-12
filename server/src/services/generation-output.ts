@@ -166,7 +166,8 @@ function titleMatchesSourceTitle(title: string, sourceTitle: string) {
 export function anchorGeneratedTitleToSource(content: string, sourceTitle?: string, requestedLanguage?: string) {
   const title = cleanPostTitle(sourceTitle || "");
   if (!title) return content;
-  if (requestedLanguage && looksLikeRequestedLanguage(content, requestedLanguage) && !looksLikeRequestedLanguage(title, requestedLanguage)) {
+  const outputLanguage = requestedLanguage || (looksLikeRequestedLanguage(content, "Turkish") ? "Turkish" : "");
+  if (outputLanguage && looksLikeRequestedLanguage(content, outputLanguage) && !looksLikeRequestedLanguage(title, outputLanguage)) {
     return content;
   }
   const h1 = content.match(/^#\s+(.+)$/m);

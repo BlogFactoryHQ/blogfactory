@@ -50,6 +50,13 @@ assert.match(
   ),
   /^# İnternetin gerçek mucitleri kimlerdi\?/
 );
+assert.match(
+  anchorGeneratedTitleToSource(
+    "# Tracee Ellis Ross New York'a Dönüyor\n\nTracee Ellis Ross, Broadway sahnesinden sonra New York sokaklarında yeni bir döneme başlıyor.",
+    "Tracee Ellis Ross Is Back in New York City, Living a Dream Come True"
+  ),
+  /^# Tracee Ellis Ross New York'a Dönüyor/
+);
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Apple, MacBook ve iPad fiyatlarına zam yaptı - Webrazzi:"), "Apple, MacBook ve iPad fiyatlarına zam yaptı");
 assert.equal(cleanPostTitle("Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı - Swipeline"), "Meta, yeni yapay zeka destekli akıllı gözlük serisini tanıttı");
