@@ -121,13 +121,13 @@ export function ortakAlanClientChecks(metadata: OrtakAlanMetadata, title: string
 }
 
 export function isCompleteSentence(value: string) {
-  return /[.!?…]["'”’\)\]\}]*$/.test(value.trim());
+  return /[.!?…]["'”’)\]}]*$/.test(value.trim());
 }
 
 export function completeSentenceWithinLimit(value: string, maxChars: number) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxChars && isCompleteSentence(cleaned)) return cleaned;
-  const sentences = cleaned.match(/[^.!?…]+[.!?…]+["'”’\)\]\}]*/g)?.map((sentence) => sentence.trim()) || [];
+  const sentences = cleaned.match(/[^.!?…]+[.!?…]+["'”’)\]}]*/g)?.map((sentence) => sentence.trim()) || [];
   let result = "";
   for (const sentence of sentences) {
     const next = [result, sentence].filter(Boolean).join(" ");

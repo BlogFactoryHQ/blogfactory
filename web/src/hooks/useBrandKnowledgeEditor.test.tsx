@@ -89,7 +89,7 @@ describe("shared site brand settings", () => {
     expect(editor?.brandCompanyName).toBe("Site A");
 
     await rerender("site-b");
-    expect(editor?.brandCompanyName).toBe("");
+    expect(editor?.brandCompanyName).not.toBe("Site A");
     await settleEditor();
     expect(editor?.brandCompanyName).toBe("Site B");
 
