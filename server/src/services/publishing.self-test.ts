@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/blogfactory";
 process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
-const { encryptSecret } = await import("./api-keys.js");
+const { decryptSecret, encryptSecret } = await import("./api-keys.js");
 const { appendBrandCta, articleBody, encryptProviderCredentials, ghostPostFields, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
 const { appendOrtakAlanDisclosures, normalizeOrtakAlanMetadata, ortakAlanTags, validateOrtakAlanMetadata } = await import("./ortak-alan-publishing.js");
 
@@ -115,6 +115,18 @@ assert.doesNotThrow(() =>
     { credentialsEncrypted: encryptSecret(JSON.stringify({ apiKey: "token", siteId: "site" })) } as never,
   ),
 );
+process.env.API_KEY_ENCRYPTION_SECRET = "old-publishing-secret";
+const staleGhostCredentials = encryptSecret(JSON.stringify({ url: "https://old.example", adminApiKey: `${"a".repeat(24)}:${"b".repeat(64)}` }));
+process.env.API_KEY_ENCRYPTION_SECRET = "publishing-self-test-secret";
+const replacedGhostCredentials = encryptProviderCredentials(
+  "ghost",
+  { url: "https://new.example", adminApiKey: `${"c".repeat(24)}:${"d".repeat(64)}` },
+  { credentialsEncrypted: staleGhostCredentials } as never,
+);
+assert.deepEqual(JSON.parse(decryptSecret(replacedGhostCredentials.encrypted)), {
+  url: "https://new.example",
+  adminApiKey: `${"c".repeat(24)}:${"d".repeat(64)}`,
+});
 const wixRichContent = markdownToWixRichContent(
   "Intro paragraph\n\n![Article image](stored/image.webp)\n\n## Details",
   null,

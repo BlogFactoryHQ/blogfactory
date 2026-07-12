@@ -119,6 +119,9 @@ const providerDetails: Record<IntegrationProvider, {
 
 const providers: IntegrationProvider[] = ["wordpress", "ghost", "wix", "framer"];
 
+export const shouldReloadGhostAuthors = (existing: boolean, provider: IntegrationProvider | null, profile: string, credentialsChanged: boolean, hasDefaultAuthor: boolean) =>
+  existing && provider === "ghost" && profile === "ortak_alan_news" && credentialsChanged && !hasDefaultAuthor;
+
 export default function Integrations() {
   const { activeSite } = useSites();
   const { integrations, isLoading, saveIntegration, testIntegration, deleteIntegration } = useIntegrations();
@@ -280,8 +283,6 @@ export default function Integrations() {
           try {
             const result = await saveIntegration.mutateAsync(input);
             toast.success(`${providerDetails[input.provider].name} saved`);
-            setProviderToConnect(null);
-            setEditing(null);
             return result.integration;
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to save integration");
@@ -329,7 +330,8 @@ function IntegrationSetupDialog({
 
   const open = Boolean(activeProvider);
   const isOrtakAlan = activeProvider === "ghost" && ghostProfile === "ortak_alan_news";
-  const { authors: ghostAuthors, isLoading: authorsLoading } = useGhostAuthors(integration?.id, isOrtakAlan && Boolean(integration));
+  const { authors: ghostAuthors, isLoading: authorsLoading, error: authorsError } = useGhostAuthors(integration?.id, isOrtakAlan && Boolean(integration));
+  const credentialsChanged = Object.values(credentials).some(Boolean);
 
   useEffect(() => {
     if (integration) {
@@ -369,7 +371,6 @@ function IntegrationSetupDialog({
 
   const handleSubmit = async () => {
     if (!activeProvider || !details) return;
-    const hasAnyCredential = Object.values(credentials).some(Boolean);
     const savedDefaultAuthor = integration?.config?.defaultAuthor && typeof integration.config.defaultAuthor === "object"
       ? integration.config.defaultAuthor as { id?: string; email?: string; slug?: string; name?: string; status?: string }
       : null;
@@ -384,11 +385,12 @@ function IntegrationSetupDialog({
       id: integration?.id,
       provider: activeProvider,
       displayName: displayName || details.name,
-      credentials: integration && !hasAnyCredential ? undefined : credentials,
+      credentials: integration && !credentialsChanged ? undefined : credentials,
       config,
     });
-    setDisplayName("");
     setCredentials({});
+    if (shouldReloadGhostAuthors(Boolean(integration), activeProvider, ghostProfile, credentialsChanged, Boolean(defaultAuthor))) return;
+    handleOpenChange(false);
   };
 
   if (!activeProvider || !details) return null;
@@ -463,7 +465,7 @@ function IntegrationSetupDialog({
                     <div className="space-y-2">
                       <Label>Varsayılan Ghost yazarı</Label>
                       {integration ? (
-                        <Select value={defaultAuthorId} onValueChange={setDefaultAuthorId} disabled={authorsLoading}>
+                        <Select value={defaultAuthorId} onValueChange={setDefaultAuthorId} disabled={authorsLoading || credentialsChanged}>
                           <SelectTrigger><SelectValue placeholder={authorsLoading ? "Yazarlar yükleniyor" : "Yazar seç"} /></SelectTrigger>
                           <SelectContent>
                             {ghostAuthors.map((author) => <SelectItem key={author.id} value={author.id}>{author.name} · {author.email}</SelectItem>)}
@@ -472,6 +474,8 @@ function IntegrationSetupDialog({
                       ) : (
                         <p className="rounded-sm border border-dashed border-byword-border p-2 text-xs text-muted-foreground">Bağlantıyı kaydettikten sonra Manage ekranından varsayılan yazarı seçebilirsiniz.</p>
                       )}
+                      {credentialsChanged && <p className="text-xs text-muted-foreground">Yeni anahtarı doğrulayıp yazarları yüklemek için bağlantıyı kaydedin.</p>}
+                      {!credentialsChanged && authorsError && <p className="text-xs text-destructive">Ghost yazarları yüklenemedi. Admin API anahtarını yeniden girip bağlantıyı kaydedin.</p>}
                     </div>
                   </div>
                 )}

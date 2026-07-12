@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import Integrations from "./Integrations";
+import Integrations, { shouldReloadGhostAuthors } from "./Integrations";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -55,6 +55,11 @@ afterEach(async () => {
 });
 
 describe("Integrations setup dialog", () => {
+  it("keeps an existing Ortak Alan connection open while replacement credentials reload authors", () => {
+    expect(shouldReloadGhostAuthors(true, "ghost", "ortak_alan_news", true, false)).toBe(true);
+    expect(shouldReloadGhostAuthors(true, "ghost", "ortak_alan_news", true, true)).toBe(false);
+  });
+
   it.each(["WordPress", "Ghost", "Wix", "Framer"])("renders the %s provider form", async (provider) => {
     await renderPage();
 

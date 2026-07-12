@@ -611,7 +611,12 @@ function validateCredentials(provider: IntegrationProvider, input: unknown): Pro
 function mergeCredentialInput(input: unknown, existing?: IntegrationRow) {
   if (!existing) return input;
 
-  const current = JSON.parse(decryptSecret(existing.credentialsEncrypted)) as unknown;
+  let current: unknown;
+  try {
+    current = JSON.parse(decryptSecret(existing.credentialsEncrypted));
+  } catch {
+    return input;
+  }
   if (!current || typeof current !== "object" || !input || typeof input !== "object") return input;
 
   const merged: Record<string, unknown> = { ...(current as Record<string, unknown>) };

@@ -86,7 +86,10 @@ export function useIntegrations(siteId?: string | null) {
       }
       return api.post<{ integration: SiteIntegration }>("/integrations", payload);
     },
-    onSuccess: invalidate,
+    onSuccess: (result) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["ghost-authors", result.integration.id] });
+    },
   });
 
   const testIntegration = useMutation({
@@ -118,5 +121,5 @@ export function useGhostAuthors(integrationId?: string | null, enabled = true) {
     enabled: Boolean(integrationId && enabled),
     staleTime: 60_000,
   });
-  return { authors: query.data || [], isLoading: query.isLoading, error: query.error };
+  return { authors: query.data || [], isLoading: query.isLoading || query.isFetching, error: query.error };
 }
