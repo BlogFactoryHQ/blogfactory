@@ -4,8 +4,8 @@ process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/
 process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
 const { decryptSecret, encryptSecret } = await import("./api-keys.js");
-const { appendBrandCta, articleBody, encryptProviderCredentials, ghostErrorMessage, ghostPostFields, markdownToHtml, markdownToWixRichContent, normalizeGhostUrl, slugify } = await import("./publishing.js");
-const { appendOrtakAlanDisclosures, normalizeOrtakAlanMetadata, ortakAlanTags, validateOrtakAlanMetadata } = await import("./ortak-alan-publishing.js");
+const { applyOrtakAlanMetadata, appendBrandCta, articleBody, encryptProviderCredentials, ghostErrorMessage, ghostPostFields, markdownToHtml, markdownToWixRichContent, normalizeGhostUrl, slugify } = await import("./publishing.js");
+const { appendOrtakAlanDisclosures, completeSentenceWithinLimit, hasVisibleOrtakAlanSources, isMeaningfulTurkishAlt, normalizeOrtakAlanMetadata, ortakAlanFeatureImageCaption, ortakAlanTags, validateOrtakAlanMetadata } = await import("./ortak-alan-publishing.js");
 
 const ortakAlanMetadata = normalizeOrtakAlanMetadata({
   contentType: "Haber",
@@ -15,6 +15,7 @@ const ortakAlanMetadata = normalizeOrtakAlanMetadata({
   metaDescription: "OpenAI, yeni yapay zeka modelini resmi açıklamasıyla duyurdu; modelin yetenekleri, kullanım alanları ve erişim takvimi hakkında ayrıntılar paylaşıldı.",
   topicTags: ["Yapay Zeka", "OpenAI", "Yapay Zeka"],
   sources: [{ name: "OpenAI", url: "openai.com/news", type: "Resmi açıklama", publishedAt: "2026-07-11", note: "Ürün duyurusu" }],
+  inlineImages: [{ url: "https://example.com/inline.jpg", alt: "OpenAI modelini tanıtan renkli ürün görseli" }],
   author: { id: "author-id", email: "bora@example.com", slug: "bora", name: "Bora Gökçe" },
   editorialOwner: "Ortak Alan",
   aiAssisted: true,
@@ -27,10 +28,46 @@ assert.match(disclosureHtml, /class="source-note"/);
 assert.match(disclosureHtml, /rel="nofollow noopener"/);
 assert.match(disclosureHtml, /class="editorial-note"/);
 assert.match(disclosureHtml, /kg-card-begin: html/);
+assert.equal(hasVisibleOrtakAlanSources(disclosureHtml), true);
 assert.equal((appendOrtakAlanDisclosures(disclosureHtml, ortakAlanMetadata).match(/class="source-note"/g) || []).length, 1);
-assert.equal(validateOrtakAlanMetadata(ortakAlanMetadata, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true }).errors.length, 0);
+assert.equal(validateOrtakAlanMetadata(ortakAlanMetadata, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true, html: disclosureHtml }).errors.length, 0);
 assert.equal(validateOrtakAlanMetadata({ ...ortakAlanMetadata, sources: [] }, { mode: "draft", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true }).errors.length, 0);
-assert.match(validateOrtakAlanMetadata({ ...ortakAlanMetadata, author: null }, { mode: "draft", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: false }).errors[0], /Ghost yazarı/);
+assert.match(validateOrtakAlanMetadata({ ...ortakAlanMetadata, author: null }, { mode: "draft", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: false }).warnings.join(" "), /Ghost yazarı/);
+const incompleteDraft = validateOrtakAlanMetadata(normalizeOrtakAlanMetadata({}), { mode: "draft", title: "Kısa", hasCoverImage: false, authorMatched: false });
+assert.equal(incompleteDraft.errors.length, 0);
+assert.ok(incompleteDraft.warnings.length > 5);
+const sourceWarningsOnly = normalizeOrtakAlanMetadata({ ...ortakAlanMetadata, sources: [{ name: "OpenAI", url: "https://openai.com/news", type: "", publishedAt: "", note: "" }] });
+const sourceWarningsHtml = appendOrtakAlanDisclosures("<p>Gövde</p>", sourceWarningsOnly);
+const sourceWarningsValidation = validateOrtakAlanMetadata(sourceWarningsOnly, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true, html: sourceWarningsHtml });
+assert.equal(sourceWarningsValidation.errors.length, 0);
+assert.match(sourceWarningsValidation.warnings.join(" "), /türü seçilmeli/);
+assert.match(validateOrtakAlanMetadata({ ...ortakAlanMetadata, excerpt: ortakAlanMetadata.excerpt.replace(/\.$/, "") }, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true, html: disclosureHtml }).errors.join(" "), /Excerpt tamamlanmış/);
+assert.match(validateOrtakAlanMetadata({ ...ortakAlanMetadata, topicTags: ["Haber"] }, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true, html: disclosureHtml }).errors.join(" "), /farklı en az bir konu/);
+assert.match(validateOrtakAlanMetadata({ ...ortakAlanMetadata, image: { ...ortakAlanMetadata.image, alt: "Featured image for OpenAI" } }, { mode: "publish", title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu", hasCoverImage: true, authorMatched: true, html: disclosureHtml }).errors.join(" "), /anlamlı Türkçe/);
+assert.equal(isMeaningfulTurkishAlt("OpenAI modelini tanıtan renkli ürün görseli"), true);
+assert.equal(completeSentenceWithinLimit("İlk cümle tamamlandı. İkinci cümle bu sınır için gereğinden fazla uzatılarak devam ediyor.", 30), "İlk cümle tamamlandı.");
+assert.equal(completeSentenceWithinLimit("Noktalama olmadan çok uzun bir açıklama metni", 20), "Noktalama olmadan çok uzun bir açıklama metni");
+assert.equal(hasVisibleOrtakAlanSources(appendOrtakAlanDisclosures("<p>Gövde</p>", { ...ortakAlanMetadata, sources: [{ ...ortakAlanMetadata.sources[0], url: "http://localhost/private" }] })), false);
+assert.match(ortakAlanFeatureImageCaption({ ...ortakAlanMetadata, image: { ...ortakAlanMetadata.image, aiGenerated: true } }), /AI destekli/);
+const ortakApplied = applyOrtakAlanMetadata({
+  title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu",
+  baseMarkdown: "Gövde",
+  baseHtml: "<p>Gövde</p>",
+  markdown: "Gövde\n\n![Article image for OpenAI](https://example.com/inline.jpg)",
+  html: "",
+  excerpt: "",
+  slug: "",
+  tags: [],
+  categories: [],
+  metaTitle: "",
+  metaDescription: "",
+  coverImageUrl: "https://example.com/cover.jpg",
+  coverAltText: "",
+  coverCaption: "",
+  authorId: null,
+  inlineImages: [{ url: "https://example.com/inline.jpg", altText: "Article image for OpenAI" }],
+} as never, ortakAlanMetadata);
+assert.match(ortakApplied.html, /alt="OpenAI modelini tanıtan renkli ürün görseli"/);
 const ghostFields = ghostPostFields({
   title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu",
   html: disclosureHtml,
@@ -47,6 +84,8 @@ const ghostFields = ghostPostFields({
 assert.deepEqual(ghostFields.authors, [{ id: "author-id" }]);
 assert.equal(ghostFields.feature_image_alt, ortakAlanMetadata.image.alt);
 assert.equal(ghostFields.feature_image_caption, "Görsel: OpenAI · Lisans: Basın kullanımı");
+assert.equal("published_at" in ghostFields, false);
+assert.equal(JSON.stringify(ghostFields).includes("application/ld+json"), false);
 
 const html = markdownToHtml([
   "# Agentik Kodlama",
@@ -129,7 +168,7 @@ assert.deepEqual(JSON.parse(decryptSecret(replacedGhostCredentials.encrypted)), 
 assert.equal(normalizeGhostUrl("https://admin.example.com/news/ghost/api/admin/"), "https://admin.example.com/news");
 assert.equal(
   await ghostErrorMessage(new Response("<!DOCTYPE html><title>Just a moment...</title><p>cloudflare</p>", { status: 403, headers: { "cf-ray": "test" } }), "Ghost test"),
-  "Ghost test failed: 403. Cloudflare blocked the request before it reached Ghost. Use the direct Ghost Admin URL (often *.ghost.io), or allow /ghost/api/admin/* in Cloudflare, then try again.",
+  "Ghost test failed: 403. Cloudflare challenged the Ghost Admin API request before it reached Ghost.",
 );
 const wixRichContent = markdownToWixRichContent(
   "Intro paragraph\n\n![Article image](stored/image.webp)\n\n## Details",

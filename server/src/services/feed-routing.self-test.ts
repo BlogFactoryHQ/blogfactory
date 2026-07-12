@@ -8,6 +8,7 @@ assert.deepEqual(mergeTopicTags(["Teknoloji", "Yapay Zeka"], ["Yapay Zeka", "Ope
 assert.deepEqual(sanitizeClassifiedTopics(["yapay zeka", "Unknown", "Teknoloji", "OpenAI", "Extra"], ["Teknoloji", "Yapay Zeka", "OpenAI"]), ["Yapay Zeka", "Teknoloji", "OpenAI"]);
 assert.equal(rssPublicationDate("Fri, 11 Jul 2026 10:00:00 GMT"), "2026-07-11");
 assert.equal(rssPublicationDate("not-a-date"), "");
+assert.equal(rssPublicationDate(undefined), "");
 assert.deepEqual(normalizeFeedEditorialDefaults({ postType: "page", defaultTags: ["Tech", "Tech"] }, false).defaultTags, ["Tech"]);
 assert.deepEqual(normalizeFeedEditorialDefaults({}, false), {
   profile: "generic",

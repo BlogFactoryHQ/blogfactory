@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrtakAlanMetadata, normalizeOrtakAlanForRequest, ortakAlanClientChecks } from "./ortak-alan-publishing";
+import { buildOrtakAlanMetadata, completeSentenceWithinLimit, isMeaningfulTurkishAlt, normalizeOrtakAlanForRequest, ortakAlanClientChecks } from "./ortak-alan-publishing";
 
 describe("Ortak Alan publishing metadata", () => {
   it("restores persisted metadata before generated defaults", () => {
@@ -29,6 +29,19 @@ describe("Ortak Alan publishing metadata", () => {
     expect(metadata.sources).toEqual([expect.objectContaining({ name: "", url: "" })]);
   });
 
+  it("fills legacy inline image metadata from attached assets", () => {
+    const metadata = buildOrtakAlanMetadata({
+      slug: "generated-slug",
+      excerpt: "Tamamlanmış bir açıklama cümlesidir.",
+      metaTitle: "Generated title",
+      metaDescription: "Tamamlanmış bir meta açıklama cümlesidir.",
+      tags: ["Teknoloji"],
+      inlineImageUrls: ["inline.webp"],
+      imageAssets: [{ storage_path: "inline.webp", alt_text: "Renkli teknoloji çiziminde çalışan ekip üyeleri", provider: "openrouter", source_kind: "ai", source_url: null, credit: null, license_label: null }],
+    });
+    expect(metadata.inlineImages).toEqual([{ url: "inline.webp", alt: "Renkli teknoloji çiziminde çalışan ekip üyeleri" }]);
+  });
+
   it("normalizes source URLs and sponsored content before sending", () => {
     const metadata = buildOrtakAlanMetadata({ slug: "slug", excerpt: "excerpt", metaTitle: "title", metaDescription: "description", tags: [] });
     metadata.contentType = "Sponsorlu İçerik";
@@ -43,5 +56,19 @@ describe("Ortak Alan publishing metadata", () => {
     const checks = ortakAlanClientChecks(metadata, "Short title", false);
     expect(checks.some((check) => !check.ok)).toBe(true);
     expect(checks.find((check) => check.label === "Ghost yazarı")?.ok).toBe(false);
+  });
+
+  it("validates source links and meaningful Turkish image alts", () => {
+    const metadata = buildOrtakAlanMetadata({ slug: "yeterince-uzun-bir-haber-slug-alani", excerpt: "Bu açıklama gerekli uzunluğu karşılayan ve tamamlanmış bir Türkçe cümledir.", metaTitle: "Gerekli Uzunluğu Karşılayan Türkçe Meta Başlığı", metaDescription: "Bu meta açıklaması gerekli karakter aralığını karşılamak için yeterli ayrıntıyı verir ve tamamlanmış bir Türkçe cümle olarak biter.", tags: ["Teknoloji"] });
+    metadata.sources = [{ name: "Kaynak", url: "https://example.com/news", type: "", publishedAt: "", note: "" }];
+    metadata.image = { alt: "Trump kürsüde gazetecilerin sorularını yanıtlıyor", source: "Reuters", license: "Editoryal kullanım", aiGenerated: false };
+    expect(ortakAlanClientChecks(metadata, "Trump Basın Özgürlüğünü Sıkıştırıyor: Times Gazetecilerine Davetiye", true).find((check) => check.label === "Kaynaklar")?.ok).toBe(true);
+    expect(isMeaningfulTurkishAlt("Featured image for Trump")).toBe(false);
+    expect(isMeaningfulTurkishAlt(metadata.image.alt)).toBe(true);
+  });
+
+  it("shortens only at complete sentence boundaries", () => {
+    expect(completeSentenceWithinLimit("İlk cümle bitti. İkinci cümle sınırı aşacak kadar uzundur.", 20)).toBe("İlk cümle bitti.");
+    expect(completeSentenceWithinLimit("Tamamlanmamış çok uzun açıklama", 10)).toBe("Tamamlanmamış çok uzun açıklama");
   });
 });

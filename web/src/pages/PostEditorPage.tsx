@@ -392,6 +392,7 @@ export default function PostEditorPage() {
               siteId={post?.site_id}
               preferredIntegrationId={post?.preferred_integration_id}
               coverImageUrl={coverImageUrl}
+              inlineImages={inlineImages}
               imageAssets={post?.image_assets || []}
               disabled={isSaving || Boolean(hasChanges)}
               disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}

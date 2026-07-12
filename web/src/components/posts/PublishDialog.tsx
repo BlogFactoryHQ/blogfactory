@@ -45,6 +45,7 @@ interface PublishDialogProps {
   siteId?: string | null;
   preferredIntegrationId?: string | null;
   coverImageUrl?: string | null;
+  inlineImages?: string[];
   imageAssets?: PublishingImageMetadata[];
   disabled?: boolean;
   disabledReason?: string;
@@ -158,7 +159,7 @@ export function buildPublishDefaults(title: string, content: string, summary?: s
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, publishingMetadata, siteId, preferredIntegrationId, coverImageUrl, imageAssets, disabled, disabledReason }: PublishDialogProps) {
+export function PublishDialog({ postId, title, content, summary, publishingMetadata, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -206,7 +207,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
     [coverImageUrl, ortakAlanMetadata, title],
   );
   const authorMatched = Boolean(ortakAlanMetadata.author?.id && ghostAuthors.some((author) => author.id === ortakAlanMetadata.author?.id));
-  const hasOrtakAlanBlocker = authorsLoading || !authorMatched || (mode === "publish" && ortakAlanChecks.some((check) => !check.ok));
+  const hasOrtakAlanBlocker = mode === "publish" && (authorsLoading || !authorMatched || ortakAlanChecks.some((check) => !check.ok && check.blocking !== false));
 
   const fillOrtakAlanDefaults = useCallback((integration?: SiteIntegration) => {
     const defaults = buildPublishDefaults(title, content, summary);
@@ -223,9 +224,10 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
       editorialOwner: typeof integration?.config?.editorialOwner === "string" ? integration.config.editorialOwner : "",
       defaultAuthor: configuredAuthor,
       coverImageUrl,
+      inlineImageUrls: inlineImages,
       imageAssets,
     }));
-  }, [content, coverImageUrl, imageAssets, publishingMetadata, summary, title]);
+  }, [content, coverImageUrl, imageAssets, inlineImages, publishingMetadata, summary, title]);
 
   const fillDefaults = useCallback(() => {
     const defaults = buildPublishDefaults(title, content, summary);
@@ -396,13 +398,13 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
                 <div className="grid gap-2 rounded-sm border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-2">
                   {ortakAlanChecks.map((check) => (
-                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" ? "text-destructive" : "text-amber-700"}>
+                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" && check.blocking !== false ? "text-destructive" : "text-amber-700"}>
                       <span className="font-medium">{check.label}</span><span className="ml-2">{check.value}</span>
                     </div>
                   ))}
                 </div>
                 {mode === "draft" && ortakAlanChecks.some((check) => !check.ok) && (
-                  <p className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Eksik metadata uyarı olarak kaydedilecek. Ghost yazarı eşleşmeden taslak gönderilemez.</p>
+                  <p className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Eksik metadata ve yazar eşleşmesi uyarı olarak kaydedilecek; taslak yine Ghost’a gönderilebilir.</p>
                 )}
               </>
             ) : (

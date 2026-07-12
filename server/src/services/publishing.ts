@@ -340,6 +340,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
   if (!site) throw new Error("Site not found for this integration");
 
   const provider = integration.provider as IntegrationProvider;
+  const ortakAlanProfile = provider === "ghost" && isOrtakAlanProfile(integration.config);
   const credentials = decryptProviderCredentials(integration);
   const assetRows = await db
     .select({
@@ -356,7 +357,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
   const brandCtas = await publishingBrandCtas(userId, integration.siteId);
-  let article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas);
+  let article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas, ortakAlanProfile);
   const mode = options.mode === "publish" ? "publish" : "draft";
   let validation = { errors: [] as string[], warnings: [] as string[] };
   const idempotencyKey = publishingIdempotencyKey({
@@ -399,7 +400,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
   let publishingMetadata: unknown | undefined;
 
   try {
-    if (provider === "ghost" && isOrtakAlanProfile(integration.config)) {
+    if (ortakAlanProfile) {
       const config = (integration.config || {}) as Record<string, unknown>;
       const defaultAuthor = config.defaultAuthor && typeof config.defaultAuthor === "object"
         ? config.defaultAuthor as Record<string, unknown>
@@ -417,22 +418,31 @@ export async function publishPost(userId: string, postId: string, integrationId:
         imageSource: coverAsset?.credit || coverAsset?.sourceUrl || coverAsset?.provider || "",
         imageLicense: coverAsset?.licenseLabel || "",
         imageAiGenerated: coverAsset?.sourceKind === "ai",
+        inlineImages: article.inlineImages.map((image) => ({ url: image.url, alt: image.altText || "" })),
       });
 
-      const ghostAuthors = await listGhostAuthors(credentials as GhostCredentials);
+      let ghostAuthors: GhostAuthor[] = [];
+      let authorWarning = "";
+      try {
+        if (mode === "publish" || metadata.author?.id) ghostAuthors = await listGhostAuthors(credentials as GhostCredentials);
+      } catch (error) {
+        if (mode === "publish") throw error;
+        authorWarning = "Ghost yazarları doğrulanamadı; taslak yazar eşlemesi olmadan gönderildi.";
+      }
       const matchedAuthor = metadata.author?.id
         ? ghostAuthors.find((author) => author.id === metadata.author?.id && author.status === "active")
         : null;
-      if (matchedAuthor) {
-        metadata.author = matchedAuthor;
-      }
+      metadata.author = matchedAuthor || null;
       publishingMetadata = metadata;
+      article = applyOrtakAlanMetadata(article, metadata);
       validation = validateOrtakAlanMetadata(metadata, {
         mode,
         title: article.title,
         hasCoverImage: Boolean(article.coverImageUrl),
         authorMatched: Boolean(matchedAuthor),
+        html: article.html,
       });
+      if (authorWarning) validation.warnings.push(authorWarning);
       if (validation.errors.length) {
         [publication] = await db
           .update(postPublications)
@@ -447,8 +457,6 @@ export async function publishPost(userId: string, postId: string, integrationId:
           validationFailed: true,
         };
       }
-
-      article = applyOrtakAlanMetadata(article, metadata);
     } else if (options.publishingMetadata && typeof options.publishingMetadata === "object") {
       publishingMetadata = options.publishingMetadata;
     }
@@ -537,7 +545,10 @@ export async function publishPost(userId: string, postId: string, integrationId:
   }
 }
 
-function applyOrtakAlanMetadata(article: ArticlePayload, metadata: OrtakAlanPublishingMetadata): ArticlePayload {
+export function applyOrtakAlanMetadata(article: ArticlePayload, metadata: OrtakAlanPublishingMetadata): ArticlePayload {
+  const altByUrl = new Map(metadata.inlineImages.map((image) => [image.url, image.alt]));
+  const inlineImages = article.inlineImages.map((image) => ({ ...image, altText: altByUrl.get(image.url) || image.altText }));
+  const markdown = reflowInlineImages(article.markdown, inlineImages, normalizeImagePlacement("auto"));
   return {
     ...article,
     slug: metadata.slug,
@@ -545,10 +556,12 @@ function applyOrtakAlanMetadata(article: ArticlePayload, metadata: OrtakAlanPubl
     metaTitle: metadata.metaTitle,
     metaDescription: metadata.metaDescription,
     tags: ortakAlanTags(metadata),
-    html: appendOrtakAlanDisclosures(article.html, metadata),
+    markdown,
+    html: appendOrtakAlanDisclosures(markdownToHtml(markdown), metadata),
     coverAltText: metadata.image.alt,
     coverCaption: ortakAlanFeatureImageCaption(metadata),
     authorId: metadata.author?.id || null,
+    inlineImages,
   };
 }
 
@@ -672,12 +685,12 @@ function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
   return `${type === "cover" ? "Featured image" : `Article image ${index + 1}`} for ${title}`.slice(0, 180);
 }
 
-function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[], brandCtas: BrandCta[] = []): ArticlePayload {
+function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[], brandCtas: BrandCta[] = [], preserveTitle = false): ArticlePayload {
   const rawTitle = post.title.trim();
   const content = post.content || "";
   const meta = parseMarkdownMeta(content);
   const body = articleBody(content);
-  const title = publishTitle(rawTitle, body);
+  const title = publishTitle(rawTitle, body, preserveTitle);
   const excerpt = truncateAtWord(options.excerpt || meta.metaDescription || plainText(withoutMarkdownTitle(body)), 220);
   const tags = publishTags(options.tags?.length ? options.tags : meta.tags);
   const categories = normalizeStringList(options.categories || []);
@@ -842,11 +855,11 @@ function withoutMarkdownTitle(markdown: string) {
   return markdown.replace(/^#\s+.+\n*/m, "").trim();
 }
 
-export function publishTitle(title: string, content: string) {
+export function publishTitle(title: string, content: string, preserveLength = false) {
   const markdownTitle = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
   const candidate = markdownTitle || title;
-  if (hasTurkishText(content) && !hasTurkishText(candidate)) return titleFromTurkishBody(content, title);
-  return truncateAtWord(candidate, 90);
+  if (hasTurkishText(content) && !hasTurkishText(candidate)) return titleFromTurkishBody(content, title, preserveLength);
+  return preserveLength ? candidate : truncateAtWord(candidate, 90);
 }
 
 function chooseMetaTitle(value: string | undefined, fallbackTitle: string, content: string) {
@@ -856,14 +869,14 @@ function chooseMetaTitle(value: string | undefined, fallbackTitle: string, conte
   return cleaned;
 }
 
-function titleFromTurkishBody(content: string, fallback: string) {
+function titleFromTurkishBody(content: string, fallback: string, preserveLength = false) {
   const sentence = plainText(withoutMarkdownTitle(content)).split(/(?<=[.!?])\s+/)[0] || fallback;
   const polished = sentence
     .replace(/\bkarşılaştığı temel engellerden biri\b.*$/i, "önündeki temel engeller")
     .replace(/\bkarşılaştığı temel engeller\b.*$/i, "karşılaştığı temel engeller")
     .replace(/,\s+.*$/, "")
     .trim();
-  return truncateAtWord(polished || fallback, 90);
+  return preserveLength ? polished || fallback : truncateAtWord(polished || fallback, 90);
 }
 
 function hasTurkishText(value: string) {
@@ -1384,9 +1397,19 @@ async function ghostJwt(adminApiKey: string) {
 
 export async function ghostErrorMessage(response: Response, action: string) {
   const body = await response.text();
+  console.warn("[publishing:ghost] upstream request failed", {
+    action,
+    status: response.status,
+    targetHost: domainFromUrl(response.url),
+    cloudflareRay: response.headers.get("cf-ray"),
+    cloudflareMitigated: response.headers.get("cf-mitigated"),
+    server: response.headers.get("server"),
+    contentType: response.headers.get("content-type"),
+    vercelRegion: process.env.VERCEL_REGION || null,
+  });
   if (/^\s*(?:<!doctype html|<html)/i.test(body)) {
     const hint = response.status === 403 && (response.headers.has("cf-ray") || /cloudflare/i.test(body))
-      ? " Cloudflare blocked the request before it reached Ghost. Use the direct Ghost Admin URL (often *.ghost.io), or allow /ghost/api/admin/* in Cloudflare, then try again."
+      ? " Cloudflare challenged the Ghost Admin API request before it reached Ghost."
       : " The server returned an HTML page instead of a Ghost API response.";
     return `${action} failed: ${response.status}.${hint}`;
   }
