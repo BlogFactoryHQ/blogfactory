@@ -49,7 +49,7 @@ const providerDetails: Record<IntegrationProvider, {
   badge: string;
   icon: typeof Plug;
   guide: string[];
-  fields: Array<{ key: string; label: string; placeholder: string; type?: string }>;
+  fields: Array<{ key: string; label: string; placeholder: string; type?: string; helper?: string }>;
 }> = {
   wordpress: {
     name: "WordPress",
@@ -75,10 +75,10 @@ const providerDetails: Record<IntegrationProvider, {
     guide: [
       "Open Ghost Admin for the publication you want to publish to.",
       "Go to Settings > Integrations and add a custom integration named BlogFactory.",
-      "Paste the API URL as the Ghost Admin URL and the Admin API key as the key.",
+      "Paste the direct Ghost Admin URL and the Admin API key. For Ghost(Pro), use the *.ghost.io admin domain instead of a Cloudflare-proxied public domain.",
     ],
     fields: [
-      { key: "url", label: "Ghost Admin URL", placeholder: "https://example.ghost.io" },
+      { key: "url", label: "Ghost Admin URL", placeholder: "https://your-publication.ghost.io", helper: "Use the direct admin domain; Cloudflare browser challenges cannot authenticate server requests." },
       { key: "adminApiKey", label: "Admin API key", placeholder: "key_id:secret", type: "password" },
     ],
   },
@@ -213,7 +213,7 @@ export default function Integrations() {
                         <p className="mt-1 text-sm text-muted-foreground">
                           {integration.credentialHint ? `Credential: ${integration.credentialHint}` : details.description}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1 line-clamp-2 break-all text-xs text-muted-foreground" title={integration.lastTestResult || undefined}>
                           Last check: {integration.lastTestedAt ? new Date(integration.lastTestedAt).toLocaleString() : "Not tested yet"}
                           {integration.lastTestResult ? ` · ${integration.lastTestResult}` : ""}
                         </p>
@@ -430,11 +430,12 @@ function IntegrationSetupDialog({
                 <Input
                   type={field.type || "text"}
                   name={`integration-${activeProvider}-${field.key}`}
-                  autoComplete={field.type === "password" ? "new-password" : field.key.toLowerCase().includes("url") ? "url" : "off"}
+                  autoComplete={field.type === "password" ? "off" : field.key.toLowerCase().includes("url") ? "url" : "off"}
                   value={credentials[field.key] || ""}
                   onChange={(event) => setCredential(field.key, event.target.value)}
                   placeholder={field.placeholder}
                 />
+                {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
               </div>
             ))}
           </div>

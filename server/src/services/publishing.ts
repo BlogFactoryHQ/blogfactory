@@ -578,7 +578,7 @@ function validateCredentials(provider: IntegrationProvider, input: unknown): Pro
 
   if (provider === "ghost") {
     const credentials = {
-      url: normalizeUrl(stringValue("url")),
+      url: normalizeGhostUrl(stringValue("url")),
       adminApiKey: stringValue("adminApiKey"),
     };
     if (!/^[a-f0-9]{24}:[a-f0-9]{64}$/i.test(credentials.adminApiKey)) throw new Error("Ghost Admin API key should look like keyId:secret");
@@ -643,6 +643,17 @@ function normalizeUrl(url: string) {
   const parsed = new URL(withProtocol);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Only HTTP and HTTPS URLs are supported");
   return parsed.origin;
+}
+
+export function normalizeGhostUrl(url: string) {
+  const withProtocol = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  const parsed = new URL(withProtocol);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Only HTTP and HTTPS URLs are supported");
+  const path = parsed.pathname
+    .replace(/\/+$/, "")
+    .replace(/\/ghost\/api\/admin(?:\/.*)?$/i, "")
+    .replace(/\/ghost$/i, "");
+  return `${parsed.origin}${path}`;
 }
 
 function domainFromUrl(url: string) {
@@ -1271,7 +1282,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
 
 async function testGhost(credentials: GhostCredentials) {
   const response = await fetch(`${credentials.url}/ghost/api/admin/site/`, {
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost test"));
   const data = await response.json() as { site?: { title?: string } };
@@ -1285,7 +1296,7 @@ export async function getGhostAuthors(row: IntegrationRow) {
 
 async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAuthor[]> {
   const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost authors could not be loaded"));
   const data = await response.json() as { users?: Array<Partial<GhostAuthor>> };
@@ -1312,6 +1323,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     method: "POST",
     headers: {
       Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`,
+      Accept: "application/json",
       "Accept-Version": "v6.0",
       "Content-Type": "application/json",
     },
@@ -1356,7 +1368,7 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
   formData.append("file", new Blob([image.buffer as BlobPart], { type: image.mimeType }), filename);
   const response = await fetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
     method: "POST",
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
     body: formData,
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost image upload"));
@@ -1380,7 +1392,7 @@ export async function ghostErrorMessage(response: Response, action: string) {
   const body = await response.text();
   if (/^\s*(?:<!doctype html|<html)/i.test(body)) {
     const hint = response.status === 403 && (response.headers.has("cf-ray") || /cloudflare/i.test(body))
-      ? " Cloudflare blocked the Ghost Admin API. Allow /ghost/api/admin/* in Cloudflare, then try again."
+      ? " Cloudflare blocked the request before it reached Ghost. Use the direct Ghost Admin URL (often *.ghost.io), or allow /ghost/api/admin/* in Cloudflare, then try again."
       : " The server returned an HTML page instead of a Ghost API response.";
     return `${action} failed: ${response.status}.${hint}`;
   }
