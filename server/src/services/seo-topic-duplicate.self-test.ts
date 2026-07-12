@@ -432,6 +432,35 @@ Avrupa Birliği yetkilileri, Meta’nın sosyal medya platformlarındaki bağım
   settings: { articleLanguage: "Turkish" },
 });
 assert.match(localizedModelSubtitle, /^# Meta, Instagram ve Facebook’un Bağımlılık Yaratan Tasarımlarını Değiştirmek Zorunda/m);
+const structuredEmmy = enforceGeneratedArticleContracts(`# Emmys Snubs and Surprises 2026
+
+2026 Emmy Ödülleri Sürprizleri
+
+Giriş paragrafı Türkçe içerikle devam ediyor ve okuyucuya adaylıklar hakkında yeterli bağlam veriyor.
+
+**Jon Hamm'in Dönüşü**
+
+## Jon Hamm uzun yıllardır ekranlarda başarılı işler
+
+Jon Hamm uzun yıllardır ekranlarda başarılı işler çıkardı ve bu yıl yeniden aday gösterildi.
+
+**Sonuç**
+
+Emmy adaylıkları bu yıl yine sürprizlerle doluydu.
+
+Sıkça Sorulan Sorular
+
+Emmy adaylıkları nasıl belirleniyor? Jüri üyeleri sezon boyunca yapımları izleyerek puan veriyor.
+`, {
+  sourceType: "rss_feed",
+  topic: "Emmys Snubs and Surprises 2026",
+  settings: { articleLanguage: "Turkish" },
+});
+assert.match(structuredEmmy, /^# 2026 Emmy Ödülleri Sürprizleri/m);
+assert.doesNotMatch(structuredEmmy, /^2026 Emmy Ödülleri Sürprizleri$|^## Jon Hamm uzun yıllardır/m);
+assert.match(structuredEmmy, /^## Jon Hamm'in Dönüşü$/m);
+assert.match(structuredEmmy, /^## Sonuç$/m);
+assert.match(structuredEmmy, /^## Sık Sorulan Sorular\n\n### Emmy adaylıkları nasıl belirleniyor\?\nJüri üyeleri/m);
 assert.equal(
   slugify("Biyolojide yapay zeka ajanlarının önündeki temel engeller"),
   "biyolojide-yapay-zeka-ajanlarinin-onundeki"

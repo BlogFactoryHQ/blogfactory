@@ -110,6 +110,7 @@ export function personaLanguagePriorityInstruction(personaPrompt: string) {
 export function enforceGeneratedArticleContracts(content: string, opts: { sourceType: string; topic: string; settings?: GenerationSettings }) {
   let next = normalizeArticleMarkdown(content, opts.topic, opts.settings);
   next = stripInternalSeoSections(next);
+  next = normalizeGeneratedStructure(next);
   if (isBlogDraftSource(opts.sourceType)) next = ensureSectionHeadings(next, opts.topic, opts.settings);
   next = ensureInternalMarkdownLinks(next, opts.settings);
   return next;
@@ -122,12 +123,53 @@ function normalizeArticleMarkdown(content: string, topic: string, settings?: Gen
     const currentTitle = h1[1].trim();
     if (shouldLocalizeTitle(currentTitle, next, settings)) {
       const localizedTitle = titleFromTurkishBody(next, topic);
-      return next.replace(/^#\s+.+$/m, `# ${localizedTitle}`);
+      return next
+        .replace(/^#\s+.+$/m, `# ${localizedTitle}`)
+        .replace(new RegExp(`\\n{2,}${escapeRegExp(localizedTitle)}\\s*(?=\\n{2,})`, "i"), "");
     }
     return next;
   }
   const title = cleanPostTitle(topic || "Untitled Post");
   return `# ${title}\n\n${next}`;
+}
+
+function normalizeGeneratedStructure(content: string) {
+  const blocks = content.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  const normalized: string[] = [];
+  let inFaq = false;
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const heading = block.match(/^##\s+(.+)$/);
+    if (heading && plainArticleText(blocks[index + 1] || "").toLowerCase().startsWith(plainArticleText(heading[1]).toLowerCase())) continue;
+    if (/^#{1,6}\s+/.test(block)) {
+      normalized.push(block);
+      inFaq = Boolean(heading && /^(sık(?:ça)? sorulan sorular|sss|faq|faqs)$/i.test(heading[1]));
+      continue;
+    }
+
+    const boldHeading = block.match(/^\*\*([^*\n]+)\*\*$/);
+    const plainHeading = !/[.!?]$/.test(block) && !block.includes("\n") && wordCount(block) <= 12 ? block : "";
+    const headingText = boldHeading?.[1].trim() || plainHeading;
+    if (headingText) {
+      const faq = /^(sık(?:ça)? sorulan sorular|sss|faq|faqs)$/i.test(headingText);
+      normalized.push(`## ${faq ? "Sık Sorulan Sorular" : headingText}`);
+      inFaq = faq;
+      continue;
+    }
+
+    if (inFaq) {
+      const faqItem = block.match(/^(.{5,160}\?)\s+([\s\S]+)$/);
+      if (faqItem) {
+        normalized.push(`### ${faqItem[1].trim()}\n${faqItem[2].trim()}`);
+        continue;
+      }
+    }
+
+    normalized.push(block);
+  }
+
+  return normalized.join("\n\n");
 }
 
 function shouldLocalizeTitle(title: string, content: string, settings?: GenerationSettings) {

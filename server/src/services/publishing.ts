@@ -918,13 +918,7 @@ export function markdownToHtml(markdown: string) {
 
   const flushFaqSection = () => {
     flushFaqItem();
-    if (faqItems.length) {
-      html.push("<ul class=\"faq-list\">");
-      for (const item of faqItems) {
-        html.push(`<li><p><strong>${inlineMarkdown(item.question)}</strong></p>${renderFaqBody(item.body)}</li>`);
-      }
-      html.push("</ul>");
-    }
+    for (const item of faqItems) html.push(`<h3>${inlineMarkdown(item.question)}</h3>${renderFaqBody(item.body)}`);
     faqItems = [];
     inFaqSection = false;
   };

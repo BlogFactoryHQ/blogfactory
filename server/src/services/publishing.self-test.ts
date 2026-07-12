@@ -71,9 +71,8 @@ const html = markdownToHtml([
 
 assert.match(html, /<a href="\/blog\/yapay-zeka-dijital-pazarlama">Yapay Zeka ile Dijital Pazarlama Rehberi<\/a>/);
 assert.match(html, /<a href="https:\/\/example\.com\/path\?a=1&amp;b=2">external kaynak<\/a>/);
-assert.match(html, /<h2>Sık Sorulan Sorular<\/h2>\n<ul class="faq-list">/);
-assert.doesNotMatch(html, /<h3>Agentik kodlama araçları/);
-assert.match(html, /<li><p><strong>Agentik kodlama araçları kodlama bilmeyenleri tamamen ikame eder mi\?<\/strong><\/p><p>Hayır\./);
+assert.match(html, /<h2>Sık Sorulan Sorular<\/h2>\n<h3>Agentik kodlama araçları kodlama bilmeyenleri tamamen ikame eder mi\?<\/h3><p>Hayır\./);
+assert.doesNotMatch(html, /faq-list|<strong>Agentik kodlama araçları/);
 assert.match(html, /<ul><li>Yazılım mühendisleri yakın başarı oranlarına ulaşıyor\.<\/li><li>Fark daha çok uzmanlık derinliğinde ortaya çıkıyor\.<\/li><\/ul>/);
 assert.match(html, /<h2>Sonuç<\/h2>/);
 const tableHtml = markdownToHtml([
