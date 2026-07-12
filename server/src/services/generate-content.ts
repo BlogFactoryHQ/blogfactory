@@ -20,7 +20,7 @@ import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSe
 import { fetchSocialContent } from "./fetch-social-content.js";
 import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
-import { isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
+import { completeSentenceWithinLimit, isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 import type { GenerateOpts, GenerationSettings, SeoPackage, SeoQaCheck, SourceArticle } from "./generation-types.js";
 export type { GenerateOpts, SeoPackage } from "./generation-types.js";
 import {
@@ -1120,13 +1120,15 @@ export async function generateContent(opts: GenerateOpts) {
         let publishingMetadata: Record<string, unknown> | null = null;
         if (feedRecord && ortakAlan) {
           const integrationConfig = (destinationIntegration?.config || {}) as Record<string, unknown>;
+          const ortakAlanExcerpt = completeSentenceWithinLimit(articleText, 180);
+          const ortakAlanMetaDescription = completeSentenceWithinLimit(articleText, 155);
           publishingMetadata = {
             ...normalizeOrtakAlanMetadata({
               contentType: editorialDefaults.contentType,
               slug: slugify(postTitle),
-              excerpt,
+              excerpt: ortakAlanExcerpt,
               metaTitle,
-              metaDescription,
+              metaDescription: ortakAlanMetaDescription,
               topicTags,
               sources: [{
                 name: feedRecord.name,

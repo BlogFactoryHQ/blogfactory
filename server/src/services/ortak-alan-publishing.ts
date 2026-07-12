@@ -29,6 +29,11 @@ export interface OrtakAlanSource {
   note: string;
 }
 
+export interface OrtakAlanInlineImage {
+  url: string;
+  alt: string;
+}
+
 export interface OrtakAlanAuthor {
   id: string;
   email: string;
@@ -44,6 +49,7 @@ export interface OrtakAlanPublishingMetadata {
   metaDescription: string;
   topicTags: string[];
   sources: OrtakAlanSource[];
+  inlineImages: OrtakAlanInlineImage[];
   author: OrtakAlanAuthor | null;
   editorialOwner: string;
   aiAssisted: boolean;
@@ -74,6 +80,7 @@ interface MetadataDefaults {
   imageSource?: string;
   imageLicense?: string;
   imageAiGenerated?: boolean;
+  inlineImages?: OrtakAlanInlineImage[];
 }
 
 interface ValidationContext {
@@ -81,6 +88,7 @@ interface ValidationContext {
   title: string;
   hasCoverImage: boolean;
   authorMatched: boolean;
+  html?: string;
 }
 
 export function isOrtakAlanProfile(config: unknown) {
@@ -109,6 +117,16 @@ export function normalizeOrtakAlanMetadata(value: unknown, defaults: MetadataDef
         name: textValue(authorRecord.name) || textValue(defaultAuthor?.name),
       }
     : null;
+  const storedInlineImages = (Array.isArray(record.inlineImages) ? record.inlineImages : [])
+    .map((value) => {
+      const image = objectValue(value);
+      return { url: textValue(image.url), alt: textValue(image.alt) };
+    })
+    .filter((image) => image.url);
+  const inlineImages = (defaults.inlineImages?.length
+    ? defaults.inlineImages.map((image) => ({ ...image, alt: storedInlineImages.find((stored) => stored.url === image.url)?.alt || image.alt }))
+    : storedInlineImages
+  ).slice(0, 12);
 
   return {
     contentType: normalizedContentType,
@@ -118,6 +136,7 @@ export function normalizeOrtakAlanMetadata(value: unknown, defaults: MetadataDef
     metaDescription: textValue(record.metaDescription) || textValue(defaults.metaDescription),
     topicTags: normalizeTags(Array.isArray(record.topicTags) ? record.topicTags : defaults.topicTags || []),
     sources,
+    inlineImages,
     author,
     editorialOwner: textValue(record.editorialOwner) || textValue(defaults.editorialOwner),
     aiAssisted: booleanValue(record.aiAssisted),
@@ -127,7 +146,7 @@ export function normalizeOrtakAlanMetadata(value: unknown, defaults: MetadataDef
       alt: textValue(image.alt) || textValue(defaults.imageAlt),
       source: textValue(image.source) || textValue(defaults.imageSource),
       license: textValue(image.license) || textValue(defaults.imageLicense),
-      aiGenerated: booleanValue(image.aiGenerated, defaults.imageAiGenerated || false),
+      aiGenerated: booleanValue(image.aiGenerated) || Boolean(defaults.imageAiGenerated),
     },
   };
 }
@@ -142,33 +161,38 @@ export function validateOrtakAlanMetadata(metadata: OrtakAlanPublishingMetadata,
   addRequired(context.title.length >= 35 && context.title.length <= 95, "Başlık 35-95 karakter olmalı.");
   addRequired(metadata.slug.length >= 20 && metadata.slug.length <= 70 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.slug), "Slug 20-70 karakter, küçük harfli ve tireli olmalı.");
   addRequired(metadata.excerpt.length >= 80 && metadata.excerpt.length <= 180, "Excerpt 80-180 karakter olmalı.");
+  addRequired(isCompleteSentence(metadata.excerpt), "Excerpt tamamlanmış bir cümleyle bitmeli.");
   addRequired(metadata.metaTitle.length >= 45 && metadata.metaTitle.length <= 60, "Meta başlık 45-60 karakter olmalı.");
   addRequired(metadata.metaDescription.length >= 120 && metadata.metaDescription.length <= 155, "Meta açıklama 120-155 karakter olmalı.");
+  addRequired(isCompleteSentence(metadata.metaDescription), "Meta açıklama tamamlanmış bir cümleyle bitmeli.");
   addRequired((ORTAK_ALAN_CONTENT_TYPES as readonly string[]).includes(metadata.contentType), "İçerik tipi seçilmeli.");
-  addRequired(metadata.topicTags.length > 0, "En az bir konu etiketi eklenmeli.");
+  addRequired(metadata.topicTags.some((tag) => tag.toLocaleLowerCase("tr-TR") !== metadata.contentType.toLocaleLowerCase("tr-TR")), "Birincil etiketten farklı en az bir konu etiketi eklenmeli.");
   addRequired(Boolean(metadata.editorialOwner), "Editöryal sorumlu belirtilmeli.");
-  addRequired(metadata.sources.length > 0, "En az bir kaynak eklenmeli.");
-  metadata.sources.forEach((source, index) => {
-    const label = index === 0 ? "Birincil kaynak" : `${index + 1}. kaynak`;
-    addRequired(Boolean(source.name), `${label} adı boş olamaz.`);
-    addRequired(isPublicHttpUrl(source.url), `${label} URL'si geçerli bir genel HTTP(S) adresi olmalı.`);
-    addRequired((ORTAK_ALAN_SOURCE_TYPES as readonly string[]).includes(source.type), `${label} türü seçilmeli.`);
-    addRequired(Boolean(source.publishedAt), `${label} için orijinal yayın tarihi belirtilmeli.`);
-    addRequired(Boolean(source.note), `${label} için kısa bir kaynak notu eklenmeli.`);
-  });
+  if (metadata.contentType === "Haber") {
+    addRequired(metadata.sources.length > 0, "En az bir kaynak eklenmeli.");
+    metadata.sources.forEach((source, index) => {
+      const label = index === 0 ? "Birincil kaynak" : `${index + 1}. kaynak`;
+      addRequired(Boolean(source.name), `${label} adı boş olamaz.`);
+      addRequired(isPublicHttpUrl(source.url), `${label} URL'si geçerli bir genel HTTP(S) adresi olmalı.`);
+      if (!(ORTAK_ALAN_SOURCE_TYPES as readonly string[]).includes(source.type)) warnings.push(`${label} türü seçilmeli.`);
+      if (!source.publishedAt) warnings.push(`${label} için orijinal yayın tarihi belirtilmeli.`);
+      if (!source.note) warnings.push(`${label} için kısa bir kaynak notu eklenmeli.`);
+    });
+    addRequired(Boolean(context.html && hasVisibleOrtakAlanSources(context.html)), "Yazı HTML'inde geçerli bağlantılar içeren görünür Kaynaklar bölümü bulunmalı.");
+  }
   addRequired(context.hasCoverImage, "Kapak görseli eklenmeli.");
-  addRequired(Boolean(metadata.image.alt), "Kapak görseli alt metni eklenmeli.");
+  addRequired(isMeaningfulTurkishAlt(metadata.image.alt), "Kapak görseli için anlamlı Türkçe alt metin eklenmeli.");
+  metadata.inlineImages.forEach((image, index) => addRequired(isMeaningfulTurkishAlt(image.alt), `${index + 1}. yazı görseli için anlamlı Türkçe alt metin eklenmeli.`));
   addRequired(Boolean(metadata.image.source), "Görsel kaynağı belirtilmeli.");
   addRequired(Boolean(metadata.image.license), "Görsel lisansı belirtilmeli.");
   if (metadata.aiAssisted) addRequired(Boolean(metadata.aiUsageNote), "AI destekli içerik için kullanım notu eklenmeli.");
   if (metadata.sponsored) addRequired(metadata.contentType === "Sponsorlu İçerik", "Sponsorlu içerik türü ve işareti tutarlı olmalı.");
 
-  if (metadata.metaDescription && !/[.!?…]$/.test(metadata.metaDescription)) warnings.push("Meta açıklama tamamlanmış bir cümleyle bitmeli.");
   if (/şok|inanılmaz|bunu kimse|çok şaşıracaksınız|son dakika/i.test(context.title)) warnings.push("Başlık clickbait veya aşırı iddialı ifade içeriyor olabilir.");
 
   const authorError = !metadata.author?.id || !context.authorMatched ? "Seçilen yazar aktif bir Ghost yazarıyla eşleşmeli." : null;
   if (context.mode === "publish") return { errors: [...(authorError ? [authorError] : []), ...required], warnings };
-  return { errors: authorError ? [authorError] : [], warnings: [...required, ...warnings] };
+  return { errors: [], warnings: [...(authorError ? [authorError] : []), ...required, ...warnings] };
 }
 
 export function ortakAlanTags(metadata: OrtakAlanPublishingMetadata) {
@@ -186,17 +210,52 @@ const DISCLOSURE_END = "<!-- blogfactory:ortak-alan:end -->";
 
 export function appendOrtakAlanDisclosures(html: string, metadata: OrtakAlanPublishingMetadata) {
   const cleanHtml = html.replace(new RegExp(`${escapeRegExp(DISCLOSURE_START)}[\\s\\S]*?${escapeRegExp(DISCLOSURE_END)}`, "g"), "").trim();
-  const sourceItems = metadata.sources.map((source) => {
+  const sourceItems = metadata.sources.filter((source) => source.name && isPublicHttpUrl(source.url)).map((source) => {
     const published = source.publishedAt ? ` <span class="source-date">(${escapeHtml(source.publishedAt)})</span>` : "";
+    const type = source.type ? ` <span class="source-type">${escapeHtml(source.type)}</span>` : "";
     const note = source.note ? `<p>${escapeHtml(source.note)}</p>` : "";
-    return `<li><a href="${escapeAttribute(source.url)}" rel="nofollow noopener" target="_blank">${escapeHtml(source.name)}</a>${published}${note}</li>`;
+    return `<li><a href="${escapeAttribute(source.url)}" rel="nofollow noopener" target="_blank">${escapeHtml(source.name)}</a>${type}${published}${note}</li>`;
   }).join("");
-  const sourceSection = `<section class="source-note"><h2>Kaynaklar</h2><ul>${sourceItems}</ul></section>`;
-  const editorialParts = [`<p><strong>Editöryal sorumlu:</strong> ${escapeHtml(metadata.editorialOwner)}</p>`];
+  const sourceSection = sourceItems ? `<section class="source-note"><h2>Kaynaklar</h2><ul>${sourceItems}</ul></section>` : "";
+  const editorialParts = metadata.editorialOwner ? [`<p><strong>Editöryal sorumlu:</strong> ${escapeHtml(metadata.editorialOwner)}</p>`] : [];
   if (metadata.aiAssisted) editorialParts.push(`<p><strong>AI kullanımı:</strong> ${escapeHtml(metadata.aiUsageNote)}</p>`);
   if (metadata.sponsored) editorialParts.push("<p><strong>Sponsorlu içerik:</strong> Bu içerik ticari iş birliği kapsamında hazırlanmıştır.</p>");
-  const editorialSection = `<section class="editorial-note"><h2>Editöryal şeffaflık</h2>${editorialParts.join("")}</section>`;
+  const editorialSection = editorialParts.length ? `<section class="editorial-note"><h2>Editöryal şeffaflık</h2>${editorialParts.join("")}</section>` : "";
+  if (!sourceSection && !editorialSection) return cleanHtml;
   return `${cleanHtml}\n${DISCLOSURE_START}<!--kg-card-begin: html-->${sourceSection}${editorialSection}<!--kg-card-end: html-->${DISCLOSURE_END}`.trim();
+}
+
+export function hasVisibleOrtakAlanSources(html: string) {
+  return html.includes(DISCLOSURE_START)
+    && /<section class="source-note">[\s\S]*?<h2>Kaynaklar<\/h2>[\s\S]*?<a href="https?:\/\//i.test(html);
+}
+
+export function isCompleteSentence(value: string) {
+  return /[.!?…]["'”’\)\]\}]*$/.test(value.trim());
+}
+
+export function completeSentenceWithinLimit(value: string, maxChars: number) {
+  const cleaned = textValue(value);
+  if (cleaned.length <= maxChars && isCompleteSentence(cleaned)) return cleaned;
+  const sentences = cleaned.match(/[^.!?…]+[.!?…]+["'”’\)\]\}]*/g)?.map((sentence) => sentence.trim()) || [];
+  let result = "";
+  for (const sentence of sentences) {
+    const next = [result, sentence].filter(Boolean).join(" ");
+    if (next.length > maxChars) break;
+    result = next;
+  }
+  return result || cleaned;
+}
+
+export function isMeaningfulTurkishAlt(value: string) {
+  const alt = textValue(value);
+  return alt.length >= 12
+    && alt.length <= 180
+    && alt.split(/\s+/).length >= 3
+    && /[çğıöşüİÇĞÖŞÜ]/.test(alt)
+    && !/^(?:featured image|article image(?: \d+)?|image)\b|\bfor\b/i.test(alt)
+    && !/^https?:\/\//i.test(alt)
+    && !/\.(?:avif|gif|jpe?g|png|webp)(?:\?.*)?$/i.test(alt);
 }
 
 function normalizeSource(value: unknown): OrtakAlanSource {
@@ -232,8 +291,9 @@ function isPublicHttpUrl(value: string) {
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol)) return false;
     const hostname = url.hostname.toLowerCase();
-    if (!hostname.includes(".") || hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1") return false;
-    return !/^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+    const bareHostname = hostname.replace(/^\[|\]$/g, "");
+    if ((!hostname.includes(".") && !bareHostname.includes(":")) || hostname === "localhost" || hostname === "0.0.0.0" || bareHostname === "::1" || /^(?:f[cd]|fe[89ab])/.test(bareHostname) || hostname.endsWith(".local") || hostname.endsWith(".internal")) return false;
+    return !/^(?:0\.|10\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|127\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|224\.|24\d\.)/.test(hostname);
   } catch {
     return false;
   }

@@ -43,7 +43,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>URL slug</Label>
+            <Label>URL slug · {metadata.slug.length}/20–70</Label>
             <Input value={metadata.slug} onChange={(event) => update("slug", event.target.value)} placeholder="haber-basligi" />
           </div>
         </div>
@@ -52,18 +52,18 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
           <TagInput id="ortak-alan-topic-tags" value={metadata.topicTags} onChange={(tags) => update("topicTags", tags)} placeholder="Teknoloji, Yapay Zeka, OpenAI" />
         </div>
         <div className="space-y-2">
-          <Label>Excerpt</Label>
+          <Label>Excerpt · {metadata.excerpt.length}/80–180</Label>
           <Textarea value={metadata.excerpt} onChange={(event) => update("excerpt", event.target.value)} className="min-h-[72px] resize-none" />
         </div>
       </FieldGroup>
 
       <FieldGroup label="02 · SEO" description="Bu alanlar Ortak Alan Neo tarafından sayfa ve NewsArticle açıklamasında kullanılır.">
         <div className="space-y-2">
-          <Label>Meta başlık</Label>
+          <Label>Meta başlık · {metadata.metaTitle.length}/45–60</Label>
           <Textarea value={metadata.metaTitle} onChange={(event) => update("metaTitle", event.target.value)} className="min-h-[60px] resize-none" />
         </div>
         <div className="space-y-2">
-          <Label>Meta açıklama</Label>
+          <Label>Meta açıklama · {metadata.metaDescription.length}/120–155</Label>
           <Textarea value={metadata.metaDescription} onChange={(event) => update("metaDescription", event.target.value)} className="min-h-[84px] resize-none" />
         </div>
       </FieldGroup>
@@ -82,6 +82,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
               <div className="space-y-2"><Label>Orijinal yayın tarihi</Label><Input type="date" value={source.publishedAt} onChange={(event) => updateSource(index, { publishedAt: event.target.value })} /></div>
               <div className="space-y-2"><Label>Kaynak notu</Label><Input value={source.note} onChange={(event) => updateSource(index, { note: event.target.value })} placeholder="Kısa bağlam notu" /></div>
             </div>
+            {(!source.type || !source.publishedAt || !source.note) && <p className="text-xs text-amber-700">Tür, tarih ve kaynak notu önerilir; eksikleri canlı yayını engellemez.</p>}
           </div>
         ))}
         <Button type="button" variant="outline" size="sm" onClick={() => update("sources", [...metadata.sources, emptyOrtakAlanSource()])}><Plus className="mr-1.5 h-4 w-4" />İkincil kaynak ekle</Button>
@@ -105,12 +106,20 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
 
       <FieldGroup label="05 · Kapak görseli" description="Mevcut post kapak görseli Ghost’a yüklenir; caption kaynak ve lisanstan oluşturulur.">
         <div className="rounded-sm border border-byword-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground break-all">{coverImageUrl || "Kapak görseli seçilmedi"}</div>
-        <div className="space-y-2"><Label>Görsel alt metni</Label><Input value={metadata.image.alt} onChange={(event) => update("image", { ...metadata.image, alt: event.target.value })} /></div>
+        <div className="space-y-2"><Label>Görsel alt metni · {metadata.image.alt.length}/12–180</Label><Input value={metadata.image.alt} onChange={(event) => update("image", { ...metadata.image, alt: event.target.value })} placeholder="Görseli anlatan Türkçe alt metin" /></div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2"><Label>Görsel kaynağı</Label><Input value={metadata.image.source} onChange={(event) => update("image", { ...metadata.image, source: event.target.value })} /></div>
           <div className="space-y-2"><Label>Görsel lisansı</Label><Input value={metadata.image.license} onChange={(event) => update("image", { ...metadata.image, license: event.target.value })} /></div>
         </div>
         <ToggleRow label="AI görsel" description="Caption içinde AI destekli temsili görsel olarak açıklanır." checked={metadata.image.aiGenerated} onCheckedChange={(checked) => update("image", { ...metadata.image, aiGenerated: checked })} />
+        {metadata.inlineImages.length > 0 && <div className="space-y-3 border-t border-byword-border pt-3">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wide text-foreground">Yazı içi görseller</p>
+          {metadata.inlineImages.map((image, index) => <div key={image.url} className="space-y-2">
+            <Label>{index + 1}. görsel alt metni · {image.alt.length}/12–180</Label>
+            <div className="break-all text-[11px] text-muted-foreground">{image.url}</div>
+            <Input value={image.alt} onChange={(event) => update("inlineImages", metadata.inlineImages.map((item) => item.url === image.url ? { ...item, alt: event.target.value } : item))} placeholder="Görseli anlatan Türkçe alt metin" />
+          </div>)}
+        </div>}
       </FieldGroup>
     </div>
   );

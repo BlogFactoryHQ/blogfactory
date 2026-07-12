@@ -75,10 +75,10 @@ const providerDetails: Record<IntegrationProvider, {
     guide: [
       "Open Ghost Admin for the publication you want to publish to.",
       "Go to Settings > Integrations and add a custom integration named BlogFactory.",
-      "Paste the direct Ghost Admin URL and the Admin API key. For Ghost(Pro), use the *.ghost.io admin domain instead of a Cloudflare-proxied public domain.",
+      "Paste the API URL shown by Ghost and the Admin API key.",
     ],
     fields: [
-      { key: "url", label: "Ghost Admin URL", placeholder: "https://your-publication.ghost.io", helper: "Use the direct admin domain; Cloudflare browser challenges cannot authenticate server requests." },
+      { key: "url", label: "Ghost Admin URL", placeholder: "https://example.com", helper: "Use the API URL shown in the Ghost custom integration." },
       { key: "adminApiKey", label: "Admin API key", placeholder: "key_id:secret", type: "password" },
     ],
   },

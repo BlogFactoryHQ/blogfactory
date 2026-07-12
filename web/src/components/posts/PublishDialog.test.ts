@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPublishDefaults } from "./PublishDialog";
+import { buildOrtakAlanMetadata } from "./ortak-alan-publishing";
 
 describe("publish defaults", () => {
   it("fills publish SEO fields when generated content has no meta block", () => {
@@ -54,5 +55,19 @@ describe("publish defaults", () => {
     expect(defaults.metaTitle).toBe("Search-Backed SEO Metadata for Blog Drafts");
     expect(defaults.metaDescription.length).toBeLessThanOrEqual(145);
     expect(defaults.metaDescription).toMatch(/People Also Ask/);
+  });
+
+  it("uses complete sentences for Ortak Alan fallback descriptions", () => {
+    const defaults = buildPublishDefaults("Başlık", `# Başlık\n\nİlk cümle tamamlandı. ${"İkinci cümle sınırı aşacak kadar uzun bir açıklama olarak devam ediyor ve henüz bitmiyor ".repeat(3)}`);
+    const metadata = buildOrtakAlanMetadata({ ...defaults, tags: [] });
+    expect(metadata.excerpt).toBe("İlk cümle tamamlandı.");
+    expect(metadata.metaDescription).toBe("İlk cümle tamamlandı.");
+  });
+
+  it("keeps an unsplittable Ortak Alan description invalid", () => {
+    const description = "Noktalama olmadan devam eden ve herhangi bir cümle sınırı sunmayan açıklama";
+    const metadata = buildOrtakAlanMetadata({ slug: "slug", excerpt: description, metaTitle: "title", metaDescription: description, tags: [] });
+    expect(metadata.excerpt).toBe(description);
+    expect(metadata.metaDescription).toBe(description);
   });
 });
