@@ -424,20 +424,28 @@ function IntegrationSetupDialog({
             </p>
           )}
           <div className="grid gap-4">
-            {details.fields.map((field) => (
-              <div key={field.key} className="space-y-2">
-                <Label>{field.label}</Label>
-                <Input
-                  type={field.type || "text"}
-                  name={`integration-${activeProvider}-${field.key}`}
-                  autoComplete={field.type === "password" ? "off" : field.key.toLowerCase().includes("url") ? "url" : "off"}
-                  value={credentials[field.key] || ""}
-                  onChange={(event) => setCredential(field.key, event.target.value)}
-                  placeholder={field.placeholder}
-                />
-                {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
-              </div>
-            ))}
+            {details.fields.map((field) => {
+              const isSecret = field.type === "password";
+              return (
+                <div key={field.key} className="space-y-2">
+                  <Label>{field.label}</Label>
+                  <Input
+                    type={isSecret ? "text" : field.type || "text"}
+                    name={`integration-${activeProvider}-${field.key}-value`}
+                    autoComplete={isSecret ? "off" : field.key.toLowerCase().includes("url") ? "url" : "off"}
+                    data-1p-ignore={isSecret ? "true" : undefined}
+                    data-lpignore={isSecret ? "true" : undefined}
+                    data-form-type={isSecret ? "other" : undefined}
+                    className={cn(isSecret && "[-webkit-text-security:disc]")}
+                    spellCheck={isSecret ? false : undefined}
+                    value={credentials[field.key] || ""}
+                    onChange={(event) => setCredential(field.key, event.target.value)}
+                    placeholder={field.placeholder}
+                  />
+                  {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
+                </div>
+              );
+            })}
           </div>
 
           {activeProvider === "ghost" && (

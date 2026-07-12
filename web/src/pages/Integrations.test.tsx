@@ -84,4 +84,14 @@ describe("Integrations setup dialog", () => {
     const options = Array.from(document.querySelectorAll('[role="option"]')).map((option) => option.textContent);
     expect(options).toEqual(expect.arrayContaining(["General Ghost", "Ghost – Ortak Alan Haber"]));
   });
+
+  it("keeps API keys out of browser password autofill", async () => {
+    await renderPage();
+    await act(async () => connectButton("Ghost").click());
+
+    const keyInput = document.querySelector('input[name="integration-ghost-adminApiKey-value"]');
+    expect(keyInput).toHaveAttribute("type", "text");
+    expect(keyInput).toHaveAttribute("autocomplete", "off");
+    expect(keyInput).toHaveAttribute("data-form-type", "other");
+  });
 });
