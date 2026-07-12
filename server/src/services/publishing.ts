@@ -1273,7 +1273,7 @@ async function testGhost(credentials: GhostCredentials) {
   const response = await fetch(`${credentials.url}/ghost/api/admin/site/`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
   });
-  if (!response.ok) throw new Error(`Ghost test failed: ${response.status} ${(await response.text()).slice(0, 500)}`.trim());
+  if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost test"));
   const data = await response.json() as { site?: { title?: string } };
   return { success: true, message: `Connected to ${data.site?.title || domainFromUrl(credentials.url)}` };
 }
@@ -1287,7 +1287,7 @@ async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAut
   const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
   });
-  if (!response.ok) throw new Error(`Ghost authors could not be loaded: ${response.status} ${(await response.text()).slice(0, 500)}`.trim());
+  if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost authors could not be loaded"));
   const data = await response.json() as { users?: Array<Partial<GhostAuthor>> };
   return (data.users || []).map((author) => ({
     id: String(author.id || ""),
@@ -1319,7 +1319,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
       [postType]: [ghostPostFields({ ...article, html }, mode, featureImage)],
     }),
   });
-  if (!response.ok) throw new Error(`Ghost publish failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost publish"));
   const data = await response.json() as Record<string, Array<{ id?: string; url?: string; status?: string }>>;
   const row = data[postType]?.[0];
   return {
@@ -1359,7 +1359,7 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
     body: formData,
   });
-  if (!response.ok) throw new Error(`Ghost image upload failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost image upload"));
   const data = await response.json() as { images?: Array<{ url?: string }> };
   const url = data.images?.[0]?.url;
   if (!url) throw new Error("Ghost image upload failed: no image URL returned");
@@ -1374,6 +1374,17 @@ async function ghostJwt(adminApiKey: string) {
     .setExpirationTime("5m")
     .setAudience("/admin/")
     .sign(Buffer.from(secret, "hex"));
+}
+
+export async function ghostErrorMessage(response: Response, action: string) {
+  const body = await response.text();
+  if (/^\s*(?:<!doctype html|<html)/i.test(body)) {
+    const hint = response.status === 403 && (response.headers.has("cf-ray") || /cloudflare/i.test(body))
+      ? " Cloudflare blocked the Ghost Admin API. Allow /ghost/api/admin/* in Cloudflare, then try again."
+      : " The server returned an HTML page instead of a Ghost API response.";
+    return `${action} failed: ${response.status}.${hint}`;
+  }
+  return `${action} failed: ${response.status}${body ? ` ${body.slice(0, 500)}` : ""}`;
 }
 
 async function testWix(credentials: WixCredentials) {

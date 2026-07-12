@@ -4,7 +4,7 @@ process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/
 process.env.API_KEY_ENCRYPTION_SECRET ||= "publishing-self-test-secret";
 
 const { decryptSecret, encryptSecret } = await import("./api-keys.js");
-const { appendBrandCta, articleBody, encryptProviderCredentials, ghostPostFields, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
+const { appendBrandCta, articleBody, encryptProviderCredentials, ghostErrorMessage, ghostPostFields, markdownToHtml, markdownToWixRichContent, slugify } = await import("./publishing.js");
 const { appendOrtakAlanDisclosures, normalizeOrtakAlanMetadata, ortakAlanTags, validateOrtakAlanMetadata } = await import("./ortak-alan-publishing.js");
 
 const ortakAlanMetadata = normalizeOrtakAlanMetadata({
@@ -127,6 +127,10 @@ assert.deepEqual(JSON.parse(decryptSecret(replacedGhostCredentials.encrypted)), 
   url: "https://new.example",
   adminApiKey: `${"c".repeat(24)}:${"d".repeat(64)}`,
 });
+assert.equal(
+  await ghostErrorMessage(new Response("<!DOCTYPE html><title>Just a moment...</title><p>cloudflare</p>", { status: 403, headers: { "cf-ray": "test" } }), "Ghost test"),
+  "Ghost test failed: 403. Cloudflare blocked the Ghost Admin API. Allow /ghost/api/admin/* in Cloudflare, then try again.",
+);
 const wixRichContent = markdownToWixRichContent(
   "Intro paragraph\n\n![Article image](stored/image.webp)\n\n## Details",
   null,
