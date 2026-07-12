@@ -1271,9 +1271,9 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
 
 async function testGhost(credentials: GhostCredentials) {
   const response = await fetch(`${credentials.url}/ghost/api/admin/site/`, {
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
   });
-  if (!response.ok) throw new Error(`Ghost test failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Ghost test failed: ${response.status} ${(await response.text()).slice(0, 500)}`.trim());
   const data = await response.json() as { site?: { title?: string } };
   return { success: true, message: `Connected to ${data.site?.title || domainFromUrl(credentials.url)}` };
 }
@@ -1285,9 +1285,9 @@ export async function getGhostAuthors(row: IntegrationRow) {
 
 async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAuthor[]> {
   const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
   });
-  if (!response.ok) throw new Error(`Ghost authors could not be loaded: ${response.status}`);
+  if (!response.ok) throw new Error(`Ghost authors could not be loaded: ${response.status} ${(await response.text()).slice(0, 500)}`.trim());
   const data = await response.json() as { users?: Array<Partial<GhostAuthor>> };
   return (data.users || []).map((author) => ({
     id: String(author.id || ""),
@@ -1312,6 +1312,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     method: "POST",
     headers: {
       Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`,
+      "Accept-Version": "v6.0",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -1355,7 +1356,7 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
   formData.append("file", new Blob([image.buffer as BlobPart], { type: image.mimeType }), filename);
   const response = await fetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
     method: "POST",
-    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}` },
+    headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, "Accept-Version": "v6.0" },
     body: formData,
   });
   if (!response.ok) throw new Error(`Ghost image upload failed: ${await response.text()}`);

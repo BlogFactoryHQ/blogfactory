@@ -429,6 +429,8 @@ function IntegrationSetupDialog({
                 <Label>{field.label}</Label>
                 <Input
                   type={field.type || "text"}
+                  name={`integration-${activeProvider}-${field.key}`}
+                  autoComplete={field.type === "password" ? "new-password" : field.key.toLowerCase().includes("url") ? "url" : "off"}
                   value={credentials[field.key] || ""}
                   onChange={(event) => setCredential(field.key, event.target.value)}
                   placeholder={field.placeholder}
