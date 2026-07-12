@@ -4,7 +4,7 @@ import { ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
-import { connectionReady } from "@/lib/credential-status";
+import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -176,6 +176,10 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const queryClient = useQueryClient();
 
   const connected = useMemo(() => integrations.filter(connectionReady), [integrations]);
+  const brokenCredentials = useMemo(
+    () => integrations.filter((integration) => integration.status === "connected" && !credentialUsable(integration)),
+    [integrations],
+  );
   const requestedIntegrationId = integrationId || preferredIntegrationId || "";
   const selected = connected.find((integration) => integration.id === requestedIntegrationId)
     || (!siteId && !requestedIntegrationId ? connected[0] : undefined);
@@ -317,6 +321,16 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
             <div className="flex items-center justify-center py-10 text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Entegrasyonlar yükleniyor
+            </div>
+          ) : brokenCredentials.length > 0 && connected.length === 0 ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-8 text-center">
+              <p className="font-medium text-destructive">CMS credentials need to be re-saved</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {brokenCredentials.map((integration) => providerLabels[integration.provider]).join(", ")} credentials cannot be decrypted, so drafts cannot be sent. Re-save the credentials in Integrations.
+              </p>
+              <Button asChild className="mt-5">
+                <a href="/integrations">Fix credentials</a>
+              </Button>
             </div>
           ) : connected.length === 0 ? (
             <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">

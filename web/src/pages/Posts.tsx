@@ -51,7 +51,7 @@ import {
   type SemanticTone,
 } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
-import { connectionReady } from "@/lib/credential-status";
+import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { postListPath, type ListPagination } from "@/lib/list-query";
 
 interface FailedDraft {
@@ -212,6 +212,10 @@ export default function Posts() {
   const { integrations } = useIntegrations();
   const createManualImagePrompts = useCreateManualImagePrompts();
   const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
+  const brokenIntegrations = useMemo(
+    () => integrations.filter((integration) => integration.status === "connected" && !credentialUsable(integration)),
+    [integrations],
+  );
 
   const { data: postList, isLoading: isLoadingPosts, error: postsError } = useQuery({
     queryKey: ["posts", currentPage, postsPerPage, deferredSearchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection],
@@ -671,6 +675,21 @@ export default function Posts() {
           Create drafts
         </Button>
       </PageHeader>
+
+      {brokenIntegrations.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-destructive">CMS credentials need to be re-saved</p>
+              <p className="text-sm text-muted-foreground">
+                {brokenIntegrations.map((integration) => integration.provider === "ghost" ? "Ghost" : integration.provider === "wordpress" ? "WordPress" : integration.provider === "wix" ? "Wix" : "Framer").join(", ")} credentials cannot be decrypted, so drafts cannot be sent to the CMS.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => navigate("/integrations")} className="shrink-0">Fix credentials</Button>
+        </div>
+      )}
 
       <InventoryInsights
         totalPosts={statusCounts.total}
