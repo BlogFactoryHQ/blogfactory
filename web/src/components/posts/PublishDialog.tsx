@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
+import { normalizeFeedEditorialDefaults, type FeedEditorialDefaults } from "@/lib/feed-routing";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,6 +43,7 @@ interface PublishDialogProps {
   content: string;
   summary?: string | null;
   publishingMetadata?: Partial<OrtakAlanMetadata> | null;
+  feedEditorialDefaults?: Partial<FeedEditorialDefaults> | null;
   siteId?: string | null;
   preferredIntegrationId?: string | null;
   coverImageUrl?: string | null;
@@ -159,7 +161,37 @@ export function buildPublishDefaults(title: string, content: string, summary?: s
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, publishingMetadata, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
+function stringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+export function buildGenericPublishDefaults(
+  title: string,
+  content: string,
+  summary?: string | null,
+  publishingMetadata?: unknown,
+  feedEditorialDefaults?: unknown,
+) {
+  const defaults = buildPublishDefaults(title, content, summary);
+  const feedDefaults = normalizeFeedEditorialDefaults(feedEditorialDefaults);
+  const generic = publishingMetadata && (publishingMetadata as Record<string, unknown>).profile === "generic"
+    ? publishingMetadata as Record<string, unknown>
+    : null;
+  const storedTags = stringList(generic?.tags);
+  const storedCategories = stringList(generic?.categories);
+  return {
+    postType: generic?.postType === "page" ? "page" as const : feedDefaults.postType,
+    slug: typeof generic?.slug === "string" ? generic.slug : defaults.slug,
+    tags: (storedTags.length ? storedTags : feedDefaults.defaultTags.length ? feedDefaults.defaultTags : commaList(defaults.tags)).join(", "),
+    categories: (storedCategories.length ? storedCategories : feedDefaults.defaultCategories).join(", "),
+    metaTitle: typeof generic?.metaTitle === "string" ? generic.metaTitle : defaults.metaTitle,
+    metaDescription: typeof generic?.metaDescription === "string" ? generic.metaDescription : defaults.metaDescription,
+  };
+}
+
+export function PublishDialog({ postId, title, content, summary, publishingMetadata, feedEditorialDefaults, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -211,6 +243,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
 
   const fillOrtakAlanDefaults = useCallback((integration?: SiteIntegration) => {
     const defaults = buildPublishDefaults(title, content, summary);
+    const feedDefaults = normalizeFeedEditorialDefaults(feedEditorialDefaults);
     const configuredAuthor = integration?.config?.defaultAuthor && typeof integration.config.defaultAuthor === "object"
       ? integration.config.defaultAuthor as GhostAuthor
       : null;
@@ -220,27 +253,24 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
       excerpt: defaults.excerpt,
       metaTitle: defaults.metaTitle,
       metaDescription: defaults.metaDescription,
-      tags: commaList(defaults.tags),
+      tags: feedDefaults.defaultTopicTags.length ? feedDefaults.defaultTopicTags : commaList(defaults.tags),
       editorialOwner: typeof integration?.config?.editorialOwner === "string" ? integration.config.editorialOwner : "",
       defaultAuthor: configuredAuthor,
       coverImageUrl,
       inlineImageUrls: inlineImages,
       imageAssets,
     }));
-  }, [content, coverImageUrl, imageAssets, inlineImages, publishingMetadata, summary, title]);
+  }, [content, coverImageUrl, feedEditorialDefaults, imageAssets, inlineImages, publishingMetadata, summary, title]);
 
   const fillDefaults = useCallback(() => {
-    const defaults = buildPublishDefaults(title, content, summary);
-    const generic = publishingMetadata && (publishingMetadata as Record<string, unknown>).profile === "generic"
-      ? publishingMetadata as Record<string, unknown>
-      : null;
-    setPostType(generic?.postType === "page" ? "page" : "post");
-    setSlug(typeof generic?.slug === "string" ? generic.slug : defaults.slug);
-    setTags(Array.isArray(generic?.tags) ? generic.tags.join(", ") : defaults.tags);
-    setCategories(Array.isArray(generic?.categories) ? generic.categories.join(", ") : "");
-    setMetaTitle(typeof generic?.metaTitle === "string" ? generic.metaTitle : defaults.metaTitle);
-    setMetaDescription(typeof generic?.metaDescription === "string" ? generic.metaDescription : defaults.metaDescription);
-  }, [content, publishingMetadata, summary, title]);
+    const defaults = buildGenericPublishDefaults(title, content, summary, publishingMetadata, feedEditorialDefaults);
+    setPostType(defaults.postType);
+    setSlug(defaults.slug);
+    setTags(defaults.tags);
+    setCategories(defaults.categories);
+    setMetaTitle(defaults.metaTitle);
+    setMetaDescription(defaults.metaDescription);
+  }, [content, feedEditorialDefaults, publishingMetadata, summary, title]);
 
   useEffect(() => {
     if (!open || !selected || initializedTargetRef.current === selected.id) return;
