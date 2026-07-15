@@ -16,6 +16,7 @@ import type { OrtakAlanMetadata } from "@/components/posts/ortak-alan-publishing
 import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
+import type { FeedEditorialDefaults } from "@/lib/feed-routing";
 import {
   Select,
   SelectContent,
@@ -50,6 +51,7 @@ interface Post {
   cover_image_url?: string | null;
   inline_images?: string[] | null;
   publishing_metadata?: Partial<OrtakAlanMetadata> | null;
+  feed_editorial_defaults?: Partial<FeedEditorialDefaults> | null;
   site_id?: string | null;
   feed_id?: string | null;
   preferred_integration_id?: string | null;
@@ -389,6 +391,7 @@ export default function PostEditorPage() {
               content={content}
               summary={post?.summary}
               publishingMetadata={post?.publishing_metadata}
+              feedEditorialDefaults={post?.feed_editorial_defaults}
               siteId={post?.site_id}
               preferredIntegrationId={post?.preferred_integration_id}
               coverImageUrl={coverImageUrl}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPublishDefaults } from "./PublishDialog";
+import { buildGenericPublishDefaults, buildPublishDefaults } from "./PublishDialog";
 import { buildOrtakAlanMetadata } from "./ortak-alan-publishing";
 
 describe("publish defaults", () => {
@@ -55,6 +55,19 @@ describe("publish defaults", () => {
     expect(defaults.metaTitle).toBe("Search-Backed SEO Metadata for Blog Drafts");
     expect(defaults.metaDescription.length).toBeLessThanOrEqual(145);
     expect(defaults.metaDescription).toMatch(/People Also Ask/);
+  });
+
+  it("falls back to RSS feed tags when post metadata has none", () => {
+    const defaults = buildGenericPublishDefaults(
+      "Feed story",
+      "# Feed story\n\nBody copy.",
+      null,
+      { profile: "generic", categories: ["Blog"] },
+      { defaultTags: ["Movies", "Box Office"], defaultCategories: ["News"] },
+    );
+
+    expect(defaults.tags).toBe("Movies, Box Office");
+    expect(defaults.categories).toBe("Blog");
   });
 
   it("uses complete sentences for Ortak Alan fallback descriptions", () => {

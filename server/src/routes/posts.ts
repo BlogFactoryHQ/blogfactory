@@ -8,6 +8,7 @@ import { getPostPublications, publishPost } from "../services/publishing.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
+import { normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { optionalEnum, readJsonObject, requiredString, requiredStringArray } from "../http/error-contract.js";
 import { pagination, parsePostListQuery } from "./list-query.js";
 
@@ -350,6 +351,7 @@ postsRoutes.get("/:id", async (c) => {
       campaign_name: campaigns.name,
       site_name: sites.name,
       feed_name: feeds.name,
+      feed_editorial_defaults: feeds.editorialDefaults,
       integration_name: siteIntegrations.displayName,
       integration_provider: siteIntegrations.provider,
       integration_status: siteIntegrations.status,
@@ -365,7 +367,9 @@ postsRoutes.get("/:id", async (c) => {
     .limit(1);
 
   if (!post) return c.json({ error: "Post not found" }, 404);
-  const { persona_name, campaign_name, integration_site_id, ...result } = post;
+  const { persona_name, campaign_name, integration_site_id, feed_editorial_defaults, ...result } = post;
+  const defaults = feed_editorial_defaults && typeof feed_editorial_defaults === "object" ? feed_editorial_defaults as Record<string, unknown> : {};
+  const ortakAlan = defaults.profile === "ortak_alan_news";
   const storedInlineImages = normalizeInlineImages(result.inline_images, result.cover_image_url);
   const postImageAssets = await db
     .select({
@@ -415,6 +419,7 @@ postsRoutes.get("/:id", async (c) => {
     : [];
   return c.json({
     ...result,
+    feed_editorial_defaults: normalizeFeedEditorialDefaults(feed_editorial_defaults, ortakAlan),
     routing_status: result.site_id && result.preferred_integration_id && integration_site_id === result.site_id && result.integration_status === "connected" ? "ready" : "needs_routing",
     content: inlineImages.length > 1
       ? reflowInlineImages(result.content || "", inlineImages.map((url) => ({ url })), "auto")
