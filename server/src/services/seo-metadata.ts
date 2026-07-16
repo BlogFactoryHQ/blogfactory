@@ -315,10 +315,13 @@ async function requestCandidate(apiKey: string, modelId: string, prompt: string)
       ],
       response_format: SEO_RESPONSE_FORMAT,
       provider: { require_parameters: true },
-      max_completion_tokens: 900,
+      max_tokens: 900,
     }),
   });
-  if (!response.ok) throw new Error(`SEO metadata generation failed (${response.status})`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(`SEO metadata generation failed (${response.status}): ${body?.error?.message || response.statusText}`);
+  }
   const payload = await response.json() as any;
   const usage = payload.usage || {};
   const cost = Number(payload.usage?.cost || payload.usage?.total_cost || 0) || 0;
