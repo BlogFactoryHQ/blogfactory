@@ -56,6 +56,32 @@ const emptyProvenance = (): SeoMetadataV1["provenance"] => ({
 
 const SEO_MODEL_TIMEOUT_MS = 25_000;
 
+export const SEO_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "seo_metadata",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          minLength: SEO_LIMITS.slugMin,
+          maxLength: SEO_LIMITS.slugMax,
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+){2,}$",
+        },
+        metaTitle: { type: "string", minLength: SEO_LIMITS.titleMin, maxLength: SEO_LIMITS.titleMax },
+        metaDescription: { type: "string", minLength: SEO_LIMITS.descriptionMin, maxLength: SEO_LIMITS.descriptionMax },
+        primaryQuery: { type: "string", minLength: 1 },
+        searchIntent: { type: "string", enum: ["informational", "navigational", "commercial", "transactional"] },
+        language: { type: "string", minLength: 2 },
+      },
+      required: ["slug", "metaTitle", "metaDescription", "primaryQuery", "searchIntent", "language"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
 export function seoSourceHash(title: string, content: string) {
   return createHash("sha256").update(`${title.trim()}\n${content.replace(/\s+/g, " ").trim()}`).digest("hex");
 }
@@ -287,6 +313,8 @@ async function requestCandidate(apiKey: string, modelId: string, prompt: string)
         { role: "system", content: "You are a rigorous multilingual SEO editor. Return only one valid JSON object and never copy or truncate the article opening." },
         { role: "user", content: prompt },
       ],
+      response_format: SEO_RESPONSE_FORMAT,
+      provider: { require_parameters: true },
       max_completion_tokens: 900,
     }),
   });
@@ -361,6 +389,17 @@ function generationErrors(input: SeoGenerationInput, candidate: SeoCandidate) {
   return errors;
 }
 
+function repairPrompt(input: SeoGenerationInput, previousOutput: string, errors: string[]) {
+  return `Repair this SEO metadata JSON so every listed error is resolved. Preserve its meaning and return only the corrected object.
+Errors:
+- ${errors.join("\n- ")}
+Previous object: ${previousOutput}
+Article title: ${input.title}
+Requested language: ${input.requestedLanguage || "Infer from the article"}
+Provided keywords: ${input.keywords.join(", ") || "None; infer one"}
+Provided search intent: ${input.requestedIntent || "None; infer it"}`;
+}
+
 export async function generateValidatedCandidate(input: SeoGenerationInput, requester: CandidateRequester = requestCandidate) {
   let first: CandidateResponse | null = null;
   let firstError: SeoGenerationAttemptError | null = null;
@@ -381,7 +420,7 @@ export async function generateValidatedCandidate(input: SeoGenerationInput, requ
   const previousOutput = first ? JSON.stringify(first.candidate) : firstError?.rawOutput || "No parseable JSON";
   let repaired: CandidateResponse;
   try {
-    repaired = await requester(input.apiKey, input.modelId, `${generationPrompt(input)}\n\nThe previous candidate was invalid:\n${previousOutput}\nErrors:\n- ${errors.join("\n- ")}\nReturn a corrected JSON object.`);
+    repaired = await requester(input.apiKey, input.modelId, repairPrompt(input, previousOutput, errors));
   } catch (error) {
     const repairError = error instanceof SeoGenerationAttemptError
       ? error

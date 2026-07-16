@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
+import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
+
+assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 45, maxLength: 60 });
+assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: 120, maxLength: 145 });
 
 const valid = parseSeoCandidate({
   slug: "twitter-yirmi-yil-memler-toplumsal-hareketler",
