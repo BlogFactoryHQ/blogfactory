@@ -13,6 +13,7 @@ const romano = classifySportsNews({ title: "Romano update", content: "Fabrizio R
 assert.equal(romano.allowed, true);
 assert.equal(romano.label, "[ATTRIBUTED]");
 assert.match(romano.attribution || "", /Fabrizio Romano/);
+assert.deepEqual(romano.cmsKeywords, ["Transfer", "Futbol"]);
 
 const official = classifySportsNews({ url: "https://www.premierleague.com/news/1", matrixRows: rows });
 assert.equal(official.label, "[OFFICIAL]");

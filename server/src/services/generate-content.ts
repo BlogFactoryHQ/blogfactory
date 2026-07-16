@@ -1110,7 +1110,7 @@ export async function generateContent(opts: GenerateOpts) {
           : { topics: [] as string[], warning: null as string | null };
         const topicTags = mergeTopicTags(
           ortakAlan ? editorialDefaults.defaultTopicTags : editorialDefaults.defaultTags,
-          topicResult.topics,
+          ortakAlan ? topicResult.topics : [...(article.sportsDecision?.cmsKeywords || []), ...(article.tags || []), ...topicResult.topics],
           ortakAlan ? 7 : 8,
         );
         const articleText = plainText(genContent, 500);

@@ -71,6 +71,7 @@ export type SourceArticle = {
   title: string;
   content: string;
   url?: string;
+  tags?: string[];
   hash?: string;
   pubDate?: string;
   sportsDecision?: SportsNewsDecision;

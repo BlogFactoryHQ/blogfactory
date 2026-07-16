@@ -10,7 +10,7 @@ import type { GenerateOpts } from "./generation-types.js";
 
 const rss = `<?xml version="1.0"?>
 <rss><channel>
-  <item><title><![CDATA[Newest artificial intelligence story]]></title><link>https://example.com/new</link><description><![CDATA[<p>Useful AI details.</p>]]></description><pubDate>Wed, 10 Jul 2026 10:00:00 GMT</pubDate></item>
+  <item><title><![CDATA[Newest artificial intelligence story]]></title><link>https://example.com/new</link><description><![CDATA[<p>Useful AI details.</p>]]></description><category><![CDATA[World News]]></category><category>Politics</category><pubDate>Wed, 10 Jul 2026 10:00:00 GMT</pubDate></item>
   <item><title>Older unrelated story</title><link>https://example.com/old</link><description>Other details.</description><pubDate>Wed, 09 Jul 2026 10:00:00 GMT</pubDate></item>
 </channel></rss>`;
 
@@ -26,6 +26,7 @@ assert.deepEqual(rssArticles, [{
   content: "Useful AI details.",
   url: "https://example.com/new",
   pubDate: "Wed, 10 Jul 2026 10:00:00 GMT",
+  tags: ["World News", "Politics"],
 }]);
 
 const generationOpts: GenerateOpts = { userId: "user-1", sourceType: "rss_feed", sourceValue: "https://example.com/feed.xml" };

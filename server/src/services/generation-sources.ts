@@ -156,6 +156,13 @@ function extractAttr(xml: string, tag: string, attr: string) {
   return match ? match[1] : "";
 }
 
+function extractCategories(xml: string) {
+  return [...xml.matchAll(/<category\b([^>]*?)(?:\/>|>([\s\S]*?)<\/category>)/gi)]
+    .map((match) => match[1].match(/\bterm=["']([^"']+)["']/i)?.[1] || match[2]?.match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/)?.[1] || stripHtml(match[2] || ""))
+    .map((category) => stripHtml(category).trim())
+    .filter((category, index, categories) => Boolean(category) && categories.indexOf(category) === index);
+}
+
 function stripHtml(html: string) {
   return html
     .replace(/<[^>]+>/g, "")
@@ -193,13 +200,14 @@ export async function fetchRssArticles(
       const link = extractTag(itemXml, "link") || extractAttr(itemXml, "link", "href");
       const description = extractTag(itemXml, "description") || extractTag(itemXml, "summary") || extractTag(itemXml, "content:encoded") || extractTag(itemXml, "content");
       const pubDate = extractTag(itemXml, "pubDate") || extractTag(itemXml, "published") || extractTag(itemXml, "updated");
+      const tags = extractCategories(itemXml);
       const content = stripHtml(description || "");
       if (keywordNeedles.length && !keywordNeedles.some((keyword) => `${title} ${content}`.toLowerCase().includes(keyword))) continue;
       if (filterOldDays && pubDate) {
         const cutoff = new Date(Date.now() - filterOldDays * 24 * 60 * 60 * 1000);
         if (new Date(pubDate) < cutoff) continue;
       }
-      articles.push({ title: title || "Untitled", content, url: link || undefined, pubDate: pubDate || undefined });
+      articles.push({ title: title || "Untitled", content, url: link || undefined, pubDate: pubDate || undefined, ...(tags.length ? { tags } : {}) });
     }
 
     return articles
