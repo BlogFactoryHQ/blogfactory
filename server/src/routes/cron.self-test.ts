@@ -15,6 +15,8 @@ const defaultConfig = readCronDrainConfig(() => undefined, {
 console.assert(defaultConfig.feeds.maxFeeds === 2, "uses feed env limit");
 console.assert(defaultConfig.feeds.maxPostsPerFeed === 3, "uses posts-per-feed env limit");
 console.assert(defaultConfig.searchConsole.limit === 4, "uses search console env limit");
+console.assert(defaultConfig.seo.limit === 5, "drains five SEO jobs concurrently by default");
+console.assert(defaultConfig.seo.discoveryLimit === 100, "discovers migration-era SEO work automatically");
 
 const queryConfig = readCronDrainConfig((name) => ({
   maxFeeds: "12",
@@ -29,5 +31,6 @@ console.assert(queryConfig.campaigns.maxCampaigns === 2, "uses campaign query li
 console.assert(queryConfig.campaigns.maxItemsPerCampaign === 1, "uses campaign item query limit");
 console.assert(queryConfig.indexing.limit === 25, "uses generic limit for indexing");
 console.assert(queryConfig.searchConsole.limit === 10, "caps generic limit for search console");
+console.assert(queryConfig.seo.limit === 10, "caps generic limit for SEO concurrency");
 
 console.log("cron self-test ok");

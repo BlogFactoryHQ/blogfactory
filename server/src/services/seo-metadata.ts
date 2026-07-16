@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaigns, feeds, generationLogs, jobs, posts, sites } from "../db/schema.js";
 import { getOpenRouterKey } from "./api-keys.js";
@@ -500,6 +500,40 @@ export async function enqueueSeoMetadata(input: { userId: string; postId: string
     const [existing] = await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.userId, input.userId), eq(jobs.sourceType, "seo_metadata"), eq(jobs.sourceValue, sourceValue), inArray(jobs.status, ["pending", "running"]))).limit(1);
     return { queued: false, status: "pending" as const, jobId: existing?.id || null };
   });
+}
+
+export async function enqueueUntrackedDraftSeoMetadata(limit = 100) {
+  const candidates = await db.select({ id: posts.id, userId: posts.userId }).from(posts).where(and(
+    eq(posts.status, "draft"),
+    sql`(
+      ${posts.seoMetadata} IS NULL
+      OR (
+        ${posts.seoMetadata}->>'status' = 'pending'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jobs active_seo_jobs
+          WHERE active_seo_jobs.user_id = ${posts.userId}
+            AND active_seo_jobs.source_type = 'seo_metadata'
+            AND active_seo_jobs.source_value = (${posts.id}::text || ':' || (${posts.seoMetadata}->>'sourceHash'))
+            AND active_seo_jobs.status IN ('pending', 'running')
+        )
+      )
+    )`,
+  )).orderBy(desc(posts.createdAt)).limit(Math.max(1, Math.min(limit, 500)));
+
+  const results = [];
+  for (const candidate of candidates) {
+    results.push(await enqueueSeoMetadata({
+      userId: candidate.userId,
+      postId: candidate.id,
+      trigger: "automatic_backfill",
+    }));
+  }
+  return {
+    discovered: candidates.length,
+    queued: results.filter((result) => result.queued).length,
+    alreadyQueued: results.filter((result) => !result.queued).length,
+  };
 }
 
 export async function saveManualSeoMetadata(userId: string, postId: string, value: SeoCandidate) {

@@ -4,7 +4,7 @@ import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
 import { drainDeferredImages } from "../services/low-cost-images.js";
-import { drainSeoMetadata } from "../services/seo-metadata.js";
+import { drainSeoMetadata, enqueueUntrackedDraftSeoMetadata } from "../services/seo-metadata.js";
 import { safeError } from "../http/error-contract.js";
 
 export const cronRoutes = new Hono();
@@ -50,7 +50,8 @@ export function readCronDrainConfig(query: (name: string) => string | undefined,
       limit: queryInt(query, ["searchConsoleLimit", "maxSites", "limit"], env.GSC_CRON_MAX_SITES, 10, 10),
     },
     seo: {
-      limit: queryInt(query, ["seoLimit", "limit"], undefined, 2, 10),
+      limit: queryInt(query, ["seoLimit", "limit"], undefined, 5, 10),
+      discoveryLimit: queryInt(query, ["seoDiscoveryLimit"], undefined, 100, 500),
     },
   };
 }
@@ -71,6 +72,10 @@ cronRoutes.get("/drain", async (c) => {
   const runImages = async () => {
     return drainDeferredImages();
   };
+  const runSeo = async () => ({
+    discovery: await enqueueUntrackedDraftSeoMetadata(config.seo.discoveryLimit),
+    processed: await drainSeoMetadata(undefined, config.seo.limit),
+  });
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
   if (task === "campaigns") {
@@ -82,7 +87,7 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "indexing") return c.json({ ok: true, google: await drainQueuedGoogleIndexing(config.indexing.limit) });
   if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(config.searchConsole.limit) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });
-  if (task === "seo") return c.json({ ok: true, seo: await drainSeoMetadata(undefined, config.seo.limit) });
+  if (task === "seo") return c.json({ ok: true, seo: await runSeo() });
 
   const [campaigns, google, searchConsole, feeds, images, seo] = await Promise.all([
     drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
@@ -90,7 +95,7 @@ cronRoutes.get("/drain", async (c) => {
     drainSearchConsoleSync(config.searchConsole.limit),
     runFeeds(),
     runImages(),
-    drainSeoMetadata(undefined, config.seo.limit),
+    runSeo(),
   ]);
 
   return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo });

@@ -723,7 +723,7 @@ export default function Posts() {
           icon={FileText}
           title="Inventory table"
           description={`${formatCompactNumber(postPagination?.total || 0)} matching post${postPagination?.total === 1 ? "" : "s"}. Bulk selection is page-scoped.`}
-          action={<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => prepareSeoMutation.mutate({ scope: "all_drafts" })} disabled={prepareSeoMutation.isPending}>{prepareSeoMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}Prepare all draft SEO</Button><Badge variant="outline">{postsPerPage} / page</Badge></div>}
+          action={<Badge variant="outline">{postsPerPage} / page</Badge>}
         />
         <Table>
           <TableHeader>
