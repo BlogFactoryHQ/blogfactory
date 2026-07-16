@@ -25,6 +25,7 @@ export default {
   async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
     ctx.waitUntil(Promise.all([
       drain("campaigns", env),
+      drain("seo", env),
       ...Array.from({ length: IMAGE_DRAIN_CONCURRENCY }, () => drain("images", env)),
     ]));
   },

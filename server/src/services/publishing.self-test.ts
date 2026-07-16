@@ -9,10 +9,7 @@ const { appendOrtakAlanDisclosures, completeSentenceWithinLimit, hasVisibleOrtak
 
 const ortakAlanMetadata = normalizeOrtakAlanMetadata({
   contentType: "Haber",
-  slug: "openai-yeni-yapay-zeka-modelini-duyurdu",
   excerpt: "OpenAI, yeni yapay zeka modelini resmi açıklamasıyla duyurdu ve ürünün temel yeteneklerini kamuoyuyla paylaştı.",
-  metaTitle: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu",
-  metaDescription: "OpenAI, yeni yapay zeka modelini resmi açıklamasıyla duyurdu; modelin yetenekleri, kullanım alanları ve erişim takvimi hakkında ayrıntılar paylaşıldı.",
   topicTags: ["Yapay Zeka", "OpenAI", "Yapay Zeka"],
   sources: [{ name: "OpenAI", url: "openai.com/news", type: "Resmi açıklama", publishedAt: "2026-07-11", note: "Ürün duyurusu" }],
   inlineImages: [{ url: "https://example.com/inline.jpg", alt: "OpenAI modelini tanıtan renkli ürün görseli" }],
@@ -56,11 +53,11 @@ const ortakApplied = applyOrtakAlanMetadata({
   markdown: "Gövde\n\n![Article image for OpenAI](https://example.com/inline.jpg)",
   html: "",
   excerpt: "",
-  slug: "",
+  slug: "openai-yeni-yapay-zeka-modelini-duyurdu",
   tags: [],
   categories: [],
-  metaTitle: "",
-  metaDescription: "",
+  metaTitle: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu",
+  metaDescription: "OpenAI, yeni yapay zeka modelini duyurdu; modelin yetenekleri, kullanım alanları ve erişim takvimi hakkında ayrıntılar paylaşıldı.",
   coverImageUrl: "https://example.com/cover.jpg",
   coverAltText: "",
   coverCaption: "",
@@ -68,13 +65,15 @@ const ortakApplied = applyOrtakAlanMetadata({
   inlineImages: [{ url: "https://example.com/inline.jpg", altText: "Article image for OpenAI" }],
 } as never, ortakAlanMetadata);
 assert.match(ortakApplied.html, /alt="OpenAI modelini tanıtan renkli ürün görseli"/);
+assert.equal(ortakApplied.slug, "openai-yeni-yapay-zeka-modelini-duyurdu");
+assert.equal(ortakApplied.metaTitle, "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu");
 const ghostFields = ghostPostFields({
   title: "OpenAI Yeni Yapay Zeka Modelini Resmen Duyurdu",
   html: disclosureHtml,
-  slug: ortakAlanMetadata.slug,
+  slug: ortakApplied.slug,
   excerpt: ortakAlanMetadata.excerpt,
-  metaTitle: ortakAlanMetadata.metaTitle,
-  metaDescription: ortakAlanMetadata.metaDescription,
+  metaTitle: ortakApplied.metaTitle,
+  metaDescription: ortakApplied.metaDescription,
   tags: ortakAlanTags(ortakAlanMetadata),
   authorId: "author-id",
   coverImageUrl: "https://example.com/cover.jpg",

@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Loader2, Send } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { normalizeFeedEditorialDefaults, type FeedEditorialDefaults } from "@/lib/feed-routing";
+import { normalizeSeoSlugInput, seoErrorPresentation, seoStatusPresentation, seoWorkflowState, type SeoLimits, type SeoMetadata, type SeoStatus } from "@/lib/seo-metadata";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -31,7 +45,7 @@ import {
 import { OrtakAlanPublishFields } from "./OrtakAlanPublishFields";
 import {
   buildOrtakAlanMetadata,
-  normalizeOrtakAlanForRequest,
+  ortakAlanEditorialMetadata,
   ortakAlanClientChecks,
   type OrtakAlanMetadata,
   type PublishingImageMetadata,
@@ -43,6 +57,8 @@ interface PublishDialogProps {
   content: string;
   summary?: string | null;
   publishingMetadata?: Partial<OrtakAlanMetadata> | null;
+  seoMetadata?: SeoMetadata | null;
+  seoLimits: SeoLimits;
   feedEditorialDefaults?: Partial<FeedEditorialDefaults> | null;
   siteId?: string | null;
   preferredIntegrationId?: string | null;
@@ -60,50 +76,17 @@ const providerLabels: Record<string, string> = {
   framer: "Framer",
 };
 
-const SEO_LIMITS = {
-  slug: 70,
-  metaTitle: 60,
-  metaDescription: 145,
-  tags: 8,
+const TAG_LIMIT = 8;
+const seoStatusCopyTr: Record<SeoStatus, { label: string; description: string }> = {
+  missing: { label: "SEO eksik", description: "Henüz canonical SEO paketi yok. Yayınlamadan önce üretin veya üç alanı manuel girin." },
+  pending: { label: "SEO hazırlanıyor", description: "AI, son kaydedilen yazı sürümünden metadata üretiyor. Tamamlanana kadar yayın bloklanır." },
+  ready: { label: "SEO hazır", description: "Paket doğrulandı ve son kaydedilen yazı sürümüne bağlı. CMS'e değiştirilmeden gönderilecek." },
+  needs_review: { label: "İnceleme gerekli", description: "Paket son yazı sürümüyle eşleşmiyor veya yeniden doğrulanmalı. Korunan manuel alanları onaylayın ya da paketi yeniden üretin." },
+  failed: { label: "Üretim başarısız", description: "Fallback üretilmedi ve yayın bloklandı. Tekrar denemek manuel alanları değiştirmez." },
 };
 
 function commaList(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
-}
-
-function slugify(value: string) {
-  const slug = transliterate(value)
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .split("-")
-    .filter(Boolean)
-    .slice(0, 5)
-    .join("-")
-    .slice(0, 70)
-    .replace(/-+$/g, "");
-  return slug || "article";
-}
-
-function transliterate(value: string) {
-  const map: Record<string, string> = {
-    ç: "c",
-    Ç: "C",
-    ğ: "g",
-    Ğ: "G",
-    ı: "i",
-    I: "I",
-    İ: "I",
-    ö: "o",
-    Ö: "O",
-    ş: "s",
-    Ş: "S",
-    ü: "u",
-    Ü: "U",
-  };
-  return value.replace(/[çÇğĞıİöÖşŞüÜ]/g, (char) => map[char] || char);
 }
 
 function truncate(value: string, max: number) {
@@ -111,11 +94,6 @@ function truncate(value: string, max: number) {
   if (cleaned.length <= max) return cleaned;
   const clipped = cleaned.slice(0, max + 1).replace(/\s+\S*$/, "").trim();
   return clipped || cleaned.slice(0, max).trim();
-}
-
-function explicitTags(content: string) {
-  const meta = parseMarkdownMeta(content);
-  return [...new Set(meta.tags.map((value) => value.trim()).filter(Boolean))].slice(0, 8).join(", ");
 }
 
 function plainText(markdown: string) {
@@ -127,36 +105,9 @@ function plainText(markdown: string) {
     .trim();
 }
 
-function markdownTitle(content: string) {
-  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
-}
-
-function markdownSection(content: string, heading: string) {
-  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
-  return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
-}
-
-function parseMarkdownMeta(content: string) {
-  const keywords = markdownSection(content, "SEO Anahtar Kelimeleri|SEO Keywords|Keywords");
-  return {
-    slug: markdownSection(content, "Slug"),
-    metaTitle: markdownSection(content, "Meta Title"),
-    metaDescription: markdownSection(content, "Meta Description"),
-    tags: keywords ? keywords.split(",") : [],
-  };
-}
-
-export function buildPublishDefaults(title: string, content: string, summary?: string | null) {
-  const meta = parseMarkdownMeta(content);
-  const articleTitle = markdownTitle(content);
-  const titleFallback = articleTitle || title;
+export function buildPublishDefaults(content: string, summary?: string | null) {
   const bodyText = plainText(content.replace(/^#\s+.+\n*/m, ""));
-  const fallbackDescription = summary || bodyText;
   return {
-    slug: slugify(meta.slug || titleFallback),
-    tags: explicitTags(content),
-    metaTitle: truncate(meta.metaTitle || titleFallback, SEO_LIMITS.metaTitle),
-    metaDescription: truncate(meta.metaDescription || fallbackDescription, SEO_LIMITS.metaDescription),
     excerpt: truncate(summary || bodyText, 180),
   };
 }
@@ -168,13 +119,9 @@ function stringList(value: unknown) {
 }
 
 export function buildGenericPublishDefaults(
-  title: string,
-  content: string,
-  summary?: string | null,
   publishingMetadata?: unknown,
   feedEditorialDefaults?: unknown,
 ) {
-  const defaults = buildPublishDefaults(title, content, summary);
   const feedDefaults = normalizeFeedEditorialDefaults(feedEditorialDefaults);
   const generic = publishingMetadata && (publishingMetadata as Record<string, unknown>).profile === "generic"
     ? publishingMetadata as Record<string, unknown>
@@ -183,15 +130,12 @@ export function buildGenericPublishDefaults(
   const storedCategories = stringList(generic?.categories);
   return {
     postType: generic?.postType === "page" ? "page" as const : feedDefaults.postType,
-    slug: typeof generic?.slug === "string" ? generic.slug : defaults.slug,
-    tags: (storedTags.length ? storedTags : feedDefaults.defaultTags.length ? feedDefaults.defaultTags : commaList(defaults.tags)).join(", "),
+    tags: (storedTags.length ? storedTags : feedDefaults.defaultTags).join(", "),
     categories: (storedCategories.length ? storedCategories : feedDefaults.defaultCategories).join(", "),
-    metaTitle: typeof generic?.metaTitle === "string" ? generic.metaTitle : defaults.metaTitle,
-    metaDescription: typeof generic?.metaDescription === "string" ? generic.metaDescription : defaults.metaDescription,
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, publishingMetadata, feedEditorialDefaults, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
+export function PublishDialog({ postId, title, content, summary, publishingMetadata, seoMetadata, seoLimits, feedEditorialDefaults, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -201,9 +145,10 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const [slug, setSlug] = useState("");
   const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
+  const [seoFormError, setSeoFormError] = useState("");
   const initializedTargetRef = useRef("");
   const [ortakAlanMetadata, setOrtakAlanMetadata] = useState<OrtakAlanMetadata>(() => buildOrtakAlanMetadata({
-    slug: "", excerpt: "", metaTitle: "", metaDescription: "", tags: [],
+    excerpt: "", tags: [],
   }));
   const { integrations, isLoading } = useIntegrations(siteId);
   const queryClient = useQueryClient();
@@ -219,18 +164,17 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const isOrtakAlan = selected?.provider === "ghost" && selected.config?.profile === "ortak_alan_news";
   const { authors: ghostAuthors, isLoading: authorsLoading, error: authorsError } = useGhostAuthors(selected?.id, Boolean(open && isOrtakAlan));
   const seoChecks = useMemo(() => {
-    const tagCount = commaList(tags).length;
-    const slugValid = Boolean(slug) && slug.length <= SEO_LIMITS.slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
-    const titleValid = metaTitle.length > 0 && metaTitle.length <= SEO_LIMITS.metaTitle;
-    const descriptionValid = metaDescription.length > 0 && metaDescription.length <= SEO_LIMITS.metaDescription;
+    const slugValid = slug.length >= seoLimits.slugMin && slug.length <= seoLimits.slugMax && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+    const titleValid = metaTitle.length >= seoLimits.titleMin && metaTitle.length <= seoLimits.titleMax;
+    const descriptionValid = metaDescription.length >= seoLimits.descriptionMin && metaDescription.length <= seoLimits.descriptionMax && /[.!?…]["'”’)}\]]*$/.test(metaDescription.trim());
     return [
-      { label: "Slug", value: `${slug.length}/${SEO_LIMITS.slug}`, ok: slugValid },
-      { label: "Meta başlık", value: `${metaTitle.length}/${SEO_LIMITS.metaTitle}`, ok: titleValid },
-      { label: "Meta açıklama", value: `${metaDescription.length}/${SEO_LIMITS.metaDescription}`, ok: descriptionValid },
-      { label: "Etiket", value: `${tagCount}/${SEO_LIMITS.tags}`, ok: tagCount <= SEO_LIMITS.tags },
+      { label: "Slug", value: `${slug.length}/${seoLimits.slugMin}–${seoLimits.slugMax}`, ok: slugValid },
+      { label: "Meta başlık", value: `${metaTitle.length}/${seoLimits.titleMin}–${seoLimits.titleMax}`, ok: titleValid },
+      { label: "Meta açıklama", value: `${metaDescription.length}/${seoLimits.descriptionMin}–${seoLimits.descriptionMax}`, ok: descriptionValid },
     ];
-  }, [metaDescription, metaTitle, slug, tags]);
+  }, [metaDescription, metaTitle, seoLimits, slug]);
   const hasSeoError = seoChecks.some((check) => !check.ok);
+  const hasTagError = commaList(tags).length > TAG_LIMIT;
   const inheritedWarnings = publishingMetadata && Array.isArray((publishingMetadata as Record<string, unknown>).routingWarnings)
     ? ((publishingMetadata as Record<string, unknown>).routingWarnings as unknown[]).filter((warning): warning is string => typeof warning === "string")
     : [];
@@ -242,35 +186,103 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const hasOrtakAlanBlocker = mode === "publish" && (authorsLoading || !authorMatched || ortakAlanChecks.some((check) => !check.ok && check.blocking !== false));
 
   const fillOrtakAlanDefaults = useCallback((integration?: SiteIntegration) => {
-    const defaults = buildPublishDefaults(title, content, summary);
+    const defaults = buildPublishDefaults(content, summary);
     const feedDefaults = normalizeFeedEditorialDefaults(feedEditorialDefaults);
     const configuredAuthor = integration?.config?.defaultAuthor && typeof integration.config.defaultAuthor === "object"
       ? integration.config.defaultAuthor as GhostAuthor
       : null;
     setOrtakAlanMetadata(buildOrtakAlanMetadata({
       stored: publishingMetadata,
-      slug: defaults.slug,
       excerpt: defaults.excerpt,
-      metaTitle: defaults.metaTitle,
-      metaDescription: defaults.metaDescription,
-      tags: feedDefaults.defaultTopicTags.length ? feedDefaults.defaultTopicTags : commaList(defaults.tags),
+      tags: feedDefaults.defaultTopicTags,
       editorialOwner: typeof integration?.config?.editorialOwner === "string" ? integration.config.editorialOwner : "",
       defaultAuthor: configuredAuthor,
       coverImageUrl,
       inlineImageUrls: inlineImages,
       imageAssets,
     }));
-  }, [content, coverImageUrl, feedEditorialDefaults, imageAssets, inlineImages, publishingMetadata, summary, title]);
+  }, [content, coverImageUrl, feedEditorialDefaults, imageAssets, inlineImages, publishingMetadata, summary]);
 
   const fillDefaults = useCallback(() => {
-    const defaults = buildGenericPublishDefaults(title, content, summary, publishingMetadata, feedEditorialDefaults);
+    const defaults = buildGenericPublishDefaults(publishingMetadata, feedEditorialDefaults);
     setPostType(defaults.postType);
-    setSlug(defaults.slug);
     setTags(defaults.tags);
     setCategories(defaults.categories);
-    setMetaTitle(defaults.metaTitle);
-    setMetaDescription(defaults.metaDescription);
-  }, [content, feedEditorialDefaults, publishingMetadata, summary, title]);
+    setSlug(seoMetadata?.slug || "");
+    setMetaTitle(seoMetadata?.metaTitle || "");
+    setMetaDescription(seoMetadata?.metaDescription || "");
+  }, [feedEditorialDefaults, publishingMetadata, seoMetadata]);
+
+  const seoDirty = slug !== (seoMetadata?.slug || "") || metaTitle !== (seoMetadata?.metaTitle || "") || metaDescription !== (seoMetadata?.metaDescription || "");
+  const seoNotReady = seoMetadata?.status !== "ready";
+  const seoWorkflow = seoWorkflowState(seoMetadata, seoDirty);
+  const seoPresentation = seoStatusPresentation(seoMetadata?.status || "missing");
+  const seoCopy = seoStatusCopyTr[seoMetadata?.status || "missing"];
+  const seoError = seoErrorPresentation(seoFormError || seoMetadata?.error || seoMetadata?.validationErrors.join(" "));
+  const hasManualSeo = Boolean(seoMetadata && Object.values(seoMetadata.provenance).includes("manual"));
+  const fieldProvenance = (field: "slug" | "metaTitle" | "metaDescription") => {
+    const current = field === "slug" ? slug : field === "metaTitle" ? metaTitle : metaDescription;
+    const stored = seoMetadata?.[field] || "";
+    return current !== stored ? "manual" : seoMetadata?.provenance[field] || "ai";
+  };
+
+  const syncSeoResult = (result: { seo_metadata: SeoMetadata }) => {
+    setSlug(result.seo_metadata.slug);
+    setMetaTitle(result.seo_metadata.metaTitle);
+    setMetaDescription(result.seo_metadata.metaDescription);
+    queryClient.setQueryData(["post", postId], (current: unknown) => (
+      current && typeof current === "object" ? { ...current, seo_metadata: result.seo_metadata } : current
+    ));
+    queryClient.invalidateQueries({ queryKey: ["posts"] });
+  };
+
+  const saveSeoFields = () => api.put<{ seo_metadata: SeoMetadata }>(`/posts/${postId}/seo`, {
+    slug,
+    metaTitle,
+    metaDescription,
+    primaryQuery: seoMetadata?.primaryQuery || metaTitle,
+    searchIntent: seoMetadata?.searchIntent || "informational",
+    language: seoMetadata?.language || (/[çğıöşüİÇĞÖŞÜ]/.test(`${title} ${content}`) ? "tr" : "en"),
+  });
+
+  const saveSeoMutation = useMutation({
+    mutationFn: saveSeoFields,
+    onSuccess: (result) => {
+      syncSeoResult(result);
+      setSeoFormError("");
+      toast.success("SEO metadata kaydedildi", { description: "Düzenlediğiniz alanlar manuel olarak korunacak." });
+    },
+    onError: (error) => setSeoFormError(error instanceof Error ? error.message : "SEO metadata kaydedilemedi"),
+  });
+
+  const regenerateSeoMutation = useMutation({
+    mutationFn: (overwriteManual: boolean) => api.post(`/posts/${postId}/seo/regenerate`, { overwriteManual }),
+    onSuccess: () => {
+      setSeoFormError("");
+      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success("SEO metadata yeniden hazırlanıyor");
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "SEO metadata yeniden başlatılamadı"),
+  });
+
+  const confirmSeoMutation = useMutation({
+    mutationFn: () => api.post(`/posts/${postId}/seo/confirm`, {}),
+    onSuccess: () => {
+      setSeoFormError("");
+      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success("Manuel SEO metadata onaylandı");
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "SEO metadata onaylanamadı"),
+  });
+
+  useEffect(() => {
+    if (!open || seoDirty) return;
+    setSlug(seoMetadata?.slug || "");
+    setMetaTitle(seoMetadata?.metaTitle || "");
+    setMetaDescription(seoMetadata?.metaDescription || "");
+  }, [open, seoDirty, seoMetadata?.generatedAt, seoMetadata?.metaDescription, seoMetadata?.metaTitle, seoMetadata?.slug, seoMetadata?.sourceHash]);
 
   useEffect(() => {
     if (!open || !selected || initializedTargetRef.current === selected.id) return;
@@ -282,18 +294,20 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
     mutationFn: async () => {
       const target = integrationId || selected?.id;
       if (!target) throw new Error("Önce bir yayın entegrasyonu bağlayın");
+      if (seoNotReady && !seoDirty) throw new Error("SEO metadata hazır veya açıkça düzenlenmiş olmalı");
+      if (seoDirty) {
+        const seoResult = await saveSeoFields();
+        syncSeoResult(seoResult);
+      }
       return api.post<{ success: boolean; error?: string; validation?: { errors: string[]; warnings: string[] }; publication?: { externalUrl?: string | null; status: string } }>(`/posts/${postId}/publish`, {
         integrationId: target,
         mode,
         postType: isOrtakAlan ? "post" : postType,
         tags: isOrtakAlan ? ortakAlanMetadata.topicTags : tags,
         categories,
-        slug: isOrtakAlan ? ortakAlanMetadata.slug : slug,
         excerpt: isOrtakAlan ? ortakAlanMetadata.excerpt : undefined,
-        metaTitle: isOrtakAlan ? ortakAlanMetadata.metaTitle : metaTitle,
-        metaDescription: isOrtakAlan ? ortakAlanMetadata.metaDescription : metaDescription,
-        publishingMetadata: isOrtakAlan ? normalizeOrtakAlanForRequest(ortakAlanMetadata) : {
-          profile: "generic", postType, slug, excerpt: summary || "", metaTitle, metaDescription,
+        publishingMetadata: isOrtakAlan ? ortakAlanEditorialMetadata(ortakAlanMetadata) : {
+          profile: "generic", postType, excerpt: summary || "",
           tags: commaList(tags), categories: commaList(categories),
         },
       });
@@ -315,18 +329,32 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
       setOpen(false);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Yayınlama başarısız oldu");
+      const message = error instanceof Error ? error.message : "Yayınlama başarısız oldu";
+      setSeoFormError(message);
+      toast.error(message);
     },
   });
+
+  const publishBlockReason = !selected
+    ? "CMS hedefi bağlamadan veya seçmeden gönderemezsiniz."
+    : hasSeoError
+      ? "Kırmızı SEO sayaçlarını ve cümle yapısını düzeltin."
+      : !seoWorkflow.canPublish
+        ? seoMetadata?.status === "pending" ? "SEO hazırlanırken yayın bloklanır." : "SEO paketini hazırlayın, düzeltin veya onaylayın."
+        : !isOrtakAlan && hasTagError
+          ? `En fazla ${TAG_LIMIT} etiket gönderilebilir.`
+          : isOrtakAlan && hasOrtakAlanBlocker
+            ? "Canlı yayın için kırmızı editoryal kontrolleri tamamlayın."
+            : "";
 
   const trigger = (
     <Button
       size="sm"
       disabled={disabled}
-      title={disabled ? disabledReason : "Bağlı entegrasyona gönder"}
+      title={disabled ? disabledReason : seoWorkflow.canPublish ? "SEO paketini kontrol et ve CMS'e gönder" : "SEO metadata durumunu incele"}
     >
       <Send className="mr-1.5 h-4 w-4" />
-      Yayınla
+      {seoWorkflow.canPublish ? "Yayınla" : "SEO / Yayın"}
     </Button>
   );
 
@@ -334,6 +362,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
     <Dialog open={open} onOpenChange={(nextOpen) => {
       if (nextOpen) {
         setIntegrationId("");
+        setSeoFormError("");
         initializedTargetRef.current = "";
         fillDefaults();
       }
@@ -342,13 +371,103 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>Yazıyı yayınla</DialogTitle>
+          <DialogTitle>SEO ve yayın</DialogTitle>
           <DialogDescription>
-            “{title}” yazısını bu siteye bağlı entegrasyonlardan birine gönder.
+            “{title}” için kayıtlı SEO paketini kontrol edin, sonra bağlı CMS'e gönderin.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto pr-1">
+        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+          <section className="space-y-3 rounded-sm border border-byword-border bg-muted/15 p-4" aria-labelledby={`seo-package-${postId}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 id={`seo-package-${postId}`} className="text-sm font-semibold text-foreground">Canonical SEO</h3>
+                  <StatusBadge status={seoPresentation.status} label={seoCopy.label} />
+                </div>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">{seoCopy.description}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {seoWorkflow.canConfirm && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => confirmSeoMutation.mutate()} disabled={seoDirty || confirmSeoMutation.isPending || regenerateSeoMutation.isPending}>
+                    {confirmSeoMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                    Manuel alanları onayla
+                  </Button>
+                )}
+                {seoWorkflow.canRetry && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => regenerateSeoMutation.mutate(false)} disabled={regenerateSeoMutation.isPending}>
+                    {regenerateSeoMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                    {seoMetadata?.status === "failed" ? "Tekrar dene" : "SEO hazırla"}
+                  </Button>
+                )}
+                {seoWorkflow.canOverwrite && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" disabled={regenerateSeoMutation.isPending || confirmSeoMutation.isPending}>
+                        {hasManualSeo ? "Tümünü yeniden üret" : "Yeniden üret"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{hasManualSeo ? "Manuel SEO alanları değiştirilsin mi?" : "SEO paketi yeniden üretilsin mi?"}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {hasManualSeo
+                            ? "AI slug, meta başlık ve meta açıklama dahil tüm paketi son yazıdan yeniden üretecek. Manuel düzenlemeler korunmayacak."
+                            : "AI slug, meta başlık ve meta açıklama dahil tüm paketi son kaydedilen yazıdan yeniden üretecek."}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                        <AlertDialogAction className={hasManualSeo ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined} onClick={() => regenerateSeoMutation.mutate(true)}>{hasManualSeo ? "Tümünü yeniden üret" : "Yeniden üret"}</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+            </div>
+
+            {seoError.message && (
+              <div className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive" role="alert">
+                <span>{seoError.message}</span>
+                {seoError.settingsHref && <Link className="ml-2 font-semibold underline underline-offset-2" to={seoError.settingsHref}>Anahtar ayarlarını aç</Link>}
+              </div>
+            )}
+
+            <div className="space-y-3 border-t border-byword-border pt-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor={`seo-slug-${postId}`}>URL slug</Label>
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("slug") === "manual" ? "Manual" : "AI"}</span>
+                </div>
+                <Input id={`seo-slug-${postId}`} value={slug} aria-invalid={!seoChecks[0].ok} onChange={(event) => { setSlug(normalizeSeoSlugInput(event.target.value)); setSeoFormError(""); }} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor={`seo-title-${postId}`}>Meta başlık</Label>
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaTitle") === "manual" ? "Manual" : "AI"}</span>
+                </div>
+                <Textarea id={`seo-title-${postId}`} value={metaTitle} aria-invalid={!seoChecks[1].ok} onChange={(event) => { setMetaTitle(event.target.value); setSeoFormError(""); }} className="min-h-[60px] resize-none break-words" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor={`seo-description-${postId}`}>Meta açıklama</Label>
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaDescription") === "manual" ? "Manual" : "AI"}</span>
+                </div>
+                <Textarea id={`seo-description-${postId}`} value={metaDescription} aria-invalid={!seoChecks[2].ok} onChange={(event) => { setMetaDescription(event.target.value); setSeoFormError(""); }} className="min-h-[84px] resize-none break-words" />
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-sm border border-byword-border bg-background p-3 text-xs" aria-live="polite">
+                {seoChecks.map((check) => <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap font-medium text-destructive"}><span>{check.label}</span><span className="ml-2">{check.value}</span></div>)}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">Kaydedilen değişiklikler manuel olur; açıkça “Tümünü yeniden üret” demeden AI bu alanları ezmez.</p>
+                <Button type="button" variant="secondary" size="sm" onClick={() => saveSeoMutation.mutate()} disabled={!seoDirty || hasSeoError || saveSeoMutation.isPending}>
+                  {saveSeoMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  SEO değişikliklerini kaydet
+                </Button>
+              </div>
+            </div>
+          </section>
+
           {isLoading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -382,7 +501,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                   initializedTargetRef.current = value;
                   if (target?.config?.profile === "ortak_alan_news") fillOrtakAlanDefaults(target);
                 }}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Hedef CMS">
                     <SelectValue placeholder="Entegrasyon seç" />
                   </SelectTrigger>
                   <SelectContent>
@@ -397,7 +516,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
 
             <div className="space-y-3">
               <Label>Yayın modu</Label>
-              <RadioGroup value={mode} onValueChange={(value) => setMode(value as "draft" | "publish")} className="grid gap-3 sm:grid-cols-2">
+              <RadioGroup value={mode} onValueChange={(value) => setMode(value as "draft" | "publish")} className="grid gap-3 sm:grid-cols-2" aria-label="Yayın modu">
                 <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-byword-border p-3">
                   <RadioGroupItem value="draft" />
                   <span>
@@ -443,7 +562,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               <div className="space-y-2">
                 <Label>İçerik tipi</Label>
                 <Select value={postType} onValueChange={(value) => setPostType(value as "post" | "page")}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="İçerik tipi">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -453,47 +572,16 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>URL slug</Label>
-                <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="slug gir" />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="publish-tags">Etiketler</Label>
                 <TagInput id="publish-tags" value={commaList(tags)} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" />
+                <p className={hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"}>{commaList(tags).length}/{TAG_LIMIT} etiket</p>
               </div>
               <div className="space-y-2">
-                <Label>Kategoriler</Label>
-                <Input value={categories} onChange={(event) => setCategories(event.target.value)} placeholder="Blog, Rehberler" />
+                <Label htmlFor={`publish-categories-${postId}`}>Kategoriler</Label>
+                <Input id={`publish-categories-${postId}`} value={categories} onChange={(event) => setCategories(event.target.value)} placeholder="Blog, Rehberler" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Meta başlık</Label>
-              <Textarea
-                value={metaTitle}
-                onChange={(event) => setMetaTitle(event.target.value)}
-                placeholder="AI meta yoksa elle gir"
-                className="min-h-[60px] resize-none break-words"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Meta açıklama</Label>
-              <Textarea
-                value={metaDescription}
-                onChange={(event) => setMetaDescription(event.target.value)}
-                placeholder="AI meta yoksa elle gir"
-                className="min-h-[84px] resize-none break-words"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-byword-border bg-muted/30 p-3 text-xs">
-              {seoChecks.map((check) => (
-                <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap text-destructive"}>
-                  <span className="font-medium">{check.label}</span>
-                  <span className="ml-2">{check.value}</span>
-                </div>
-              ))}
-            </div>
             {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
               </>
             )}
@@ -501,11 +589,12 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
           )}
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-byword-border pt-4">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="shrink-0 flex-col items-stretch gap-2 border-t border-byword-border pt-4 sm:flex-row sm:items-center">
+          {publishBlockReason && <p className="max-w-sm text-left text-xs leading-relaxed text-destructive sm:mr-auto" role="status">{publishBlockReason}</p>}
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>
-          <Button onClick={() => publishMutation.mutate()} disabled={!selected || publishMutation.isPending || (isOrtakAlan ? hasOrtakAlanBlocker : hasSeoError)}>
+          <Button className="w-full sm:w-auto" onClick={() => publishMutation.mutate()} disabled={!selected || publishMutation.isPending || saveSeoMutation.isPending || hasSeoError || (!isOrtakAlan && hasTagError) || !seoWorkflow.canPublish || (isOrtakAlan && hasOrtakAlanBlocker)}>
             {publishMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
             {mode === "publish" ? "Canlı yayınla" : "Taslak oluştur"}
           </Button>

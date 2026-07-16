@@ -60,6 +60,12 @@ export interface GenerateOpts {
         snippable?: boolean;
       }>;
       wordRange?: [number, number];
+      seoContext?: {
+        keywords: string[];
+        searchIntent: string;
+        requestedLanguage: string;
+        sourceContext: string;
+      };
     };
   };
 }
@@ -80,11 +86,3 @@ export type SourceArticle = {
 };
 
 export type SeoQaCheck = { label: string; ok: boolean | null; detail: string };
-
-export type SeoPackage = {
-  slug: string;
-  metaTitle: string;
-  metaDescription: string;
-  keyPoints?: string[];
-  faqs: Array<{ question: string; answer: string; sourceQuery?: string }>;
-};

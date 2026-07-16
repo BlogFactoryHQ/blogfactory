@@ -64,9 +64,7 @@ export function PromptBuilder({ onApply }: PromptBuilderProps) {
   const [audience, setAudience] = useState("general");
   const [outputType, setOutputType] = useState("seo-blog");
   const [customInstructions, setCustomInstructions] = useState("");
-  const [seoRequirements, setSeoRequirements] = useState({
-    metaTitle: true,
-    metaDescription: true,
+  const [contentRequirements, setContentRequirements] = useState({
     headings: true,
     internalLinks: false,
   });
@@ -87,21 +85,13 @@ export function PromptBuilder({ onApply }: PromptBuilderProps) {
 
     if (outputType === "seo-blog" || outputType === "landing-page") {
       prompt += `
-## SEO Requirements
+## Content Structure
 `;
-      if (seoRequirements.metaTitle) {
-        prompt += `- Generate an SEO-optimized meta title (under 70 characters)
-`;
-      }
-      if (seoRequirements.metaDescription) {
-        prompt += `- Generate a compelling meta description (under 160 characters)
-`;
-      }
-      if (seoRequirements.headings) {
+      if (contentRequirements.headings) {
         prompt += `- Use proper heading hierarchy (H1 for title, H2/H3 for sections)
 `;
       }
-      if (seoRequirements.internalLinks) {
+      if (contentRequirements.internalLinks) {
         prompt += `- Suggest opportunities for internal linking
 `;
       }
@@ -204,24 +194,22 @@ ${customInstructions}
 
           {(outputType === "seo-blog" || outputType === "landing-page") && (
             <div className="space-y-2">
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SEO Requirements</Label>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content Structure</Label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { key: "metaTitle", label: "Meta Title" },
-                  { key: "metaDescription", label: "Meta Description" },
                   { key: "headings", label: "Heading Structure" },
                   { key: "internalLinks", label: "Internal Links" },
                 ].map(item => (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => setSeoRequirements(prev => ({
+                    onClick={() => setContentRequirements(prev => ({
                       ...prev,
                       [item.key]: !prev[item.key as keyof typeof prev],
                     }))}
                     className={cn(
                       "px-3 py-1.5 text-sm rounded-md border transition-colors",
-                      seoRequirements[item.key as keyof typeof seoRequirements]
+                      contentRequirements[item.key as keyof typeof contentRequirements]
                         ? "bg-primary/10 border-primary text-primary"
                         : "border-border text-muted-foreground hover:border-primary/50"
                     )}

@@ -1,10 +1,13 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
 import { db } from "../db/index.js";
 import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs, sites, feeds, siteIntegrations } from "../db/schema.js";
 import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
+import { SeoMetadataNotReadyError } from "../services/publishing.js";
+import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
@@ -41,6 +44,7 @@ postsRoutes.get("/", async (c) => {
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
+      seo_source_hash: sql<string>`encode(digest(trim(${posts.title}) || E'\n' || trim(regexp_replace(${posts.content}, '[[:space:]]+', ' ', 'g')), 'sha256'), 'hex')`,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -52,6 +56,7 @@ postsRoutes.get("/", async (c) => {
       model_id: posts.modelId,
       cover_image_url: posts.coverImageUrl,
       inline_images: posts.inlineImages,
+      seo_metadata: posts.seoMetadata,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
       generation_plan: sql<Record<string, unknown> | null>`case when ${jobs.generationPlan} is null then null else jsonb_build_object(
@@ -118,14 +123,19 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  const items = rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => ({
-    ...post,
-    routing_status: post.site_id && post.preferred_integration_id && integration_site_id === post.site_id && post.integration_status === "connected" ? "ready" : "needs_routing",
-    image_asset_count: imageCounts.get(post.id) || 0,
-    image_prompt_count: promptCounts.get(post.id) || 0,
-    personas: persona_name ? { name: persona_name } : null,
-    campaigns: campaign_name ? { name: campaign_name } : null,
-  }));
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_hash, ...post }) => {
+    const storedSeo = seoMetadata(post.seo_metadata);
+    const seoStatus = storedSeo?.status === "ready" && storedSeo.sourceHash !== seo_source_hash ? "needs_review" : storedSeo?.status || "missing";
+    return {
+      ...post,
+      seo_status: seoStatus,
+      routing_status: post.site_id && post.preferred_integration_id && integration_site_id === post.site_id && post.integration_status === "connected" ? "ready" : "needs_routing",
+      image_asset_count: imageCounts.get(post.id) || 0,
+      image_prompt_count: promptCounts.get(post.id) || 0,
+      personas: persona_name ? { name: persona_name } : null,
+      campaigns: campaign_name ? { name: campaign_name } : null,
+    };
+  });
   if (ids.length) return c.json(items);
 
   const [[countRow], [statusRow], sourceRows, modelRows, personaRows, campaignRows] = await Promise.all([
@@ -210,6 +220,39 @@ postsRoutes.post("/import-md", async (c) => {
     } as any)
     .returning();
 
+  if (meta.slug || meta.metaTitle || meta.metaDescription) {
+    const manual = await saveManualSeoMetadata(userId, post.id, {
+      slug: meta.slug,
+      metaTitle: meta.metaTitle,
+      metaDescription: meta.metaDescription,
+      primaryQuery: meta.metaTitle || title,
+      searchIntent: "informational",
+      language: /[çğıöşüİÇĞÖŞÜ]/.test(`${title} ${body}`) ? "tr" : "en",
+    });
+    if (!manual.saved) {
+      await db.update(posts).set({ seoMetadata: {
+        version: 1,
+        status: "needs_review",
+        sourceHash: "",
+        slug: meta.slug,
+        metaTitle: meta.metaTitle,
+        metaDescription: meta.metaDescription,
+        primaryQuery: meta.metaTitle || title,
+        searchIntent: "informational",
+        language: /[çğıöşüİÇĞÖŞÜ]/.test(`${title} ${body}`) ? "tr" : "en",
+        provenance: { slug: "manual", metaTitle: "manual", metaDescription: "manual", primaryQuery: "manual", searchIntent: "manual", language: "manual" },
+        manualReviewRequired: true,
+        modelId: null,
+        generatedAt: null,
+        validationErrors: manual.errors,
+        error: null,
+      } }).where(and(eq(posts.id, post.id), eq(posts.userId, userId)));
+    }
+  } else {
+    const seoJob = await enqueueSeoMetadata({ userId, postId: post.id, trigger: "batch_import" });
+    if (seoJob.queued) waitUntil(drainSeoMetadata(userId, 1));
+  }
+
   const images = formData.getAll("images").filter((value): value is File => value instanceof File);
   const inlineImages: string[] = [];
   let coverImageUrl: string | null = null;
@@ -254,18 +297,69 @@ postsRoutes.post("/:id/publish", async (c) => {
   const integrationId = requiredString(body, "integrationId", ["integration_id"]);
   const mode = optionalEnum(body, "mode", ["draft", "publish"] as const, "draft");
   const postType = optionalEnum(body, "postType", ["post", "page"] as const, "post");
-  const result = await publishPost(userId, id, integrationId, {
-    mode,
-    postType,
-    slug: typeof body.slug === "string" ? body.slug : undefined,
-    tags: parseList(body.tags),
-    categories: parseList(body.categories),
-    metaTitle: typeof (body.metaTitle || body.meta_title) === "string" ? String(body.metaTitle || body.meta_title) : undefined,
-    metaDescription: typeof (body.metaDescription || body.meta_description) === "string" ? String(body.metaDescription || body.meta_description) : undefined,
-    excerpt: typeof body.excerpt === "string" ? body.excerpt : undefined,
-    publishingMetadata: body.publishingMetadata || body.publishing_metadata,
-  });
+  let result;
+  try {
+    result = await publishPost(userId, id, integrationId, {
+      mode,
+      postType,
+      tags: parseList(body.tags),
+      categories: parseList(body.categories),
+      excerpt: typeof body.excerpt === "string" ? body.excerpt : undefined,
+      publishingMetadata: body.publishingMetadata || body.publishing_metadata,
+    });
+  } catch (error) {
+    if (error instanceof SeoMetadataNotReadyError) return c.json({ error: error.message, code: "SEO_METADATA_NOT_READY" }, 409);
+    throw error;
+  }
   return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);
+});
+
+postsRoutes.post("/bulk-cms-publish", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const ids = [...new Set(requiredStringArray(body, "ids"))];
+  if (ids.length > 500) return c.json({ error: "A maximum of 500 posts can be pushed at once" }, 400);
+  const integrationId = requiredString(body, "integrationId", ["integration_id"]);
+  const mode = optionalEnum(body, "mode", ["draft", "publish"] as const, "draft");
+  const postType = optionalEnum(body, "postType", ["post", "page"] as const, "post");
+  const candidates = await db.select({ id: posts.id, title: posts.title, content: posts.content, seoMetadata: posts.seoMetadata }).from(posts).where(and(
+    eq(posts.userId, userId),
+    inArray(posts.id, ids),
+  ));
+  const foundIds = new Set(candidates.map((post) => post.id));
+  const notReadyIds = ids.filter((id) => !foundIds.has(id));
+  const readyEntries: Array<{ id: string; slug: string }> = [];
+  for (const post of candidates) {
+    const metadata = readySeoMetadataForArticle(post.seoMetadata, post.title, post.content);
+    if (!metadata) notReadyIds.push(post.id);
+    else readyEntries.push({ id: post.id, slug: metadata.slug });
+  }
+  if (notReadyIds.length) {
+    return c.json({
+      error: "All posts must have current, valid SEO metadata before CMS publishing starts",
+      code: "SEO_METADATA_NOT_READY",
+      postIds: notReadyIds,
+    }, 409);
+  }
+  const slugConflicts = duplicateSeoSlugs(readyEntries);
+  if (slugConflicts.length) {
+    return c.json({
+      error: "Every post in a CMS batch must have a unique URL slug",
+      code: "SEO_SLUG_CONFLICT",
+      postIds: slugConflicts,
+    }, 409);
+  }
+
+  const failures: Array<{ id: string; title: string; error: string }> = [];
+  for (const post of candidates) {
+    try {
+      const result = await publishPost(userId, post.id, integrationId, { mode, postType });
+      if (!result.success) failures.push({ id: post.id, title: post.title, error: result.error || "CMS publish failed" });
+    } catch (error) {
+      failures.push({ id: post.id, title: post.title, error: error instanceof Error ? error.message : "CMS publish failed" });
+    }
+  }
+  return c.json({ total: candidates.length, failures });
 });
 
 postsRoutes.post("/:id/images", async (c) => {
@@ -344,6 +438,7 @@ postsRoutes.get("/:id", async (c) => {
       model_id: posts.modelId,
       cover_image_url: posts.coverImageUrl,
       inline_images: posts.inlineImages,
+      seo_metadata: posts.seoMetadata,
       publishing_metadata: posts.publishingMetadata,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
@@ -417,8 +512,16 @@ postsRoutes.get("/:id", async (c) => {
       .from(imageAssets)
       .where(and(eq(imageAssets.userId, userId), inArray(imageAssets.storagePath, attachedPaths)))
     : [];
+  const storedSeo = seoMetadata(result.seo_metadata);
+  const seoStatus = seoStatusForArticle(storedSeo, result.title, result.content || "");
+  const presentedSeo = storedSeo && seoStatus !== "missing" && storedSeo.status !== seoStatus
+    ? { ...storedSeo, status: seoStatus }
+    : storedSeo;
   return c.json({
     ...result,
+    seo_metadata: presentedSeo,
+    seo_status: seoStatus,
+    seo_limits: SEO_LIMITS,
     feed_editorial_defaults: normalizeFeedEditorialDefaults(feed_editorial_defaults, ortakAlan),
     routing_status: result.site_id && result.preferred_integration_id && integration_site_id === result.site_id && result.integration_status === "connected" ? "ready" : "needs_routing",
     content: inlineImages.length > 1
@@ -481,10 +584,6 @@ postsRoutes.put("/:id", async (c) => {
   const update: Record<string, any> = {};
   if (typeof body.title === "string") update.title = cleanPostTitle(body.title);
   if (typeof body.content === "string") update.content = cleanGeneratedPostContent(body.content);
-  if (typeof body.status === "string") {
-    if (!["draft", "published"].includes(body.status)) return c.json({ error: "Invalid status" }, 400);
-    update.status = body.status;
-  }
   const coverImageUrl = body.cover_image_url ?? body.coverImageUrl;
   const inlineImages = body.inline_images ?? body.inlineImages;
   if (typeof coverImageUrl === "string" || coverImageUrl === null) update.coverImageUrl = coverImageUrl;
@@ -498,7 +597,61 @@ postsRoutes.put("/:id", async (c) => {
     .returning();
 
   if (!updated) return c.json({ error: "Post not found" }, 404);
-  return c.json(updated);
+  let seoJob: Awaited<ReturnType<typeof enqueueSeoMetadata>> | null = null;
+  if (typeof body.title === "string" || typeof body.content === "string") {
+    seoJob = await enqueueSeoMetadata({ userId, postId: id, trigger: "save" });
+    if (seoJob.queued) waitUntil(drainSeoMetadata(userId, 1));
+  }
+  const [fresh] = await db.select({ seoMetadata: posts.seoMetadata }).from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
+  return c.json({ ...updated, seo_metadata: fresh?.seoMetadata || null, seo_job_id: seoJob?.jobId || null });
+});
+
+postsRoutes.put("/:id/seo", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const stringValue = (value: unknown) => typeof value === "string" ? value : "";
+  const metadataText = `${stringValue(body.metaTitle || body.meta_title)} ${stringValue(body.metaDescription || body.meta_description)}`;
+  const result = await saveManualSeoMetadata(userId, c.req.param("id"), {
+    slug: stringValue(body.slug),
+    metaTitle: stringValue(body.metaTitle || body.meta_title),
+    metaDescription: stringValue(body.metaDescription || body.meta_description),
+    primaryQuery: stringValue(body.primaryQuery || body.primary_query || body.metaTitle || body.meta_title),
+    searchIntent: stringValue(body.searchIntent || body.search_intent) || "informational",
+    language: stringValue(body.language) || (/[çğıöşüİÇĞÖŞÜ]/.test(metadataText) ? "tr" : "en"),
+  });
+  if (!result.saved) return c.json({ error: "SEO metadata is invalid", code: "SEO_METADATA_INVALID", errors: result.errors }, 400);
+  return c.json({ seo_metadata: result.metadata });
+});
+
+postsRoutes.post("/:id/seo/confirm", async (c) => {
+  const result = await confirmManualSeoMetadata(getUserId(c), c.req.param("id"));
+  if (!result.saved) return c.json({ error: "SEO metadata is invalid", code: "SEO_METADATA_INVALID", errors: result.errors }, 400);
+  return c.json({ seo_metadata: result.metadata });
+});
+
+postsRoutes.post("/:id/seo/regenerate", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const result = await enqueueSeoMetadata({ userId, postId: c.req.param("id"), trigger: "manual_retry", overwriteManual: body.overwriteManual === true });
+  if (result.queued) waitUntil(drainSeoMetadata(userId, 1));
+  return c.json(result, result.queued ? 202 : 200);
+});
+
+postsRoutes.post("/seo/regenerate", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const ids = Array.isArray(body.ids) ? body.ids.filter((value): value is string => typeof value === "string").slice(0, 500) : [];
+  const targetRows = ids.length
+    ? await db.select({ id: posts.id }).from(posts).where(and(eq(posts.userId, userId), inArray(posts.id, ids)))
+    : body.scope === "all_drafts"
+      ? await db.select({ id: posts.id }).from(posts).where(and(eq(posts.userId, userId), eq(posts.status, "draft")))
+      : [];
+  if (!targetRows.length) return c.json({ error: "Provide post ids or scope=all_drafts" }, 400);
+  const results = [];
+  for (const row of targetRows) results.push(await enqueueSeoMetadata({ userId, postId: row.id, trigger: "backfill", overwriteManual: body.overwriteManual === true }));
+  const queued = results.filter((result) => result.queued).length;
+  if (queued) waitUntil(drainSeoMetadata(userId, 2));
+  return c.json({ queued, skipped: results.length - queued }, 202);
 });
 
 postsRoutes.delete("/:id", async (c) => {
@@ -523,28 +676,6 @@ postsRoutes.post("/bulk-delete", async (c) => {
   await cleanupPostFiles(ids, userId);
   await db.delete(posts).where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
   return c.json({ success: true, deleted: ids.length });
-});
-
-postsRoutes.post("/bulk-publish", async (c) => {
-  const userId = getUserId(c);
-  const ids = requiredStringArray(await readJsonObject(c), "ids");
-
-  await db
-    .update(posts)
-    .set({ status: "published" } as any)
-    .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
-  return c.json({ success: true });
-});
-
-postsRoutes.post("/bulk-draft", async (c) => {
-  const userId = getUserId(c);
-  const ids = requiredStringArray(await readJsonObject(c), "ids");
-
-  await db
-    .update(posts)
-    .set({ status: "draft" } as any)
-    .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
-  return c.json({ success: true });
 });
 
 async function cleanupPostFiles(postIds: string[], userId: string) {

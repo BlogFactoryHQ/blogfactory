@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { useIntegrations } from "@/hooks/useIntegrations";
+import { seoStatusPresentation, type SeoStatus } from "@/lib/seo-metadata";
 
 type CampaignMode = "keyword" | "title" | "title_outline" | "programmatic";
 type CampaignStatus = "draft" | "queued" | "running" | "completed" | "failed" | "stopped";
@@ -66,6 +67,8 @@ interface CampaignItem {
   postId: string | null;
   errorMessage: string | null;
   variables?: Record<string, string> | null;
+  seoStatus?: SeoStatus;
+  seoError?: string | null;
 }
 
 interface CampaignHistory {
@@ -88,6 +91,7 @@ const modeLabels: Record<CampaignMode, string> = {
 
 const campaignStatuses: CampaignStatus[] = ["draft", "queued", "running", "completed", "failed", "stopped"];
 const campaignModes: CampaignMode[] = ["keyword", "title", "title_outline", "programmatic"];
+const seoStatuses: SeoStatus[] = ["missing", "pending", "ready", "needs_review", "failed"];
 
 function statusType(status: string): BadgeStatus {
   if (status === "completed") return "success";
@@ -129,7 +133,7 @@ function CampaignList() {
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
     queryFn: () => api.getArray<Campaign>("/campaigns"),
-    refetchInterval: 5000,
+    refetchInterval: (query) => query.state.data?.some((campaign) => campaign.status === "running" || campaign.status === "queued") ? 5000 : false,
   });
 
   const filteredCampaigns = useMemo(() => {
@@ -203,7 +207,7 @@ function CampaignList() {
             <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns, modes, models..." />
           </div>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as CampaignStatus | "all")}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Item status filter">
               <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -215,7 +219,7 @@ function CampaignList() {
             </SelectContent>
           </Select>
           <Select value={modeFilter} onValueChange={(value) => setModeFilter(value as CampaignMode | "all")}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Campaign mode filter">
               <Grid2X2 className="mr-2 h-4 w-4 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -294,6 +298,7 @@ function CampaignDetail({ id }: { id: string }) {
   const [integrationId, setIntegrationId] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [itemStatusFilter, setItemStatusFilter] = useState<CampaignStatus | "all">("all");
+  const [seoStatusFilter, setSeoStatusFilter] = useState<SeoStatus | "all">("all");
   const [autoRunBatches, setAutoRunBatches] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(`campaign:auto-run:${id}`) === "true";
@@ -311,7 +316,10 @@ function CampaignDetail({ id }: { id: string }) {
         history: asArray<CampaignHistory>(response?.history),
       };
     },
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const current = query.state.data;
+      return current?.campaign.status === "running" || current?.campaign.status === "queued" || current?.items.some((item) => item.seoStatus === "pending") ? 5000 : false;
+    },
   });
 
   const action = useMutation({
@@ -324,35 +332,42 @@ function CampaignDetail({ id }: { id: string }) {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Action failed"),
   });
 
-  const bulkPublish = useMutation({
-    mutationFn: (postIds: string[]) => api.post("/posts/bulk-publish", { ids: postIds }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success("Campaign posts marked published");
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Publish failed"),
-  });
-
   const bulkPush = useMutation({
     mutationFn: async (postIds: string[]) => {
       const targetIntegrationId = integrationId || connectedIntegrations[0]?.id;
       if (!targetIntegrationId) throw new Error("Connect an integration first");
-      let failed = 0;
-      for (const postId of postIds) {
-        const result = await api.post<{ success: boolean; error?: string }>(`/posts/${postId}/publish`, {
-          integrationId: targetIntegrationId,
-          mode: "draft",
-          postType: "post",
-        });
-        if (!result.success) failed += 1;
-      }
-      return { total: postIds.length, failed };
+      const result = await api.post<{ total: number; failures: Array<{ id: string; title: string; error: string }> }>("/posts/bulk-cms-publish", {
+        ids: postIds,
+        integrationId: targetIntegrationId,
+        mode: "draft",
+        postType: "post",
+      });
+      return { total: result.total, failed: result.failures.length };
     },
     onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       toast.success(failed ? `${total - failed}/${total} posts pushed` : `${total} campaign posts pushed`);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Push failed"),
+  });
+
+  const prepareSeo = useMutation({
+    mutationFn: async (postIds: string[]) => {
+      let queued = 0;
+      let skipped = 0;
+      for (let index = 0; index < postIds.length; index += 500) {
+        const result = await api.post<{ queued: number; skipped: number }>("/posts/seo/regenerate", { ids: postIds.slice(index, index + 500) });
+        queued += result.queued;
+        skipped += result.skipped;
+      }
+      return { queued, skipped };
+    },
+    onSuccess: ({ queued, skipped }) => {
+      queryClient.invalidateQueries({ queryKey: ["campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success(`${queued} SEO job queued${skipped ? `, ${skipped} already active or ready` : ""}`);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "SEO preparation failed"),
   });
 
   useEffect(() => {
@@ -391,6 +406,12 @@ function CampaignDetail({ id }: { id: string }) {
   const queuedCount = items.filter((item) => item.status === "queued").length;
   const runningCount = items.filter((item) => item.status === "running" || item.jobStatus === "running").length;
   const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
+  const seoReadyCount = items.filter((item) => item.postId && item.seoStatus === "ready").length;
+  const seoPendingCount = items.filter((item) => item.postId && item.seoStatus === "pending").length;
+  const seoReviewCount = items.filter((item) => item.postId && item.seoStatus === "needs_review").length;
+  const seoFailedCount = items.filter((item) => item.postId && ["failed", "missing"].includes(item.seoStatus || "missing")).length;
+  const allSeoReady = completedPostIds.length > 0 && seoReadyCount === completedPostIds.length;
+  const cmsBatchTooLarge = completedPostIds.length > 500;
   const resumableCount = items.filter((item) => item.status === "stopped").length;
   const filteredItems = items.filter((item) => {
     const needle = itemSearch.trim().toLowerCase();
@@ -402,10 +423,12 @@ function CampaignDetail({ id }: { id: string }) {
       item.jobStatus,
       item.errorMessage,
       item.jobErrorMessage,
+      item.seoError,
       ...(item.variables ? Object.entries(item.variables).flatMap(([key, value]) => [key, value]) : []),
     ].filter(Boolean).join(" ").toLowerCase().includes(needle);
     const matchesStatus = itemStatusFilter === "all" || item.status === itemStatusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesSeo = seoStatusFilter === "all" || item.seoStatus === seoStatusFilter;
+    return matchesSearch && matchesStatus && matchesSeo;
   });
 
   return (
@@ -444,11 +467,6 @@ function CampaignDetail({ id }: { id: string }) {
               <RotateCcw className="mr-2 h-4 w-4" />Retry Failed
             </Button>
           )}
-          {completedPostIds.length > 0 && (
-            <Button variant="outline" onClick={() => bulkPublish.mutate(completedPostIds)} disabled={bulkPublish.isPending}>
-              Mark Published
-            </Button>
-          )}
         </div>
       </div>
 
@@ -459,7 +477,7 @@ function CampaignDetail({ id }: { id: string }) {
           description={campaign.mode === "programmatic" ? "Programmatic rows are converted into draft articles one batch at a time." : "Campaign items move from queued to generated drafts as batches finish."}
           action={<StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} />}
         />
-        <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-5 md:divide-x md:divide-y-0">
+        <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-6 md:divide-x md:divide-y-0">
           <div className="p-4">
             <p className="type-meta">Progress</p>
             <div className="mt-3 flex items-center gap-3">
@@ -483,6 +501,10 @@ function CampaignDetail({ id }: { id: string }) {
             <p className="type-meta">Cost</p>
             <p className="mt-2 text-2xl font-semibold">{formatMoney(campaign.totalCost)}</p>
           </div>
+          <div className="p-4">
+            <p className="type-meta">SEO ready</p>
+            <p className="mt-2 text-2xl font-semibold text-[hsl(var(--status-success))]">{seoReadyCount}/{completedPostIds.length}</p>
+          </div>
         </div>
       </BywordCard>
 
@@ -498,25 +520,45 @@ function CampaignDetail({ id }: { id: string }) {
         </BywordCard>
       )}
 
-      {completedPostIds.length > 0 && connectedIntegrations.length > 0 && (
+      {completedPostIds.length > 0 && (
         <BywordCard className="mb-6 p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-64 space-y-2">
-              <Label>CMS destination</Label>
-              <Select value={integrationId || connectedIntegrations[0]?.id || ""} onValueChange={setIntegrationId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {connectedIntegrations.map((integration) => (
-                    <SelectItem key={integration.id} value={integration.id}>
-                      {integration.displayName || integration.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="font-semibold">CMS handoff</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {seoReadyCount} ready · {seoPendingCount} preparing · {seoReviewCount} review · {seoFailedCount} failed or missing
+              </p>
+              {!allSeoReady && <p className="mt-1 text-xs text-muted-foreground">CMS push unlocks when every generated draft is SEO ready.</p>}
+              {cmsBatchTooLarge && <p className="mt-1 text-xs text-amber-700">CMS batches support 500 posts. Use <Link to={`/posts?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
+              {seoReviewCount > 0 && <p className="mt-1 text-xs text-amber-700">Open review items and confirm preserved manual fields before publishing.</p>}
             </div>
-            <Button onClick={() => bulkPush.mutate(completedPostIds)} disabled={bulkPush.isPending}>
-              Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
-            </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              {!allSeoReady && (
+                <Button variant="outline" onClick={() => prepareSeo.mutate(completedPostIds)} disabled={prepareSeo.isPending}>
+                  <RotateCcw className="mr-2 h-4 w-4" />{prepareSeo.isPending ? "Queueing SEO…" : "Prepare SEO"}
+                </Button>
+              )}
+              {connectedIntegrations.length > 0 ? (
+                <>
+                  <div className="min-w-64 space-y-2">
+                    <Label>CMS destination</Label>
+                    <Select value={integrationId || connectedIntegrations[0]?.id || ""} onValueChange={setIntegrationId}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {connectedIntegrations.map((integration) => (
+                          <SelectItem key={integration.id} value={integration.id}>
+                            {integration.displayName || integration.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={() => bulkPush.mutate(completedPostIds)} disabled={bulkPush.isPending || !allSeoReady || cmsBatchTooLarge} title={!allSeoReady ? "Every draft needs current, valid SEO metadata" : cmsBatchTooLarge ? "Select at most 500 posts in My Content" : undefined}>
+                    Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
+                  </Button>
+                </>
+              ) : <Button variant="outline" asChild><Link to="/integrations">Connect CMS</Link></Button>}
+            </div>
           </div>
         </BywordCard>
       )}
@@ -559,13 +601,13 @@ function CampaignDetail({ id }: { id: string }) {
           description="Inspect each keyword, title, or programmatic row and retry failed outputs in place."
           action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{filteredItems.length} shown</span>}
         />
-        <div className="grid gap-3 border-b border-byword-border p-4 md:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="grid gap-3 border-b border-byword-border p-4 md:grid-cols-[minmax(0,1fr)_200px_200px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Search item inputs, variables, steps, errors..." />
+            <Input className="pl-9" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Search inputs, variables, SEO, and errors..." />
           </div>
           <Select value={itemStatusFilter} onValueChange={(value) => setItemStatusFilter(value as CampaignStatus | "all")}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Item status filter">
               <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -573,6 +615,18 @@ function CampaignDetail({ id }: { id: string }) {
               <SelectItem value="all">All item statuses</SelectItem>
               {campaignStatuses.map((status) => (
                 <SelectItem key={status} value={status}>{formatStatusLabel(status)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={seoStatusFilter} onValueChange={(value) => setSeoStatusFilter(value as SeoStatus | "all")}>
+            <SelectTrigger aria-label="SEO status filter">
+              <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All SEO statuses</SelectItem>
+              {seoStatuses.map((status) => (
+                <SelectItem key={status} value={status}>{seoStatusPresentation(status).label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -584,13 +638,14 @@ function CampaignDetail({ id }: { id: string }) {
               <TableHead>Input</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Step</TableHead>
+              <TableHead>SEO</TableHead>
               <TableHead>Post</TableHead>
               <TableHead>Error</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredItems.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No items match these filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No items match these filters.</TableCell></TableRow>
             )}
             {filteredItems.map((item) => (
               <TableRow key={item.id}>
@@ -617,6 +672,12 @@ function CampaignDetail({ id }: { id: string }) {
                   {formatStep(item.currentStep) || item.jobStatus || "-"}
                 </TableCell>
                 <TableCell>
+                  {item.postId ? (() => {
+                    const presentation = seoStatusPresentation(item.seoStatus || "missing");
+                    return <StatusBadge status={presentation.status} label={presentation.label} />;
+                  })() : "-"}
+                </TableCell>
+                <TableCell>
                   {item.postId ? (
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/posts/${item.postId}/edit`}><ExternalLink className="mr-2 h-3.5 w-3.5" />Open</Link>
@@ -627,8 +688,8 @@ function CampaignDetail({ id }: { id: string }) {
                     </Button>
                   ) : "-"}
                 </TableCell>
-                <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={item.errorMessage || item.jobErrorMessage || ""}>
-                  {item.errorMessage || item.jobErrorMessage || "-"}
+                <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={item.errorMessage || item.jobErrorMessage || item.seoError || ""}>
+                  {item.errorMessage || item.jobErrorMessage || item.seoError || "-"}
                 </TableCell>
               </TableRow>
             ))}

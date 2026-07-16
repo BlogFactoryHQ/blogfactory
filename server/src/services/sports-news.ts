@@ -214,6 +214,5 @@ export function buildSportsNewsInstructions(decision: SportsNewsDecision) {
 ${decision.requiresSecondSource ? "- Mark big claims as needing a second source or official confirmation; keep the wording cautious." : ""}
 ${decision.embedNotice ? `- Include this exact line near the end: ${decision.embedNotice}` : ""}
 ${decision.tags?.length ? `- Use these source-rule tags where relevant: ${decision.tags.join(", ")}.` : ""}
-${decision.cmsKeywords?.length ? `- Add a "## SEO Keywords" section with these comma-separated tags: ${decision.cmsKeywords.join(", ")}.` : ""}
 - Return only the finished markdown article.`;
 }

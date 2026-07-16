@@ -43,10 +43,7 @@ export interface OrtakAlanAuthor {
 
 export interface OrtakAlanPublishingMetadata {
   contentType: string;
-  slug: string;
   excerpt: string;
-  metaTitle: string;
-  metaDescription: string;
   topicTags: string[];
   sources: OrtakAlanSource[];
   inlineImages: OrtakAlanInlineImage[];
@@ -69,10 +66,7 @@ export interface OrtakAlanValidation {
 }
 
 interface MetadataDefaults {
-  slug?: string;
   excerpt?: string;
-  metaTitle?: string;
-  metaDescription?: string;
   topicTags?: string[];
   editorialOwner?: string;
   author?: Partial<OrtakAlanAuthor> | null;
@@ -130,10 +124,7 @@ export function normalizeOrtakAlanMetadata(value: unknown, defaults: MetadataDef
 
   return {
     contentType: normalizedContentType,
-    slug: textValue(record.slug) || textValue(defaults.slug),
     excerpt: textValue(record.excerpt) || textValue(defaults.excerpt),
-    metaTitle: textValue(record.metaTitle) || textValue(defaults.metaTitle),
-    metaDescription: textValue(record.metaDescription) || textValue(defaults.metaDescription),
     topicTags: normalizeTags(Array.isArray(record.topicTags) ? record.topicTags : defaults.topicTags || []),
     sources,
     inlineImages,
@@ -159,12 +150,8 @@ export function validateOrtakAlanMetadata(metadata: OrtakAlanPublishingMetadata,
   };
 
   addRequired(context.title.length >= 35 && context.title.length <= 95, "Başlık 35-95 karakter olmalı.");
-  addRequired(metadata.slug.length >= 20 && metadata.slug.length <= 70 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.slug), "Slug 20-70 karakter, küçük harfli ve tireli olmalı.");
   addRequired(metadata.excerpt.length >= 80 && metadata.excerpt.length <= 180, "Excerpt 80-180 karakter olmalı.");
   addRequired(isCompleteSentence(metadata.excerpt), "Excerpt tamamlanmış bir cümleyle bitmeli.");
-  addRequired(metadata.metaTitle.length >= 45 && metadata.metaTitle.length <= 60, "Meta başlık 45-60 karakter olmalı.");
-  addRequired(metadata.metaDescription.length >= 120 && metadata.metaDescription.length <= 155, "Meta açıklama 120-155 karakter olmalı.");
-  addRequired(isCompleteSentence(metadata.metaDescription), "Meta açıklama tamamlanmış bir cümleyle bitmeli.");
   addRequired((ORTAK_ALAN_CONTENT_TYPES as readonly string[]).includes(metadata.contentType), "İçerik tipi seçilmeli.");
   addRequired(metadata.topicTags.some((tag) => tag.toLocaleLowerCase("tr-TR") !== metadata.contentType.toLocaleLowerCase("tr-TR")), "Birincil etiketten farklı en az bir konu etiketi eklenmeli.");
   addRequired(Boolean(metadata.editorialOwner), "Editöryal sorumlu belirtilmeli.");

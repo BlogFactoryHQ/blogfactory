@@ -34,6 +34,13 @@ export interface ProgrammaticCampaignPayload {
   variableValues?: Record<string, string[]>;
 }
 
+export interface ProgrammaticSeoContext {
+  keywords: string[];
+  searchIntent: string;
+  requestedLanguage: string;
+  sourceContext: string;
+}
+
 const variablePattern = /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g;
 const MAX_PROGRAMMATIC_ROWS = 1000;
 
@@ -264,6 +271,31 @@ export function renderProgrammaticArticle(template: ProgrammaticTemplate, row: P
   };
 }
 
+const normalizedRowKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+export function programmaticSeoContext(row: ProgrammaticRow): ProgrammaticSeoContext {
+  const entries = Object.entries(row).map(([key, value]) => [normalizedRowKey(key), String(value || "").trim()] as const);
+  const first = (...keys: string[]) => entries.find(([key, value]) => value && keys.includes(key))?.[1] || "";
+  const keywords = [
+    first("primary_keyword", "target_keyword", "keyword", "ana_anahtar_kelime"),
+    ...first("secondary_keywords", "related_keywords", "supporting_keywords", "keywords", "ikincil_anahtar_kelimeler")
+      .split(/[,;\n|]+/)
+      .map((value) => value.trim()),
+  ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+  const legacySeoFields = new Set(["slug", "url_slug", "meta_title", "meta_description", "seo_title", "seo_description"]);
+  const sourceContext = entries
+    .filter(([key, value]) => value && !legacySeoFields.has(key))
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("; ")
+    .slice(0, 2_000);
+  return {
+    keywords,
+    searchIntent: first("search_intent", "intent", "arama_niyeti"),
+    requestedLanguage: first("language", "article_language", "output_language", "dil"),
+    sourceContext,
+  };
+}
+
 export function parseCsv(text: string) {
   const cleaned = text.replace(/^\uFEFF/, "");
   const firstLine = cleaned.split(/\r?\n/).find((line) => line.trim()) || "";
@@ -421,6 +453,13 @@ export function materializeProgrammaticItems(payload: ProgrammaticCampaignPayloa
       outline: rendered.outline,
       variables: row,
     };
+  });
+  const titleRows = new Map<string, number>();
+  items.forEach((item, index) => {
+    const key = item.title?.replace(/\s+/g, " ").trim().toLocaleLowerCase() || "";
+    const previous = titleRows.get(key);
+    if (previous !== undefined) throw new Error(`Rows ${previous + 1} and ${index + 1} generate the same article title`);
+    titleRows.set(key, index);
   });
 
   return { template, dataMode, variables, rows, items };

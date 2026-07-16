@@ -131,8 +131,6 @@ const seoBriefSignals = [
   { label: "H1 / title", candidates: ["blog_title_h1", "h1", "title"] },
   { label: "Primary keyword", candidates: ["primary_keyword", "keyword"] },
   { label: "Search intent", candidates: ["search_intent", "intent"] },
-  { label: "Meta title", candidates: ["meta_title", "seo_title"] },
-  { label: "Meta description", candidates: ["meta_description", "seo_description"] },
   { label: "Outline / brief", candidates: ["outline_summary", "outline", "brief"] },
   { label: "CTA", candidates: ["cta", "call_to_action"] },
 ];
@@ -686,7 +684,8 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </label>
         <div className="rounded-md border border-byword-border bg-muted/20 p-4 text-sm">
           <p className="font-semibold">{materialized.rows.length} article{materialized.rows.length === 1 ? "" : "s"}</p>
-          <p className="mt-1 text-muted-foreground">Expected text cost {formatCost(estimate.totalExpected)} · high {formatCost(estimate.totalHigh)}</p>
+          <p className="mt-1 text-muted-foreground">Article generation {formatCost(estimate.totalExpected)} · high {formatCost(estimate.totalHigh)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Each finished draft then runs one separate validated SEO metadata job.</p>
         </div>
         {validationErrors.length > 0 && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -919,7 +918,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     </div>
                     <div className="max-w-xl text-sm text-muted-foreground">
                       <p className="font-medium text-foreground">{dimensionMath.label}</p>
-                      <p className="mt-1">Clean URLs work best when they mirror the template, like /nutrition/protein-in-rice.</p>
+                      <p className="mt-1">Each finished draft receives its own validated slug, meta title, and meta description.</p>
                       {dimensionMath.nearLimit && <p className="mt-1 text-amber-600">Close to the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
                       {dimensionMath.overLimit && <p className="mt-1 text-destructive">Over the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
                     </div>
@@ -1186,7 +1185,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <SectionHeader
             icon={Search}
             title="SEO Content Brief Campaign"
-            description="Import an editorial brief spreadsheet and generate one SEO-ready article draft per row."
+            description="Import an editorial brief, generate one draft per row, then prepare its validated canonical SEO package."
             action={
               <Button onClick={() => fileInputRef.current?.click()}>
                 <Upload className="mr-2 h-4 w-4" />Import Brief Sheet
@@ -1211,7 +1210,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               </div>
               <div className="p-6">
                 <p className="type-meta">Map</p>
-                <p className="mt-2 text-sm text-muted-foreground">Title, keyword, intent, metadata, outline, and CTA become variables.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Title, keyword, intent, outline, CTA, and row context become generation inputs.</p>
               </div>
               <div className="p-6">
                 <p className="type-meta">Launch</p>

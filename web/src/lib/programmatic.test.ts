@@ -54,6 +54,13 @@ describe("programmatic helpers", () => {
     expect(validateRows(template, [{ service: "Plumbers", city: "" }])[0]).toContain("city");
   });
 
+  it("rejects rows that generate the same title", () => {
+    expect(validateRows(template, [
+      { service: "Plumbers", city: "Austin" },
+      { service: "Plumbers", city: "Austin" },
+    ])[0]).toContain("same article title");
+  });
+
   it("scores reusable structure", () => {
     expect(scoreProgrammaticTemplate(template).score).toBeGreaterThan(40);
   });

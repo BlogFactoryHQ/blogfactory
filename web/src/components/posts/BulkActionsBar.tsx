@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Check, FileText, Send } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Send } from "lucide-react";
 import { SiteIntegration } from "@/hooks/useIntegrations";
 import {
   Select,
@@ -23,39 +23,39 @@ import {
 interface BulkActionsBarProps {
   selectedCount: number;
   onDelete: () => void;
-  onPublish: () => void;
   onPushIntegration: () => void;
-  onDraft: () => void;
+  onPrepareSeo: () => void;
   onClear: () => void;
   integrations: SiteIntegration[];
   integrationId: string;
   onIntegrationChange: (id: string) => void;
   isDeleting: boolean;
-  isPublishing: boolean;
   isPushingIntegration: boolean;
-  isDrafting: boolean;
+  isPreparingSeo: boolean;
 }
 
 export function BulkActionsBar({
   selectedCount,
   onDelete,
-  onPublish,
   onPushIntegration,
-  onDraft,
+  onPrepareSeo,
   onClear,
   integrations,
   integrationId,
   onIntegrationChange,
   isDeleting,
-  isPublishing,
   isPushingIntegration,
-  isDrafting,
+  isPreparingSeo,
 }: BulkActionsBarProps) {
-  const isLoading = isDeleting || isPublishing || isDrafting || isPushingIntegration;
+  const isLoading = isDeleting || isPushingIntegration || isPreparingSeo;
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onPrepareSeo} disabled={isLoading}>
+          {isPreparingSeo ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
+          Prepare SEO
+        </Button>
         <span className="font-mono text-[12px] font-semibold uppercase text-foreground">
           {selectedCount} post{selectedCount > 1 ? "s" : ""} selected
         </span>
@@ -64,32 +64,6 @@ export function BulkActionsBar({
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onDraft}
-          disabled={isLoading}
-        >
-          {isDrafting ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <FileText className="h-4 w-4 mr-1.5" />
-          )}
-          Move to Drafts
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onPublish}
-          disabled={isLoading}
-        >
-          {isPublishing ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <Check className="h-4 w-4 mr-1.5" />
-          )}
-          Publish
-        </Button>
         {integrations.length > 0 && (
           <>
             <Select value={integrationId || integrations[0]?.id} onValueChange={onIntegrationChange} disabled={isLoading}>

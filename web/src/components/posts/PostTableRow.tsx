@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Check, Megaphone, ImageIcon, Loader2 } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Megaphone, ImageIcon, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { safeFormatDate } from "@/lib/date-format";
+import { seoStatusPresentation } from "@/lib/seo-metadata";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
@@ -42,6 +43,7 @@ interface Post {
   campaigns?: { name: string } | null;
   site_name?: string | null;
   feed_name?: string | null;
+  seo_status?: "missing" | "pending" | "ready" | "needs_review" | "failed";
 }
 
 interface PostTableRowProps {
@@ -49,7 +51,6 @@ interface PostTableRowProps {
   isSelected: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
-  onQuickPublish: (e: React.MouseEvent) => void;
   onQuickDelete: (e: React.MouseEvent) => void;
   onOpenImagePrompts: (e: React.MouseEvent) => void;
   isImagePromptActionPending?: boolean;
@@ -64,7 +65,6 @@ export function PostTableRow({
   isSelected,
   onSelect,
   onClick,
-  onQuickPublish,
   onQuickDelete,
   onOpenImagePrompts,
   isImagePromptActionPending = false,
@@ -84,6 +84,7 @@ export function PostTableRow({
   const imagePromptLabel = hasImageWork
     ? `Open image prompts for ${displayTitle || post.title}`
     : `Create image prompts for ${displayTitle || post.title}`;
+  const seoStatus = seoStatusPresentation(post.seo_status || "missing");
 
   return (
     <TableRow
@@ -138,11 +139,12 @@ export function PostTableRow({
         </span>
       </TableCell>
       <TableCell>
-        <StatusBadge
-          status={post.status === "published" ? "success" : "draft"}
-          label={post.status === "published" ? "Published" : "Draft"}
-          showIcon={false}
-        />
+        <div className="flex flex-col items-start gap-1">
+          <StatusBadge status={post.status === "published" ? "success" : "draft"} label={post.status === "published" ? "Published" : "Draft"} showIcon={false} />
+          <span title={seoStatus.description}>
+            <StatusBadge status={seoStatus.status} label={seoStatus.label} className="text-[10px]" />
+          </span>
+        </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
         {safeFormatDate(post.created_at, "MMM d, yyyy")}
@@ -165,23 +167,13 @@ export function PostTableRow({
           >
             {isImagePromptActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
           </Button>
-          {post.status !== "published" && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-primary"
-              onClick={onQuickPublish}
-              title="Quick publish"
-            >
-              <Check className="h-4 w-4" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-destructive"
             onClick={onQuickDelete}
             title="Quick delete"
+            aria-label={`Delete ${post.title}`}
           >
             <Trash2 className="h-4 w-4" />
           </Button>

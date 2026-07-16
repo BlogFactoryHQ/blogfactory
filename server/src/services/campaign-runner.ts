@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs, userSettings } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
-import { renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
+import { programmaticSeoContext, renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
 import { getEffectiveSettings } from "./user-settings.js";
 import { staleTimeoutUpdateForJob } from "./job-timeouts.js";
 
@@ -78,6 +78,7 @@ function programmaticArticle(campaign: Campaign, item: CampaignItem) {
       variables,
       sections: rendered.sections,
       wordRange: template.wordRange,
+      seoContext: programmaticSeoContext(variables),
     },
   };
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api } from "./api";
+import { ApiError, api, retryTransientApiError } from "./api";
 
 beforeEach(() => {
   api.setToken(null);
@@ -28,6 +28,11 @@ describe("ApiClient errors", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("bad gateway", { status: 502 }));
     await expect(api.get("/html")).rejects.toMatchObject({ status: 502, code: "http_502", message: "Request failed: 502" });
   });
+
+  it("includes server validation errors in the visible message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ error: "SEO metadata is invalid", errors: ["Meta description must end with a complete sentence."] }), { status: 400 }));
+    await expect(api.put("/posts/1/seo", {})).rejects.toThrow(/complete sentence/i);
+  });
 });
 
 describe("ApiClient collection responses", () => {
@@ -41,4 +46,9 @@ describe("ApiClient collection responses", () => {
     await expect(api.getArray("/legacy-envelope")).resolves.toEqual([{ id: "enveloped" }]);
     await expect(api.getArray("/items")).resolves.toEqual([{ id: "one" }]);
   });
+});
+
+it("does not retry permanent API errors", () => {
+  expect(retryTransientApiError(0, new ApiError("Missing key", 400, "missing_key"))).toBe(false);
+  expect(retryTransientApiError(0, new ApiError("Unavailable", 503, "unavailable"))).toBe(true);
 });

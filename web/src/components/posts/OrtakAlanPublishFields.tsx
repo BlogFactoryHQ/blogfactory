@@ -34,17 +34,13 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
   return (
     <div className="space-y-4">
       <FieldGroup label="01 · Haber kimliği" description="Ghost sıralamasında içerik tipi ilk, konu etiketleri devamında yer alır.">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-1">
           <div className="space-y-2">
             <Label>İçerik tipi</Label>
             <Select value={metadata.contentType} onValueChange={(value) => onChange({ ...metadata, contentType: value, sponsored: value === "Sponsorlu İçerik" })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{ORTAK_ALAN_CONTENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>URL slug · {metadata.slug.length}/20–70</Label>
-            <Input value={metadata.slug} onChange={(event) => update("slug", event.target.value)} placeholder="haber-basligi" />
           </div>
         </div>
         <div className="space-y-2">
@@ -57,18 +53,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         </div>
       </FieldGroup>
 
-      <FieldGroup label="02 · SEO" description="Bu alanlar Ortak Alan Neo tarafından sayfa ve NewsArticle açıklamasında kullanılır.">
-        <div className="space-y-2">
-          <Label>Meta başlık · {metadata.metaTitle.length}/45–60</Label>
-          <Textarea value={metadata.metaTitle} onChange={(event) => update("metaTitle", event.target.value)} className="min-h-[60px] resize-none" />
-        </div>
-        <div className="space-y-2">
-          <Label>Meta açıklama · {metadata.metaDescription.length}/120–155</Label>
-          <Textarea value={metadata.metaDescription} onChange={(event) => update("metaDescription", event.target.value)} className="min-h-[84px] resize-none" />
-        </div>
-      </FieldGroup>
-
-      <FieldGroup label="03 · Kaynaklar" description="Kaynaklar yazının sonunda okura görünür bir bölüm olarak eklenir.">
+      <FieldGroup label="02 · Kaynaklar" description="Kaynaklar yazının sonunda okura görünür bir bölüm olarak eklenir.">
         {metadata.sources.map((source, index) => (
           <div key={index} className="space-y-3 rounded-sm border border-byword-border bg-card p-3">
             <div className="flex items-center justify-between gap-3">
@@ -88,7 +73,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         <Button type="button" variant="outline" size="sm" onClick={() => update("sources", [...metadata.sources, emptyOrtakAlanSource()])}><Plus className="mr-1.5 h-4 w-4" />İkincil kaynak ekle</Button>
       </FieldGroup>
 
-      <FieldGroup label="04 · Editöryal sorumluluk" description="Yazar Ghost staff hesabıyla doğrulanır; şeffaflık notları içerikte görünür.">
+      <FieldGroup label="03 · Editöryal sorumluluk" description="Yazar Ghost staff hesabıyla doğrulanır; şeffaflık notları içerikte görünür.">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Ghost yazarı</Label>
@@ -104,7 +89,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         <ToggleRow label="Sponsorlu içerik" description="Görünür sponsorlu içerik bildirimi eklenir." checked={metadata.sponsored} onCheckedChange={(checked) => onChange({ ...metadata, sponsored: checked, contentType: checked ? "Sponsorlu İçerik" : metadata.contentType === "Sponsorlu İçerik" ? "Haber" : metadata.contentType })} />
       </FieldGroup>
 
-      <FieldGroup label="05 · Kapak görseli" description="Mevcut post kapak görseli Ghost’a yüklenir; caption kaynak ve lisanstan oluşturulur.">
+      <FieldGroup label="04 · Kapak görseli" description="Mevcut post kapak görseli Ghost’a yüklenir; caption kaynak ve lisanstan oluşturulur.">
         <div className="rounded-sm border border-byword-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground break-all">{coverImageUrl || "Kapak görseli seçilmedi"}</div>
         <div className="space-y-2"><Label>Görsel alt metni · {metadata.image.alt.length}/12–180</Label><Input value={metadata.image.alt} onChange={(event) => update("image", { ...metadata.image, alt: event.target.value })} placeholder="Görseli anlatan Türkçe alt metin" /></div>
         <div className="grid gap-4 sm:grid-cols-2">

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, retryTransientApiError } from "@/lib/api";
 import { asArray, asStringArray } from "@/lib/api-shape";
 import type { ImageModelConstraints } from "@/lib/types";
 
@@ -54,6 +54,6 @@ export function useImageModels() {
     queryFn: () => fetchImageModels(),
     staleTime: 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
-    retry: 2,
+    retry: retryTransientApiError,
   });
 }

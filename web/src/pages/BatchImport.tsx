@@ -213,10 +213,7 @@ export default function BatchImport() {
               integrationId,
               mode,
               postType: "post",
-              slug: item.metadata.slug,
               tags: item.metadata.tags,
-              metaTitle: item.metadata.metaTitle,
-              metaDescription: item.metadata.metaDescription,
             }, { signal: controller.signal });
             if (!result.success) throw new Error(result.error || "Publish failed");
           }
@@ -366,9 +363,9 @@ export default function BatchImport() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         <div className="max-w-[280px] space-y-1">
-                          <p className="truncate"><span className="font-medium text-foreground">Slug:</span> {item.metadata.slug || "auto"}</p>
-                          <p className="truncate"><span className="font-medium text-foreground">Title:</span> {item.metadata.metaTitle || "auto"}</p>
-                          <p className="truncate"><span className="font-medium text-foreground">Desc:</span> {item.metadata.metaDescription || "auto"}</p>
+                          <p className="truncate"><span className="font-medium text-foreground">Slug:</span> {item.metadata.slug || "AI after import"}</p>
+                          <p className="truncate"><span className="font-medium text-foreground">Title:</span> {item.metadata.metaTitle || "AI after import"}</p>
+                          <p className="truncate"><span className="font-medium text-foreground">Desc:</span> {item.metadata.metaDescription || "AI after import"}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3">{item.images.length}</td>

@@ -1,5 +1,4 @@
 import { cleanPostTitle } from "./post-cleanup.js";
-import { slugify } from "./slugify.js";
 import {
   articleType,
   internalLinkTarget,
@@ -9,11 +8,8 @@ import {
   tokenize,
   truncatePromptText,
 } from "./generation-contracts.js";
-import type { GenerateOpts, GenerationSettings, SeoPackage, SeoQaCheck } from "./generation-types.js";
+import type { GenerateOpts, GenerationSettings, SeoQaCheck } from "./generation-types.js";
 import { isBlogDraftSource } from "./generation-sources.js";
-
-const SEO_META_TITLE_LIMIT = 60;
-const SEO_META_DESCRIPTION_LIMIT = 145;
 
 export function openRouterErrorMessage(value: string, status?: number, modelId?: string): string {
   try {
@@ -375,98 +371,6 @@ function isTurkishContent(content: string, settings?: GenerationSettings) {
 }
 
 
-function cleanSeoValue(value: unknown, maxChars = 220) {
-  return truncateAtWord(String(value || "").replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim(), maxChars);
-}
-
-function shortAnswer(value: unknown) {
-  const text = cleanSeoValue(value, 420);
-  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) || [];
-  return sentences.slice(0, 3).join(" ");
-}
-
-function stripDanglingSeoEnding(value: string) {
-  let next = value.replace(/\s+/g, " ").trim();
-  for (let i = 0; i < 3; i += 1) {
-    const cleaned = next
-      .replace(/\s*[:|/–—-]\s*$/g, "")
-      .replace(/\s*[:|/–—-]?\s+(?:new|yeni|with|for|and|or|ve|ile|için|icin|neden|nasıl|nasil|how|why|what)$/i, "")
-      .trim();
-    if (cleaned === next) break;
-    next = cleaned;
-  }
-  return next;
-}
-
-function cleanSeoMetaTitle(value: unknown, fallback: string) {
-  const fallbackTitle = stripDanglingSeoEnding(cleanPostTitle(fallback || "Untitled Post"));
-  const raw = stripDanglingSeoEnding(cleanPostTitle(cleanSeoValue(value, 100)));
-  const candidate = raw && titleMatchesSourceTitle(raw, fallbackTitle) ? raw : fallbackTitle;
-  const clipped = stripDanglingSeoEnding(truncateAtWord(candidate, SEO_META_TITLE_LIMIT));
-  return clipped || truncateAtWord(fallbackTitle, SEO_META_TITLE_LIMIT) || "Untitled Post";
-}
-
-function cleanSeoMetaDescription(value: unknown, fallbackText: string) {
-  const raw = cleanSeoValue(value, 260) || cleanSeoValue(fallbackText, 260);
-  const clipped = stripDanglingSeoEnding(truncateAtWord(raw, SEO_META_DESCRIPTION_LIMIT));
-  return clipped || truncateAtWord(cleanSeoValue(fallbackText, 260), SEO_META_DESCRIPTION_LIMIT);
-}
-
-function stripSeoPackageSections(content: string) {
-  const stripHeading = /^(template used|seo keywords|keywords|slug|meta title|meta description|key points|image suggestions|references|faqs?|sıkça sorulan sorular|sık sorulan sorular|sss|frequently asked questions)$/i;
-  const kept: string[] = [];
-  let skipping = false;
-
-  for (const line of content.split(/\r?\n/)) {
-    const heading = line
-      .trim()
-      .replace(/^#{1,6}\s+/, "")
-      .replace(/^\*\*(.+)\*\*$/, "$1")
-      .replace(/:$/, "")
-      .trim();
-    const shouldStrip = stripHeading.test(heading);
-    if (shouldStrip) {
-      skipping = true;
-      continue;
-    }
-    if (skipping) {
-      if (/^#{1,2}\s+/.test(line)) skipping = false;
-      else continue;
-    }
-    kept.push(line);
-  }
-
-  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-export function applySeoPackage(content: string, seo: SeoPackage, opts: { topic: string; settings?: GenerationSettings }) {
-  const slug = slugify(seo.slug || opts.topic).split("-").slice(0, 5).join("-") || "article";
-  const faqHeading = isTurkishContent(content, opts.settings) ? "## Sık Sorulan Sorular" : "## FAQs";
-  const faq = [
-    faqHeading,
-    "",
-    ...seo.faqs.slice(0, 7).flatMap((item) => [
-      `### ${item.question.endsWith("?") ? item.question : `${item.question}?`}`,
-      shortAnswer(item.answer),
-      "",
-    ]),
-  ].join("\n").trim();
-
-  const article = normalizeArticleMarkdown(stripSeoPackageSections(content), opts.topic, opts.settings);
-  const articleTitle = article.match(/^#\s+(.+)$/m)?.[1]?.trim() || opts.topic;
-  const metaTitle = cleanSeoMetaTitle(seo.metaTitle, articleTitle);
-  const metaDescription = cleanSeoMetaDescription(seo.metaDescription, plainArticleText(article));
-
-  return [
-    `## Slug\n${slug}`,
-    `## Meta Title\n${metaTitle}`,
-    `## Meta Description\n${metaDescription}`,
-    article,
-    faq,
-  ].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-
 function markdownSection(content: string, heading: string) {
   const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
   return (content.match(pattern)?.[1] || "").replace(/^`|`$/g, "").trim();
@@ -525,11 +429,7 @@ export function evaluateSeoQa(content: string, opts: { keyword?: string; setting
   const keyword = (opts.keyword || "").trim();
   const text = plainText(content, 200_000);
   const words = wordCount(content);
-  const metaTitle = markdownSection(content, "Meta Title");
-  const metaDescription = markdownSection(content, "Meta Description");
   const h1 = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
-  const effectiveMetaTitle = metaTitle || h1;
-  const effectiveMetaDescription = metaDescription || text.slice(0, 160);
   const faqs = faqCount(content);
   const headings = markdownHeadings(content, 2).concat(markdownHeadings(content, 3)).map(normalizeTopic);
   const duplicateHeadingCount = headings.length - new Set(headings).size;
@@ -541,8 +441,6 @@ export function evaluateSeoQa(content: string, opts: { keyword?: string; setting
   const ctaPattern = /\b(get started|book|schedule|contact|try|download|subscribe|learn more|request a demo)\b/i;
   const checks = [
     check("H1 included", Boolean(h1), h1 || "Missing H1."),
-    check("Meta title available", Boolean(effectiveMetaTitle) && effectiveMetaTitle.length <= 70, effectiveMetaTitle ? `${effectiveMetaTitle.length} chars` : "Missing title."),
-    check("Meta description available", effectiveMetaDescription.length >= 80 && effectiveMetaDescription.length <= 180, effectiveMetaDescription ? `${effectiveMetaDescription.length} chars` : "Missing description."),
     check("Article length reasonable", words >= 1200 && words <= 2500, `${words} words`),
     check("Keyword appears early", keyword ? normalizeTopic(first100).includes(normalizeTopic(keyword)) : null, keyword || "No primary keyword."),
     check("FAQs included", faqs >= 3 && faqs <= 7, `${faqs} FAQs`),

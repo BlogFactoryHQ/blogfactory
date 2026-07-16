@@ -17,13 +17,7 @@ import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurfa
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
 import type { FeedEditorialDefaults } from "@/lib/feed-routing";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { seoStatusPresentation, type SeoLimits, type SeoMetadata } from "@/lib/seo-metadata";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Save, Loader2, Check, Trash2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Trash2, ExternalLink } from "lucide-react";
 
 interface Post {
   id: string;
@@ -51,6 +45,9 @@ interface Post {
   cover_image_url?: string | null;
   inline_images?: string[] | null;
   publishing_metadata?: Partial<OrtakAlanMetadata> | null;
+  seo_metadata?: SeoMetadata | null;
+  seo_status?: SeoMetadata["status"] | "missing";
+  seo_limits: SeoLimits;
   feed_editorial_defaults?: Partial<FeedEditorialDefaults> | null;
   site_id?: string | null;
   feed_id?: string | null;
@@ -94,7 +91,6 @@ export default function PostEditorPage() {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [status, setStatus] = useState("draft");
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [inlineImages, setInlineImages] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
@@ -111,6 +107,7 @@ export default function PostEditorPage() {
       return api.get<Post>(`/posts/${id}`);
     },
     enabled: !!id,
+    refetchInterval: (query) => query.state.data?.seo_metadata?.status === "pending" ? 2_000 : false,
   });
 
   const { data: publicationData } = useQuery({
@@ -137,7 +134,6 @@ export default function PostEditorPage() {
     if (post && !initialized) {
       setTitle(cleanPostTitle(post.title));
       setContent(placeMissingInlineImages(cleanGeneratedPostContent(post.content), post.inline_images || []));
-      setStatus(post.status);
       setCoverImageUrl(post.cover_image_url || null);
       setInlineImages(post.inline_images || []);
       serverImagesRef.current = {
@@ -177,15 +173,16 @@ export default function PostEditorPage() {
       if (!id) throw new Error("No post ID");
       const nextTitle = cleanPostTitle(title);
       const nextContent = cleanGeneratedPostContent(content);
-      await api.put(`/posts/${id}`, {
+      const saved = await api.put<{ title: string; content: string; coverImageUrl: string | null; inlineImages: string[] | null }>(`/posts/${id}`, {
         title: nextTitle,
         content: nextContent,
-        status,
         cover_image_url: coverImageUrl,
         inline_images: inlineImages,
       });
-      setTitle(nextTitle);
-      setContent(nextContent);
+      setTitle(saved.title);
+      setContent(saved.content);
+      setCoverImageUrl(saved.coverImageUrl);
+      setInlineImages(saved.inlineImages || []);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -194,32 +191,6 @@ export default function PostEditorPage() {
     },
     onError: (error) => {
       toast.error("Failed to save: " + error.message);
-    },
-  });
-
-  const publishMutation = useMutation({
-    mutationFn: async () => {
-      if (!id) throw new Error("No post ID");
-      const nextTitle = cleanPostTitle(title);
-      const nextContent = cleanGeneratedPostContent(content);
-      await api.put(`/posts/${id}`, {
-        title: nextTitle,
-        content: nextContent,
-        status: "published",
-        cover_image_url: coverImageUrl,
-        inline_images: inlineImages,
-      });
-      setTitle(nextTitle);
-      setContent(nextContent);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["post", id] });
-      setStatus("published");
-      toast.success("Post published!");
-    },
-    onError: (error) => {
-      toast.error("Failed to publish: " + error.message);
     },
   });
 
@@ -241,12 +212,12 @@ export default function PostEditorPage() {
   const hasChanges = post && (
     title !== post.title ||
     content !== post.content ||
-    status !== post.status ||
     coverImageUrl !== (post.cover_image_url || null) ||
     JSON.stringify(inlineImages) !== JSON.stringify(post.inline_images || [])
   );
 
-  const isSaving = updateMutation.isPending || publishMutation.isPending;
+  const isSaving = updateMutation.isPending;
+  const seoPresentation = seoStatusPresentation(post?.seo_metadata?.status || "missing");
 
   // Image management handlers
   const handleSetCoverImage = (url: string) => {
@@ -308,9 +279,10 @@ export default function PostEditorPage() {
             </Button>
             <div className="hidden h-6 w-px bg-border sm:block" />
             <StatusBadge
-              status={status === "published" ? "success" : "draft"}
-              label={status === "published" ? "Published" : "Draft"}
+              status={post.status === "published" ? "success" : "draft"}
+              label={post.status === "published" ? "Published" : "Draft"}
             />
+            <StatusBadge status={seoPresentation.status} label={seoPresentation.label} />
             {post?.site_name && <Badge variant="outline">{post.site_name}</Badge>}
             {post?.feed_name && <Badge variant="secondary">{post.feed_name}</Badge>}
             {hasChanges && (
@@ -325,7 +297,7 @@ export default function PostEditorPage() {
           <div className="flex flex-wrap items-center gap-2">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete post">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
@@ -348,16 +320,6 @@ export default function PostEditorPage() {
               </AlertDialogContent>
             </AlertDialog>
 
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-              </SelectContent>
-            </Select>
-
             <Button
               variant="outline"
               size="sm"
@@ -372,25 +334,14 @@ export default function PostEditorPage() {
               Save
             </Button>
 
-            <Button
-              size="sm"
-              onClick={() => publishMutation.mutate()}
-              disabled={isSaving || status === "published"}
-            >
-              {publishMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-1.5" />
-              )}
-              Mark Published
-            </Button>
-
             <PublishDialog
               postId={id!}
               title={title}
               content={content}
               summary={post?.summary}
               publishingMetadata={post?.publishing_metadata}
+              seoMetadata={post?.seo_metadata}
+              seoLimits={post.seo_limits}
               feedEditorialDefaults={post?.feed_editorial_defaults}
               siteId={post?.site_id}
               preferredIntegrationId={post?.preferred_integration_id}
@@ -446,6 +397,44 @@ export default function PostEditorPage() {
               onChange={setContent}
               className="min-h-[600px]"
             />
+          </BywordCard>
+
+          <BywordCard className="mb-8 p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="section-label">Canonical SEO</p>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{seoPresentation.description}</p>
+              </div>
+              <StatusBadge status={seoPresentation.status} label={seoPresentation.label} />
+            </div>
+            {hasChanges && (
+              <p className="mt-4 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                Save article changes first. SEO will then be checked against the new saved version and regenerated when needed.
+              </p>
+            )}
+            {post.seo_metadata ? (
+              <div className="mt-5 space-y-3 border-t border-byword-border pt-4">
+                {([
+                  ["Slug", post.seo_metadata.slug, "slug"],
+                  ["Meta title", post.seo_metadata.metaTitle, "metaTitle"],
+                  ["Meta description", post.seo_metadata.metaDescription, "metaDescription"],
+                ] as const).map(([label, value, field]) => (
+                  <div key={field} className="grid gap-1 sm:grid-cols-[130px_minmax(0,1fr)_90px] sm:items-start">
+                    <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                    <span className="break-words text-sm text-foreground">{value || "—"}</span>
+                    <span className="text-left font-mono text-[11px] uppercase text-muted-foreground sm:text-right">{value.length} · {post.seo_metadata?.provenance[field] === "manual" ? "Manual" : "AI"}</span>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-byword-border pt-3 font-mono text-[11px] text-muted-foreground">
+                  <span>Query: {post.seo_metadata.primaryQuery || "—"}</span>
+                  <span>Intent: {post.seo_metadata.searchIntent || "—"}</span>
+                  <span>Language: {post.seo_metadata.language || "—"}</span>
+                  {post.seo_metadata.modelId && <span>Model: {post.seo_metadata.modelId}</span>}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-5 border-t border-byword-border pt-4 text-sm text-muted-foreground">No canonical values have been saved yet. Open “SEO / Publish” to generate or enter them.</p>
+            )}
           </BywordCard>
 
           {/* Metadata Section */}

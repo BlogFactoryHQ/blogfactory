@@ -19,41 +19,8 @@ export function useBulkPostActions() {
     },
   });
 
-  const bulkPublishMutation = useMutation({
-    mutationFn: async (postIds: string[]) => {
-      await api.post("/posts/bulk-publish", { ids: postIds });
-      return postIds.length;
-    },
-    onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success(`${count} post${count > 1 ? "s" : ""} published`);
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to publish posts: " + (error instanceof Error ? error.message : "Unknown error"));
-    },
-  });
-
-  const bulkDraftMutation = useMutation({
-    mutationFn: async (postIds: string[]) => {
-      await api.post("/posts/bulk-draft", { ids: postIds });
-      return postIds.length;
-    },
-    onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success(`${count} post${count > 1 ? "s" : ""} moved to drafts`);
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to update posts: " + (error instanceof Error ? error.message : "Unknown error"));
-    },
-  });
-
   return {
     bulkDelete: bulkDeleteMutation.mutate,
-    bulkPublish: bulkPublishMutation.mutate,
-    bulkDraft: bulkDraftMutation.mutate,
     isDeleting: bulkDeleteMutation.isPending,
-    isPublishing: bulkPublishMutation.isPending,
-    isDrafting: bulkDraftMutation.isPending,
-    isLoading: bulkDeleteMutation.isPending || bulkPublishMutation.isPending || bulkDraftMutation.isPending,
   };
 }

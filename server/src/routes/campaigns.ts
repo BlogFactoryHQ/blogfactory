@@ -2,13 +2,14 @@ import { Hono } from "hono";
 import { waitUntil } from "@vercel/functions";
 import { asc, and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { campaignItems, campaigns, jobs, personas, userSettings } from "../db/schema.js";
+import { campaignItems, campaigns, jobs, personas, posts, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { isCampaignMode, normalizeOutline, parseCampaignLines, type ParsedCampaignItem } from "../services/campaign-parser.js";
 import { reconcileStaleCampaignItems, retryCampaignItems, runCampaign, stopCampaign } from "../services/campaign-runner.js";
 import { materializeProgrammaticItems } from "../services/programmatic.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
 import { safeError } from "../http/error-contract.js";
+import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 
 export const campaignsRoutes = new Hono();
 
@@ -193,6 +194,18 @@ campaignsRoutes.get("/:id", async (c) => {
       .where(inArray(jobs.id, itemJobIds))
     : [];
   const jobById = new Map(itemJobs.map((job) => [job.id, job]));
+  const postIds = itemRows.map((item) => item.postId).filter((postId): postId is string => Boolean(postId));
+  const postRows = postIds.length
+    ? await db.select({ id: posts.id, title: posts.title, content: posts.content, seoMetadata: posts.seoMetadata }).from(posts).where(and(eq(posts.userId, userId), inArray(posts.id, postIds)))
+    : [];
+  const seoByPost = new Map(postRows.map((post) => {
+    const metadata = seoMetadata(post.seoMetadata);
+    const status = seoStatusForArticle(metadata, post.title, post.content);
+    return [post.id, {
+      status,
+      error: metadata?.error || metadata?.validationErrors.join(" ") || null,
+    }];
+  }));
   const items = itemRows.map((item) => {
     const job = item.jobId ? jobById.get(item.jobId) : null;
     return {
@@ -201,6 +214,8 @@ campaignsRoutes.get("/:id", async (c) => {
       currentStep: job?.currentStep || null,
       jobErrorMessage: job?.errorMessage || null,
       jobTotalCost: job?.totalCost || null,
+      seoStatus: item.postId ? seoByPost.get(item.postId)?.status || "missing" : "missing",
+      seoError: item.postId ? seoByPost.get(item.postId)?.error || null : null,
     };
   });
 

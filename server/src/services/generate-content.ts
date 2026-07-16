@@ -21,8 +21,9 @@ import { fetchSocialContent } from "./fetch-social-content.js";
 import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
 import { completeSentenceWithinLimit, isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
-import type { GenerateOpts, GenerationSettings, SeoPackage, SeoQaCheck, SourceArticle } from "./generation-types.js";
-export type { GenerateOpts, SeoPackage } from "./generation-types.js";
+import { enqueueSeoMetadata, kickSeoMetadataWorker } from "./seo-metadata.js";
+import type { GenerateOpts, GenerationSettings, SeoQaCheck, SourceArticle } from "./generation-types.js";
+export type { GenerateOpts } from "./generation-types.js";
 import {
   expandDraftVariations,
   feedCandidateItemCount,
@@ -81,7 +82,6 @@ import {
 } from "./generation-output.js";
 export {
   anchorGeneratedTitleToSource,
-  applySeoPackage,
   buildGenerationContractMetadata,
   enforceGeneratedArticleContracts,
   evaluateSeoQa,
@@ -911,6 +911,7 @@ export async function generateContent(opts: GenerateOpts) {
       contract: buildGenerationContractMetadata("", promptSettings, effectiveOpts),
       imagesEnabled: Boolean(opts.generateImages && opts.imageConfig),
       imageDeliveryMode: imageMode,
+      seoContext: effectiveOpts.campaignArticle?.programmatic?.seoContext || null,
     };
 
     // Set generation plan
@@ -922,7 +923,6 @@ export async function generateContent(opts: GenerateOpts) {
     const createdPostIds: string[] = [];
     const seoQaResults: Array<{ postId: string; title: string; qa: ReturnType<typeof evaluateSeoQa> }> = [];
     const contractResults: Array<{ postId: string; title: string; contract: ReturnType<typeof buildGenerationContractMetadata> }> = [];
-    const seoPackagingResults: Array<{ postId: string; title: string; modelId: string; status: string; webSearch: boolean; faqQueryCount: number; error?: string }> = [];
     const imageResolutionResults: Array<{ postId: string; title: string; result?: ReturnType<typeof summarizeImageResolution>; error?: string }> = [];
     const failedDrafts: Array<{ index: number; error: string }> = [];
     let totalCost = 0;
@@ -1115,20 +1115,13 @@ export async function generateContent(opts: GenerateOpts) {
         );
         const articleText = plainText(genContent, 500);
         const excerpt = truncateAtWord(articleText, 180);
-        const metaTitle = truncateAtWord(postTitle, 60);
-        const metaDescription = truncateAtWord(articleText, 155);
         let publishingMetadata: Record<string, unknown> | null = null;
         if (feedRecord && ortakAlan) {
           const integrationConfig = (destinationIntegration?.config || {}) as Record<string, unknown>;
           const ortakAlanExcerpt = completeSentenceWithinLimit(articleText, 180);
-          const ortakAlanMetaDescription = completeSentenceWithinLimit(articleText, 155);
-          publishingMetadata = {
-            ...normalizeOrtakAlanMetadata({
+          const normalizedEditorialMetadata = normalizeOrtakAlanMetadata({
               contentType: editorialDefaults.contentType,
-              slug: slugify(postTitle),
               excerpt: ortakAlanExcerpt,
-              metaTitle,
-              metaDescription: ortakAlanMetaDescription,
               topicTags,
               sources: [{
                 name: feedRecord.name,
@@ -1142,7 +1135,9 @@ export async function generateContent(opts: GenerateOpts) {
               aiAssisted: true,
               aiUsageNote: "Kaynak tarama ve taslak hazırlamada yapay zeka kullanılmıştır; yayın öncesi editöryal kontrol gereklidir.",
               image: { alt: "", source: "", license: "", aiGenerated: false },
-            }),
+            });
+          publishingMetadata = {
+            ...normalizedEditorialMetadata,
             profile: "ortak_alan_news",
             routingWarnings: [topicResult.warning, rssPublicationDate(article.pubDate) ? null : "RSS item has no valid original publication date", "Cover image metadata will be completed when the image is attached"].filter(Boolean),
           };
@@ -1150,10 +1145,7 @@ export async function generateContent(opts: GenerateOpts) {
           publishingMetadata = {
             profile: "generic",
             postType: editorialDefaults.postType,
-            slug: slugify(postTitle),
             excerpt,
-            metaTitle,
-            metaDescription,
             tags: topicTags,
             categories: editorialDefaults.defaultCategories,
             routingWarnings: [topicResult.warning].filter(Boolean),
@@ -1179,6 +1171,9 @@ export async function generateContent(opts: GenerateOpts) {
           summary: excerpt,
           publishingMetadata,
         }).returning();
+
+        const seoJob = await enqueueSeoMetadata({ userId, postId: post.id, trigger: "generation" });
+        if (seoJob.queued) kickSeoMetadataWorker(userId);
 
         const contractMetadata = {
           ...buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired),
@@ -1218,7 +1213,6 @@ export async function generateContent(opts: GenerateOpts) {
             ...generationPlan,
             contract: contractMetadata,
             contracts: contractResults,
-            seoPackaging: seoPackagingResults,
             imageResolution: imageResolutionResults,
           },
         }).where(eq(jobs.id, jobId));
@@ -1302,7 +1296,6 @@ export async function generateContent(opts: GenerateOpts) {
               ...generationPlan,
               contract: contractMetadata,
               contracts: contractResults,
-              seoPackaging: seoPackagingResults,
               imageResolution: imageResolutionResults,
             },
           }).where(eq(jobs.id, jobId));
@@ -1314,7 +1307,7 @@ export async function generateContent(opts: GenerateOpts) {
         failedDrafts.push({ index: i, error: lastGenerationError });
         await db.update(jobs).set({
           generationError: lastGenerationError,
-          generationPlan: { ...generationPlan, failedDrafts, seoPackaging: seoPackagingResults, imageResolution: imageResolutionResults },
+          generationPlan: { ...generationPlan, failedDrafts, imageResolution: imageResolutionResults },
         }).where(eq(jobs.id, jobId));
       }
     }
@@ -1344,7 +1337,6 @@ export async function generateContent(opts: GenerateOpts) {
         contract: contractResults[0]?.contract || generationPlan.contract,
         contracts: contractResults,
         failedDrafts,
-        seoPackaging: seoPackagingResults,
         imageResolution: imageResolutionResults,
         seoQa: seoQaResults,
       },

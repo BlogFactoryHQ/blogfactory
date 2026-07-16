@@ -145,6 +145,13 @@ export function validateRows(template: ProgrammaticTemplate, rows: ProgrammaticR
     const missing = variables.filter((variable) => !String(row[variable] || "").trim());
     if (missing.length) errors.push(`Row ${index + 1} missing ${missing.join(", ")}.`);
   });
+  const titleRows = new Map<string, number>();
+  rows.forEach((row, index) => {
+    const key = renderTemplateText(template.titleTemplate, row).replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    const previous = titleRows.get(key);
+    if (previous !== undefined) errors.push(`Rows ${previous + 1} and ${index + 1} generate the same article title.`);
+    else titleRows.set(key, index);
+  });
   return errors;
 }
 

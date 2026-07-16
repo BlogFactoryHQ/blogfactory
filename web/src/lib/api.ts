@@ -18,6 +18,10 @@ export class ApiError extends Error {
   }
 }
 
+export function retryTransientApiError(failureCount: number, error: Error) {
+  return !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failureCount < 2;
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -55,11 +59,15 @@ class ApiClient {
     if (!resp.ok) {
       const err: unknown = await resp.json().catch(() => null);
       const envelope = err && typeof err === "object" ? err as Record<string, unknown> : {};
-      const message = typeof envelope.message === "string"
+      const baseMessage = typeof envelope.message === "string"
         ? envelope.message
         : typeof envelope.error === "string"
           ? envelope.error
           : `Request failed: ${resp.status}`;
+      const validationErrors = Array.isArray(envelope.errors)
+        ? envelope.errors.filter((item): item is string => typeof item === "string")
+        : [];
+      const message = validationErrors.length ? `${baseMessage}: ${validationErrors.join(" ")}` : baseMessage;
       const code = typeof envelope.code === "string" ? envelope.code : `http_${resp.status}`;
       const details = Array.isArray(envelope.details)
         ? envelope.details.filter((item): item is ApiFieldError => Boolean(

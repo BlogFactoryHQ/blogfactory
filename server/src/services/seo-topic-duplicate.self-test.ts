@@ -9,7 +9,6 @@ import {
 } from "./generation-contracts.js";
 import {
   anchorGeneratedTitleToSource,
-  applySeoPackage,
   buildGenerationContractMetadata,
   enforceGeneratedArticleContracts,
   evaluateSeoQa,
@@ -230,7 +229,7 @@ Get started with our SEO workflow.
 - Google Search Central
 `, { keyword: "seo content", settings: { internalLinkIndex: { siteHost: "example.com" } }, articleType: "how_to" });
 
-assert.equal(qa.checks.some((item) => item.label === "Meta title available" && item.ok), true);
+assert.equal(qa.checks.some((item) => item.label === "H1 included" && item.ok), true);
 assert.equal(qa.articleType, "how_to");
 
 const leanSettingsPrompt = buildSettingsInstructions({
@@ -310,105 +309,6 @@ assert.equal(evaluateSeoQa(repaired, {
   articleType: "how_to",
 }).checks.find((item) => item.label === "Internal links included")?.ok, true);
 assert.equal(evaluateSeoQa(repaired, { articleType: "how_to" }).checks.find((item) => item.label === "FAQs included")?.ok, false);
-
-const seoPackaged = applySeoPackage(`## Meta Title
-Old title
-
-# SEO Content Guide
-
-Intro paragraph.
-
-## Key Points
-- Old point.
-
-## FAQs
-### Old question?
-Old answer.
-`, {
-  slug: "ultimate seo content strategy guide for teams",
-  metaTitle: "SEO Content Strategy Guide for Teams",
-  metaDescription: "Plan SEO content strategy for SaaS teams with long-tail keyword research and search intent mapping. Start improving briefs today.",
-  keyPoints: [
-    "SEO content strategy starts with search intent and a clear primary keyword.",
-    "Strong briefs map long-tail keywords to useful sections before drafting.",
-    "FAQ ideas should come from real user queries instead of generic filler.",
-  ],
-  faqs: [
-    { question: "How do SaaS teams plan SEO content strategy?", answer: "They map search intent, product proof, and long-tail keywords before drafting.", sourceQuery: "how to plan seo content strategy" },
-    { question: "What should an SEO content brief include?", answer: "It should include the primary keyword, target audience, headings, proof points, and FAQs.", sourceQuery: "seo content brief checklist" },
-    { question: "How are People Also Ask questions used in SEO articles?", answer: "They reveal real user questions that can become concise FAQ entries.", sourceQuery: "people also ask seo faq" },
-  ],
-}, { topic: "SEO content strategy", settings: { articleLanguage: "US English" } });
-
-assert.match(seoPackaged, /^## Slug\nultimate-seo-content-strategy-guide/m);
-assert.match(seoPackaged, /^## Meta Title\nSEO Content Strategy Guide for Teams/m);
-assert.match(seoPackaged, /^# SEO Content Guide\n\nIntro paragraph\./m);
-assert.match(seoPackaged, /## FAQs\n\n### How do SaaS teams plan SEO content strategy\?/);
-assert.doesNotMatch(seoPackaged, /## Key Points|Old question|Old point|Old title/);
-
-const turkishSeoPackaged = applySeoPackage(`# Claude Mythos Preview
-
-Kisa giris.
-
-## Sıkça Sorulan Sorular
-### Eski soru?
-Eski cevap.
-`, {
-  slug: "claude mythos preview",
-  metaTitle: "Claude Mythos Preview Rehberi",
-  metaDescription: "Claude Mythos Preview sonuçlarını, benchmark farklarını ve güvenlik etkilerini öğrenin. Yeni modeli daha bilinçli değerlendirin.",
-  faqs: [
-    { question: "Claude Mythos Preview hangi benchmarklarda öne çıktı?", answer: "ExploitBench, ExploitGym ve SCONE-bench sonuçlarında diğer modellere göre daha güçlü performans gösterdi.", sourceQuery: "Claude Mythos Preview benchmark" },
-    { question: "ExploitBench T seviyeleri ne anlama gelir?", answer: "T seviyeleri modelin istismar zincirlerini ne kadar ileri taşıyabildiğini gösteren performans basamaklarıdır.", sourceQuery: "ExploitBench T levels" },
-    { question: "Web3 ekipleri bu sonuçlardan nasıl etkilenir?", answer: "Akıllı sözleşme güvenliği, model tabanlı test ve savunma otomasyonu daha önemli hale gelir.", sourceQuery: "AI exploit benchmark Web3 security" },
-  ],
-}, { topic: "Claude Mythos Preview", settings: { articleLanguage: "Turkish" } });
-
-assert.equal((turkishSeoPackaged.match(/## Sık Sorulan Sorular/g) || []).length, 1);
-assert.doesNotMatch(turkishSeoPackaged, /Sıkça Sorulan Sorular|Eski soru|Eski cevap|## Key Points/);
-
-const plainFaqPackaged = applySeoPackage(`# Apple zamları
-
-Kısa giriş.
-
-Sıkça Sorulan Sorular
-
-Apple ürünleri neden zamlandı? Eski cevap.
-
-İkinci el MacBook almak güvenli mi? Eski cevap.
-`, {
-  slug: "apple zam",
-  metaTitle: "Apple MacBook ve iPad Zamları",
-  metaDescription: "Apple MacBook ve iPad zamlarını, fiyat etkilerini ve alternatif cihaz seçeneklerini öğrenin. Güncel önerileri inceleyin.",
-  faqs: [
-    { question: "Apple MacBook ve iPad fiyatlarında ne kadar artış oldu?", answer: "Artış oranı modele göre değişir; en güncel fiyatlar Apple Türkiye ve yetkili satıcılardan kontrol edilmelidir." },
-    { question: "Apple ürünlerinde zam neden Mac ve iPad odaklı oldu?", answer: "Tedarik ve maliyet baskısı özellikle bu ürün gruplarında daha görünür hale geldi." },
-    { question: "Alternatif olarak hangi cihazlar değerlendirilebilir?", answer: "Windows tabanlı ultrabook modelleri ve Linux uyumlu dizüstüler maliyet açısından seçenek olabilir." },
-  ],
-}, { topic: "Apple MacBook ve iPad zamları", settings: { articleLanguage: "Turkish" } });
-
-assert.equal((plainFaqPackaged.match(/Sık(?:ça)? Sorulan Sorular/g) || []).length, 1);
-assert.doesNotMatch(plainFaqPackaged, /Apple ürünleri neden zamlandı\? Eski cevap|İkinci el MacBook almak güvenli mi\? Eski cevap/);
-
-const cleanedMetaPackage = applySeoPackage(`# Mythos Preview’un İstismar Geliştirme Yeteneği: Yeni Benchmarklarla Ortaya Çıkan Gerçekler
-
-Mythos Preview güvenlik benchmarklarında yeni sonuçlar üretiyor. ExploitBench ve ExploitGym gibi ölçümler modelin istismar zincirlerini nasıl kurduğunu gösteriyor.
-`, {
-  slug: "mythos preview benchmark",
-  metaTitle: "Mythos Preview’nin İstismar Geliştirme Yeteneği: Yeni",
-  metaDescription: "Mythos Preview’nin istismar geliştirme yeteneği ve yeni benchmark’lar. ExploitBench ve ExploitGym ile güvenlik açıkları tespit edin. Detaylı analiz için",
-  faqs: [
-    { question: "Mythos Preview hangi benchmarklarda öne çıkıyor?", answer: "ExploitBench ve ExploitGym gibi benchmarklarda zincir kurma performansıyla öne çıkıyor." },
-    { question: "ExploitBench neyi ölçer?", answer: "Modelin güvenlik açıklarını istismar zincirlerine dönüştürme becerisini ölçer." },
-    { question: "Bu sonuçlar ekipler için neden önemli?", answer: "Güvenlik ekiplerinin model tabanlı testleri daha dikkatli değerlendirmesini sağlar." },
-  ],
-}, { topic: "Mythos Preview’un İstismar Geliştirme Yeteneği", settings: { articleLanguage: "Turkish" } });
-const cleanedMetaTitle = cleanedMetaPackage.match(/^## Meta Title\n(.+)$/m)?.[1] || "";
-const cleanedMetaDescription = cleanedMetaPackage.match(/^## Meta Description\n(.+)$/m)?.[1] || "";
-assert.equal(cleanedMetaTitle.length <= 60, true);
-assert.doesNotMatch(cleanedMetaTitle, /(?:[:–—-]\s*)?Yeni$/i);
-assert.equal(cleanedMetaDescription.length <= 145, true);
-assert.doesNotMatch(cleanedMetaDescription, /\biçin$/i);
 
 const localized = enforceGeneratedArticleContracts(`# Paving the way for agents in biology \\ Anthropic
 

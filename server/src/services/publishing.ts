@@ -11,6 +11,7 @@ import { getObject } from "./s3-client.js";
 import { publishingFailureState } from "./atomic-state.js";
 import { slugify } from "./slugify.js";
 export { slugify } from "./slugify.js";
+import { readySeoMetadataForArticle, type SeoMetadataV1 } from "./seo-metadata.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -57,13 +58,17 @@ type ProviderCredentials = WordPressCredentials | GhostCredentials | WixCredenti
 interface PublishOptions {
   mode?: PublishMode;
   postType?: "post" | "page";
-  slug?: string;
   tags?: string[];
   categories?: string[];
-  metaTitle?: string;
-  metaDescription?: string;
   excerpt?: string;
   publishingMetadata?: unknown;
+}
+
+export class SeoMetadataNotReadyError extends Error {
+  constructor() {
+    super("SEO metadata is not ready for the current article version");
+    this.name = "SeoMetadataNotReadyError";
+  }
 }
 
 interface BrandCta {
@@ -322,6 +327,10 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .where(and(eq(posts.id, postId), eq(posts.userId, userId)))
     .limit(1);
   if (!post) throw new Error("Post not found");
+  const canonicalSeo = readySeoMetadataForArticle(post.seoMetadata, post.title, post.content);
+  if (!canonicalSeo) {
+    throw new SeoMetadataNotReadyError();
+  }
 
   const [integration] = await db
     .select()
@@ -357,7 +366,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
   const brandCtas = await publishingBrandCtas(userId, integration.siteId);
-  let article = buildArticlePayload(post, options, normalizeImagePlacement("auto"), assetRows, brandCtas, ortakAlanProfile);
+  let article = buildArticlePayload(post, canonicalSeo, options, normalizeImagePlacement("auto"), assetRows, brandCtas, ortakAlanProfile);
   const mode = options.mode === "publish" ? "publish" : "draft";
   let validation = { errors: [] as string[], warnings: [] as string[] };
   const idempotencyKey = publishingIdempotencyKey({
@@ -407,10 +416,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
         : null;
       const coverAsset = assetRows.find((asset) => asset.storagePath === article.coverImageUrl);
       const metadata = normalizeOrtakAlanMetadata(options.publishingMetadata ?? post.publishingMetadata, {
-        slug: article.slug,
         excerpt: article.excerpt,
-        metaTitle: article.metaTitle,
-        metaDescription: article.metaDescription,
         topicTags: article.tags,
         editorialOwner: String(config.editorialOwner || ""),
         author: defaultAuthor,
@@ -551,10 +557,7 @@ export function applyOrtakAlanMetadata(article: ArticlePayload, metadata: OrtakA
   const markdown = reflowInlineImages(article.markdown, inlineImages, normalizeImagePlacement("auto"));
   return {
     ...article,
-    slug: metadata.slug,
     excerpt: metadata.excerpt,
-    metaTitle: metadata.metaTitle,
-    metaDescription: metadata.metaDescription,
     tags: ortakAlanTags(metadata),
     markdown,
     html: appendOrtakAlanDisclosures(markdownToHtml(markdown), metadata),
@@ -685,18 +688,23 @@ function fallbackImageAlt(title: string, type: "cover" | "inline", index = 0) {
   return `${type === "cover" ? "Featured image" : `Article image ${index + 1}`} for ${title}`.slice(0, 180);
 }
 
-function buildArticlePayload(post: PostRow, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[], brandCtas: BrandCta[] = [], preserveTitle = false): ArticlePayload {
+function buildArticlePayload(post: PostRow, seo: SeoMetadataV1, options: PublishOptions, imagePlacement: ImagePlacement, imageAssetsForPost: PublishingImageAsset[], brandCtas: BrandCta[] = [], preserveTitle = false): ArticlePayload {
   const rawTitle = post.title.trim();
   const content = post.content || "";
-  const meta = parseMarkdownMeta(content);
+  const storedEditorial = post.publishingMetadata && typeof post.publishingMetadata === "object" && (post.publishingMetadata as Record<string, unknown>).profile === "generic"
+    ? post.publishingMetadata as Record<string, unknown>
+    : null;
+  const storedList = (key: "tags" | "categories") => Array.isArray(storedEditorial?.[key])
+    ? (storedEditorial[key] as unknown[]).filter((value): value is string => typeof value === "string")
+    : [];
   const body = articleBody(content);
   const title = publishTitle(rawTitle, body, preserveTitle);
-  const excerpt = truncateAtWord(options.excerpt || meta.metaDescription || plainText(withoutMarkdownTitle(body)), 220);
-  const tags = publishTags(options.tags?.length ? options.tags : meta.tags);
-  const categories = normalizeStringList(options.categories || []);
-  const slug = slugify(options.slug || meta.slug || title);
-  const metaTitle = truncateAtWord(chooseMetaTitle(options.metaTitle || meta.metaTitle, title, body), 60);
-  const metaDescription = truncateAtWord(options.metaDescription || meta.metaDescription || excerpt, 145);
+  const excerpt = truncateAtWord(options.excerpt || String(storedEditorial?.excerpt || "") || plainText(withoutMarkdownTitle(body)), 220);
+  const tags = publishTags(options.tags?.length ? options.tags : storedList("tags"));
+  const categories = normalizeStringList(options.categories?.length ? options.categories : storedList("categories"));
+  const slug = seo.slug;
+  const metaTitle = seo.metaTitle;
+  const metaDescription = seo.metaDescription;
   const altByPath = new Map(imageAssetsForPost.map((asset) => [asset.storagePath, asset.altText]));
   const sortedAssets = [...imageAssetsForPost].sort((left, right) =>
     (left.position ?? Number.MAX_SAFE_INTEGER) - (right.position ?? Number.MAX_SAFE_INTEGER)
@@ -803,25 +811,6 @@ function markdownImageRefs(markdown: string) {
     .filter((image) => image.url);
 }
 
-function markdownSection(content: string, heading: string) {
-  const pattern = new RegExp(`^##\\s+(?:${heading})\\s*\\n+([\\s\\S]*?)(?=\\n##\\s+|\\n#\\s+|$)`, "im");
-  return cleanMetaValue(content.match(pattern)?.[1] || "");
-}
-
-function cleanMetaValue(value: string) {
-  return value.replace(/^`|`$/g, "").trim();
-}
-
-function parseMarkdownMeta(content: string) {
-  const keywords = markdownSection(content, "SEO Anahtar Kelimeleri|SEO Keywords|Keywords");
-  return {
-    slug: markdownSection(content, "Slug"),
-    metaTitle: markdownSection(content, "Meta Title"),
-    metaDescription: markdownSection(content, "Meta Description"),
-    tags: keywords ? keywords.split(",") : [],
-  };
-}
-
 export function articleBody(content: string) {
   const index = content.search(/^#\s+/m);
   const body = (index >= 0 ? content.slice(index) : content).trim();
@@ -860,13 +849,6 @@ export function publishTitle(title: string, content: string, preserveLength = fa
   const candidate = markdownTitle || title;
   if (hasTurkishText(content) && !hasTurkishText(candidate)) return titleFromTurkishBody(content, title, preserveLength);
   return preserveLength ? candidate : truncateAtWord(candidate, 90);
-}
-
-function chooseMetaTitle(value: string | undefined, fallbackTitle: string, content: string) {
-  const cleaned = String(value || "").trim();
-  if (!cleaned) return fallbackTitle;
-  if (hasTurkishText(content) && !hasTurkishText(cleaned) && hasTurkishText(fallbackTitle)) return fallbackTitle;
-  return cleaned;
 }
 
 function titleFromTurkishBody(content: string, fallback: string, preserveLength = false) {

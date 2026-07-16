@@ -306,15 +306,13 @@ function buildSeoContentBriefTemplate(columns: string[]): ProgrammaticTemplate {
   const primaryKeyword = firstColumn(columns, ["primary_keyword", "keyword"]);
   const secondaryKeywords = firstColumn(columns, ["secondary_keywords", "related_keywords", "keywords"]);
   const intent = firstColumn(columns, ["search_intent", "intent"]);
-  const metaTitle = firstColumn(columns, ["meta_title", "seo_title"]);
-  const metaDescription = firstColumn(columns, ["meta_description", "seo_description"]);
   const outline = firstColumn(columns, ["outline_summary", "outline", "brief"]);
   const cta = firstColumn(columns, ["cta", "call_to_action"]);
 
   return {
     id: "auto-seo-content-brief",
     name: "SEO Content Brief",
-    description: "Create one SEO article per imported brief row, using title, keywords, intent, meta fields, outline, and CTA.",
+    description: "Create one SEO article per imported brief row, using title, keywords, intent, outline, and CTA.",
     category: "SEO",
     titleTemplate: `{{${title}}}`,
     wordRange: [900, 1250],
@@ -331,11 +329,6 @@ function buildSeoContentBriefTemplate(columns: string[]): ProgrammaticTemplate {
         secondaryKeywords ? `İlgili kelimeleri doğal bağlamda işle: {{${secondaryKeywords}}}.` : "",
         "Eksik teknik iddiaları uydurma; belirsiz kalan yerlerde genel ve güvenli ifade kullan.",
       ].filter(Boolean).join(" "), 360, 520),
-      section("seo", "text", "SEO notları", [
-        metaTitle ? `Meta title hedefi: {{${metaTitle}}}.` : "",
-        metaDescription ? `Meta description hedefi: {{${metaDescription}}}.` : "",
-        primaryKeyword ? `Anahtar kelime odağını metin boyunca koru: {{${primaryKeyword}}}.` : "",
-      ].filter(Boolean).join(" "), 120, 180),
       section("faq", "faq", "Sık sorulan sorular", [
         "Okurun satın alma, teknik değerlendirme veya uygulama kararını destekleyen 3-5 kısa soru-cevap üret.",
         intent ? `Soruları şu niyete göre seç: {{${intent}}}.` : "",

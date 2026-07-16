@@ -156,6 +156,7 @@ export const posts = pgTable("posts", {
   modelId: text("model_id").notNull(),
   coverImageUrl: text("cover_image_url"),
   inlineImages: text("inline_images").array(),
+  seoMetadata: jsonb("seo_metadata"),
   publishingMetadata: jsonb("publishing_metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -184,6 +185,7 @@ export const jobs = pgTable("jobs", {
   campaignItemId: uuid("campaign_item_id").references((): AnyPgColumn => campaignItems.id, { onDelete: "set null" }),
   tokenCost: real("token_cost"),
   totalCost: real("total_cost"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

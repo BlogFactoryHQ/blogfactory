@@ -15,10 +15,7 @@ export interface OrtakAlanSource {
 
 export interface OrtakAlanMetadata {
   contentType: string;
-  slug: string;
   excerpt: string;
-  metaTitle: string;
-  metaDescription: string;
   topicTags: string[];
   sources: OrtakAlanSource[];
   inlineImages: Array<{ url: string; alt: string }>;
@@ -46,10 +43,7 @@ export const emptyOrtakAlanSource = (): OrtakAlanSource => ({ name: "", url: "",
 
 export function buildOrtakAlanMetadata(input: {
   stored?: Partial<OrtakAlanMetadata> | null;
-  slug: string;
   excerpt: string;
-  metaTitle: string;
-  metaDescription: string;
   tags: string[];
   editorialOwner?: string;
   defaultAuthor?: GhostAuthor | null;
@@ -69,10 +63,7 @@ export function buildOrtakAlanMetadata(input: {
   }));
   return {
     contentType: typeof stored.contentType === "string" && stored.contentType ? stored.contentType : "Haber",
-    slug: typeof stored.slug === "string" && stored.slug ? stored.slug : input.slug,
     excerpt: typeof stored.excerpt === "string" && stored.excerpt ? stored.excerpt : completeSentenceWithinLimit(input.excerpt, 180),
-    metaTitle: typeof stored.metaTitle === "string" && stored.metaTitle ? stored.metaTitle : input.metaTitle,
-    metaDescription: typeof stored.metaDescription === "string" && stored.metaDescription ? stored.metaDescription : completeSentenceWithinLimit(input.metaDescription, 155),
     topicTags: asStringArray(stored.topicTags).length ? asStringArray(stored.topicTags) : asStringArray(input.tags),
     sources: storedSources.length ? storedSources.map((source) => ({ ...emptyOrtakAlanSource(), ...source })) : [emptyOrtakAlanSource()],
     inlineImages,
@@ -99,14 +90,15 @@ export function normalizeOrtakAlanForRequest(metadata: OrtakAlanMetadata): Ortak
   };
 }
 
+export function ortakAlanEditorialMetadata(metadata: OrtakAlanMetadata) {
+  return normalizeOrtakAlanForRequest(metadata);
+}
+
 export function ortakAlanClientChecks(metadata: OrtakAlanMetadata, title: string, hasCoverImage: boolean) {
   const validSources = metadata.sources.filter((source) => source.name && validateSourceUrl(source.url).valid);
   const checks = [
     { label: "Başlık", value: `${title.length}/35–95`, ok: title.length >= 35 && title.length <= 95 },
-    { label: "Slug", value: `${metadata.slug.length}/20–70`, ok: metadata.slug.length >= 20 && metadata.slug.length <= 70 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.slug) },
     { label: "Excerpt", value: `${metadata.excerpt.length}/80–180`, ok: metadata.excerpt.length >= 80 && metadata.excerpt.length <= 180 && isCompleteSentence(metadata.excerpt) },
-    { label: "Meta başlık", value: `${metadata.metaTitle.length}/45–60`, ok: metadata.metaTitle.length >= 45 && metadata.metaTitle.length <= 60 },
-    { label: "Meta açıklama", value: `${metadata.metaDescription.length}/120–155`, ok: metadata.metaDescription.length >= 120 && metadata.metaDescription.length <= 155 && isCompleteSentence(metadata.metaDescription) },
     { label: "Konu etiketi", value: `${metadata.topicTags.length}`, ok: metadata.topicTags.some((tag) => tag.toLocaleLowerCase("tr-TR") !== metadata.contentType.toLocaleLowerCase("tr-TR")) },
     { label: "Kaynaklar", value: validSources.length === metadata.sources.length && validSources.length ? `${validSources.length} geçerli` : "Eksik", ok: metadata.contentType !== "Haber" || (validSources.length > 0 && validSources.length === metadata.sources.length) },
     { label: "Kaynak ayrıntıları", value: metadata.sources.every((source) => source.type && source.publishedAt && source.note) ? "Hazır" : "Uyarı", ok: metadata.sources.every((source) => source.type && source.publishedAt && source.note), blocking: false },

@@ -56,7 +56,6 @@ import { extractDocxText, limitKnowledgeContent } from "@/lib/knowledge";
 import { SimplePromptView } from "@/components/personas/SimplePromptView";
 import { LiveTextModelSelect, isUnavailableModel } from "@/components/content/LiveTextModelSelect";
 import type { LiveTextModel } from "@/hooks/useTextModels";
-import { SEOGuardrails } from "@/components/personas/SEOGuardrails";
 import { PersonaToolsTab } from "@/components/personas/PersonaToolsTab";
 import { PersonaPluginsTab } from "@/components/personas/PersonaPluginsTab";
 import { PersonaTestTab } from "@/components/personas/PersonaTestTab";
@@ -86,15 +85,6 @@ interface PluginsConfig {
   responseHealing?: { enabled: boolean };
 }
 
-interface ValidationRules {
-  requireMetaTitle?: boolean;
-  requireMetaDescription?: boolean;
-  minWordCount?: number;
-  maxWordCount?: number;
-  blockedPhrases?: string[];
-  failAction?: "retry" | "fail";
-}
-
 interface Persona {
   id: string;
   name: string;
@@ -108,9 +98,6 @@ interface Persona {
   tool_choice: string;
   parallel_tool_calls: boolean;
   plugins_config: PluginsConfig;
-  response_format: string;
-  response_schema: Record<string, unknown> | null;
-  validation_rules: ValidationRules;
 }
 
 interface VoiceTrainingSample {
@@ -254,9 +241,6 @@ export default function Personas() {
         tool_choice: p.tool_choice || "auto",
         parallel_tool_calls: p.parallel_tool_calls ?? true,
         plugins_config: (typeof p.plugins_config === "object" && p.plugins_config !== null && !Array.isArray(p.plugins_config) ? p.plugins_config : {}) as PluginsConfig,
-        response_format: p.response_format || "markdown",
-        response_schema: p.response_schema as Record<string, unknown> | null,
-        validation_rules: (p.validation_rules as ValidationRules) || {},
       })) as Persona[];
     },
   });
@@ -344,9 +328,6 @@ export default function Personas() {
         tool_choice: "auto",
         parallel_tool_calls: true,
         plugins_config: {},
-        response_format: "markdown",
-        response_schema: null,
-        validation_rules: {},
       };
       setSelectedPersona(persona);
       setEditedPersona(persona);
@@ -373,9 +354,6 @@ export default function Personas() {
         tool_choice: data.tool_choice,
         parallel_tool_calls: data.parallel_tool_calls,
         plugins_config: JSON.parse(JSON.stringify(data.plugins_config)),
-        response_format: data.response_format,
-        response_schema: data.response_schema ? JSON.parse(JSON.stringify(data.response_schema)) : null,
-        validation_rules: JSON.parse(JSON.stringify(data.validation_rules)),
       });
     },
     onSuccess: () => {
@@ -419,9 +397,6 @@ export default function Personas() {
         tool_choice: created.tool_choice || "auto",
         parallel_tool_calls: created.parallel_tool_calls ?? true,
         plugins_config: (typeof created.plugins_config === "object" && created.plugins_config !== null && !Array.isArray(created.plugins_config) ? created.plugins_config : {}) as PluginsConfig,
-        response_format: created.response_format || "markdown",
-        response_schema: created.response_schema as Record<string, unknown> | null,
-        validation_rules: (created.validation_rules as ValidationRules) || {},
       };
       setSelectedPersona(persona);
       setEditedPersona(persona);
@@ -641,8 +616,7 @@ export default function Personas() {
   const pluginCount = Object.values(editedPersona?.plugins_config || {}).filter(
     (p) => p?.enabled
   ).length;
-  const hasAdvancedConfig = toolCount > 0 || pluginCount > 0 ||
-    (editedPersona?.validation_rules && Object.keys(editedPersona.validation_rules).length > 0);
+  const hasAdvancedConfig = toolCount > 0 || pluginCount > 0;
   const trainingWordCount = voiceTrainingSamples.reduce((total, sample) => total + sample.content.split(/\s+/).filter(Boolean).length, 0);
   const trainingQuality =
     trainingWordCount >= 10000 ? "Excellent" :
@@ -1112,7 +1086,7 @@ export default function Personas() {
                         <Settings2 className={cn("h-5 w-5", isAdvanced ? "text-primary" : "text-muted-foreground")} />
                         <div className="text-left">
                           <p className="font-medium">Advanced lab</p>
-                          <p className="text-sm text-muted-foreground">Tools, plugins, output guardrails, and profile testing.</p>
+                          <p className="text-sm text-muted-foreground">Tools, plugins, and profile testing.</p>
                         </div>
                       </div>
                       <ChevronRight className={cn("h-5 w-5 transition-transform", isAdvanced ? "rotate-90 text-primary" : "text-muted-foreground")} />
@@ -1120,18 +1094,6 @@ export default function Personas() {
 
                     {isAdvanced && (
                       <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
-                        <SEOGuardrails
-                          responseFormat={editedPersona.response_format}
-                          responseSchema={editedPersona.response_schema}
-                          validationRules={editedPersona.validation_rules}
-                          onChange={(updates) =>
-                            updateEditedPersona({
-                              response_format: updates.response_format ?? editedPersona.response_format,
-                              response_schema: updates.response_schema !== undefined ? updates.response_schema : editedPersona.response_schema,
-                              validation_rules: updates.validation_rules ?? editedPersona.validation_rules,
-                            })
-                          }
-                        />
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-hidden rounded-lg border border-border">
                           <div className="border-b border-border bg-muted/30 px-4">
                             <TabsList className="h-12 gap-1 bg-transparent">

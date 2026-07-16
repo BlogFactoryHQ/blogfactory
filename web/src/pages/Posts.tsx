@@ -92,6 +92,7 @@ interface Post {
   feed_id?: string | null;
   site_name?: string | null;
   feed_name?: string | null;
+  seo_status?: "missing" | "pending" | "ready" | "needs_review" | "failed";
 }
 
 interface PostListResponse {
@@ -208,7 +209,7 @@ export default function Posts() {
   const [creatingImagePromptPostId, setCreatingImagePromptPostId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { bulkDelete, bulkPublish, bulkDraft, isDeleting, isPublishing, isDrafting, isLoading } = useBulkPostActions();
+  const { bulkDelete, isDeleting } = useBulkPostActions();
   const { integrations } = useIntegrations();
   const createManualImagePrompts = useCreateManualImagePrompts();
   const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
@@ -235,7 +236,7 @@ export default function Posts() {
     },
     refetchInterval: (query) => {
       const data = query.state.data as PostListResponse | undefined;
-      return data?.items.some(hasSettlingImageWork) ? 5000 : false;
+      return data?.items.some((post) => hasSettlingImageWork(post) || post.seo_status === "pending") ? 5000 : false;
     },
   });
   const posts = useMemo(() => postList?.items || [], [postList?.items]);
@@ -265,49 +266,16 @@ export default function Posts() {
     },
   });
 
-  // Quick publish mutation
-  const quickPublishMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      await api.put(`/posts/${postId}`, { status: "published" });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success("Post published");
-    },
-    onError: (error) => {
-      toast.error("Failed to publish: " + error.message);
-    },
-  });
-
   const bulkPushIntegrationMutation = useMutation({
     mutationFn: async (postIds: string[]) => {
       const integrationId = bulkIntegrationId || connectedIntegrations[0]?.id;
       if (!integrationId) throw new Error("Connect an integration first");
-      const postTitleById = new Map(enrichedPosts.map((post) => [post.id, post.title]));
-      const failures: Array<{ id: string; title: string; error: string }> = [];
-      for (const id of postIds) {
-        try {
-          const result = await api.post<{ success: boolean; error?: string }>(`/posts/${id}/publish`, {
-            integrationId,
-            mode: "draft",
-            postType: "post",
-          });
-          if (!result.success) {
-            failures.push({
-              id,
-              title: postTitleById.get(id) || id,
-              error: result.error || "CMS draft creation failed",
-            });
-          }
-        } catch (error) {
-          failures.push({
-            id,
-            title: postTitleById.get(id) || id,
-            error: error instanceof Error ? error.message : "CMS draft creation failed",
-          });
-        }
-      }
-      return { total: postIds.length, failures };
+      return api.post<{ total: number; failures: Array<{ id: string; title: string; error: string }> }>("/posts/bulk-cms-publish", {
+        ids: postIds,
+        integrationId,
+        mode: "draft",
+        postType: "post",
+      });
     },
     onSuccess: ({ total, failures }) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -322,6 +290,16 @@ export default function Posts() {
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to push posts");
     },
+  });
+
+  const prepareSeoMutation = useMutation({
+    mutationFn: (input: { ids?: string[]; scope?: "all_drafts" }) => api.post<{ queued: number; skipped: number }>("/posts/seo/regenerate", input),
+    onSuccess: ({ queued, skipped }) => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success(`${queued} SEO job queued${skipped ? `, ${skipped} already ready or queued` : ""}`);
+      clearSelection();
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "SEO preparation failed"),
   });
 
   const sourceTypes = facets?.sourceTypes || [];
@@ -435,14 +413,6 @@ export default function Posts() {
   // Bulk action handlers
   const handleBulkDelete = () => {
     bulkDelete(Array.from(selectedIds), { onSuccess: clearSelection });
-  };
-
-  const handleBulkPublish = () => {
-    bulkPublish(Array.from(selectedIds), { onSuccess: clearSelection });
-  };
-
-  const handleBulkDraft = () => {
-    bulkDraft(Array.from(selectedIds), { onSuccess: clearSelection });
   };
 
   const handleBulkPushIntegration = () => {
@@ -594,10 +564,6 @@ export default function Posts() {
             isSelected={selectedIds.has(post.id)}
             onSelect={(checked) => handleRowSelect(post.id, checked)}
             onClick={() => openPostInNewTab(post.id)}
-            onQuickPublish={(e) => {
-              e.stopPropagation();
-              quickPublishMutation.mutate(post.id);
-            }}
             onQuickDelete={(e) => {
               e.stopPropagation();
               setQuickDeletePost(post);
@@ -737,17 +703,15 @@ export default function Posts() {
             <BulkActionsBar
               selectedCount={selectedIds.size}
               onDelete={handleBulkDelete}
-              onPublish={handleBulkPublish}
               onPushIntegration={handleBulkPushIntegration}
-              onDraft={handleBulkDraft}
+              onPrepareSeo={() => prepareSeoMutation.mutate({ ids: Array.from(selectedIds) })}
               onClear={clearSelection}
               integrations={connectedIntegrations}
               integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
               onIntegrationChange={setBulkIntegrationId}
               isDeleting={isDeleting}
-              isPublishing={isPublishing}
               isPushingIntegration={bulkPushIntegrationMutation.isPending}
-              isDrafting={isDrafting}
+              isPreparingSeo={prepareSeoMutation.isPending}
             />
             {allPageSelected && <p className="mb-2 text-center text-sm text-muted-foreground">All {paginatedSelectablePosts.length} posts on this page are selected.</p>}
           </div>
@@ -759,7 +723,7 @@ export default function Posts() {
           icon={FileText}
           title="Inventory table"
           description={`${formatCompactNumber(postPagination?.total || 0)} matching post${postPagination?.total === 1 ? "" : "s"}. Bulk selection is page-scoped.`}
-          action={<Badge variant="outline">{postsPerPage} / page</Badge>}
+          action={<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => prepareSeoMutation.mutate({ scope: "all_drafts" })} disabled={prepareSeoMutation.isPending}>{prepareSeoMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}Prepare all draft SEO</Button><Badge variant="outline">{postsPerPage} / page</Badge></div>}
         />
         <Table>
           <TableHeader>
@@ -807,10 +771,6 @@ export default function Posts() {
                   isSelected={selectedIds.has(row.post.id)}
                   onSelect={(checked) => handleRowSelect(row.post.id, checked)}
                   onClick={() => openPostInNewTab(row.post.id)}
-                  onQuickPublish={(e) => {
-                    e.stopPropagation();
-                    quickPublishMutation.mutate(row.post.id);
-                  }}
                   onQuickDelete={(e) => {
                     e.stopPropagation();
                     setQuickDeletePost(row.post);

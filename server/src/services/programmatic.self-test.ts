@@ -4,6 +4,7 @@ import {
   buildCombinations,
   materializeProgrammaticItems,
   parseCsv,
+  programmaticSeoContext,
   renderTemplateText,
   scoreProgrammaticTemplate,
   templateVariables,
@@ -24,5 +25,26 @@ assert.equal(
   "Best Plumbers in Austin, Texas | 2026 Guide",
 );
 assert.ok(scoreProgrammaticTemplate(local).score > 50);
+
+const seoContext = programmaticSeoContext({
+  primary_keyword: "yerel tesisatçı",
+  secondary_keywords: "acil tesisat, su kaçağı",
+  search_intent: "transactional",
+  language: "tr",
+  city: "İzmir",
+  meta_title: "Eski ve kullanılmaması gereken başlık",
+});
+assert.deepEqual(seoContext.keywords, ["yerel tesisatçı", "acil tesisat", "su kaçağı"]);
+assert.equal(seoContext.searchIntent, "transactional");
+assert.equal(seoContext.requestedLanguage, "tr");
+assert.match(seoContext.sourceContext, /city: İzmir/);
+assert.doesNotMatch(seoContext.sourceContext, /meta_title/);
+assert.throws(() => materializeProgrammaticItems({
+  template: local,
+  rows: [
+    { service: "Plumbers", city: "Austin", state: "Texas", year: "2026" },
+    { service: "Plumbers", city: "Austin", state: "Texas", year: "2026" },
+  ],
+}), /same article title/);
 
 console.log("programmatic self-test ok");
