@@ -3,8 +3,9 @@ import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaigns, feeds, generationLogs, jobs, posts, sites } from "../db/schema.js";
 import { getOpenRouterKey } from "./api-keys.js";
-import { resolveOpenRouterTextModel } from "./openrouter-models.js";
 import { getEffectiveSettings } from "./user-settings.js";
+
+export const SEO_MODEL_ID = "openai/gpt-4.1-mini";
 
 export const SEO_LIMITS = {
   slugMin: 20,
@@ -496,7 +497,7 @@ export async function enqueueSeoMetadata(input: { userId: string; postId: string
       preferredIntegrationId: post.preferredIntegrationId,
       sourceType: "seo_metadata",
       sourceValue,
-      modelId: post.modelId,
+      modelId: SEO_MODEL_ID,
       personaId: post.personaId,
       campaignId: post.campaignId,
       campaignItemId: post.campaignItemId,
@@ -619,7 +620,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
 
   const apiKey = await getOpenRouterKey(job.userId);
   if (!apiKey) throw new Error("Add your OpenRouter API key before generating SEO metadata");
-  const modelId = await resolveOpenRouterTextModel(apiKey, post.sourceType === "batch_import" ? null : post.modelId);
+  const modelId = SEO_MODEL_ID;
   const [feed] = post.feedId ? await db.select({ keywords: feeds.keywords }).from(feeds).where(eq(feeds.id, post.feedId)).limit(1) : [];
   const [site] = post.siteId ? await db.select({ name: sites.name, language: sites.language, topics: sites.topics, editorialTopics: sites.editorialTopics }).from(sites).where(eq(sites.id, post.siteId)).limit(1) : [];
   const [sourceJob] = post.jobId ? await db.select({ sourceValue: jobs.sourceValue, generationPlan: jobs.generationPlan }).from(jobs).where(eq(jobs.id, post.jobId)).limit(1) : [];
@@ -713,7 +714,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
 export async function processNextSeoMetadata(userId?: string) {
   const candidates = await db.select().from(jobs).where(and(eq(jobs.sourceType, "seo_metadata"), eq(jobs.status, "pending"), ...(userId ? [eq(jobs.userId, userId)] : []))).orderBy(asc(jobs.createdAt)).limit(5);
   for (const candidate of candidates) {
-    const [claimed] = await db.update(jobs).set({ status: "running", currentStep: "generating_seo_metadata", startedAt: new Date(), errorMessage: null }).where(and(eq(jobs.id, candidate.id), eq(jobs.status, "pending"))).returning();
+    const [claimed] = await db.update(jobs).set({ status: "running", currentStep: "generating_seo_metadata", modelId: SEO_MODEL_ID, startedAt: new Date(), errorMessage: null }).where(and(eq(jobs.id, candidate.id), eq(jobs.status, "pending"))).returning();
     if (!claimed) continue;
     try {
       return await processSeoJob(claimed);
