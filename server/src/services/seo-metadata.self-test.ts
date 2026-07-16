@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
+import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
 
 assert.equal(SEO_MODEL_ID, "openai/gpt-4.1-mini");
 assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 48, maxLength: 56 });
@@ -15,6 +15,8 @@ const valid = parseSeoCandidate({
 });
 assert.equal(validateSeoMetadata(valid).length, 0);
 assert.equal(valid.metaDescription.length <= SEO_LIMITS.descriptionMax, true);
+assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: valid.metaDescription.slice(0, -1) }).metaDescription, valid.metaDescription);
+assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: `${valid.metaDescription.slice(0, -1)},` }).metaDescription, valid.metaDescription);
 assert.equal(normalizeSeoSlug("Twitter’ın 20. Yılı: Memler ve Öfke"), "twitter-in-20-yili-memler-ve-ofke");
 assert.equal(seoSourceHash("Title", "Body  copy"), seoSourceHash("Title", "Body copy"));
 

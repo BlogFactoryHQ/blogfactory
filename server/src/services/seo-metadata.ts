@@ -110,6 +110,14 @@ function endsWithSentence(value: string) {
   return /[.!?…]["'”’)}\]]*$/.test(value.trim());
 }
 
+export function normalizeAiSeoCandidate(candidate: SeoCandidate): SeoCandidate {
+  if (endsWithSentence(candidate.metaDescription)) return candidate;
+  return {
+    ...candidate,
+    metaDescription: `${candidate.metaDescription.replace(/[,;:–—-]+$/u, "").trim()}.`,
+  };
+}
+
 function hasDanglingEnding(value: string) {
   return /(?:[:|/–—-]|(?:^|\s)(?:and|or|with|for|ve|veya|ile|için|icin|yeni|new|und|oder|mit|für|et|ou|avec|pour|y|o|con|para))$/iu.test(value.trim());
 }
@@ -331,7 +339,7 @@ async function requestCandidate(apiKey: string, modelId: string, prompt: string)
   const rawOutput = String(payload.choices?.[0]?.message?.content || "");
   let candidate: SeoCandidate;
   try {
-    candidate = parseSeoCandidate(jsonFromModel(rawOutput));
+    candidate = normalizeAiSeoCandidate(parseSeoCandidate(jsonFromModel(rawOutput)));
   } catch (error) {
     throw new SeoGenerationAttemptError(
       error instanceof Error ? error.message : "AI returned invalid JSON",
