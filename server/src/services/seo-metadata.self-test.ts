@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
 
-assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 45, maxLength: 60 });
-assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: 120, maxLength: 145 });
+assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 48, maxLength: 56 });
+assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: 125, maxLength: 138 });
 
 const valid = parseSeoCandidate({
   slug: "twitter-yirmi-yil-memler-toplumsal-hareketler",
@@ -65,9 +65,16 @@ const generationInput = {
   requestedLanguage: "Turkish",
 };
 let repairCalls = 0;
-const repaired = await generateValidatedCandidate(generationInput, async () => response(++repairCalls === 1 ? { ...valid, metaDescription: "Geçersiz." } : valid));
+let repairPromptText = "";
+const repaired = await generateValidatedCandidate(generationInput, async (_apiKey, _modelId, prompt) => {
+  repairCalls += 1;
+  if (repairCalls === 2) repairPromptText = prompt;
+  return response(repairCalls === 1 ? { ...valid, metaDescription: "Geçersiz." } : valid);
+});
 assert.equal(repaired.attempts, 2);
 assert.equal(repairCalls, 2);
+assert.match(repairPromptText, /Previous lengths: .*metaDescription 9\./);
+assert.match(repairPromptText, /Target 50-54 characters for metaTitle and 128-135 characters for metaDescription/);
 let contextualPrompt = "";
 let contextualCalls = 0;
 const contextualResult = await generateValidatedCandidate({

@@ -70,8 +70,8 @@ export const SEO_RESPONSE_FORMAT = {
           maxLength: SEO_LIMITS.slugMax,
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+){2,}$",
         },
-        metaTitle: { type: "string", minLength: SEO_LIMITS.titleMin, maxLength: SEO_LIMITS.titleMax },
-        metaDescription: { type: "string", minLength: SEO_LIMITS.descriptionMin, maxLength: SEO_LIMITS.descriptionMax },
+        metaTitle: { type: "string", minLength: 48, maxLength: 56 },
+        metaDescription: { type: "string", minLength: 125, maxLength: 138 },
         primaryQuery: { type: "string", minLength: 1 },
         searchIntent: { type: "string", enum: ["informational", "navigational", "commercial", "transactional"] },
         language: { type: "string", minLength: 2 },
@@ -124,9 +124,9 @@ export function validateSeoMetadata(candidate: SeoCandidate) {
   if (candidate.slug.length < SEO_LIMITS.slugMin || candidate.slug.length > SEO_LIMITS.slugMax) errors.push(`Slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} characters.`);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate.slug) || candidate.slug === "article") errors.push("Slug must contain meaningful lowercase ASCII words separated by hyphens.");
   if (candidate.slug.split("-").filter(Boolean).length < 3) errors.push("Slug must contain at least three meaningful words.");
-  if (candidate.metaTitle.length < SEO_LIMITS.titleMin || candidate.metaTitle.length > SEO_LIMITS.titleMax) errors.push(`Meta title ${SEO_LIMITS.titleMin}-${SEO_LIMITS.titleMax} characters.`);
+  if (candidate.metaTitle.length < SEO_LIMITS.titleMin || candidate.metaTitle.length > SEO_LIMITS.titleMax) errors.push(`Meta title is ${candidate.metaTitle.length} characters; required ${SEO_LIMITS.titleMin}-${SEO_LIMITS.titleMax}.`);
   if (hasDanglingEnding(candidate.metaTitle)) errors.push("Meta title has a dangling ending.");
-  if (candidate.metaDescription.length < SEO_LIMITS.descriptionMin || candidate.metaDescription.length > SEO_LIMITS.descriptionMax) errors.push(`Meta description ${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax} characters.`);
+  if (candidate.metaDescription.length < SEO_LIMITS.descriptionMin || candidate.metaDescription.length > SEO_LIMITS.descriptionMax) errors.push(`Meta description is ${candidate.metaDescription.length} characters; required ${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax}.`);
   if (!endsWithSentence(candidate.metaDescription)) errors.push("Meta description must end with a complete sentence.");
   if (hasDanglingEnding(candidate.metaDescription)) errors.push("Meta description has a dangling ending.");
   if (repeatedPhrase(candidate.metaDescription)) errors.push("Meta description repeats a phrase.");
@@ -366,7 +366,7 @@ type SeoGenerationInput = {
 function generationPrompt(input: SeoGenerationInput) {
   return `Create an independent SEO metadata package for the finished article below.
 Infer the real primary search query and intent unless supplied. When a keyword is supplied, return it unchanged as primaryQuery. Match the article language.
-Hard rules: slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} lowercase ASCII characters; metaTitle ${SEO_LIMITS.titleMin}-${SEO_LIMITS.titleMax} characters; metaDescription ${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax} characters and one complete sentence. Do not concatenate or repeat the H1. Do not cut a sentence.
+Hard rules: slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} lowercase ASCII characters; target metaTitle 48-56 characters; target metaDescription 125-138 characters and one complete sentence. Count every character, including spaces and punctuation, before returning. Do not concatenate or repeat the H1. Do not cut a sentence.
 Return exactly: {"slug":"...","metaTitle":"...","metaDescription":"...","primaryQuery":"...","searchIntent":"informational|navigational|commercial|transactional","language":"..."}
 
 Site: ${input.siteName || "Unknown"}
@@ -393,9 +393,18 @@ function generationErrors(input: SeoGenerationInput, candidate: SeoCandidate) {
 }
 
 function repairPrompt(input: SeoGenerationInput, previousOutput: string, errors: string[]) {
+  let lengths = "The previous object could not be parsed.";
+  try {
+    const previous = parseSeoCandidate(jsonFromModel(previousOutput));
+    lengths = `Previous lengths: slug ${previous.slug.length}, metaTitle ${previous.metaTitle.length}, metaDescription ${previous.metaDescription.length}.`;
+  } catch {
+    // The parse error is already included below.
+  }
   return `Repair this SEO metadata JSON so every listed error is resolved. Preserve its meaning and return only the corrected object.
 Errors:
 - ${errors.join("\n- ")}
+${lengths}
+Rewrite invalid text as a complete phrase or sentence; never truncate it. Target 50-54 characters for metaTitle and 128-135 characters for metaDescription. Count spaces and punctuation before returning.
 Previous object: ${previousOutput}
 Article title: ${input.title}
 Requested language: ${input.requestedLanguage || "Infer from the article"}
