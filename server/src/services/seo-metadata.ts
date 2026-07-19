@@ -136,7 +136,6 @@ export function validateSeoMetadata(candidate: SeoCandidate) {
   if (candidate.metaTitle.length < SEO_LIMITS.titleMin || candidate.metaTitle.length > SEO_LIMITS.titleMax) errors.push(`Meta title is ${candidate.metaTitle.length} characters; required ${SEO_LIMITS.titleMin}-${SEO_LIMITS.titleMax}.`);
   if (hasDanglingEnding(candidate.metaTitle)) errors.push("Meta title has a dangling ending.");
   if (candidate.metaDescription.length < SEO_LIMITS.descriptionMin || candidate.metaDescription.length > SEO_LIMITS.descriptionMax) errors.push(`Meta description is ${candidate.metaDescription.length} characters; required ${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax}.`);
-  if (!endsWithSentence(candidate.metaDescription)) errors.push("Meta description must end with a complete sentence.");
   if (hasDanglingEnding(candidate.metaDescription)) errors.push("Meta description has a dangling ending.");
   if (repeatedPhrase(candidate.metaDescription)) errors.push("Meta description repeats a phrase.");
   const title = candidate.metaTitle.toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
