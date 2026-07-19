@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, RefreshCw, Send } from "lucide-react";
+import { Check, Loader2, Trash2, RefreshCw, Send } from "lucide-react";
 import { SiteIntegration } from "@/hooks/useIntegrations";
 import {
   Select,
@@ -23,6 +23,7 @@ import {
 interface BulkActionsBarProps {
   selectedCount: number;
   onDelete: () => void;
+  onPublish: () => void;
   onPushIntegration: () => void;
   onPrepareSeo: () => void;
   onClear: () => void;
@@ -30,6 +31,7 @@ interface BulkActionsBarProps {
   integrationId: string;
   onIntegrationChange: (id: string) => void;
   isDeleting: boolean;
+  isPublishing: boolean;
   isPushingIntegration: boolean;
   isPreparingSeo: boolean;
 }
@@ -37,6 +39,7 @@ interface BulkActionsBarProps {
 export function BulkActionsBar({
   selectedCount,
   onDelete,
+  onPublish,
   onPushIntegration,
   onPrepareSeo,
   onClear,
@@ -44,10 +47,11 @@ export function BulkActionsBar({
   integrationId,
   onIntegrationChange,
   isDeleting,
+  isPublishing,
   isPushingIntegration,
   isPreparingSeo,
 }: BulkActionsBarProps) {
-  const isLoading = isDeleting || isPushingIntegration || isPreparingSeo;
+  const isLoading = isDeleting || isPublishing || isPushingIntegration || isPreparingSeo;
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
@@ -93,6 +97,10 @@ export function BulkActionsBar({
             </Button>
           </>
         )}
+        <Button variant="outline" size="sm" onClick={onPublish} disabled={isLoading}>
+          {isPublishing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Check className="mr-1.5 h-4 w-4" />}
+          Mark published
+        </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button

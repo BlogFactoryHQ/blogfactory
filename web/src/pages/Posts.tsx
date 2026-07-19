@@ -209,7 +209,7 @@ export default function Posts() {
   const [creatingImagePromptPostId, setCreatingImagePromptPostId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { bulkDelete, isDeleting } = useBulkPostActions();
+  const { bulkDelete, bulkPublish, isDeleting, isPublishing } = useBulkPostActions();
   const { integrations } = useIntegrations();
   const createManualImagePrompts = useCreateManualImagePrompts();
   const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
@@ -413,6 +413,10 @@ export default function Posts() {
   // Bulk action handlers
   const handleBulkDelete = () => {
     bulkDelete(Array.from(selectedIds), { onSuccess: clearSelection });
+  };
+
+  const handleBulkPublish = () => {
+    bulkPublish(Array.from(selectedIds), { onSuccess: clearSelection });
   };
 
   const handleBulkPushIntegration = () => {
@@ -703,6 +707,7 @@ export default function Posts() {
             <BulkActionsBar
               selectedCount={selectedIds.size}
               onDelete={handleBulkDelete}
+              onPublish={handleBulkPublish}
               onPushIntegration={handleBulkPushIntegration}
               onPrepareSeo={() => prepareSeoMutation.mutate({ ids: Array.from(selectedIds) })}
               onClear={clearSelection}
@@ -710,6 +715,7 @@ export default function Posts() {
               integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
               onIntegrationChange={setBulkIntegrationId}
               isDeleting={isDeleting}
+              isPublishing={isPublishing}
               isPushingIntegration={bulkPushIntegrationMutation.isPending}
               isPreparingSeo={prepareSeoMutation.isPending}
             />

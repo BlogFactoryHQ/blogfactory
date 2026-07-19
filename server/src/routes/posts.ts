@@ -678,6 +678,17 @@ postsRoutes.post("/bulk-delete", async (c) => {
   return c.json({ success: true, deleted: ids.length });
 });
 
+postsRoutes.post("/bulk-publish", async (c) => {
+  const userId = getUserId(c);
+  const ids = requiredStringArray(await readJsonObject(c), "ids");
+
+  await db
+    .update(posts)
+    .set({ status: "published", updatedAt: new Date() })
+    .where(and(inArray(posts.id, ids), eq(posts.userId, userId)));
+  return c.json({ success: true });
+});
+
 async function cleanupPostFiles(postIds: string[], userId: string) {
   const postRows = await db
     .select({ id: posts.id, coverImageUrl: posts.coverImageUrl, inlineImages: posts.inlineImages })
