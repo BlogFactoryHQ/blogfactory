@@ -7,6 +7,7 @@ import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
+import { stripUnclosedBoldMarkers } from "./post-cleanup.js";
 import { getObject } from "./s3-client.js";
 import { publishingFailureState } from "./atomic-state.js";
 import { slugify } from "./slugify.js";
@@ -697,7 +698,7 @@ function buildArticlePayload(post: PostRow, seo: SeoMetadataV1, options: Publish
   const storedList = (key: "tags" | "categories") => Array.isArray(storedEditorial?.[key])
     ? (storedEditorial[key] as unknown[]).filter((value): value is string => typeof value === "string")
     : [];
-  const body = articleBody(content);
+  const body = stripUnclosedBoldMarkers(articleBody(content));
   const title = publishTitle(rawTitle, body, preserveTitle);
   const excerpt = truncateAtWord(options.excerpt || String(storedEditorial?.excerpt || "") || plainText(withoutMarkdownTitle(body)), 220);
   const tags = publishTags(options.tags?.length ? options.tags : storedList("tags"));

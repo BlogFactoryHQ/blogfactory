@@ -92,6 +92,15 @@ Rust, 2020'lerin yeni dili olarak kabul ed
 assert.equal((cleanedCutoffSection.match(/Rust, bellek yönetimi ve performans arasındaki dengenin ne kadar önemli olduğunu gösteren bir modeldir/g) || []).length, 1);
 assert.doesNotMatch(cleanedCutoffSection, /kabul ed\s*(?:\n|$)/);
 assert.match(cleanedCutoffSection, /## Sık Sorulan Sorular/);
+assert.equal(cleanGeneratedPostContent(`## SSS
+
+### **Kimi modeline nasıl ulaşılır?
+
+** Moonshot AI'nin sitesinden.`), `## SSS
+
+### Kimi modeline nasıl ulaşılır?
+
+Moonshot AI'nin sitesinden.`);
 assert.deepEqual(
   expandDraftVariations([{ title: "Source", content: "Content" }], "url", 1, { index: 4, count: 5 }).map((article) => [article.variationIndex, article.variationCount]),
   [[4, 5]]

@@ -82,8 +82,12 @@ function removeRepeatedSentences(content: string) {
   return blocks.filter((block) => block.trim()).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+export function stripUnclosedBoldMarkers(content: string) {
+  return content.replace(/^(\s*(?:#{1,6}\s+)?)\*\*(?!.*\*\*)[ \t]?/gm, "$1");
+}
+
 export function cleanGeneratedPostContent(content: string) {
-  const withoutDanglingParagraphs = removeDanglingParagraphs(content);
+  const withoutDanglingParagraphs = removeDanglingParagraphs(stripUnclosedBoldMarkers(content));
   const withoutRepeatedSentences = removeRepeatedSentences(withoutDanglingParagraphs);
   const lines = withoutRepeatedSentences.split(/\r?\n/);
   while (lines.at(-1)?.trim() === "") lines.pop();
