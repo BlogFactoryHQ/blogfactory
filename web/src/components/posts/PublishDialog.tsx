@@ -166,11 +166,11 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const seoChecks = useMemo(() => {
     const slugValid = slug.length >= seoLimits.slugMin && slug.length <= seoLimits.slugMax && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
     const titleValid = metaTitle.length >= seoLimits.titleMin && metaTitle.length <= seoLimits.titleMax;
-    const descriptionValid = metaDescription.length >= seoLimits.descriptionMin && metaDescription.length <= seoLimits.descriptionMax;
+    const descriptionValid = Boolean(metaDescription.trim()) && metaDescription.length <= seoLimits.descriptionMax;
     return [
       { label: "Slug", value: `${slug.length}/${seoLimits.slugMin}–${seoLimits.slugMax}`, ok: slugValid },
       { label: "Meta başlık", value: `${metaTitle.length}/${seoLimits.titleMin}–${seoLimits.titleMax}`, ok: titleValid },
-      { label: "Meta açıklama", value: `${metaDescription.length}/${seoLimits.descriptionMin}–${seoLimits.descriptionMax}`, ok: descriptionValid },
+      { label: "Meta açıklama", value: `${metaDescription.length}/≤${seoLimits.descriptionMax}`, ok: descriptionValid },
     ];
   }, [metaDescription, metaTitle, seoLimits, slug]);
   const hasSeoError = seoChecks.some((check) => !check.ok);

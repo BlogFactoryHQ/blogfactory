@@ -128,14 +128,15 @@ function repeatedPhrase(value: string) {
   return new Set(phrases).size !== phrases.length;
 }
 
-export function validateSeoMetadata(candidate: SeoCandidate) {
+export function validateSeoMetadata(candidate: SeoCandidate, allowShortDescription = false) {
   const errors: string[] = [];
   if (candidate.slug.length < SEO_LIMITS.slugMin || candidate.slug.length > SEO_LIMITS.slugMax) errors.push(`Slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} characters.`);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate.slug) || candidate.slug === "article") errors.push("Slug must contain meaningful lowercase ASCII words separated by hyphens.");
   if (candidate.slug.split("-").filter(Boolean).length < 3) errors.push("Slug must contain at least three meaningful words.");
   if (candidate.metaTitle.length < SEO_LIMITS.titleMin || candidate.metaTitle.length > SEO_LIMITS.titleMax) errors.push(`Meta title is ${candidate.metaTitle.length} characters; required ${SEO_LIMITS.titleMin}-${SEO_LIMITS.titleMax}.`);
   if (hasDanglingEnding(candidate.metaTitle)) errors.push("Meta title has a dangling ending.");
-  if (candidate.metaDescription.length < SEO_LIMITS.descriptionMin || candidate.metaDescription.length > SEO_LIMITS.descriptionMax) errors.push(`Meta description is ${candidate.metaDescription.length} characters; required ${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax}.`);
+  if (!candidate.metaDescription) errors.push("Meta description is required.");
+  else if ((!allowShortDescription && candidate.metaDescription.length < SEO_LIMITS.descriptionMin) || candidate.metaDescription.length > SEO_LIMITS.descriptionMax) errors.push(`Meta description is ${candidate.metaDescription.length} characters; required ${allowShortDescription ? `1-${SEO_LIMITS.descriptionMax}` : `${SEO_LIMITS.descriptionMin}-${SEO_LIMITS.descriptionMax}`}.`);
   if (hasDanglingEnding(candidate.metaDescription)) errors.push("Meta description has a dangling ending.");
   if (repeatedPhrase(candidate.metaDescription)) errors.push("Meta description repeats a phrase.");
   const title = candidate.metaTitle.toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
@@ -185,8 +186,8 @@ function normalizedWords(value: string) {
   return value.toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
-export function validateSeoForArticle(candidate: SeoCandidate, article: string, expectedLanguage = "", articleTitle = "") {
-  const errors = validateSeoMetadata(candidate);
+export function validateSeoForArticle(candidate: SeoCandidate, article: string, expectedLanguage = "", articleTitle = "", allowShortDescription = false) {
+  const errors = validateSeoMetadata(candidate, allowShortDescription);
   const articleLanguage = detectedLanguage(article);
   const metadataLanguage = detectedLanguage(`${candidate.metaTitle} ${candidate.metaDescription}`);
   const declaredLanguage = languageCode(candidate.language);
@@ -243,7 +244,7 @@ export function readySeoMetadataForArticle(value: unknown, title: string, conten
   const metadata = seoMetadata(value);
   if (!metadata || metadata.status !== "ready") return null;
   if (metadata.sourceHash !== seoSourceHash(title, content)) return null;
-  return validateSeoForArticle(metadata, `${title} ${content}`, "", title).length ? null : metadata;
+  return validateSeoForArticle(metadata, `${title} ${content}`, "", title, metadata.provenance.metaDescription === "manual").length ? null : metadata;
 }
 
 export function seoStatusForArticle(value: unknown, title: string, content: string): SeoStatus {
@@ -558,7 +559,7 @@ export async function saveManualSeoMetadata(userId: string, postId: string, valu
     const [post] = await tx.select().from(posts).where(and(eq(posts.id, postId), eq(posts.userId, userId))).limit(1).for("update");
     if (!post) throw new Error("Post not found");
     const candidate = parseSeoCandidate(value);
-    const errors = validateSeoForArticle(candidate, `${post.title} ${post.content}`, "", post.title);
+    const errors = validateSeoForArticle(candidate, `${post.title} ${post.content}`, "", post.title, true);
     if (errors.length) return { saved: false, errors };
     const metadata = mergeManualSeoMetadata(seoMetadata(post.seoMetadata), candidate, seoSourceHash(post.title, post.content));
     await tx.update(posts).set({ seoMetadata: metadata }).where(and(eq(posts.id, postId), eq(posts.userId, userId)));
@@ -599,7 +600,7 @@ export async function confirmManualSeoMetadata(userId: string, postId: string) {
     if (current.status !== "needs_review" || !current.manualReviewRequired || !Object.values(current.provenance).includes("manual")) {
       return { saved: false, errors: ["Only stale manual SEO metadata can be confirmed."] };
     }
-    const errors = validateSeoForArticle(current, `${post.title} ${post.content}`, "", post.title);
+    const errors = validateSeoForArticle(current, `${post.title} ${post.content}`, "", post.title, current.provenance.metaDescription === "manual");
     if (errors.length) return { saved: false, errors };
     const metadata: SeoMetadataV1 = {
       ...current,
@@ -680,7 +681,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
     searchIntent: keep("searchIntent") ? current!.searchIntent : generated.searchIntent,
     language: keep("language") ? current!.language : generated.language,
   };
-  const validationErrors = validateSeoForArticle(candidate, `${latest.title} ${latest.content}`, "", latest.title);
+  const validationErrors = validateSeoForArticle(candidate, `${latest.title} ${latest.content}`, "", latest.title, keep("metaDescription"));
   const metadata: SeoMetadataV1 = {
     version: 1,
     status: validationErrors.length || current?.manualReviewRequired ? "needs_review" : "ready",
