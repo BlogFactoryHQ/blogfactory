@@ -23,6 +23,8 @@ assert.equal(seoSourceHash("Title", "Body  copy"), seoSourceHash("Title", "Body 
 const repeated = { ...valid, metaDescription: "Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi gündemi ve kullanıcıları dönüştürmeye devam ediyor." };
 assert.match(validateSeoMetadata(repeated).join(" "), /repeats/i);
 assert.match(validateSeoMetadata({ ...valid, metaDescription: valid.metaDescription.slice(0, 119) }).join(" "), /120-145/);
+assert.equal(validateSeoMetadata({ ...valid, metaDescription: "Kısa ve bilinçli bir manuel açıklama." }, true).length, 0);
+assert.match(validateSeoMetadata({ ...valid, metaDescription: "" }, true).join(" "), /required/i);
 assert.equal(validateSeoMetadata({ ...valid, metaDescription: valid.metaDescription.slice(0, -1) }).length, 0);
 assert.match(validateSeoForArticle({ ...valid, language: "en", metaTitle: "A Complete English Metadata Title for This Article", metaDescription: "This complete English description explains the article clearly, but it must fail because the source article itself is written entirely in Turkish." }, "Bu yazı bir konunun neden önemli olduğunu ve insanlar için nasıl yeni bir etki oluşturduğunu Türkçe olarak anlatıyor.").join(" "), /article language/i);
 assert.match(validateSeoForArticle({ ...valid, language: "en", metaTitle: "A Complete English Metadata Title for This Article", metaDescription: "This complete English description explains the article clearly, but it must fail because the requested article metadata should be German." }, "Der Artikel erklärt, warum die neue Technik für die Menschen wichtig ist und wie sie mit einer klaren Strategie eingesetzt wird.", "German").join(" "), /requested.*language/i);
@@ -45,6 +47,12 @@ const ready = {
   error: null,
 };
 assert.ok(readySeoMetadataForArticle(ready, "Başlık", "İçerik"));
+assert.ok(readySeoMetadataForArticle({
+  ...ready,
+  metaDescription: "Kısa ve bilinçli bir manuel açıklama.",
+  provenance: { ...ready.provenance, metaDescription: "manual" },
+}, "Başlık", "İçerik"));
+assert.equal(readySeoMetadataForArticle({ ...ready, metaDescription: "Kısa AI açıklaması." }, "Başlık", "İçerik"), null);
 assert.equal(readySeoMetadataForArticle({ ...ready, status: "pending" }, "Başlık", "İçerik"), null);
 assert.equal(readySeoMetadataForArticle({ ...ready, status: "failed" }, "Başlık", "İçerik"), null);
 assert.equal(readySeoMetadataForArticle(ready, "Başlık", "Değişmiş içerik"), null);
