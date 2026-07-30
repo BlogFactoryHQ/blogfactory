@@ -119,6 +119,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/blogfactory
+      POSTGRES_INTEGRATION_ALLOW_WRITES: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
