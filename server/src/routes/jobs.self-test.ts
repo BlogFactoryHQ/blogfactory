@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
+import { reconciledJobForRead, staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
 
 function plan(update: ReturnType<typeof staleTimeoutUpdateForJob>) {
   return update.generationPlan as { totalDrafts: number; failedDrafts?: Array<{ index: number; error: string }> };
@@ -71,5 +71,19 @@ assert.deepEqual(plan(preserved).failedDrafts, [
     error: "Generation timed out after 1/3 drafts were created. The remaining drafts did not finish; try a faster model or fewer variations.",
   },
 ]);
+
+const staleRead = reconciledJobForRead({
+  status: "running",
+  campaignId: null,
+  generationPlan: { totalDrafts: 1 },
+  resultPostIds: [],
+  currentStep: "generating",
+  errorMessage: null,
+  generationError: null,
+  createdAt: new Date("2026-07-27T10:00:00.000Z"),
+  completedAt: null,
+}, new Date("2026-07-27T10:11:00.000Z"));
+assert.equal(staleRead.status, "failed");
+assert.equal(staleRead.completedAt.toISOString(), "2026-07-27T10:10:00.000Z");
 
 console.log("jobs stale timeout self-test passed");

@@ -47,6 +47,7 @@ import {
   Clock,
   Filter,
   ArrowRight,
+  Cable,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
@@ -81,6 +82,7 @@ import {
   SectionHeader,
   SettingNavItem,
 } from "@/components/layout/BywordSurface";
+import { McpConnectionsPanel } from "@/components/settings/McpConnectionsPanel";
 
 interface ApiKeyMetadata {
   hasOpenrouterKey: boolean;
@@ -800,6 +802,7 @@ export default function Settings() {
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
+    { id: "mcp", title: "MCP", description: "Connect AI clients", icon: Cable },
     { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
     { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
     { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
@@ -812,12 +815,12 @@ export default function Settings() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Article Settings"
-        description="Default configuration for generated articles."
+        title="Settings"
+        description="Configure article defaults, providers, brand context, and connections."
       />
 
       <div className="grid gap-8 lg:grid-cols-[270px_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-lg border border-byword-border bg-card">
+        <nav aria-label="Settings sections" className="grid grid-cols-2 overflow-hidden rounded-lg border border-byword-border bg-card [&>button]:gap-2 [&>button]:px-3 [&>button]:py-3 sm:grid-cols-4 lg:block lg:[&>button]:gap-4 lg:[&>button]:px-5 lg:[&>button]:py-4">
           {settingsSections.map((section) => (
             <SettingNavItem
               key={section.id}
@@ -828,9 +831,10 @@ export default function Settings() {
               onClick={() => setActiveSection(section.id)}
             />
           ))}
-        </aside>
+        </nav>
 
         <div className="min-w-0 space-y-6">
+          {activeSection === "mcp" && <McpConnectionsPanel />}
           {activeSection === "basics" && (
             <BywordCard>
               <SectionHeader

@@ -22,6 +22,15 @@ export function retryTransientApiError(failureCount: number, error: Error) {
   return !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failureCount < 2;
 }
 
+export function authRedirectHref(pathname: string, search: string) {
+  if (pathname === "/auth") return `/auth${search}`;
+  return `/auth?returnTo=${encodeURIComponent(`${pathname}${search}`)}`;
+}
+
+export function shouldRedirectAfterUnauthorized(apiPath: string) {
+  return !apiPath.startsWith("/auth/");
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -77,7 +86,9 @@ class ApiClient {
       const apiError = new ApiError(message, resp.status, code, details);
       if (resp.status === 401) {
         this.setToken(null);
-        window.location.href = "/auth";
+        if (shouldRedirectAfterUnauthorized(path)) {
+          window.location.href = authRedirectHref(window.location.pathname, window.location.search);
+        }
       }
       throw apiError;
     }

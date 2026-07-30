@@ -30,6 +30,7 @@ const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Sites = lazy(() => import("@/pages/Sites"));
+const McpOAuthLogin = lazy(() => import("@/pages/McpOAuthLogin"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
                 <Routes>
                   <Route path="/auth" element={<Auth />} />
                   <Route element={<ProtectedRoute />}>
+                    <Route path="/mcp/oauth" element={<McpOAuthLogin />} />
                     <Route path="/onboarding" element={<Onboarding />} />
                     <Route element={<RequireSites />}>
                       <Route element={<AppLayout />}>

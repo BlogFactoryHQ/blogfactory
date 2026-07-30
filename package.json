@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck --workspace=web",
     "test:server": "npm run test:self --workspace=server",
     "test:postgres": "npm run test:postgres --workspace=server",
+    "test:mcp:pilot": "npm run test:mcp:pilot --workspace=server",
     "cron:deploy": "npx wrangler deploy --config wrangler.cron.jsonc",
     "cron:dry-run": "npx wrangler deploy --config wrangler.cron.jsonc --dry-run",
     "db:generate": "npm run db:generate --workspace=server",
@@ -22,5 +23,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.12"
   }
 }

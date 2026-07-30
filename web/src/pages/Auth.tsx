@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,14 @@ import { FactoryMark } from "@/components/layout/BywordSurface";
 import { toast } from "sonner";
 
 type View = "signin" | "signup" | "forgot-password" | "reset-password";
+
+export function authReturnTo(state: unknown, queryValue?: string | null) {
+  const stateValue = state && typeof state === "object" && "returnTo" in state
+    ? (state as { returnTo?: unknown }).returnTo
+    : undefined;
+  const value = typeof stateValue === "string" ? stateValue : queryValue;
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+}
 
 function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -32,6 +40,8 @@ function AuthShell({ children }: { children: ReactNode }) {
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = authReturnTo(location.state, new URLSearchParams(location.search).get("returnTo"));
   const { login, signup, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
@@ -60,7 +70,7 @@ export default function Auth() {
     try {
       await login(email, password, rememberMe);
       toast.success("Welcome back!");
-      navigate("/");
+      navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
@@ -78,7 +88,7 @@ export default function Auth() {
     try {
       await signup(signupEmail, signupPassword, displayName, consent, marketingOptIn);
       toast.success("Account request created");
-      navigate("/");
+      navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
@@ -91,7 +101,7 @@ export default function Auth() {
     try {
       await devLogin();
       toast.success("Local workspace ready");
-      navigate("/");
+      navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Start the local backend, then try again");
     } finally {

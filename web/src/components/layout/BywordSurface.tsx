@@ -152,6 +152,7 @@ export function SettingNavItem({
     <button
       type="button"
       onClick={onClick}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-4 border-l-2 px-5 py-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
         active ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]" : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground"

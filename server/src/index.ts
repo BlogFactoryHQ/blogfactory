@@ -27,10 +27,14 @@ import { optimizeRoutes } from "./routes/optimize.js";
 import { campaignsRoutes } from "./routes/campaigns.js";
 import { cronRoutes } from "./routes/cron.js";
 import { programmaticRoutes } from "./routes/programmatic.js";
+import { mcpTokenRoutes } from "./routes/mcp-tokens.js";
+import { mcpOAuthRoutes } from "./routes/mcp-oauth.js";
+import { handleMcpHttpRequest } from "./mcp/server.js";
+import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
 
 const app = new Hono();
 
-app.use("*", cors());
+app.use("/api/*", cors());
 app.use("*", logger());
 app.use("/api/*", normalizeApiErrors);
 app.use("/api/*", authMiddleware);
@@ -58,6 +62,11 @@ app.route("/api/optimize", optimizeRoutes);
 app.route("/api/campaigns", campaignsRoutes);
 app.route("/api/cron", cronRoutes);
 app.route("/api/programmatic", programmaticRoutes);
+app.route("/api/mcp/tokens", mcpTokenRoutes);
+app.route("/api/mcp/oauth", mcpOAuthRoutes);
+
+app.get("/.well-known/oauth-protected-resource", () => handleMcpProtectedResourceMetadata());
+app.all("/mcp", (c) => handleMcpHttpRequest(c.req.raw));
 
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0" })

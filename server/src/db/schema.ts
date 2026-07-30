@@ -306,6 +306,31 @@ export const sites = pgTable("sites", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const mcpAccessTokens = pgTable("mcp_access_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  tokenPrefix: text("token_prefix").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  scopes: text("scopes").array().notNull(),
+  siteIds: uuid("site_ids").array().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const mcpOAuthConnections = pgTable("mcp_oauth_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  providerConnectionId: text("provider_connection_id").notNull().unique(),
+  scopes: text("scopes").array().notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── publishing integrations ──
 export const siteIntegrations = pgTable("site_integrations", {
   id: uuid("id").primaryKey().defaultRandom(),

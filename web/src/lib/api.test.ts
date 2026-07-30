@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, retryTransientApiError } from "./api";
+import {
+  ApiError,
+  api,
+  authRedirectHref,
+  retryTransientApiError,
+  shouldRedirectAfterUnauthorized,
+} from "./api";
 
 beforeEach(() => {
   api.setToken(null);
@@ -51,4 +57,12 @@ describe("ApiClient collection responses", () => {
 it("does not retry permanent API errors", () => {
   expect(retryTransientApiError(0, new ApiError("Missing key", 400, "missing_key"))).toBe(false);
   expect(retryTransientApiError(0, new ApiError("Unavailable", 503, "unavailable"))).toBe(true);
+});
+
+it("preserves an OAuth return path when authentication expires", () => {
+  expect(authRedirectHref("/mcp/oauth", "?external_auth_id=ext_auth_123"))
+    .toBe("/auth?returnTo=%2Fmcp%2Foauth%3Fexternal_auth_id%3Dext_auth_123");
+  expect(authRedirectHref("/auth", "?returnTo=%2Fmcp%2Foauth")).toBe("/auth?returnTo=%2Fmcp%2Foauth");
+  expect(shouldRedirectAfterUnauthorized("/auth/login")).toBe(false);
+  expect(shouldRedirectAfterUnauthorized("/mcp/oauth/complete")).toBe(true);
 });

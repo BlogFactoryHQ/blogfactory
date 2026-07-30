@@ -1,5 +1,10 @@
-const NO_DRAFT_TIMEOUT_MESSAGE =
+import { and, eq, isNull, lt } from "drizzle-orm";
+import { db } from "../db/index.js";
+import { jobs } from "../db/schema.js";
+
+export const NO_DRAFT_TIMEOUT_MESSAGE =
   "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source.";
+export const STALE_RUNNING_MS = 10 * 60 * 1000;
 
 type FailedDraft = { index: number; error: string };
 
@@ -11,7 +16,7 @@ export function staleTimeoutUpdateForJob(job: {
   generationPlan: unknown;
   resultPostIds: string[] | null;
   currentStep?: string | null;
-}) {
+}, completedAt = new Date()) {
   const plan = job.generationPlan && typeof job.generationPlan === "object"
     ? job.generationPlan as Record<string, unknown>
     : {};
@@ -37,7 +42,7 @@ export function staleTimeoutUpdateForJob(job: {
       currentStep: "done",
       errorMessage: null,
       generationPlan: { ...plan, totalDrafts },
-      completedAt: new Date(),
+      completedAt,
     };
   }
 
@@ -56,7 +61,7 @@ export function staleTimeoutUpdateForJob(job: {
       errorMessage: null,
       generationError: message,
       generationPlan: { ...plan, totalDrafts, failedDrafts },
-      completedAt: new Date(),
+      completedAt,
     };
   }
 
@@ -73,6 +78,71 @@ export function staleTimeoutUpdateForJob(job: {
     currentStep: "timeout",
     errorMessage: timeoutMessage,
     generationPlan: { ...plan, totalDrafts, failedDrafts },
-    completedAt: new Date(),
+    completedAt,
   };
+}
+
+export function reconciledJobForRead<T extends {
+  status: string;
+  campaignId: string | null;
+  generationPlan: unknown;
+  resultPostIds: string[] | null;
+  currentStep: string | null;
+  errorMessage: string | null;
+  generationError: string | null;
+  createdAt: Date;
+  completedAt: Date | null;
+}>(job: T, now = new Date()) {
+  const timedOut = job.status === "running"
+    && job.createdAt.getTime() < now.getTime() - STALE_RUNNING_MS;
+  const failedWithResults = job.status === "failed" && Boolean(job.resultPostIds?.length);
+  if (job.campaignId || (!timedOut && !failedWithResults)) return job;
+  const completedAt = job.completedAt
+    || (timedOut ? new Date(job.createdAt.getTime() + STALE_RUNNING_MS) : job.createdAt);
+  return { ...job, ...staleTimeoutUpdateForJob(job, completedAt) };
+}
+
+export async function markStaleRunningJobs(userId: string, jobId?: string) {
+  const staleClauses = [
+    eq(jobs.userId, userId),
+    eq(jobs.status, "running"),
+    isNull(jobs.campaignId),
+    lt(jobs.createdAt, new Date(Date.now() - STALE_RUNNING_MS)),
+  ];
+  if (jobId) staleClauses.push(eq(jobs.id, jobId));
+
+  const staleJobs = await db
+    .select({
+      id: jobs.id,
+      generationPlan: jobs.generationPlan,
+      resultPostIds: jobs.resultPostIds,
+      currentStep: jobs.currentStep,
+    })
+    .from(jobs)
+    .where(and(...staleClauses));
+
+  const failedClauses = [
+    eq(jobs.userId, userId),
+    eq(jobs.status, "failed"),
+    isNull(jobs.campaignId),
+  ];
+  if (jobId) failedClauses.push(eq(jobs.id, jobId));
+
+  const failedJobs = await db
+    .select({
+      id: jobs.id,
+      generationPlan: jobs.generationPlan,
+      resultPostIds: jobs.resultPostIds,
+      currentStep: jobs.currentStep,
+    })
+    .from(jobs)
+    .where(and(...failedClauses));
+
+  await Promise.all(
+    [...staleJobs, ...failedJobs.filter((job) => job.resultPostIds?.length)]
+      .map((job) => db
+        .update(jobs)
+        .set(staleTimeoutUpdateForJob(job) as any)
+        .where(eq(jobs.id, job.id)))
+  );
 }

@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Clock, Loader2, LogOut, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ function AccountStatusScreen({
 
 export function ProtectedRoute() {
   const { user, isLoading, signOut } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -55,7 +56,13 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return (
+      <Navigate
+        to="/auth"
+        state={{ returnTo: `${location.pathname}${location.search}` }}
+        replace
+      />
+    );
   }
 
   if (user.role !== "admin" && user.approvalStatus === "pending") {

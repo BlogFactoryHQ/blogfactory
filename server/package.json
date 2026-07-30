@@ -8,12 +8,14 @@
     "build": "tsc -p tsconfig.json",
     "test:self": "bun run src/run-self-tests.ts",
     "test:postgres": "bun run src/run-postgres-integration.ts",
+    "test:mcp:pilot": "bun run src/run-mcp-pilot-smoke.ts",
     "credentials:check": "bun run src/credentials-check.ts",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@vercel/functions": "^3.7.3",
     "bcryptjs": "^3.0.0",
     "drizzle-orm": "^0.45.2",
@@ -21,7 +23,8 @@
     "hono": "^4.7.0",
     "jose": "^6.0.0",
     "postgres": "^3.4.5",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "bun-types": "^1.3.14",

@@ -5,7 +5,14 @@ import { db } from "../db/index.js";
 import { users } from "../db/schema.js";
 import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
+export function resolveJwtSecret(value = process.env.JWT_SECRET, environment = process.env.NODE_ENV) {
+  if (environment === "production" && (!value || value.startsWith("changeme-"))) {
+    throw new Error("JWT_SECRET must be configured in production");
+  }
+  return value || "dev-secret";
+}
+
+const JWT_SECRET = new TextEncoder().encode(resolveJwtSecret());
 
 export interface AuthContext {
   userId: string;

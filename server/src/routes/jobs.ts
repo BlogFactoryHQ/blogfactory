@@ -1,15 +1,14 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { jobs, personas, userSettings, sites, feeds, siteIntegrations } from "../db/schema.js";
-import { eq, and, desc, lt, isNull, ilike, or, sql, type SQL } from "drizzle-orm";
+import { eq, and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { getPinnedSiteSettings } from "../services/user-settings.js";
-import { staleTimeoutUpdateForJob } from "../services/job-timeouts.js";
+import { markStaleRunningJobs } from "../services/job-timeouts.js";
 import { readJsonObject } from "../http/error-contract.js";
 import { pagination, parseJobListQuery } from "./list-query.js";
 
 export const jobsRoutes = new Hono();
-const STALE_RUNNING_MS = 10 * 60 * 1000;
 const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
 
 function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
@@ -53,63 +52,6 @@ function retryIndicesFromBody(body: unknown) {
   const value = (body as Record<string, unknown>).retryIndices;
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => Math.floor(Number(item))).filter((item) => Number.isFinite(item) && item >= 0))];
-}
-
-async function markStaleRunningJobs(userId: string, jobId?: string) {
-  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
-  const staleClauses = [
-    eq(jobs.userId, userId),
-    eq(jobs.status, "running"),
-    isNull(jobs.campaignId),
-    lt(jobs.createdAt, staleBefore),
-  ];
-  if (jobId) staleClauses.push(eq(jobs.id, jobId));
-
-  const staleJobs = await db
-    .select({
-      id: jobs.id,
-      site_id: jobs.siteId,
-      feed_id: jobs.feedId,
-      preferred_integration_id: jobs.preferredIntegrationId,
-      generationPlan: jobs.generationPlan,
-      resultPostIds: jobs.resultPostIds,
-      currentStep: jobs.currentStep,
-    })
-    .from(jobs)
-    .where(and(...staleClauses));
-
-  await Promise.all(
-    staleJobs.map((job) => db
-      .update(jobs)
-      .set(staleTimeoutUpdateForJob(job) as any)
-      .where(eq(jobs.id, job.id)))
-  );
-
-  const failedClauses = [
-    eq(jobs.userId, userId),
-    eq(jobs.status, "failed"),
-    isNull(jobs.campaignId),
-  ];
-  if (jobId) failedClauses.push(eq(jobs.id, jobId));
-
-  const failedJobs = await db
-    .select({
-      id: jobs.id,
-      generationPlan: jobs.generationPlan,
-      resultPostIds: jobs.resultPostIds,
-      currentStep: jobs.currentStep,
-    })
-    .from(jobs)
-    .where(and(...failedClauses));
-
-  await Promise.all(
-    failedJobs
-      .filter((job) => Array.isArray(job.resultPostIds) && job.resultPostIds.length > 0)
-      .map((job) => db
-        .update(jobs)
-        .set(staleTimeoutUpdateForJob(job) as any)
-        .where(eq(jobs.id, job.id)))
-  );
 }
 
 jobsRoutes.get("/", async (c) => {

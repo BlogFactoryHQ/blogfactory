@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => ({
     },
     proxy: {
       "/api": "http://localhost:3000",
+      "^/\\.well-known/oauth-protected-resource$": "http://localhost:3000",
+      "^/mcp$": "http://localhost:3000",
     },
   },
   plugins: [react()],

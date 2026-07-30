@@ -82,7 +82,66 @@ Local services:
 | Frontend | http://localhost:8080 |
 
 The frontend calls `/api/*`. In local development, Vite proxies those requests to the backend.
+The local `/mcp` endpoint is also proxied to the backend, so clients can use `http://localhost:8080/mcp`.
 On the sign-in screen, use **Enter local workspace** to create an approved local admin, starter site, and default voice in your development database. This helper is disabled when `NODE_ENV=production`.
+
+### Private MCP read-only pilot
+
+1. Start BlogFactory and apply the current database migrations.
+2. Open **Settings → MCP**.
+3. Create a site-scoped connection token and save the secret when it is shown.
+4. Put that secret in `BLOGFACTORY_MCP_TOKEN` in the environment that starts Codex.
+5. Add the hosted server:
+
+```bash
+codex mcp add blogfactory \
+  --url https://blogfactory.io/mcp \
+  --bearer-token-env-var BLOGFACTORY_MCP_TOKEN
+```
+
+For local development, replace the URL with `http://localhost:8080/mcp`. Personal tokens currently expose read-only discovery for sites, personas, publish targets, posts, and jobs. Draft mutation, CMS delivery, live publishing, deletion, and bulk operations are not available in this pilot.
+
+Run the bounded interoperability smoke check against a prepared pilot account:
+
+```bash
+MCP_PILOT_URL=https://blogfactory.io/mcp \
+MCP_PILOT_TOKEN=bf_mcp_REPLACE_WITH_SECRET \
+npm run test:mcp:pilot
+```
+
+The runner reads the secret only from the environment and prints only pass/fail labels, safe IDs, and item counts. It requires an active persona and an allowed site with a publish target plus a job-backed post among its first 250 posts.
+
+Run the PostgreSQL integration matrix only against a disposable database:
+
+```bash
+DATABASE_URL=postgres://DISPOSABLE_DATABASE \
+POSTGRES_INTEGRATION_ALLOW_WRITES=1 \
+npm run test:postgres
+```
+
+The explicit write opt-in prevents the test from running migrations or creating fixtures against the database loaded from local environment files by accident. Test users and their dependent fixtures are removed even when an assertion fails.
+
+### MCP OAuth with WorkOS AuthKit
+
+BlogFactory uses WorkOS AuthKit Standalone Connect for MCP OAuth while keeping the existing BlogFactory sign-in as the source of truth. OAuth is disabled when all provider values are absent and fails closed when they are only partially configured; enable it by setting `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together.
+
+Before enabling those values:
+
+1. Apply migration `0028_mcp_oauth_connections.sql`.
+2. In WorkOS Connect, set the resource indicator to `https://blogfactory.io/mcp`.
+3. Set the standalone Login URI to `https://blogfactory.io/mcp/oauth`.
+4. Enable Client ID Metadata Document and Dynamic Client Registration. Current Codex requires DCR unless a client ID is configured manually.
+5. Configure authorization-server scopes to advertise `content:read` and `offline_access`, with no write scopes during the read-only phase.
+6. Add `urn:blogfactory:user_id` to the WorkOS JWT template using `user.external_id`. BlogFactory supplies the selected site as `urn:blogfactory:site_id` through WorkOS consent.
+
+Then connect Codex without copying a token:
+
+```bash
+codex mcp add blogfactory --url https://blogfactory.io/mcp
+codex mcp login blogfactory
+```
+
+Do not add `--oauth-resource`; Codex obtains the canonical resource from BlogFactory metadata. OAuth access tokens are issuer-, audience-, user-, and site-validated on every request. A local connection record makes Settings revocation effective even for an already-issued JWT. WorkOS does not include granted scopes in its documented access-token claims, so every valid OAuth connection is fixed to `content:read`; do not enable OAuth write tools until scope binding is proven in a live tenant or enforced through provider management state.
 
 ### Workspace Commands
 
@@ -116,6 +175,10 @@ Copy `.env.example` to `.env` for local development. The main values are:
 | `JWT_SECRET`                | Secret used for auth tokens                      |
 | `ADMIN_EMAILS`              | Comma-separated admin email list                 |
 | `API_KEY_ENCRYPTION_SECRET` | Secret used to encrypt stored API keys           |
+| `MCP_ALLOWED_ORIGINS`        | Optional browser origins allowed to call `/mcp`  |
+| `WORKOS_AUTHKIT_ISSUER`      | WorkOS AuthKit HTTPS origin for MCP OAuth         |
+| `MCP_RESOURCE_URL`           | Canonical MCP resource URL, ending in `/mcp`      |
+| `WORKOS_API_KEY`             | Server-only key for standalone OAuth completion   |
 | `CRON_SECRET`               | Bearer token for protected cron drains           |
 | `OPENROUTER_WEBHOOK_SECRET` | Bearer token configured in OpenRouter Broadcast headers |
 | `S3_ENDPOINT`               | S3-compatible endpoint URL                       |
