@@ -21,6 +21,8 @@ export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; 
   const ortakAlan = selectedIntegration?.config?.profile === "ortak_alan_news";
   const ready = routeReady(normalizedValue, selectedIntegration);
   const tags = ortakAlan ? editorialDefaults.defaultTopicTags : editorialDefaults.defaultTags;
+  const tagLimit = ortakAlan ? 7 : 8;
+  const tagHelpId = "feed-default-tags-help";
   const setDefaults = (patch: Partial<FeedEditorialDefaults>) => onChange({ ...value, editorialDefaults: { ...editorialDefaults, ...patch } });
 
   return (
@@ -41,7 +43,7 @@ export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; 
         <div className="space-y-2"><Label>Delivery</Label><div className="flex h-9 items-center rounded-sm border border-input bg-card px-3 text-sm">BlogFactory draft</div></div>
         {ortakAlan ? <div className="space-y-2"><Label>Content type</Label><Select value={editorialDefaults.contentType || "Haber"} onValueChange={(contentType) => setDefaults({ contentType, profile: "ortak_alan_news" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ORTAK_ALAN_CONTENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div> : <div className="space-y-2"><Label>CMS content type</Label><Select value={editorialDefaults.postType} onValueChange={(postType) => setDefaults({ postType: postType as "post" | "page" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="post">Post</SelectItem><SelectItem value="page">Page</SelectItem></SelectContent></Select></div>}
       </div>
-      <div className="space-y-2"><Label htmlFor="feed-default-tags">{ortakAlan ? "Default topic tags" : "Default tags"}</Label><TagInput id="feed-default-tags" value={tags} onChange={(nextTags) => setDefaults(ortakAlan ? { defaultTopicTags: nextTags } : { defaultTags: nextTags })} placeholder="Teknoloji, Yapay Zeka" /><p className="text-xs text-muted-foreground">Press Enter or comma to add tags. AI may add up to three labels from {selectedSite?.name || "the site"}’s editorial topic vocabulary.</p></div>
+      <div className="space-y-2"><Label htmlFor="feed-default-tags">{ortakAlan ? "Default topic tags" : "Default tags"}</Label><TagInput id="feed-default-tags" value={tags} onChange={(nextTags) => setDefaults(ortakAlan ? { defaultTopicTags: nextTags } : { defaultTags: nextTags })} placeholder="Teknoloji, Yapay Zeka" maxItems={tagLimit} describedBy={tagHelpId} /><p id={tagHelpId} className={tags.length >= tagLimit ? "text-xs font-medium text-amber-700" : "text-xs text-muted-foreground"} aria-live="polite">{tags.length}/{tagLimit} tags · {tags.length >= tagLimit ? "Limit reached; remove one to add another." : `Press Enter or comma to add. AI may add up to three labels from ${selectedSite?.name || "the site"}’s editorial topic vocabulary.`}</p></div>
       <div className="flex items-center justify-between gap-4 rounded-sm border border-byword-border bg-card px-3 py-2.5">
         <div><Label htmlFor="ai-topic-selection">AI topic selection</Label><p className="mt-0.5 text-xs text-muted-foreground">Only labels in the destination site’s controlled vocabulary can be added.</p></div>
         <Switch id="ai-topic-selection" checked={editorialDefaults.aiTopicsEnabled} onCheckedChange={(aiTopicsEnabled) => setDefaults({ aiTopicsEnabled })} />

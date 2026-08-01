@@ -35,8 +35,8 @@ export function normalizeFeedEditorialDefaults(value: unknown): FeedEditorialDef
     profile: record.profile === "ortak_alan_news" ? "ortak_alan_news" : "generic",
     postType: record.postType === "page" ? "page" : "post",
     contentType: typeof record.contentType === "string" ? record.contentType : "",
-    defaultTopicTags: stringList(record.defaultTopicTags),
-    defaultTags: stringList(record.defaultTags),
+    defaultTopicTags: stringList(record.defaultTopicTags).slice(0, 7),
+    defaultTags: stringList(record.defaultTags).slice(0, 8),
     defaultCategories: stringList(record.defaultCategories),
     aiTopicsEnabled: record.aiTopicsEnabled !== false,
   };

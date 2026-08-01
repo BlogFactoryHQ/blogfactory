@@ -213,13 +213,19 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
     setMetaDescription(seoMetadata?.metaDescription || "");
   }, [feedEditorialDefaults, publishingMetadata, seoMetadata]);
 
-  const seoDirty = slug !== (seoMetadata?.slug || "") || metaTitle !== (seoMetadata?.metaTitle || "") || metaDescription !== (seoMetadata?.metaDescription || "");
+  const seoDirty = open && (slug !== (seoMetadata?.slug || "") || metaTitle !== (seoMetadata?.metaTitle || "") || metaDescription !== (seoMetadata?.metaDescription || ""));
   const seoNotReady = seoMetadata?.status !== "ready";
   const seoWorkflow = seoWorkflowState(seoMetadata, seoDirty);
   const seoPresentation = seoStatusPresentation(seoMetadata?.status || "missing");
   const seoCopy = seoStatusCopyTr[seoMetadata?.status || "missing"];
   const seoReview = seoReviewGuidance(seoMetadata);
   const seoError = seoErrorPresentation(seoFormError || seoMetadata?.error || seoMetadata?.validationErrors.join(" "));
+  const seoReviewId = `seo-review-${postId}`;
+  const seoErrorId = `seo-error-${postId}`;
+  const seoChecksId = `seo-checks-${postId}`;
+  const seoFieldDescription = [seoReview && seoReviewId, seoError.message && seoErrorId, seoChecksId].filter(Boolean).join(" ");
+  const publishTags = commaList(tags);
+  const publishTagHelpId = `publish-tags-help-${postId}`;
   const hasManualSeo = Boolean(seoMetadata && Object.values(seoMetadata.provenance).includes("manual"));
   const fieldProvenance = (field: "slug" | "metaTitle" | "metaDescription") => {
     const current = field === "slug" ? slug : field === "metaTitle" ? metaTitle : metaDescription;
@@ -428,7 +434,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
             </div>
 
             {seoReview && (
-              <div className="flex gap-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-3 text-amber-950" role="status" aria-live="polite">
+              <div id={seoReviewId} className="flex gap-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-3 text-amber-950" role="status" aria-live="polite">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{seoReview.title}</p>
@@ -438,7 +444,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
             )}
 
             {seoError.message && (
-              <div className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive" role="alert">
+              <div id={seoErrorId} className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive" role="alert">
                 <span>{seoError.message}</span>
                 {seoError.settingsHref && <Link className="ml-2 font-semibold underline underline-offset-2" to={seoError.settingsHref}>Anahtar ayarlarını aç</Link>}
               </div>
@@ -450,23 +456,23 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                   <Label htmlFor={`seo-slug-${postId}`}>URL slug</Label>
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("slug") === "manual" ? "Manual" : "AI"}</span>
                 </div>
-                <Input id={`seo-slug-${postId}`} value={slug} aria-invalid={!seoChecks[0].ok} onChange={(event) => { setSlug(normalizeSeoSlugInput(event.target.value)); setSeoFormError(""); }} />
+                <Input id={`seo-slug-${postId}`} value={slug} aria-invalid={!seoChecks[0].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setSlug(normalizeSeoSlugInput(event.target.value)); setSeoFormError(""); }} />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor={`seo-title-${postId}`}>Meta başlık</Label>
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaTitle") === "manual" ? "Manual" : "AI"}</span>
                 </div>
-                <Textarea id={`seo-title-${postId}`} value={metaTitle} aria-invalid={!seoChecks[1].ok} onChange={(event) => { setMetaTitle(event.target.value); setSeoFormError(""); }} className="min-h-[60px] resize-none break-words" />
+                <Textarea id={`seo-title-${postId}`} value={metaTitle} aria-invalid={!seoChecks[1].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setMetaTitle(event.target.value); setSeoFormError(""); }} className="min-h-[60px] resize-none break-words" />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor={`seo-description-${postId}`}>Meta açıklama</Label>
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaDescription") === "manual" ? "Manual" : "AI"}</span>
                 </div>
-                <Textarea id={`seo-description-${postId}`} value={metaDescription} aria-invalid={!seoChecks[2].ok} onChange={(event) => { setMetaDescription(event.target.value); setSeoFormError(""); }} className="min-h-[84px] resize-none break-words" />
+                <Textarea id={`seo-description-${postId}`} value={metaDescription} aria-invalid={!seoChecks[2].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setMetaDescription(event.target.value); setSeoFormError(""); }} className="min-h-[84px] resize-none break-words" />
               </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-sm border border-byword-border bg-background p-3 text-xs" aria-live="polite">
+              <div id={seoChecksId} className="flex flex-wrap gap-x-5 gap-y-2 rounded-sm border border-byword-border bg-background p-3 text-xs" aria-live="polite">
                 {seoChecks.map((check) => <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap font-medium text-destructive"}><span>{check.label}</span><span className="ml-2">{check.value}</span></div>)}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -583,9 +589,11 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="publish-tags">Etiketler</Label>
-                <TagInput id="publish-tags" value={commaList(tags)} onChange={(nextTags) => setTags(nextTags.slice(0, TAG_LIMIT).join(", "))} placeholder="opsiyonel" />
-                <p className={hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"}>{commaList(tags).length}/{TAG_LIMIT} etiket</p>
+                <Label htmlFor={`publish-tags-${postId}`}>Etiketler</Label>
+                <TagInput id={`publish-tags-${postId}`} value={publishTags} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" maxItems={TAG_LIMIT} describedBy={publishTagHelpId} />
+                <p id={publishTagHelpId} className={publishTags.length === TAG_LIMIT ? "text-xs font-medium text-amber-700" : hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
+                  {publishTags.length}/{TAG_LIMIT} etiket{publishTags.length === TAG_LIMIT ? " · Limit doldu; yeni etiket için birini kaldırın." : " · Enter veya virgülle ekleyin."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor={`publish-categories-${postId}`}>Kategoriler</Label>

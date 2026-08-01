@@ -26,6 +26,8 @@ interface Props {
 }
 
 export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoading, coverImageUrl }: Props) {
+  const topicTagLimit = 7;
+  const topicTagHelpId = "ortak-alan-topic-tags-help";
   const update = <K extends keyof OrtakAlanMetadata>(key: K, value: OrtakAlanMetadata[K]) => onChange({ ...metadata, [key]: value });
   const updateSource = (index: number, patch: Partial<OrtakAlanMetadata["sources"][number]>) => {
     update("sources", metadata.sources.map((source, sourceIndex) => sourceIndex === index ? { ...source, ...patch } : source));
@@ -45,7 +47,10 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         </div>
         <div className="space-y-2">
           <Label htmlFor="ortak-alan-topic-tags">Konu etiketleri</Label>
-          <TagInput id="ortak-alan-topic-tags" value={metadata.topicTags} onChange={(tags) => update("topicTags", tags)} placeholder="Teknoloji, Yapay Zeka, OpenAI" />
+          <TagInput id="ortak-alan-topic-tags" value={metadata.topicTags} onChange={(tags) => update("topicTags", tags)} placeholder="Teknoloji, Yapay Zeka, OpenAI" maxItems={topicTagLimit} describedBy={topicTagHelpId} />
+          <p id={topicTagHelpId} className={metadata.topicTags.length >= topicTagLimit ? "text-xs font-medium text-amber-700" : "text-xs text-muted-foreground"} aria-live="polite">
+            {metadata.topicTags.length}/{topicTagLimit} konu etiketi{metadata.topicTags.length >= topicTagLimit ? " · Limit doldu; yeni etiket için birini kaldırın." : " · Enter veya virgülle ekleyin."}
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Excerpt · {metadata.excerpt.length}/80–180</Label>
