@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSeoSlugInput, seoErrorPresentation, seoStatusPresentation, seoWorkflowState, type SeoMetadata } from "./seo-metadata";
+import { normalizeSeoSlugInput, seoErrorPresentation, seoReviewGuidance, seoStatusPresentation, seoWorkflowState, type SeoMetadata } from "./seo-metadata";
 
 const metadata = (status: SeoMetadata["status"], source: "ai" | "manual" = "ai"): SeoMetadata => ({
   version: 1,
@@ -28,6 +28,7 @@ describe("SEO workflow state", () => {
   it("separates stale manual confirmation from overwrite", () => {
     expect(seoWorkflowState(metadata("needs_review", "manual"), false)).toMatchObject({ canConfirm: true, canOverwrite: true, canPublish: false });
     expect(seoWorkflowState(metadata("needs_review"), false).canConfirm).toBe(false);
+    expect(seoWorkflowState({ ...metadata("needs_review", "manual"), validationErrors: ["Invalid metadata"] }, false).canConfirm).toBe(false);
   });
 
   it("allows a valid user edit to be saved before publishing", () => {
@@ -35,8 +36,15 @@ describe("SEO workflow state", () => {
   });
 
   it("explains review and failure states without implying fallback metadata", () => {
-    expect(seoStatusPresentation("needs_review").description).toMatch(/confirm.*regenerate/i);
+    expect(seoStatusPresentation("needs_review").description).toMatch(/no longer match.*see the reason/i);
     expect(seoStatusPresentation("failed").description).toMatch(/without creating fallback/i);
+  });
+
+  it("explains exactly why SEO needs review", () => {
+    const stale = metadata("needs_review");
+    expect(seoReviewGuidance(stale)).toMatchObject({ title: "SEO paketi eski yazı sürümüne ait" });
+    expect(seoReviewGuidance({ ...stale, validationErrors: ["Meta title is too short."] })).toMatchObject({ title: "SEO doğrulama hatası var" });
+    expect(seoReviewGuidance(metadata("needs_review", "manual"))?.description).toContain("meta başlık");
   });
 });
 

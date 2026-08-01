@@ -28,6 +28,14 @@ describe("publish defaults", () => {
     expect(defaults.categories).toBe("Blog");
   });
 
+  it("caps inherited publish tags at the CMS limit", () => {
+    const defaults = buildGenericPublishDefaults(
+      { profile: "generic", tags: Array.from({ length: 11 }, (_, index) => `Tag ${index + 1}`) },
+    );
+
+    expect(defaults.tags).toBe("Tag 1, Tag 2, Tag 3, Tag 4, Tag 5, Tag 6, Tag 7, Tag 8");
+  });
+
   it("keeps Ortak Alan excerpt generation separate from canonical SEO", () => {
     const defaults = buildPublishDefaults(`# Başlık\n\nİlk cümle tamamlandı. ${"İkinci cümle sınırı aşacak kadar uzun bir açıklama olarak devam ediyor ve henüz bitmiyor ".repeat(3)}`);
     const metadata = buildOrtakAlanMetadata({ ...defaults, tags: [] });

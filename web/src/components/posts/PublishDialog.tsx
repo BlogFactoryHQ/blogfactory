@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
 import { api } from "@/lib/api";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { normalizeFeedEditorialDefaults, type FeedEditorialDefaults } from "@/lib/feed-routing";
-import { normalizeSeoSlugInput, seoErrorPresentation, seoStatusPresentation, seoWorkflowState, type SeoLimits, type SeoMetadata, type SeoStatus } from "@/lib/seo-metadata";
+import { normalizeSeoSlugInput, seoErrorPresentation, seoReviewGuidance, seoStatusPresentation, seoWorkflowState, type SeoLimits, type SeoMetadata, type SeoStatus } from "@/lib/seo-metadata";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,7 +81,7 @@ const seoStatusCopyTr: Record<SeoStatus, { label: string; description: string }>
   missing: { label: "SEO eksik", description: "Henüz canonical SEO paketi yok. Yayınlamadan önce üretin veya üç alanı manuel girin." },
   pending: { label: "SEO hazırlanıyor", description: "AI, son kaydedilen yazı sürümünden metadata üretiyor. Tamamlanana kadar yayın bloklanır." },
   ready: { label: "SEO hazır", description: "Paket doğrulandı ve son kaydedilen yazı sürümüne bağlı. CMS'e değiştirilmeden gönderilecek." },
-  needs_review: { label: "İnceleme gerekli", description: "Paket son yazı sürümüyle eşleşmiyor veya yeniden doğrulanmalı. Korunan manuel alanları onaylayın ya da paketi yeniden üretin." },
+  needs_review: { label: "İnceleme gerekli", description: "SEO paketi yayınlanmadan önce yeniden doğrulanmalı. Nedeni ve çözümü aşağıda gösteriliyor." },
   failed: { label: "Üretim başarısız", description: "Fallback üretilmedi ve yayın bloklandı. Tekrar denemek manuel alanları değiştirmez." },
 };
 
@@ -130,7 +130,7 @@ export function buildGenericPublishDefaults(
   const storedCategories = stringList(generic?.categories);
   return {
     postType: generic?.postType === "page" ? "page" as const : feedDefaults.postType,
-    tags: (storedTags.length ? storedTags : feedDefaults.defaultTags).join(", "),
+    tags: (storedTags.length ? storedTags : feedDefaults.defaultTags).slice(0, TAG_LIMIT).join(", "),
     categories: (storedCategories.length ? storedCategories : feedDefaults.defaultCategories).join(", "),
   };
 }
@@ -218,6 +218,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const seoWorkflow = seoWorkflowState(seoMetadata, seoDirty);
   const seoPresentation = seoStatusPresentation(seoMetadata?.status || "missing");
   const seoCopy = seoStatusCopyTr[seoMetadata?.status || "missing"];
+  const seoReview = seoReviewGuidance(seoMetadata);
   const seoError = seoErrorPresentation(seoFormError || seoMetadata?.error || seoMetadata?.validationErrors.join(" "));
   const hasManualSeo = Boolean(seoMetadata && Object.values(seoMetadata.provenance).includes("manual"));
   const fieldProvenance = (field: "slug" | "metaTitle" | "metaDescription") => {
@@ -389,9 +390,9 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               </div>
               <div className="flex flex-wrap gap-2">
                 {seoWorkflow.canConfirm && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => confirmSeoMutation.mutate()} disabled={seoDirty || confirmSeoMutation.isPending || regenerateSeoMutation.isPending}>
+                  <Button type="button" size="sm" onClick={() => confirmSeoMutation.mutate()} disabled={seoDirty || confirmSeoMutation.isPending || regenerateSeoMutation.isPending}>
                     {confirmSeoMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                    Manuel alanları onayla
+                    Alanlar doğru, onayla
                   </Button>
                 )}
                 {seoWorkflow.canRetry && (
@@ -403,8 +404,8 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 {seoWorkflow.canOverwrite && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button type="button" variant="outline" size="sm" disabled={regenerateSeoMutation.isPending || confirmSeoMutation.isPending}>
-                        {hasManualSeo ? "Tümünü yeniden üret" : "Yeniden üret"}
+                      <Button type="button" variant={seoMetadata?.status === "needs_review" && !seoWorkflow.canConfirm ? "default" : "outline"} size="sm" disabled={regenerateSeoMutation.isPending || confirmSeoMutation.isPending}>
+                        {hasManualSeo ? "Tümünü yeniden üret" : seoMetadata?.status === "needs_review" ? "Güncel yazıdan yeniden üret" : "Yeniden üret"}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -425,6 +426,16 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 )}
               </div>
             </div>
+
+            {seoReview && (
+              <div className="flex gap-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-3 text-amber-950" role="status" aria-live="polite">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{seoReview.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed">{seoReview.description}</p>
+                </div>
+              </div>
+            )}
 
             {seoError.message && (
               <div className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive" role="alert">
@@ -573,7 +584,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               </div>
               <div className="space-y-2">
                 <Label htmlFor="publish-tags">Etiketler</Label>
-                <TagInput id="publish-tags" value={commaList(tags)} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" />
+                <TagInput id="publish-tags" value={commaList(tags)} onChange={(nextTags) => setTags(nextTags.slice(0, TAG_LIMIT).join(", "))} placeholder="opsiyonel" />
                 <p className={hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"}>{commaList(tags).length}/{TAG_LIMIT} etiket</p>
               </div>
               <div className="space-y-2">
