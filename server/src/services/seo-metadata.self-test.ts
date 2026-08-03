@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
 
 assert.equal(SEO_MODEL_ID, "openai/gpt-4.1-mini");
@@ -19,6 +20,7 @@ assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: valid.metaDesc
 assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: `${valid.metaDescription.slice(0, -1)},` }).metaDescription, valid.metaDescription);
 assert.equal(normalizeSeoSlug("Twitter’ın 20. Yılı: Memler ve Öfke"), "twitter-in-20-yili-memler-ve-ofke");
 assert.equal(seoSourceHash("Title", "Body  copy"), seoSourceHash("Title", "Body copy"));
+assert.equal(seoSourceHash("Title", "Body copy"), seoSourceHash("Title", "Body copy\n\n![Article image](image.webp)"));
 
 const repeated = { ...valid, metaDescription: "Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi gündemi ve kullanıcıları dönüştürmeye devam ediyor." };
 assert.match(validateSeoMetadata(repeated).join(" "), /repeats/i);
@@ -47,6 +49,10 @@ const ready = {
   error: null,
 };
 assert.ok(readySeoMetadataForArticle(ready, "Başlık", "İçerik"));
+assert.ok(readySeoMetadataForArticle(ready, "Başlık", "İçerik\n\n![Makale görseli](image.webp)"));
+const legacyImageContent = "İçerik\n\n![Makale görseli](image.webp)";
+const legacyImageHash = createHash("sha256").update(`Başlık\n${legacyImageContent.replace(/\s+/g, " ").trim()}`).digest("hex");
+assert.ok(readySeoMetadataForArticle({ ...ready, sourceHash: legacyImageHash }, "Başlık", legacyImageContent));
 assert.ok(readySeoMetadataForArticle({
   ...ready,
   metaDescription: "Kısa ve bilinçli bir manuel açıklama.",

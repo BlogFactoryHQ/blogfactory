@@ -7,7 +7,7 @@ import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { getPostPublications, publishPost } from "../services/publishing.js";
 import { SeoMetadataNotReadyError } from "../services/publishing.js";
-import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
+import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
@@ -44,7 +44,7 @@ postsRoutes.get("/", async (c) => {
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
-      seo_source_hash: sql<string>`encode(digest(trim(${posts.title}) || E'\n' || trim(regexp_replace(${posts.content}, '[[:space:]]+', ' ', 'g')), 'sha256'), 'hex')`,
+      seo_source_content: posts.content,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -123,9 +123,9 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_hash, ...post }) => {
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_content, ...post }) => {
     const storedSeo = seoMetadata(post.seo_metadata);
-    const seoStatus = storedSeo?.status === "ready" && storedSeo.sourceHash !== seo_source_hash ? "needs_review" : storedSeo?.status || "missing";
+    const seoStatus = storedSeo?.status === "ready" && !seoSourceHashMatches(storedSeo.sourceHash, post.title, seo_source_content || "") ? "needs_review" : storedSeo?.status || "missing";
     return {
       ...post,
       seo_status: seoStatus,

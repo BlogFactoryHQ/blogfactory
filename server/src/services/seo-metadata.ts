@@ -83,8 +83,16 @@ export const SEO_RESPONSE_FORMAT = {
   },
 } as const;
 
-export function seoSourceHash(title: string, content: string) {
+function hashSeoSource(title: string, content: string) {
   return createHash("sha256").update(`${title.trim()}\n${content.replace(/\s+/g, " ").trim()}`).digest("hex");
+}
+
+export function seoSourceHash(title: string, content: string) {
+  return hashSeoSource(title, content.replace(/!\[[^\]]*]\([^)]+\)/g, " "));
+}
+
+export function seoSourceHashMatches(sourceHash: string, title: string, content: string) {
+  return sourceHash === seoSourceHash(title, content) || sourceHash === hashSeoSource(title, content);
 }
 
 function transliterate(value: string) {
@@ -243,7 +251,7 @@ export function seoMetadata(value: unknown): SeoMetadataV1 | null {
 export function readySeoMetadataForArticle(value: unknown, title: string, content: string) {
   const metadata = seoMetadata(value);
   if (!metadata || metadata.status !== "ready") return null;
-  if (metadata.sourceHash !== seoSourceHash(title, content)) return null;
+  if (!seoSourceHashMatches(metadata.sourceHash, title, content)) return null;
   return validateSeoForArticle(metadata, `${title} ${content}`, "", title, metadata.provenance.metaDescription === "manual").length ? null : metadata;
 }
 
@@ -478,7 +486,7 @@ export async function enqueueSeoMetadata(input: { userId: string; postId: string
     if (!post) throw new Error("Post not found");
     const sourceHash = seoSourceHash(post.title, post.content);
     const current = seoMetadata(post.seoMetadata);
-    if (current?.status === "ready" && current.sourceHash === sourceHash && !input.overwriteManual) return { queued: false, status: "ready" as const, jobId: null };
+    if (current?.status === "ready" && seoSourceHashMatches(current.sourceHash, post.title, post.content) && !input.overwriteManual) return { queued: false, status: "ready" as const, jobId: null };
     const next: SeoMetadataV1 = {
       version: 1,
       status: "pending",
