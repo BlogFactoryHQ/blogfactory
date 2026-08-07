@@ -349,6 +349,7 @@ postsRoutes.post("/bulk-cms-publish", async (c) => {
       postIds: slugConflicts,
     }, 409);
   }
+  if (body.preflightOnly === true) return c.json({ total: candidates.length, failures: [] });
 
   const failures: Array<{ id: string; title: string; error: string }> = [];
   for (const post of candidates) {

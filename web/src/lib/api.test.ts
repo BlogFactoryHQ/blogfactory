@@ -3,6 +3,7 @@ import {
   ApiError,
   api,
   authRedirectHref,
+  pushCmsDrafts,
   retryTransientApiError,
   shouldRedirectAfterUnauthorized,
 } from "./api";
@@ -65,4 +66,33 @@ it("preserves an OAuth return path when authentication expires", () => {
   expect(authRedirectHref("/auth", "?returnTo=%2Fmcp%2Foauth")).toBe("/auth?returnTo=%2Fmcp%2Foauth");
   expect(shouldRedirectAfterUnauthorized("/auth/login")).toBe(false);
   expect(shouldRedirectAfterUnauthorized("/mcp/oauth/complete")).toBe(true);
+});
+
+it("continues a CMS draft batch after an individual post fails", async () => {
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(new Response(JSON.stringify({ total: 3, failures: [] }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: "Ghost rejected the image" }), { status: 502 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+  const progress: number[] = [];
+
+  const result = await pushCmsDrafts([
+    { id: "one", title: "First" },
+    { id: "two", title: "Second" },
+    { id: "three", title: "Third" },
+  ], "ghost", ({ completed }) => progress.push(completed));
+
+  expect(result).toEqual({
+    total: 3,
+    failures: [{ id: "two", title: "Second", error: "Ghost rejected the image" }],
+  });
+  expect(progress).toEqual([0, 1, 2, 3]);
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it("does not start a CMS draft batch when preflight fails", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ error: "Duplicate SEO slug" }), { status: 409 }));
+
+  await expect(pushCmsDrafts([{ id: "one", title: "First" }], "ghost")).rejects.toThrow("Duplicate SEO slug");
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

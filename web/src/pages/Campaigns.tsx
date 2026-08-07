@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FileText, Filter, Grid2X2, History, Megaphone, Play, Plus, RotateCcw, Search, StopCircle } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, pushCmsDrafts } from "@/lib/api";
 import { asArray } from "@/lib/api-shape";
 import { connectionReady } from "@/lib/credential-status";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
@@ -333,20 +333,15 @@ function CampaignDetail({ id }: { id: string }) {
   });
 
   const bulkPush = useMutation({
-    mutationFn: async (postIds: string[]) => {
+    mutationFn: async (targets: Array<{ id: string; title: string }>) => {
       const targetIntegrationId = integrationId || connectedIntegrations[0]?.id;
       if (!targetIntegrationId) throw new Error("Connect an integration first");
-      const result = await api.post<{ total: number; failures: Array<{ id: string; title: string; error: string }> }>("/posts/bulk-cms-publish", {
-        ids: postIds,
-        integrationId: targetIntegrationId,
-        mode: "draft",
-        postType: "post",
-      });
-      return { total: result.total, failed: result.failures.length };
+      return pushCmsDrafts(targets, targetIntegrationId);
     },
-    onSuccess: ({ total, failed }) => {
+    onSuccess: ({ total, failures }) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
-      toast.success(failed ? `${total - failed}/${total} posts pushed` : `${total} campaign posts pushed`);
+      if (failures.length) toast.error(`${total - failures.length}/${total} posts pushed. First failure: ${failures[0].title} - ${failures[0].error}`);
+      else toast.success(`${total} campaign posts pushed`);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Push failed"),
   });
@@ -405,7 +400,8 @@ function CampaignDetail({ id }: { id: string }) {
   const failedCount = items.filter((item) => item.status === "failed").length;
   const queuedCount = items.filter((item) => item.status === "queued").length;
   const runningCount = items.filter((item) => item.status === "running" || item.jobStatus === "running").length;
-  const completedPostIds = items.map((item) => item.postId).filter((id): id is string => Boolean(id));
+  const completedPosts = items.flatMap((item) => item.postId ? [{ id: item.postId, title: item.title || item.input }] : []);
+  const completedPostIds = completedPosts.map((post) => post.id);
   const seoReadyCount = items.filter((item) => item.postId && item.seoStatus === "ready").length;
   const seoPendingCount = items.filter((item) => item.postId && item.seoStatus === "pending").length;
   const seoReviewCount = items.filter((item) => item.postId && item.seoStatus === "needs_review").length;
@@ -553,7 +549,7 @@ function CampaignDetail({ id }: { id: string }) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={() => bulkPush.mutate(completedPostIds)} disabled={bulkPush.isPending || !allSeoReady || cmsBatchTooLarge} title={!allSeoReady ? "Every draft needs current, valid SEO metadata" : cmsBatchTooLarge ? "Select at most 500 posts in My Content" : undefined}>
+                  <Button onClick={() => bulkPush.mutate(completedPosts)} disabled={bulkPush.isPending || !allSeoReady || cmsBatchTooLarge} title={!allSeoReady ? "Every draft needs current, valid SEO metadata" : cmsBatchTooLarge ? "Select at most 500 posts in My Content" : undefined}>
                     Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
                   </Button>
                 </>

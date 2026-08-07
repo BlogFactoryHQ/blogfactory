@@ -131,3 +131,46 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+export interface CmsDraftTarget {
+  id: string;
+  title: string;
+}
+
+export interface CmsDraftFailure extends CmsDraftTarget {
+  error: string;
+}
+
+export interface CmsDraftProgress {
+  completed: number;
+  total: number;
+  failures: CmsDraftFailure[];
+}
+
+export async function pushCmsDrafts(
+  targets: CmsDraftTarget[],
+  integrationId: string,
+  onProgress?: (progress: CmsDraftProgress) => void,
+) {
+  const failures: CmsDraftFailure[] = [];
+  if (!targets.length) return { total: 0, failures };
+  await api.post("/posts/bulk-cms-publish", {
+    ids: targets.map((target) => target.id),
+    integrationId,
+    mode: "draft",
+    postType: "post",
+    preflightOnly: true,
+  });
+  onProgress?.({ completed: 0, total: targets.length, failures: [] });
+
+  for (const [index, target] of targets.entries()) {
+    try {
+      await api.post(`/posts/${target.id}/publish`, { integrationId, mode: "draft", postType: "post" });
+    } catch (error) {
+      failures.push({ ...target, error: error instanceof Error ? error.message : "CMS publish failed" });
+    }
+    onProgress?.({ completed: index + 1, total: targets.length, failures: [...failures] });
+  }
+
+  return { total: targets.length, failures };
+}

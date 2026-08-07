@@ -1,7 +1,7 @@
 import { Fragment, useDeferredValue, useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, pushCmsDrafts, type CmsDraftProgress } from "@/lib/api";
 import { safeFormatDate } from "@/lib/date-format";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +9,7 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -205,6 +206,7 @@ export default function Posts() {
   const [quickDeletePost, setQuickDeletePost] = useState<Post | null>(null);
   const [postsPerPage, setPostsPerPage] = useState(() => Math.min(100, positiveListNumber(searchParams.get("limit"), 25)));
   const [bulkIntegrationId, setBulkIntegrationId] = useState("");
+  const [cmsPushProgress, setCmsPushProgress] = useState<CmsDraftProgress | null>(null);
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   const [creatingImagePromptPostId, setCreatingImagePromptPostId] = useState<string | null>(null);
 
@@ -267,25 +269,21 @@ export default function Posts() {
   });
 
   const bulkPushIntegrationMutation = useMutation({
-    mutationFn: async (postIds: string[]) => {
+    mutationFn: async (targets: Array<Pick<Post, "id" | "title">>) => {
       const integrationId = bulkIntegrationId || connectedIntegrations[0]?.id;
       if (!integrationId) throw new Error("Connect an integration first");
-      return api.post<{ total: number; failures: Array<{ id: string; title: string; error: string }> }>("/posts/bulk-cms-publish", {
-        ids: postIds,
-        integrationId,
-        mode: "draft",
-        postType: "post",
-      });
+      return pushCmsDrafts(targets, integrationId, setCmsPushProgress);
     },
     onSuccess: ({ total, failures }) => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       const pushed = total - failures.length;
       if (failures.length) {
-        toast.error(`${pushed}/${total} posts pushed. First failure: ${failures[0].title} - ${failures[0].error}`);
+        setSelectedIds(new Set(failures.map((failure) => failure.id)));
+        toast.error(`${pushed}/${total} posts pushed. ${failures.length} failed; details are shown below.`);
       } else {
         toast.success(`${total} post${total > 1 ? "s" : ""} pushed`);
+        clearSelection();
       }
-      clearSelection();
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to push posts");
@@ -420,7 +418,8 @@ export default function Posts() {
   };
 
   const handleBulkPushIntegration = () => {
-    bulkPushIntegrationMutation.mutate(Array.from(selectedIds));
+    setCmsPushProgress(null);
+    bulkPushIntegrationMutation.mutate(enrichedPosts.filter((post) => selectedIds.has(post.id)));
   };
 
   const activeFiltersCount = [
@@ -720,6 +719,27 @@ export default function Posts() {
               isPreparingSeo={prepareSeoMutation.isPending}
             />
             {allPageSelected && <p className="mb-2 text-center text-sm text-muted-foreground">All {paginatedSelectablePosts.length} posts on this page are selected.</p>}
+          </div>
+        )}
+        {cmsPushProgress && (
+          <div className="mb-2 rounded-md border border-byword-border bg-background px-4 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium">
+                {bulkPushIntegrationMutation.isPending ? "Pushing drafts to CMS…" : "CMS draft push complete"}
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">{cmsPushProgress.completed}/{cmsPushProgress.total}</span>
+            </div>
+            <Progress value={cmsPushProgress.total ? (cmsPushProgress.completed / cmsPushProgress.total) * 100 : 0} className="h-2" />
+            {cmsPushProgress.failures.length > 0 && (
+              <div className="mt-3 rounded border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <p className="font-semibold text-destructive">{cmsPushProgress.failures.length} failed</p>
+                <ul className="mt-2 space-y-1">
+                  {cmsPushProgress.failures.map((failure) => (
+                    <li key={failure.id} className="break-words"><span className="font-medium">{failure.title}:</span> {failure.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
