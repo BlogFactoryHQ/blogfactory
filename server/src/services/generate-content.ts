@@ -44,6 +44,7 @@ import {
   articleType,
   buildArticleExtras,
   buildSettingsInstructions,
+  buildWriterSystemPrompt,
   findIndexedTopicDuplicate,
   internalLinkTarget,
   normalizeList,
@@ -70,6 +71,7 @@ import {
   buildGenerationContractMetadata,
   enforceGeneratedArticleContracts,
   evaluateSeoQa,
+  generatedPostTitle,
   looksLikeRequestedLanguage,
   outputLanguageInstruction,
   openRouterErrorMessage,
@@ -692,13 +694,13 @@ export async function generateContent(opts: GenerateOpts) {
     const manualSuffix = manualPromptSuffix(promptSettings || settings || undefined);
 
     // Load persona if set
-    let systemPrompt = "You are a senior blog writer. Return only the finished article body in clean Markdown. Do not include process notes, SEO metadata sections, image suggestions, or internal-link summaries.";
+    let systemPrompt = buildWriterSystemPrompt();
     let personaModel = opts.modelId || "openai/gpt-4o";
 
     if (opts.personaId) {
       const [persona] = await db.select().from(personas).where(and(eq(personas.id, opts.personaId), eq(personas.userId, userId))).limit(1);
       if (persona) {
-        systemPrompt = persona.systemPrompt;
+        systemPrompt = buildWriterSystemPrompt(persona.systemPrompt);
         personaModel = persona.baseModel;
       }
     }
@@ -1088,8 +1090,7 @@ export async function generateContent(opts: GenerateOpts) {
         genContent = anchorGeneratedTitleToSource(genContent, opts.articleTitleOverride || article.title, draftLanguage);
 
         // Extract title from generated content
-        const titleMatch = genContent.match(/^#\s+(.+)/m);
-        const generatedTitle = cleanPostTitle(titleMatch ? titleMatch[1].trim() : article.title || "Untitled Post");
+        const generatedTitle = generatedPostTitle(genContent, opts.articleTitleOverride || article.title || opts.sourceValue);
         const postTitle = generatedTitle;
 
         // Log generation

@@ -4,6 +4,7 @@ import {
   articleTemplateInstructions,
   buildArticleExtras,
   buildSettingsInstructions,
+  buildWriterSystemPrompt,
   findIndexedTopicDuplicate,
   resolveGenerationContract,
 } from "./generation-contracts.js";
@@ -12,6 +13,7 @@ import {
   buildGenerationContractMetadata,
   enforceGeneratedArticleContracts,
   evaluateSeoQa,
+  generatedPostTitle,
   openRouterErrorMessage,
 } from "./generation-output.js";
 import { expandDraftVariations, feedCandidateItemCount, feedSourceItemCount } from "./generation-sources.js";
@@ -112,6 +114,46 @@ assert.equal(feedCandidateItemCount(3), 12);
 assert.equal(feedCandidateItemCount(20), 50);
 assert.match(buildSettingsInstructions({ articleLanguage: "US English" }), /Write in US English/);
 assert.doesNotMatch(buildSettingsInstructions({ articleLanguage: "US English" }, "", { includeArticleLanguage: false }), /Write in US English/);
+const personaWriterPrompt = buildWriterSystemPrompt("Türkçe ve doğal yaz.");
+assert.match(personaWriterPrompt, /Türkçe ve doğal yaz/);
+assert.match(personaWriterPrompt, /first non-empty line must be exactly one H1/i);
+
+const odysseySource = `Odyssey’de Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamaz?
+
+Kısa cevap: Penelope, karşısındaki kişinin gerçekten Odysseus olup olmadığını anlamak için yatağın taşınmasını ister.
+
+Yatak neden taşınamaz?
+Odysseus yatağı yaşayan bir zeytin ağacının çevresine yapmıştır.`;
+const grokWithoutMarkdownH1 = `Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamazdı?
+
+Homeros’un destanında evlilik yatağı sıradan bir mobilya değildir. Bu giriş paragrafı model tarafından oluşturulmuştur.
+
+## Yatak Neden Yerinden Oynatılamaz?
+
+Yatağın direklerinden biri yaşayan zeytin ağacının gövdesidir.`;
+const recoveredGrokDraft = enforceGeneratedArticleContracts(grokWithoutMarkdownH1, {
+  sourceType: "raw_text",
+  topic: odysseySource,
+  settings: { articleLanguage: "Turkish" },
+});
+assert.match(recoveredGrokDraft, /^# Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamazdı\?$/m);
+assert.doesNotMatch(recoveredGrokDraft, /# Odyssey’de.*Kısa cevap:/);
+assert.equal(generatedPostTitle(recoveredGrokDraft, odysseySource), "Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamazdı?");
+const missingH1WithH2Body = enforceGeneratedArticleContracts("## İlk Bölüm\n\nGövde metni burada başlar.", {
+  sourceType: "raw_text",
+  topic: odysseySource,
+  settings: { articleLanguage: "Turkish" },
+});
+assert.match(missingH1WithH2Body, /^# Odyssey’de Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamaz\?\n\n## İlk Bölüm/m);
+
+const malformedSourceH1 = `# ${odysseySource.replace(/\s+/g, " ")}\n\nGerçek gövde metni.`;
+const repairedSourceH1 = enforceGeneratedArticleContracts(malformedSourceH1, {
+  sourceType: "raw_text",
+  topic: odysseySource,
+  settings: { articleLanguage: "Turkish" },
+});
+assert.match(repairedSourceH1, /^# Odyssey’de Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamaz\?$/m);
+assert.equal(generatedPostTitle(malformedSourceH1, odysseySource), "Odyssey’de Penelope’nin Yatak Testi: Zeytin Ağacı Neden Taşınamaz?");
 
 const wordContract = resolveGenerationContract({ articleWordCount: 1500 });
 assert.equal(wordContract.targetWords, 1500);

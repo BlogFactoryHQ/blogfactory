@@ -11,6 +11,9 @@ import {
 import type { GenerateOpts, GenerationSettings, SeoQaCheck } from "./generation-types.js";
 import { isBlogDraftSource } from "./generation-sources.js";
 
+const GENERATED_TITLE_MAX_CHARS = 160;
+const GENERATED_TITLE_MAX_WORDS = 24;
+
 export function openRouterErrorMessage(value: string, status?: number, modelId?: string): string {
   try {
     const parsed = JSON.parse(value) as {
@@ -117,6 +120,9 @@ function normalizeArticleMarkdown(content: string, topic: string, settings?: Gen
   const h1 = next.match(/^#\s+(.+)$/m);
   if (h1) {
     const currentTitle = h1[1].trim();
+    if (!isPlausibleGeneratedTitle(currentTitle)) {
+      return next.replace(/^#\s+.+$/m, `# ${safeGeneratedTitle(topic)}`);
+    }
     if (shouldLocalizeTitle(currentTitle, next, settings)) {
       const localizedTitle = titleFromTurkishBody(next, topic);
       return next
@@ -125,8 +131,45 @@ function normalizeArticleMarkdown(content: string, topic: string, settings?: Gen
     }
     return next;
   }
-  const title = cleanPostTitle(topic || "Untitled Post");
-  return `# ${title}\n\n${next}`;
+  const openingTitle = openingPlainTitle(next);
+  if (openingTitle) {
+    const firstBlock = next.split(/\n{2,}/, 1)[0];
+    const body = next.slice(firstBlock.length).trim();
+    return body ? `# ${openingTitle}\n\n${body}` : `# ${openingTitle}`;
+  }
+  return `# ${safeGeneratedTitle(topic)}\n\n${next}`;
+}
+
+function titleCandidate(value: string) {
+  return cleanPostTitle(value
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^\*\*([^*]+)\*\*$/, "$1")
+    .replace(/^title:\s*/i, ""));
+}
+
+function isPlausibleGeneratedTitle(value: string) {
+  const title = titleCandidate(value);
+  return Boolean(title)
+    && title.length <= GENERATED_TITLE_MAX_CHARS
+    && wordCount(title) <= GENERATED_TITLE_MAX_WORDS
+    && !title.includes("\n");
+}
+
+function openingPlainTitle(content: string) {
+  const firstBlock = content.split(/\n{2,}/, 1)[0]?.trim() || "";
+  if (!firstBlock || firstBlock.includes("\n") || /^#{1,6}\s|^[-*|>]\s/.test(firstBlock) || /\.$/.test(firstBlock)) return "";
+  const title = titleCandidate(firstBlock);
+  return isPlausibleGeneratedTitle(title) ? title : "";
+}
+
+function safeGeneratedTitle(value: string) {
+  const firstLine = value.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Untitled Post";
+  return truncateAtWord(titleCandidate(firstLine) || "Untitled Post", GENERATED_TITLE_MAX_CHARS);
+}
+
+export function generatedPostTitle(content: string, fallback = "Untitled Post") {
+  const h1 = content.match(/^#\s+(.+)$/m)?.[1] || "";
+  return isPlausibleGeneratedTitle(h1) ? titleCandidate(h1) : safeGeneratedTitle(fallback);
 }
 
 function normalizeGeneratedStructure(content: string) {

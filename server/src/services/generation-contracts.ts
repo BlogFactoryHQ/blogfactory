@@ -13,6 +13,18 @@ export const INTERNAL_LINK_TARGETS: Record<string, [number, number]> = {
 
 const ARTICLE_TYPES = new Set(["auto", "how_to", "list", "what_is", "pillar", "alternatives", "best_of", "comparison", "newsjacking"]);
 
+const ARTICLE_MARKDOWN_OUTPUT_CONTRACT = [
+  "Return only the finished article in clean Markdown.",
+  "The first non-empty line must be exactly one H1 in the form '# <title>', with no body text on that line.",
+  "Put the introduction on following lines and use H2/H3 headings for the article structure.",
+  "Do not include process notes, SEO metadata sections, image suggestions, or internal-link summaries.",
+].join(" ");
+
+export function buildWriterSystemPrompt(personaPrompt = "") {
+  const role = personaPrompt.trim() || "You are a senior blog writer.";
+  return `${role}\n\nOutput contract: ${ARTICLE_MARKDOWN_OUTPUT_CONTRACT}`;
+}
+
 export function truncatePromptText(value: string, maxChars = 1200) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxChars) return cleaned;
