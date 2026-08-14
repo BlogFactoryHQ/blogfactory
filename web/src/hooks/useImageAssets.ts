@@ -199,6 +199,12 @@ export function useImportImageGenerationRequest() {
       return { ...result, postId: result.request?.post_id || postId || null };
     },
     onSuccess: (result, variables) => {
+      const importedRequest = result.request;
+      if (importedRequest) {
+        queryClient.setQueryData<ImageGenerationRequest[]>(["image-generation-requests", "all"], (requests) =>
+          requests?.map((request) => request.id === importedRequest.id ? importedRequest : request),
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
       queryClient.invalidateQueries({ queryKey: ["image-assets"] });
       queryClient.invalidateQueries({ queryKey: ["image-asset-stats"] });

@@ -42,7 +42,7 @@ const REQUESTS_PER_PAGE = 6;
 const MANUAL_GROUPS_PER_PAGE = 5;
 type RequestStatusFilter = "active" | "all" | "pending" | "processing" | "failed" | "done";
 type RequestTypeFilter = "all" | "cover" | "inline";
-type BulkImportState = Record<string, { total: number; completed: number; failed: number; uploading: boolean }>;
+type BulkImportState = Record<string, { failed: number; uploading: boolean }>;
 type ManualImportGroup = {
   id: string;
   title: string;
@@ -271,7 +271,7 @@ function ManualImportGroupCard({
 }) {
   const fileInputId = `manual-import-${safeDomId(group.id)}`;
   const uploading = Boolean(progress?.uploading);
-  const liveDone = Math.min(group.totalCount, group.doneCount + (progress?.completed || 0));
+  const liveDone = group.doneCount;
   const progressValue = group.totalCount ? Math.round((liveDone / group.totalCount) * 100) : 0;
   const importLabel = group.importableRequests.length === 1 ? "Import image" : `Import ${group.importableRequests.length} images`;
   const canonicalPromptRequest = coverPromptRequest(group.requests);
@@ -618,23 +618,16 @@ export default function ImageGallery() {
 
     setBulkImportState((prev) => ({
       ...prev,
-      [group.id]: { total: assignments.length, completed: 0, failed: 0, uploading: true },
+      [group.id]: { failed: 0, uploading: true },
     }));
 
     const results = await Promise.allSettled(assignments.map(async ({ request, file }) => {
       await importRequest.mutateAsync({ id: request.id, file, postId: request.post_id, quiet: true });
-      setBulkImportState((prev) => {
-        const current = prev[group.id] || { total: assignments.length, completed: 0, failed: 0, uploading: true };
-        return {
-          ...prev,
-          [group.id]: { ...current, completed: current.completed + 1 },
-        };
-      });
     }));
 
     const failed = results.filter((result) => result.status === "rejected").length;
     setBulkImportState((prev) => {
-      const current = prev[group.id] || { total: assignments.length, completed: assignments.length - failed, failed: 0, uploading: true };
+      const current = prev[group.id] || { failed: 0, uploading: true };
       return {
         ...prev,
         [group.id]: { ...current, failed, uploading: false },

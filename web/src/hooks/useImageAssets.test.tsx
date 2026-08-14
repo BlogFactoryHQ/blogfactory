@@ -55,7 +55,7 @@ async function renderHook(harness: "import" | "delete" = "import") {
       </QueryClientProvider>,
     );
   });
-  return invalidate;
+  return { invalidate, queryClient };
 }
 
 afterEach(async () => {
@@ -71,7 +71,7 @@ afterEach(async () => {
 describe("useDeleteImageAssets", () => {
   it("keeps partial storage failures visible to the user", async () => {
     postMock.mockResolvedValue({ success: false, deleted: 1, failed: [{ id: "asset-2", error: "R2 unavailable" }] });
-    const invalidate = await renderHook("delete");
+    const { invalidate } = await renderHook("delete");
 
     await act(async () => {
       await deleteMutation?.mutateAsync(["asset-1", "asset-2"]);
@@ -108,8 +108,9 @@ describe("useImportImageGenerationRequest", () => {
     { quiet: false, expectedSuccessToasts: 1 },
     { quiet: true, expectedSuccessToasts: 0 },
   ])("invalidates related caches after a $quiet import", async ({ quiet, expectedSuccessToasts }) => {
-    uploadMock.mockResolvedValue({ request: { post_id: "post-1" } });
-    const invalidate = await renderHook();
+    uploadMock.mockResolvedValue({ request: { id: "request-1", post_id: "post-1", status: "done" } });
+    const { invalidate, queryClient } = await renderHook();
+    queryClient.setQueryData(["image-generation-requests", "all"], [{ id: "request-1", status: "pending" }]);
 
     await act(async () => {
       await mutation?.mutateAsync({
@@ -122,6 +123,9 @@ describe("useImportImageGenerationRequest", () => {
 
     expect(successToast).toHaveBeenCalledTimes(expectedSuccessToasts);
     expect(errorToast).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(["image-generation-requests", "all"])).toEqual([
+      { id: "request-1", post_id: "post-1", status: "done" },
+    ]);
     expect(invalidate.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
       ["image-generation-requests"],
       ["image-assets"],
