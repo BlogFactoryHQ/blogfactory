@@ -404,7 +404,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 {seoWorkflow.canRetry && (
                   <Button type="button" variant="outline" size="sm" onClick={() => regenerateSeoMutation.mutate(false)} disabled={regenerateSeoMutation.isPending}>
                     {regenerateSeoMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-                    {seoMetadata?.status === "failed" ? "Tekrar dene" : "SEO hazırla"}
+                    {seoMetadata?.status === "failed" || seoMetadata?.status === "pending" ? "Tekrar dene" : "SEO hazırla"}
                   </Button>
                 )}
                 {seoWorkflow.canOverwrite && (

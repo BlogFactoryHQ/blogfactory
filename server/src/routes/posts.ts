@@ -136,6 +136,7 @@ postsRoutes.get("/", async (c) => {
       campaigns: campaign_name ? { name: campaign_name } : null,
     };
   });
+  if (items.some((item) => item.seo_status === "pending")) waitUntil(drainSeoMetadata(userId, 1));
   if (ids.length) return c.json(items);
 
   const [[countRow], [statusRow], sourceRows, modelRows, personaRows, campaignRows] = await Promise.all([
@@ -515,6 +516,7 @@ postsRoutes.get("/:id", async (c) => {
     : [];
   const storedSeo = seoMetadata(result.seo_metadata);
   const seoStatus = seoStatusForArticle(storedSeo, result.title, result.content || "");
+  if (seoStatus === "pending") waitUntil(drainSeoMetadata(userId, 1));
   const presentedSeo = storedSeo && seoStatus !== "missing" && storedSeo.status !== seoStatus
     ? { ...storedSeo, status: seoStatus }
     : storedSeo;

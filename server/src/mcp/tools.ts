@@ -474,6 +474,7 @@ async function getJob(principal: McpPrincipal, input: { job_id: string }) {
     .select({
       id: jobs.id,
       siteId: jobs.siteId,
+      sourceType: jobs.sourceType,
       status: jobs.status,
       currentStep: jobs.currentStep,
       campaignId: jobs.campaignId,

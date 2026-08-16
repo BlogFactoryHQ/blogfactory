@@ -92,7 +92,7 @@ export function seoWorkflowState(metadata: SeoMetadata | null | undefined, dirty
   return {
     canPublish: metadata?.status === "ready" || dirty,
     canConfirm: metadata?.status === "needs_review" && metadata.manualReviewRequired && hasManual && !metadata.validationErrors.length && !dirty,
-    canRetry: !metadata || metadata.status === "failed",
+    canRetry: !metadata || metadata.status === "pending" || metadata.status === "failed",
     canOverwrite: metadata?.status === "ready" || metadata?.status === "needs_review" || (metadata?.status === "failed" && hasManual),
   };
 }

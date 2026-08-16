@@ -21,7 +21,7 @@ const metadata = (status: SeoMetadata["status"], source: "ai" | "manual" = "ai")
 
 describe("SEO workflow state", () => {
   it("blocks pending and failed packages without silently approving them", () => {
-    expect(seoWorkflowState(metadata("pending"), false).canPublish).toBe(false);
+    expect(seoWorkflowState(metadata("pending"), false)).toMatchObject({ canPublish: false, canRetry: true });
     expect(seoWorkflowState(metadata("failed"), false)).toMatchObject({ canPublish: false, canRetry: true });
   });
 

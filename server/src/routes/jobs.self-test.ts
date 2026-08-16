@@ -73,6 +73,7 @@ assert.deepEqual(plan(preserved).failedDrafts, [
 ]);
 
 const staleRead = reconciledJobForRead({
+  sourceType: "url",
   status: "running",
   campaignId: null,
   generationPlan: { totalDrafts: 1 },
@@ -85,5 +86,21 @@ const staleRead = reconciledJobForRead({
 }, new Date("2026-07-27T10:11:00.000Z"));
 assert.equal(staleRead.status, "failed");
 assert.equal(staleRead.completedAt.toISOString(), "2026-07-27T10:10:00.000Z");
+
+const staleSeoRead = reconciledJobForRead({
+  sourceType: "seo_metadata",
+  status: "running",
+  campaignId: null,
+  generationPlan: { kind: "seo_metadata" },
+  resultPostIds: ["post-1"],
+  currentStep: "generating",
+  errorMessage: null,
+  generationError: null,
+  createdAt: new Date("2026-07-27T10:00:00.000Z"),
+  completedAt: null,
+}, new Date("2026-07-27T10:11:00.000Z"));
+assert.equal(staleSeoRead.status, "running");
+assert.equal(staleSeoRead.currentStep, "generating");
+assert.equal(staleSeoRead.completedAt, null);
 
 console.log("jobs stale timeout self-test passed");

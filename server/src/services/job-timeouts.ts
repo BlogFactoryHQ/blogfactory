@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull, lt, ne } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { jobs } from "../db/schema.js";
 
@@ -83,6 +83,7 @@ export function staleTimeoutUpdateForJob(job: {
 }
 
 export function reconciledJobForRead<T extends {
+  sourceType: string;
   status: string;
   campaignId: string | null;
   generationPlan: unknown;
@@ -93,6 +94,7 @@ export function reconciledJobForRead<T extends {
   createdAt: Date;
   completedAt: Date | null;
 }>(job: T, now = new Date()) {
+  if (job.sourceType === "seo_metadata") return job;
   const timedOut = job.status === "running"
     && job.createdAt.getTime() < now.getTime() - STALE_RUNNING_MS;
   const failedWithResults = job.status === "failed" && Boolean(job.resultPostIds?.length);
@@ -106,6 +108,7 @@ export async function markStaleRunningJobs(userId: string, jobId?: string) {
   const staleClauses = [
     eq(jobs.userId, userId),
     eq(jobs.status, "running"),
+    ne(jobs.sourceType, "seo_metadata"),
     isNull(jobs.campaignId),
     lt(jobs.createdAt, new Date(Date.now() - STALE_RUNNING_MS)),
   ];
@@ -124,6 +127,7 @@ export async function markStaleRunningJobs(userId: string, jobId?: string) {
   const failedClauses = [
     eq(jobs.userId, userId),
     eq(jobs.status, "failed"),
+    ne(jobs.sourceType, "seo_metadata"),
     isNull(jobs.campaignId),
   ];
   if (jobId) failedClauses.push(eq(jobs.id, jobId));
