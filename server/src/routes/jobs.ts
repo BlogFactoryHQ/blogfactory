@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
 import { db } from "../db/index.js";
 import { jobs, personas, userSettings, sites, feeds, siteIntegrations } from "../db/schema.js";
 import { eq, and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
@@ -262,7 +263,11 @@ jobsRoutes.post("/:id/retry", async (c) => {
         imageConfig: imageSettings.imageConfig,
       });
     });
-    retries.forEach((retry, index) => void retry.catch((err) => console.error(`[retry] Feed draft ${index + 1} error:`, err)));
+    waitUntil(Promise.allSettled(retries).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") console.error(`[retry] Feed draft ${index + 1} error:`, result.reason);
+      });
+    }));
     return c.json({ status: "retrying", retryCount: retryIndices.length });
   }
 
@@ -281,7 +286,7 @@ jobsRoutes.post("/:id/retry", async (c) => {
 
   // Trigger re-generation in the background
   const { generateContent } = await import("../services/generate-content.js");
-  generateContent({
+  const retry = generateContent({
     jobId: updated.id,
     userId,
     sourceType: updated.sourceType,
@@ -297,6 +302,7 @@ jobsRoutes.post("/:id/retry", async (c) => {
     generateImages: imageSettings.generateImages,
     imageConfig: imageSettings.imageConfig,
   }).catch((err) => console.error("[retry] Generation error:", err));
+  waitUntil(retry);
 
   return c.json(updated);
 });

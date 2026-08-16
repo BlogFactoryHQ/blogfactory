@@ -1174,7 +1174,7 @@ export async function generateContent(opts: GenerateOpts) {
         }).returning();
 
         const seoJob = await enqueueSeoMetadata({ userId, postId: post.id, trigger: "generation" });
-        if (seoJob.queued) kickSeoMetadataWorker(userId);
+        if (seoJob.queued) await kickSeoMetadataWorker(userId);
 
         const contractMetadata = {
           ...buildGenerationContractMetadata(genContent, promptSettings, effectiveOpts, lengthRepaired),
@@ -1346,7 +1346,7 @@ export async function generateContent(opts: GenerateOpts) {
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
     if (imageResolutionResults.some((item) => (item.result?.queued || 0) > 0)) {
-      kickDeferredImageWorker(userId);
+      await kickDeferredImageWorker(userId);
     }
 
     return { jobId, status: "completed", postIds: createdPostIds };

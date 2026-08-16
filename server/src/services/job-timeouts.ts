@@ -1,6 +1,7 @@
-import { and, eq, isNull, lt, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { jobs } from "../db/schema.js";
+import { BLOG_DRAFT_SOURCE_TYPES, isBlogDraftSource } from "./generation-sources.js";
 
 export const NO_DRAFT_TIMEOUT_MESSAGE =
   "Text model did not return before the job timed out. Try a faster model, fewer variations, or a shorter source.";
@@ -94,7 +95,7 @@ export function reconciledJobForRead<T extends {
   createdAt: Date;
   completedAt: Date | null;
 }>(job: T, now = new Date()) {
-  if (job.sourceType === "seo_metadata") return job;
+  if (!isBlogDraftSource(job.sourceType)) return job;
   const timedOut = job.status === "running"
     && job.createdAt.getTime() < now.getTime() - STALE_RUNNING_MS;
   const failedWithResults = job.status === "failed" && Boolean(job.resultPostIds?.length);
@@ -108,7 +109,7 @@ export async function markStaleRunningJobs(userId: string, jobId?: string) {
   const staleClauses = [
     eq(jobs.userId, userId),
     eq(jobs.status, "running"),
-    ne(jobs.sourceType, "seo_metadata"),
+    inArray(jobs.sourceType, [...BLOG_DRAFT_SOURCE_TYPES]),
     isNull(jobs.campaignId),
     lt(jobs.createdAt, new Date(Date.now() - STALE_RUNNING_MS)),
   ];
@@ -127,7 +128,7 @@ export async function markStaleRunningJobs(userId: string, jobId?: string) {
   const failedClauses = [
     eq(jobs.userId, userId),
     eq(jobs.status, "failed"),
-    ne(jobs.sourceType, "seo_metadata"),
+    inArray(jobs.sourceType, [...BLOG_DRAFT_SOURCE_TYPES]),
     isNull(jobs.campaignId),
   ];
   if (jobId) failedClauses.push(eq(jobs.id, jobId));

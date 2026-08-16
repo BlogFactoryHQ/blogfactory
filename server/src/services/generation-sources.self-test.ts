@@ -5,6 +5,7 @@ import {
   filterNewFeedArticles,
   hashContent,
   hydrateFeedArticlesWithFullText,
+  isBlogDraftSource,
 } from "./generation-sources.js";
 import type { GenerateOpts } from "./generation-types.js";
 
@@ -72,5 +73,8 @@ assert.deepEqual(
 );
 assert.equal(expandDraftVariations([{ title: "Raw", content: "Source" }], "raw_text", 6).length, 5);
 assert.equal(expandDraftVariations([{ title: "RSS", content: "Source" }], "rss_feed", 3).length, 1);
+assert.equal(isBlogDraftSource("url"), true);
+assert.equal(isBlogDraftSource("seo_metadata"), false);
+assert.equal(isBlogDraftSource("manual_image_prompts"), false);
 
 console.log("generation source preparation self-test ok");

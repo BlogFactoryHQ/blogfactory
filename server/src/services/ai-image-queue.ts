@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { imageGenerationRequests } from "../db/schema.js";
 import { attachPostImage } from "./image-post-attachments.js";
 import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
+import { dispatchBackgroundDrain } from "./background-drain.js";
 
 export type ImageProcessResult = {
   processed: boolean;
@@ -10,6 +11,12 @@ export type ImageProcessResult = {
   storagePath?: string;
   error?: string;
 };
+
+export const DEFERRED_IMAGE_MAX_ATTEMPTS = 3;
+
+export function staleImageRequestShouldFail(retryCount: number | null | undefined) {
+  return (retryCount || 0) + 1 >= DEFERRED_IMAGE_MAX_ATTEMPTS;
+}
 
 export async function queueDeferredImageRequest(opts: {
   userId: string;
@@ -143,10 +150,11 @@ async function processClaimedDeferredImage(request: typeof imageGenerationReques
 
     await attachPostImage(request.postId, imageSlotFromRequest(request), result.storagePath, "auto");
     await db.update(imageGenerationRequests).set({ status: "done", completedVia: "ai", lastError: null, updatedAt: new Date() }).where(eq(imageGenerationRequests.id, request.id));
+    console.info("[images] Deferred request finished", { requestId: request.id, postId: request.postId });
     return { processed: true, status: "done", storagePath: result.storagePath };
   } catch (err: any) {
     const retryCount = (request.retryCount || 0) + 1;
-    if (retryCount >= 3) {
+    if (retryCount >= DEFERRED_IMAGE_MAX_ATTEMPTS) {
       await db.update(imageGenerationRequests).set({
         status: "failed",
         lastError: err?.message || "Image generation failed",
@@ -157,6 +165,7 @@ async function processClaimedDeferredImage(request: typeof imageGenerationReques
         eq(imageGenerationRequests.status, "processing"),
         eq(imageGenerationRequests.retryCount, attemptRetryCount)
       ));
+      console.error("[images] Deferred request failed", { requestId: request.id, retryCount, error: err?.message || "Image generation failed" });
       return { processed: false, status: "failed", error: err?.message || "Image generation failed" };
     }
     const backoffMinutes = Math.min(120, 10 * retryCount);
@@ -171,20 +180,35 @@ async function processClaimedDeferredImage(request: typeof imageGenerationReques
       eq(imageGenerationRequests.status, "processing"),
       eq(imageGenerationRequests.retryCount, attemptRetryCount)
     ));
+    console.warn("[images] Deferred request requeued", { requestId: request.id, retryCount, backoffMinutes, error: err?.message || "Image generation failed" });
     return { processed: false, status: "queued", error: err?.message || "Image generation failed" };
   }
 }
 
 async function resetStaleImageProcessing() {
-  await db.update(imageGenerationRequests).set({
+  const staleBefore = new Date(Date.now() - 20 * 60_000);
+  const failed = await db.update(imageGenerationRequests).set({
+    status: "failed",
+    retryCount: DEFERRED_IMAGE_MAX_ATTEMPTS,
+    lastError: "Image worker stopped before completion after 3 attempts",
+    updatedAt: new Date(),
+  }).where(and(
+    eq(imageGenerationRequests.provider, "ai-deferred"),
+    eq(imageGenerationRequests.status, "processing"),
+    lte(imageGenerationRequests.updatedAt, staleBefore),
+    sql`coalesce(${imageGenerationRequests.retryCount}, 0) >= ${DEFERRED_IMAGE_MAX_ATTEMPTS - 1}`,
+  )).returning({ id: imageGenerationRequests.id });
+  const recovered = await db.update(imageGenerationRequests).set({
     status: "queued",
     retryCount: sql`coalesce(${imageGenerationRequests.retryCount}, 0) + 1`,
     updatedAt: new Date(),
   }).where(and(
     eq(imageGenerationRequests.provider, "ai-deferred"),
     eq(imageGenerationRequests.status, "processing"),
-    lte(imageGenerationRequests.updatedAt, new Date(Date.now() - 20 * 60_000))
-  ));
+    lte(imageGenerationRequests.updatedAt, staleBefore),
+    sql`coalesce(${imageGenerationRequests.retryCount}, 0) < ${DEFERRED_IMAGE_MAX_ATTEMPTS - 1}`,
+  )).returning({ id: imageGenerationRequests.id });
+  if (failed.length || recovered.length) console.warn("[images] Reconciled stalled requests", { failed: failed.length, recovered: recovered.length });
 }
 
 async function claimDeferredImageRequestById(id: string, userId?: string) {
@@ -220,7 +244,8 @@ export async function drainDeferredImages(userId?: string) {
   return [await processNextDeferredImage(userId)];
 }
 
-export function kickDeferredImageWorker(userId?: string) {
+export async function kickDeferredImageWorker(userId?: string) {
+  if (await dispatchBackgroundDrain("images", userId)) return;
   setTimeout(() => {
     // ponytail: best-effort local wake; cron is the durable worker on deploy.
     (async () => {

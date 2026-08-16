@@ -1,4 +1,4 @@
-import { queueDeferredImageRequest, drainDeferredImages, kickDeferredImageWorker, processDeferredImageRequest, processNextDeferredImage } from "./ai-image-queue.js";
+import { queueDeferredImageRequest, drainDeferredImages, kickDeferredImageWorker, processDeferredImageRequest, processNextDeferredImage, staleImageRequestShouldFail } from "./ai-image-queue.js";
 import { attachImageRequestToPost, attachPostImage } from "./image-post-attachments.js";
 import {
   buildImagePrompt,
@@ -28,6 +28,7 @@ export {
   stockQuery,
   stockSourceKey,
   stockSourceUrlKey,
+  staleImageRequestShouldFail,
   usableStockCandidate,
 };
 export type { ImageResolutionResult, InlineImageSource };

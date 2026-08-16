@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { waitUntil } from "@vercel/functions";
 import { db, type Database } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
 import { eq, and, inArray, desc, or, lt, ne, gte, ilike, sql, type SQL } from "drizzle-orm";
@@ -206,7 +207,7 @@ imagesRoutes.get("/requests", async (c) => {
     .orderBy(desc(imageGenerationRequests.createdAt));
 
   if ((status === "active" || status === "all") && rows.some((row) => row.provider === "ai-deferred" && row.status === "queued")) {
-    kickDeferredImageWorker(userId);
+    waitUntil(kickDeferredImageWorker(userId));
   }
 
   return c.json(rows.map(serializeRequest));
@@ -265,7 +266,7 @@ imagesRoutes.post("/requests/:id/retry", async (c) => {
     .where(and(eq(imageGenerationRequests.id, id), eq(imageGenerationRequests.userId, userId)))
     .returning();
 
-  kickDeferredImageWorker(userId);
+  waitUntil(kickDeferredImageWorker(userId));
   return c.json(serializeRequest(updated));
 });
 

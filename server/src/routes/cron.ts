@@ -62,6 +62,10 @@ cronRoutes.get("/drain", async (c) => {
   }
 
   const task = c.req.query("task") || "all";
+  const workerUserId = c.req.query("userId");
+  if ((task === "seo-worker" || task === "images-worker") && (!workerUserId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workerUserId))) {
+    return c.json({ error: "Invalid worker user" }, 400);
+  }
   const config = readCronDrainConfig((name) => c.req.query(name));
   const { runScheduler } = await import("../services/scheduler.js");
   const runFeeds = () => runScheduler(undefined, {
@@ -76,6 +80,19 @@ cronRoutes.get("/drain", async (c) => {
     discovery: await enqueueUntrackedDraftSeoMetadata(config.seo.discoveryLimit),
     processed: await drainSeoMetadata(undefined, config.seo.limit),
   });
+
+  if (task === "seo-worker") {
+    waitUntil(drainSeoMetadata(workerUserId, 1)
+      .then((results) => console.info("[seo] Background drain completed", { userId: workerUserId, processed: results.filter((result) => result.processed).length }))
+      .catch((error) => console.error("[seo] Background drain failed", safeError(error))));
+    return c.json({ ok: true, seo: { queued: true } }, 202);
+  }
+  if (task === "images-worker") {
+    waitUntil(drainDeferredImages(workerUserId)
+      .then((results) => console.info("[images] Background drain completed", { userId: workerUserId, processed: results.filter((result) => result.processed).length }))
+      .catch((error) => console.error("[images] Background drain failed", safeError(error))));
+    return c.json({ ok: true, images: { queued: true } }, 202);
+  }
 
   if (task === "feeds") return c.json({ ok: true, feeds: await runFeeds() });
   if (task === "campaigns") {

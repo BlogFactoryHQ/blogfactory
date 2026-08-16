@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { campaigns, feeds, generationLogs, jobs, posts, sites } from "../db/schema.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { getEffectiveSettings } from "./user-settings.js";
+import { dispatchBackgroundDrain } from "./background-drain.js";
 
 export const SEO_MODEL_ID = "openai/gpt-4.1-mini";
 
@@ -732,8 +733,11 @@ export async function processNextSeoMetadata(userId?: string) {
   for (const candidate of candidates) {
     const [claimed] = await db.update(jobs).set({ status: "running", currentStep: "generating_seo_metadata", modelId: SEO_MODEL_ID, startedAt: new Date(), errorMessage: null }).where(and(eq(jobs.id, candidate.id), eq(jobs.status, "pending"))).returning();
     if (!claimed) continue;
+    console.info("[seo] Job claimed", { jobId: claimed.id, postId: claimed.resultPostIds?.[0] || null });
     try {
-      return await processSeoJob(claimed);
+      const result = await processSeoJob(claimed);
+      console.info("[seo] Job finished", { jobId: claimed.id, status: result.status });
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "SEO metadata generation failed";
       const postId = String((claimed.generationPlan as Record<string, unknown> | null)?.postId || claimed.resultPostIds?.[0] || "");
@@ -773,6 +777,7 @@ export async function processNextSeoMetadata(userId?: string) {
         : { status: "completed", currentStep: "superseded", errorMessage: null, tokenCost: failedTokens, totalCost: failedCost, completedAt: new Date() }
       ).where(eq(jobs.id, claimed.id));
       await syncCampaignCost(claimed.campaignId);
+      console.error("[seo] Job failed", { jobId: claimed.id, postId: postId || null, error: message });
       return { processed: true, status: failedStored ? "failed" : "superseded", error: failedStored ? message : undefined };
     }
   }
@@ -792,6 +797,7 @@ export async function recoverStalledSeoMetadataJobs(maxAgeMs = 2 * 60_000) {
     eq(jobs.status, "running"),
     lt(jobs.startedAt, staleBefore),
   )).returning({ id: jobs.id });
+  if (recovered.length) console.warn("[seo] Recovered stalled jobs", { count: recovered.length });
   return recovered.length;
 }
 
@@ -800,7 +806,8 @@ export async function drainSeoMetadata(userId?: string, limit = 2) {
   return Promise.all(Array.from({ length: limit }, () => processNextSeoMetadata(userId)));
 }
 
-export function kickSeoMetadataWorker(userId?: string) {
+export async function kickSeoMetadataWorker(userId?: string) {
+  if (await dispatchBackgroundDrain("seo", userId)) return;
   setTimeout(() => {
     // ponytail: best-effort local wake; cron is the durable worker on deploy.
     drainSeoMetadata(userId, 1).catch((error) => console.warn("[seo] Worker kick failed:", error instanceof Error ? error.message : error));

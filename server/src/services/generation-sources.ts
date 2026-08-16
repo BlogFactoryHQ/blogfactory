@@ -1,7 +1,8 @@
 import type { GenerateOpts, SourceArticle } from "./generation-types.js";
 
 const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
-const BLOG_DRAFT_SOURCE_TYPES = new Set(["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"]);
+export const BLOG_DRAFT_SOURCE_TYPES = ["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"] as const;
+const BLOG_DRAFT_SOURCE_TYPE_SET = new Set<string>(BLOG_DRAFT_SOURCE_TYPES);
 const RSS_FETCH_TIMEOUT_MS = 15_000;
 
 export function isArticleSource(sourceType: string) {
@@ -13,7 +14,7 @@ export function isFeedSource(sourceType: string) {
 }
 
 export function isBlogDraftSource(sourceType: string) {
-  return BLOG_DRAFT_SOURCE_TYPES.has(sourceType);
+  return BLOG_DRAFT_SOURCE_TYPE_SET.has(sourceType);
 }
 
 function supportsDraftVariations(sourceType: string) {

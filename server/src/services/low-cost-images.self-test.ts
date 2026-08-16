@@ -1,4 +1,4 @@
-import { buildImagePrompt, buildImageSlots, imageModelForTarget, imageRouteForSlot, normalizeInlineImageSource, shouldProcessAiImagesNow, stockOrientation, stockQueries, stockQuery, stockSourceKey, stockSourceUrlKey, usableStockCandidate } from "./low-cost-images.js";
+import { buildImagePrompt, buildImageSlots, imageModelForTarget, imageRouteForSlot, normalizeInlineImageSource, shouldProcessAiImagesNow, staleImageRequestShouldFail, stockOrientation, stockQueries, stockQuery, stockSourceKey, stockSourceUrlKey, usableStockCandidate } from "./low-cost-images.js";
 import { imageTargets } from "./image-slots.js";
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
@@ -15,6 +15,8 @@ assertEqual(imageRouteForSlot("inline", "stock"), "stock", "inline stock skips A
 assertEqual(shouldProcessAiImagesNow(2), true, "one or two AI images process immediately");
 assertEqual(shouldProcessAiImagesNow(3), false, "more than two AI images stay queued");
 assertEqual(shouldProcessAiImagesNow(1, false), false, "low function budget keeps AI images queued");
+assertEqual(staleImageRequestShouldFail(1), false, "second interrupted image attempt is recoverable");
+assertEqual(staleImageRequestShouldFail(2), true, "third interrupted image attempt becomes terminal");
 
 assertEqual(
   imageModelForTarget("x-ai/grok-imagine-image-quality", "cover", "x-ai/grok-imagine-image-quality"),
