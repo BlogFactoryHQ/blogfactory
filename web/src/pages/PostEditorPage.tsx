@@ -12,6 +12,7 @@ import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
+import { EditorialSafetyPanel, type EditorialState, type PostRevision } from "@/components/posts/EditorialSafetyPanel";
 import type { OrtakAlanMetadata } from "@/components/posts/ortak-alan-publishing";
 import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -42,6 +43,10 @@ interface Post {
   model_id: string;
   job_id: string | null;
   created_at: string;
+  updated_at: string;
+  editorial_state: EditorialState;
+  approved_revision_id: string | null;
+  current_revision: PostRevision | null;
   cover_image_url?: string | null;
   inline_images?: string[] | null;
   publishing_metadata?: Partial<OrtakAlanMetadata> | null;
@@ -120,6 +125,8 @@ export default function PostEditorPage() {
         status: string;
         externalUrl: string | null;
         external_url: string | null;
+        externalEditUrl: string | null;
+        external_edit_url: string | null;
         publishedAt: string | null;
         published_at: string | null;
         errorMessage: string | null;
@@ -178,6 +185,7 @@ export default function PostEditorPage() {
         content: nextContent,
         cover_image_url: coverImageUrl,
         inline_images: inlineImages,
+        expected_updated_at: post?.updated_at,
       });
       setTitle(saved.title);
       setContent(saved.content);
@@ -348,6 +356,8 @@ export default function PostEditorPage() {
               coverImageUrl={coverImageUrl}
               inlineImages={inlineImages}
               imageAssets={post?.image_assets || []}
+              updatedAt={post.updated_at}
+              editorialState={post.editorial_state}
               disabled={isSaving || Boolean(hasChanges)}
               disabledReason={hasChanges ? "Save changes before publishing to an integration" : undefined}
             />
@@ -386,6 +396,22 @@ export default function PostEditorPage() {
               placeholder="Post title..."
             />
           </BywordCard>
+
+          <EditorialSafetyPanel
+            postId={post.id}
+            updatedAt={post.updated_at}
+            editorialState={post.editorial_state}
+            currentRevision={post.current_revision}
+            preferredIntegrationId={post.preferred_integration_id}
+            hasUnsavedChanges={Boolean(hasChanges)}
+            onRestored={(restored) => {
+              setTitle(restored.title);
+              setContent(restored.content);
+              setCoverImageUrl(restored.coverImageUrl);
+              setInlineImages(restored.inlineImages || []);
+              serverImagesRef.current = { cover: restored.coverImageUrl, inline: restored.inlineImages || [] };
+            }}
+          />
 
           {/* Markdown Editor */}
           <BywordCard className="mb-8 p-4 sm:p-5">
@@ -453,15 +479,11 @@ export default function PostEditorPage() {
                             <span className="ml-2 text-destructive">{publication.errorMessage || publication.error_message}</span>
                           )}
                         </div>
-                        {(publication.externalUrl || publication.external_url) ? (
-                          <a
-                            href={publication.externalUrl || publication.external_url || "#"}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center text-byword-blue"
-                          >
-                            View <ExternalLink className="ml-1 h-3.5 w-3.5" />
-                          </a>
+                        {(publication.externalUrl || publication.external_url || publication.externalEditUrl || publication.external_edit_url) ? (
+                          <div className="flex flex-wrap items-center justify-end gap-3">
+                            {(publication.externalUrl || publication.external_url) && <a href={publication.externalUrl || publication.external_url || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center text-byword-blue">CMS preview <ExternalLink className="ml-1 h-3.5 w-3.5" /></a>}
+                            {(publication.externalEditUrl || publication.external_edit_url) && <a href={publication.externalEditUrl || publication.external_edit_url || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center text-byword-blue">Edit in CMS <ExternalLink className="ml-1 h-3.5 w-3.5" /></a>}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">
                             {publication.publishedAt || publication.published_at ? new Date(publication.publishedAt || publication.published_at || "").toLocaleDateString() : "Just now"}

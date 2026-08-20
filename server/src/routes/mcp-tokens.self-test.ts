@@ -54,19 +54,19 @@ const created = await app.request("/", {
   headers: { "content-type": "application/json" },
   body: JSON.stringify({
     name: " Personal Codex ",
-    scopes: ["content:read"],
+    scopes: ["content:read", "drafts:write", "publish:draft"],
     site_ids: [siteId],
     expires_at: null,
   }),
 });
 assert.equal(created.status, 201);
 assert.equal((await created.json() as any).secret, "bf_mcp_secret-shown-once");
-assert.deepEqual((calls.at(-1)?.input as any).scopes, ["content:read"]);
+assert.deepEqual((calls.at(-1)?.input as any).scopes, ["content:read", "drafts:write", "publish:draft"]);
 
 const invalid = await app.request("/", {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ name: "Bad", scopes: ["content:read", "drafts:write"], site_ids: [siteId] }),
+  body: JSON.stringify({ name: "Bad", scopes: ["content:read", "publish:live"], site_ids: [siteId] }),
 });
 assert.equal(invalid.status, 400);
 

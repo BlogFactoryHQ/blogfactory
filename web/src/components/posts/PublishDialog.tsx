@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useGhostAuthors, useIntegrations, type GhostAuthor, type SiteIntegration } from "@/hooks/useIntegrations";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import type { EditorialState } from "./EditorialSafetyPanel";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { normalizeFeedEditorialDefaults, type FeedEditorialDefaults } from "@/lib/feed-routing";
 import { normalizeSeoSlugInput, seoErrorPresentation, seoReviewGuidance, seoStatusPresentation, seoWorkflowState, type SeoLimits, type SeoMetadata, type SeoStatus } from "@/lib/seo-metadata";
@@ -65,6 +66,8 @@ interface PublishDialogProps {
   coverImageUrl?: string | null;
   inlineImages?: string[];
   imageAssets?: PublishingImageMetadata[];
+  updatedAt: string;
+  editorialState: EditorialState;
   disabled?: boolean;
   disabledReason?: string;
 }
@@ -135,7 +138,7 @@ export function buildGenericPublishDefaults(
   };
 }
 
-export function PublishDialog({ postId, title, content, summary, publishingMetadata, seoMetadata, seoLimits, feedEditorialDefaults, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, disabled, disabledReason }: PublishDialogProps) {
+export function PublishDialog({ postId, title, content, summary, publishingMetadata, seoMetadata, seoLimits, feedEditorialDefaults, siteId, preferredIntegrationId, coverImageUrl, inlineImages, imageAssets, updatedAt, editorialState, disabled, disabledReason }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [integrationId, setIntegrationId] = useState("");
   const [mode, setMode] = useState<"draft" | "publish">("draft");
@@ -146,6 +149,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
   const [seoFormError, setSeoFormError] = useState("");
+  const [reviewOverrideOpen, setReviewOverrideOpen] = useState(false);
   const initializedTargetRef = useRef("");
   const [ortakAlanMetadata, setOrtakAlanMetadata] = useState<OrtakAlanMetadata>(() => buildOrtakAlanMetadata({
     excerpt: "", tags: [],
@@ -298,7 +302,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
   }, [fillOrtakAlanDefaults, open, selected]);
 
   const publishMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (reviewOverride: boolean) => {
       const target = integrationId || selected?.id;
       if (!target) throw new Error("Önce bir yayın entegrasyonu bağlayın");
       if (seoNotReady && !seoDirty) throw new Error("SEO metadata hazır veya açıkça düzenlenmiş olmalı");
@@ -317,6 +321,8 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
           profile: "generic", postType, excerpt: summary || "",
           tags: commaList(tags), categories: commaList(categories),
         },
+        expected_updated_at: updatedAt,
+        review_override: reviewOverride,
       });
     },
     onSuccess: (result) => {
@@ -333,9 +339,14 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
           ? { label: "Aç", onClick: () => window.open(result.publication?.externalUrl || "", "_blank") }
           : undefined,
       });
+      setReviewOverrideOpen(false);
       setOpen(false);
     },
     onError: (error) => {
+      if (error instanceof ApiError && error.code === "REVIEW_REQUIRED") {
+        setReviewOverrideOpen(true);
+        return;
+      }
       const message = error instanceof Error ? error.message : "Yayınlama başarısız oldu";
       setSeoFormError(message);
       toast.error(message);
@@ -613,11 +624,25 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
           <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>
-          <Button className="w-full sm:w-auto" onClick={() => publishMutation.mutate()} disabled={!selected || publishMutation.isPending || saveSeoMutation.isPending || hasSeoError || (!isOrtakAlan && hasTagError) || !seoWorkflow.canPublish || (isOrtakAlan && hasOrtakAlanBlocker)}>
+          <Button className="w-full sm:w-auto" onClick={() => publishMutation.mutate(false)} disabled={!selected || publishMutation.isPending || saveSeoMutation.isPending || hasSeoError || (!isOrtakAlan && hasTagError) || !seoWorkflow.canPublish || (isOrtakAlan && hasOrtakAlanBlocker)}>
             {publishMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
             {mode === "publish" ? "Canlı yayınla" : "Taslak oluştur"}
           </Button>
         </DialogFooter>
+        <AlertDialog open={reviewOverrideOpen} onOpenChange={setReviewOverrideOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Onaylanmamış revision canlı yayınlansın mı?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Bu yazının güncel revision’ı {editorialState === "approved" ? "yayın ayarları değiştiği için yeniden onay bekliyor" : `“${editorialState.replace("_", " ")}” durumunda`}. Devam ederseniz yayın kaydına editoryal override işlenecek.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>İncelemeye dön</AlertDialogCancel>
+              <AlertDialogAction onClick={() => publishMutation.mutate(true)}>Override ile canlı yayınla</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

@@ -5,10 +5,12 @@ import {
   type JWTVerifyGetKey,
   type JWTPayload,
 } from "jose";
+import { MCP_SCOPES } from "./contracts.js";
 
 export const MCP_OAUTH_USER_ID_CLAIM = "urn:blogfactory:user_id";
 export const MCP_OAUTH_SITE_ID_CLAIM = "urn:blogfactory:site_id";
 export const MCP_OAUTH_READ_SCOPE = "content:read";
+export const MCP_OAUTH_SCOPES = [...MCP_SCOPES];
 
 export interface McpOAuthConfig {
   issuer: string;
@@ -79,14 +81,14 @@ export function mcpProtectedResourceMetadata(config: McpOAuthConfig) {
   return {
     resource: config.resource,
     authorization_servers: [config.issuer],
-    scopes_supported: [MCP_OAUTH_READ_SCOPE],
+    scopes_supported: MCP_OAUTH_SCOPES,
     bearer_methods_supported: ["header"],
   };
 }
 
 export function mcpBearerChallenge(config = getMcpOAuthConfig()) {
   if (!config) return "Bearer";
-  return `Bearer resource_metadata="${config.protectedResourceMetadataUrl}", scope="${MCP_OAUTH_READ_SCOPE}"`;
+  return `Bearer resource_metadata="${config.protectedResourceMetadataUrl}", scope="${MCP_OAUTH_SCOPES.join(" ")}"`;
 }
 
 export function mcpOAuthIdentityFromClaims(payload: JWTPayload): McpOAuthIdentity | null {

@@ -45,6 +45,12 @@ web/src/lib/url-validation.ts URL helpers and source validation
 - Posts can be edited, bulk-managed, and pushed to publishing integrations.
 - Settings hold article defaults, internal linking, image generation, models, API keys, and brand context.
 
+## MCP Status — 2026-08-20
+
+- The deployed `/mcp` endpoint is protected and site-scoped. Personal `bf_mcp_` tokens are hashed, shown once, and limited to the creating user's selected sites.
+- Production OAuth is live through WorkOS AuthKit Standalone Connect. The resource is `https://blogfactory.io/mcp`, CIMD and DCR are enabled, and consent binds one active site into `urn:blogfactory:site_id`. New connections can receive `content:read`, `drafts:write`, and `publish:draft` after issuer, audience, signature, user, site, approval, ownership, and revocation checks pass.
+- The active catalog has ten tools: seven readers plus `generate_draft`, `update_draft`, and `push_to_cms_draft`. CMS delivery is hardcoded to draft mode. Do not add live publish, delete, bulk, credential, or admin MCP tools without a separate product and security decision. Start MCP work with `docs/mcp.md`, then trace `server/src/mcp/`, `server/src/services/mcp-*`, and the related migrations.
+
 ## UI Rules
 
 - Use `BywordPageShell`, `BywordCard`, `SectionHeader`, and existing shadcn-style primitives before adding new surfaces.

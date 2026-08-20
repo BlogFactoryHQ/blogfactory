@@ -72,11 +72,13 @@ assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAME
 const listedTool = listedTools.find((tool: any) => tool.name === "whoami");
 assert.equal(listedTool.name, "whoami");
 for (const tool of listedTools) {
-  assert.deepEqual(tool.annotations, {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
+  const mutationAnnotations: Record<string, unknown> = {
+    generate_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    push_to_cms_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  };
+  assert.deepEqual(tool.annotations, mutationAnnotations[tool.name] || {
+    readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
   });
   assert.ok(tool.description);
   assert.ok(tool.inputSchema);
@@ -121,6 +123,43 @@ const denied = await postAs(
 const deniedResult = (await denied.json() as any).result;
 assert.equal(deniedResult.isError, true);
 assert.equal(deniedResult.structuredContent.error.code, "insufficient_scope");
+
+const deniedWrite = await postAs(
+  {
+    jsonrpc: "2.0",
+    id: 41,
+    method: "tools/call",
+    params: {
+      name: "generate_draft",
+      arguments: {
+        site_id: "00000000-0000-4000-8000-000000000003",
+        source_type: "article_keyword",
+        source_value: "MCP security",
+      },
+    },
+  },
+  { ...principal, scopes: new Set(["content:read"] as const) },
+  { "mcp-protocol-version": MCP_PROTOCOL_VERSION },
+);
+assert.equal((await deniedWrite.json() as any).result.structuredContent.error.code, "insufficient_scope");
+
+const deniedCmsDraft = await post(
+  {
+    jsonrpc: "2.0",
+    id: 42,
+    method: "tools/call",
+    params: {
+      name: "push_to_cms_draft",
+      arguments: {
+        post_id: "00000000-0000-4000-8000-000000000010",
+        integration_id: "00000000-0000-4000-8000-000000000011",
+        expected_updated_at: "2026-08-20T12:00:00.000Z",
+      },
+    },
+  },
+  { "mcp-protocol-version": MCP_PROTOCOL_VERSION },
+);
+assert.equal((await deniedCmsDraft.json() as any).result.structuredContent.error.code, "insufficient_scope");
 
 const crossSite = await post(
   {
@@ -191,7 +230,7 @@ const oauthUnauthorized = await handleMcpHttpRequest(
 assert.equal(oauthUnauthorized.status, 401);
 assert.equal(
   oauthUnauthorized.headers.get("www-authenticate"),
-  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="content:read"',
+  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="content:read drafts:write publish:draft"',
 );
 if (previousIssuer === undefined) delete process.env.WORKOS_AUTHKIT_ISSUER;
 else process.env.WORKOS_AUTHKIT_ISSUER = previousIssuer;
@@ -237,7 +276,7 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 assert.equal(forbiddenOrigin.status, 403);
 
 assert.equal(MCP_TOOL_NAMES.length, 10);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 7);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 10);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

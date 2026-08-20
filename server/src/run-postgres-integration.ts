@@ -58,6 +58,64 @@ try {
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${restrictedSiteId}, ${userId}, 'Restricted MCP test', 'restricted-mcp-test.example.com')`;
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${otherSiteId}, ${otherUserId}, 'Other user MCP test', 'other-mcp-test.example.com')`;
 
+  const revisionPostId = randomUUID();
+  await sql`
+    INSERT INTO posts (id, user_id, site_id, title, content, status, source_type, model_id)
+    VALUES (${revisionPostId}, ${userId}, ${siteId}, 'Revision one', '# Revision one', 'draft', 'raw_text', 'integration/model')
+  `;
+  const initialRevisions = await sql<{ id: string; revision_number: number }[]>`
+    SELECT id, revision_number FROM post_revisions WHERE post_id = ${revisionPostId} ORDER BY revision_number
+  `;
+  assert.equal(initialRevisions.length, 1, "post insert did not create an initial revision");
+  const [{ updated_at: revisionUpdatedAt }] = await sql<{ updated_at: Date }[]>`SELECT updated_at FROM posts WHERE id = ${revisionPostId}`;
+  const {
+    listPostRevisions,
+    restorePostRevision,
+    setPostEditorialState,
+    updatePostWithRevision,
+  } = await import("./services/post-revisions.js");
+  const second = await updatePostWithRevision({
+    userId,
+    postId: revisionPostId,
+    expectedUpdatedAt: revisionUpdatedAt,
+    source: "save",
+    changes: { title: "Revision two", content: "# Revision two" },
+  });
+  assert.equal(second.revision?.revisionNumber, 2, "post update did not create revision two");
+  const unchanged = await updatePostWithRevision({
+    userId,
+    postId: revisionPostId,
+    expectedUpdatedAt: second.post.updatedAt,
+    source: "save",
+    changes: { title: "Revision two", content: "# Revision two" },
+  });
+  assert.equal(unchanged.changed, false, "unchanged save was treated as a new revision");
+  assert.equal((await listPostRevisions(userId, revisionPostId)).length, 2, "unchanged save created a duplicate revision");
+  const approved = await setPostEditorialState({
+    userId,
+    postId: revisionPostId,
+    state: "approved",
+    expectedRevisionId: second.revision!.id,
+  });
+  assert.equal(approved.post.approvedRevisionId, second.revision!.id, "approval was not bound to the current revision");
+  const third = await updatePostWithRevision({
+    userId,
+    postId: revisionPostId,
+    expectedUpdatedAt: approved.post.updatedAt,
+    source: "mcp",
+    changes: { content: "# Revision three" },
+  });
+  assert.equal(third.post.editorialState, "draft", "editing an approved revision did not reset editorial state");
+  const restored = await restorePostRevision({
+    userId,
+    postId: revisionPostId,
+    revisionId: initialRevisions[0].id,
+    expectedUpdatedAt: third.post.updatedAt,
+  });
+  assert.equal(restored.revision?.revisionNumber, 4, "restore did not create a new revision");
+  assert.equal(restored.post.title, "Revision one", "restore did not recover the selected snapshot");
+  await assert.rejects(() => listPostRevisions(otherUserId, revisionPostId), /not found/i, "cross-user revision history leaked");
+
   const {
     createMcpAccessToken,
     listMcpAccessTokens,

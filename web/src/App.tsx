@@ -14,6 +14,7 @@ const Auth = lazy(() => import("@/pages/Auth"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Posts = lazy(() => import("@/pages/Posts"));
 const PostEditorPage = lazy(() => import("@/pages/PostEditorPage"));
+const PostPreviewPage = lazy(() => import("@/pages/PostPreviewPage"));
 const News = lazy(() => import("@/pages/News"));
 const RSSFeeds = lazy(() => import("@/pages/RSSFeeds"));
 const RSSFeedNew = lazy(() => import("@/pages/RSSFeedNew"));
@@ -52,6 +53,7 @@ const App = () => (
                     <Route path="/mcp/oauth" element={<McpOAuthLogin />} />
                     <Route path="/onboarding" element={<Onboarding />} />
                     <Route element={<RequireSites />}>
+                      <Route path="/posts/:id/preview" element={<PostPreviewPage />} />
                       <Route element={<AppLayout />}>
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/posts" element={<Posts />} />

@@ -28,7 +28,10 @@ export const ACTIVE_MCP_TOOL_NAMES = [
   "list_publish_targets",
   "list_posts",
   "get_post",
+  "generate_draft",
   "get_job",
+  "update_draft",
+  "push_to_cms_draft",
 ] as const satisfies readonly (typeof MCP_TOOL_NAMES[number])[];
 
 export const MCP_ERROR_CODES = [

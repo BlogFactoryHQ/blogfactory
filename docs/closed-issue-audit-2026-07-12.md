@@ -1,5 +1,7 @@
 # Closed-Issue Audit — 2026-07-12
 
+> Historical audit record. Its findings and production evidence reflect 2026-07-12 and are not a statement of current release status; see the [documentation index](README.md) for current guides.
+
 This ledger compares every closed issue with its merged PR, current callers, checks, database behavior, and available production evidence. `Incomplete` means the implementation exists but one or more stated acceptance checks were never demonstrated; it does not by itself prove a live failure.
 
 | Issue | Status | Impact and current evidence | Remaining gap |

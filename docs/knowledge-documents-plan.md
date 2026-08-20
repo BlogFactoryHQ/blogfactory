@@ -1,5 +1,7 @@
 # Knowledge Documents Plan
 
+> Historical planning record. This document preserves the original proposal and is not a current product commitment; see the [documentation index](README.md) for current guides.
+
 Knowledge Documents already exists in a light form:
 
 - UI: `web/src/pages/Personas.tsx` and `web/src/pages/Settings.tsx` let users add pasted snippets and import PDF/DOCX/TXT files.

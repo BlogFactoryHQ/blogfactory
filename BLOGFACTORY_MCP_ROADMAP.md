@@ -1,5 +1,7 @@
 # BlogFactory MCP Product and Engineering Roadmap
 
+> Historical engineering decision record. The status and implementation phases below reflect their stated update dates; use the [MCP guide](docs/mcp.md) for the current supported pilot boundary.
+
 Status: In implementation — Phases 0-2 and the Phase 3 OAuth implementation are code-complete; WorkOS configuration, deployed-client, mutation, and production gates remain
 Last updated: 2026-07-27
 Target endpoint: `https://blogfactory.io/mcp`

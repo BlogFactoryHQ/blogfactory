@@ -158,8 +158,20 @@ export const posts = pgTable("posts", {
   inlineImages: text("inline_images").array(),
   seoMetadata: jsonb("seo_metadata"),
   publishingMetadata: jsonb("publishing_metadata"),
+  editorialState: text("editorial_state").default("draft").notNull(),
+  approvedRevisionId: uuid("approved_revision_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const postRevisions = pgTable("post_revisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  revisionNumber: integer("revision_number").notNull(),
+  source: text("source").default("save").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ── jobs ──
@@ -358,6 +370,8 @@ export const postPublications = pgTable("post_publications", {
   provider: text("provider").notNull(),
   publishMode: text("publish_mode").default("draft").notNull(),
   idempotencyKey: text("idempotency_key"),
+  revisionId: uuid("revision_id").references(() => postRevisions.id, { onDelete: "set null" }),
+  reviewOverride: boolean("review_override").default(false).notNull(),
   status: text("status").notNull(),
   externalId: text("external_id"),
   externalUrl: text("external_url"),

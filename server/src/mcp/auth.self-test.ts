@@ -62,12 +62,12 @@ const oauthDependencies = {
       ? { ...base, siteId }
       : undefined
   ),
-  authorizeOAuth: async () => ({ id: "44444444-4444-4444-8444-444444444444" }),
+  authorizeOAuth: async () => ({ id: "44444444-4444-4444-8444-444444444444", scopes: ["content:read", "drafts:write", "publish:draft"] }),
 };
 const oauthPrincipal = await authenticateMcpBearer("Bearer oauth.jwt.token", oauthDependencies, now);
 assert.equal(oauthPrincipal?.tokenId, "44444444-4444-4444-8444-444444444444");
 assert.equal(oauthPrincipal?.userId, base.userId);
-assert.deepEqual([...oauthPrincipal!.scopes], ["content:read"]);
+assert.deepEqual([...oauthPrincipal!.scopes], ["content:read", "drafts:write", "publish:draft"]);
 assert.deepEqual([...oauthPrincipal!.siteIds], [base.siteIds[0]]);
 assert.equal(await authenticateMcpBearer("Bearer other.jwt.token", oauthDependencies, now), null);
 assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
