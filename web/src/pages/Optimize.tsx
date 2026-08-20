@@ -17,14 +17,16 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { SearchConsoleIntegration, useSearchConsole } from "@/hooks/useSearchConsole";
+import { SearchConsoleIntegration, SearchConsoleProperty, useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchConsole";
 import {
   ContentSnapshot,
   OptimizeAnalysis,
@@ -40,6 +42,7 @@ import { useIndexing } from "@/hooks/useIndexing";
 import { useSites } from "@/hooks/useSites";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { cn } from "@/lib/utils";
+import { toggleInspectionSelection } from "@/lib/search-console";
 
 const statuses: Array<{ value: OptimizeStatus; label: string }> = [
   { value: "needs_attention", label: "Needs Attention" },
@@ -147,7 +150,8 @@ const searchConsoleServiceAccountSteps = [
 export function OptimizePanel() {
   const [params, setParams] = useSearchParams();
   const { activeSite } = useSites();
-  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth } = useSearchConsole();
+  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
+  const { inspectBatch } = useSearchConsoleToolkit();
   const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
   const initialStatus = (params.get("status") as OptimizeStatus | null) || "needs_attention";
@@ -160,6 +164,7 @@ export function OptimizePanel() {
   const [analysis, setAnalysis] = useState<OptimizeAnalysis | null>(null);
   const [pageDetail, setPageDetail] = useState<OptimizePageDetail | null>(null);
   const [analysisDefaults, setAnalysisDefaults] = useState({ pageUrl: "", targetQuery: "" });
+  const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
   const { summary, pageInsights, isLoadingPageInsights, loadPageDetail, invalidateInsights } = useOptimizeInsights(
     showOpportunities ? "all" : status,
     showOpportunities ? opportunity : "all",
@@ -186,6 +191,30 @@ export function OptimizePanel() {
       setStatus("tracking");
     }
   }, [insightStatusCounts.needs_attention, insightStatusCounts.tracking, params, status]);
+
+  useEffect(() => {
+    if (integration?.status === "property_selection_required") setConnectOpen(true);
+  }, [integration?.status]);
+
+  const toggleInspectionUrl = (url: string, checked: boolean) => {
+    setSelectedUrls((current) => {
+      const next = toggleInspectionSelection(current, url, checked);
+      if (next.limited) {
+        toast.error("Select at most 10 URLs");
+      }
+      return next.urls;
+    });
+  };
+
+  const handleBatchInspection = async () => {
+    try {
+      const result = await inspectBatch.mutateAsync({ urls: selectedUrls });
+      toast.success(`${result.inspected} URLs inspected${result.failed ? `, ${result.failed} failed` : ""}`);
+      setSelectedUrls([]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "URL inspection failed");
+    }
+  };
 
   const openAnalyze = (page?: OptimizePage) => {
     setAnalysisDefaults({ pageUrl: page?.pageUrl || "", targetQuery: page?.targetQuery || "" });
@@ -375,6 +404,12 @@ export function OptimizePanel() {
                 </Tabs>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {selectedUrls.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleBatchInspection} disabled={inspectBatch.isPending}>
+                      {inspectBatch.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchCheck className="h-4 w-4" />}
+                      Inspect {selectedUrls.length}
+                    </Button>
+                  )}
                   {showOpportunities && (
                     <select
                       value={opportunity}
@@ -426,6 +461,7 @@ export function OptimizePanel() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10"><span className="sr-only">Select for inspection</span></TableHead>
                     <TableHead>Page</TableHead>
                     <TableHead>Search signal</TableHead>
                     <TableHead>Metrics</TableHead>
@@ -440,6 +476,7 @@ export function OptimizePanel() {
                     const meta = opportunityMeta[primary] || opportunityMeta.tracking;
                     return (
                       <TableRow key={page.pageUrl} className={cn("align-top", meta.row)}>
+                        <TableCell><Checkbox aria-label={`Select ${page.pageUrl} for inspection`} checked={selectedUrls.includes(page.pageUrl)} disabled={!connectionReady(integration)} onCheckedChange={(checked) => toggleInspectionUrl(page.pageUrl, checked === true)} /></TableCell>
                         <TableCell className="max-w-[360px]">
                           <div className="flex min-w-0 gap-3">
                             <span className={cn("mt-1 h-11 w-1 shrink-0 rounded-full", meta.rail)} />
@@ -518,6 +555,17 @@ export function OptimizePanel() {
         }}
         isSaving={saveIntegration.isPending}
         isOAuthStarting={startOAuth.isPending}
+        properties={properties}
+        onSelectProperty={async (propertyUrl) => {
+          try {
+            await selectProperty.mutateAsync(propertyUrl);
+            toast.success("Search Console property selected");
+            setConnectOpen(false);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to select property");
+          }
+        }}
+        isSelectingProperty={selectProperty.isPending}
       />
 
       <AnalyzeDialog
@@ -567,15 +615,21 @@ function SearchConsoleDialog({
   onSave,
   isSaving,
   isOAuthStarting,
+  properties,
+  onSelectProperty,
+  isSelectingProperty,
 }: {
   open: boolean;
   integration: SearchConsoleIntegration | null;
   activeSiteDomain: string;
   onClose: () => void;
-  onOAuth: (propertyUrl: string) => Promise<void>;
+  onOAuth: (propertyUrl?: string) => Promise<void>;
   onSave: (input: { id?: string; propertyUrl: string; credentials?: Record<string, string> }) => Promise<void>;
   isSaving: boolean;
   isOAuthStarting: boolean;
+  properties: SearchConsoleProperty[];
+  onSelectProperty: (propertyUrl: string) => Promise<void>;
+  isSelectingProperty: boolean;
 }) {
   const [propertyUrl, setPropertyUrl] = useState("");
   const [serviceAccountJson, setServiceAccountJson] = useState("");
@@ -593,11 +647,7 @@ function SearchConsoleDialog({
 
   const handleOAuth = async () => {
     const property = propertyUrl.trim();
-    if (!property) {
-      toast.error("Enter the Search Console property first");
-      return;
-    }
-    await onOAuth(property);
+    await onOAuth(property || undefined);
   };
 
   const handleManualSubmit = async () => {
@@ -628,8 +678,22 @@ function SearchConsoleDialog({
         <div className="space-y-5">
           <div className="space-y-2">
             <Label>Property URL</Label>
-            <Input value={propertyUrl} onChange={(event) => setPropertyUrl(event.target.value)} placeholder="sc-domain:example.com or https://example.com/" />
+            <Input value={propertyUrl} onChange={(event) => setPropertyUrl(event.target.value)} placeholder="Optional — choose after Google sign-in" />
           </div>
+          {properties.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-byword-border p-4">
+              <Label>Accessible Google properties</Label>
+              <div className="flex gap-2">
+                <Select value={propertyUrl} onValueChange={setPropertyUrl}>
+                  <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="Choose a property" /></SelectTrigger>
+                  <SelectContent>{properties.map((property) => <SelectItem key={property.siteUrl} value={property.siteUrl}>{property.siteUrl} · {property.permissionLevel}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button variant="outline" onClick={() => onSelectProperty(propertyUrl)} disabled={!propertyUrl || isSelectingProperty}>
+                  {isSelectingProperty && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Use
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="rounded-lg border border-byword-border p-4">
             <h3 className="font-semibold text-foreground">Google OAuth</h3>
             <p className="mt-1 text-sm text-muted-foreground">Approve read-only Search Console access. BlogFactory stores the refresh token encrypted.</p>
@@ -638,7 +702,7 @@ function SearchConsoleDialog({
                 <li key={step}>{step}</li>
               ))}
             </ol>
-            <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting || !propertyUrl.trim()}>
+            <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting}>
               {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
               Continue with Google
             </Button>
@@ -868,6 +932,8 @@ function PageDetailSheet({
   onSubmitAfterEdit: (pageUrl: string) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { inspect } = useSearchConsoleToolkit();
+  const [inspection, setInspection] = useState<Awaited<ReturnType<typeof inspect.mutateAsync>> | null>(null);
   const insight = detail?.insight;
   const daily = detail?.dailyHistory || detail?.daily_history || [];
   const actions = detail?.actionPlan || detail?.action_plan || [];
@@ -901,6 +967,20 @@ function PageDetailSheet({
                   <Metric label="Position" value={insight.position.toFixed(1)} />
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-byword-border p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div><h3 className="text-sm font-semibold text-foreground">Google index status</h3><p className="mt-1 text-sm text-muted-foreground">Checks Google's indexed version, not a live crawl.</p></div>
+                <div className="flex gap-2">
+                  {inspection?.result.inspectionResultLink && <Button variant="outline" asChild><a href={inspection.result.inspectionResultLink} target="_blank" rel="noreferrer">Open GSC</a></Button>}
+                  <Button variant="outline" onClick={async () => {
+                    try { setInspection(await inspect.mutateAsync({ url: insight.pageUrl, force: Boolean(inspection) })); }
+                    catch (error) { toast.error(error instanceof Error ? error.message : "URL inspection failed"); }
+                  }} disabled={inspect.isPending}>{inspect.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <SearchCheck className="mr-1.5 h-4 w-4" />}{inspection ? "Refresh" : "Inspect URL"}</Button>
+                </div>
+              </div>
+              {inspection && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><MiniMetric label="Verdict" value={inspection.result.verdict} /><MiniMetric label="Coverage" value={inspection.result.coverageState || "Unknown"} /><MiniMetric label="Indexing" value={inspection.result.indexingState || "Unknown"} /><MiniMetric label="Robots.txt" value={inspection.result.robotsTxtState || "Unknown"} /><MiniMetric label="Page fetch" value={inspection.result.pageFetchState || "Unknown"} /><MiniMetric label="Last crawl" value={inspection.result.lastCrawlTime ? formatDateTime(inspection.result.lastCrawlTime) : "Unknown"} /><MiniMetric label="Google canonical" value={inspection.result.googleCanonical || "Unknown"} /><MiniMetric label="Declared canonical" value={inspection.result.userCanonical || "Unknown"} /><MiniMetric label="Rich results" value={inspection.result.richResultsVerdict || "Unknown"} />{inspection.stale && <p className="col-span-full text-xs text-amber-700">Showing stale cached data: {inspection.warning}</p>}</div>}
             </div>
 
             <div>

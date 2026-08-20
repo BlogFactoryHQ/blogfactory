@@ -1,13 +1,22 @@
+import { createHash } from "node:crypto";
 import { importPKCS8, jwtVerify, SignJWT } from "jose";
 import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
+import {
+  searchConsoleIntegrations,
+  searchConsoleMetrics,
+  searchConsoleQueryCache,
+  searchConsoleUrlInspections,
+  sites,
+} from "../db/schema.js";
 import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
 import { refreshOptimizePages } from "./optimize.js";
 
 const SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const OAUTH_STATE_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
+const QUERY_CACHE_MS = 15 * 60 * 1000;
+const INSPECTION_CACHE_MS = 24 * 60 * 60 * 1000;
 
 type IntegrationRow = typeof searchConsoleIntegrations.$inferSelect;
 
@@ -78,6 +87,25 @@ interface SearchConsoleInsightInput {
   metrics: SearchAnalyticsMetric[];
 }
 
+export type SearchAnalyticsRange = 7 | 28 | 90;
+export type SearchAnalyticsGroup = "page" | "query" | "country" | "device";
+export type SearchAnalyticsType = "web" | "image" | "video" | "news";
+
+export interface SearchAnalyticsQueryInput {
+  range: SearchAnalyticsRange;
+  compare: boolean;
+  groupBy: SearchAnalyticsGroup;
+  searchType: SearchAnalyticsType;
+  country?: string;
+  device?: "DESKTOP" | "MOBILE" | "TABLET";
+  limit: number;
+}
+
+export interface SearchConsoleProperty {
+  siteUrl: string;
+  permissionLevel: string;
+}
+
 export function normalizeSearchConsoleProperty(input: string) {
   const value = String(input || "").trim();
   if (!value) throw new Error("Search Console property is required");
@@ -103,7 +131,7 @@ export function encryptSearchConsoleCredentials(input: unknown) {
   };
 }
 
-export function decryptSearchConsoleCredentials(row: IntegrationRow) {
+export function decryptSearchConsoleCredentials(row: Pick<IntegrationRow, "credentialsEncrypted" | "credentialHint">) {
   return validateCredentials(JSON.parse(decryptSecret(row.credentialsEncrypted)));
 }
 
@@ -127,6 +155,8 @@ export function serializeSearchConsoleIntegration(row: IntegrationRow) {
     last_test_result: row.lastTestResult,
     lastSyncAt: row.lastSyncAt,
     last_sync_at: row.lastSyncAt,
+    syncMetadata: row.syncMetadata,
+    sync_metadata: row.syncMetadata,
     createdAt: row.createdAt,
     created_at: row.createdAt,
     updatedAt: row.updatedAt,
@@ -267,18 +297,18 @@ export function buildSearchConsoleInsights({ integration = null, metrics }: Sear
   };
 }
 
-export async function testSearchConsoleIntegration(row: IntegrationRow) {
+export async function testSearchConsoleIntegration(row: Pick<IntegrationRow, "propertyUrl" | "credentialsEncrypted" | "credentialHint">) {
   const credentials = decryptSearchConsoleCredentials(row);
   const token = await googleAccessToken(credentials);
-  const sites = await listSearchConsoleSites(token);
-  if (!sites.includes(row.propertyUrl)) throw new Error(`${credentialLabel(credentials)} cannot access ${row.propertyUrl}`);
+  const properties = await fetchSearchConsoleProperties(token);
+  if (!properties.some((property) => property.siteUrl === row.propertyUrl)) throw new Error(`${credentialLabel(credentials)} cannot access ${row.propertyUrl}`);
   return { success: true, message: `Connected to ${row.propertyUrl}` };
 }
 
-export async function createSearchConsoleOAuthUrl(opts: { userId: string; siteId: string; propertyUrl: string; requestUrl: string }) {
+export async function createSearchConsoleOAuthUrl(opts: { userId: string; siteId: string; propertyUrl?: string; requestUrl: string }) {
   const config = googleOAuthConfig(opts.requestUrl);
-  const propertyUrl = normalizeSearchConsoleProperty(opts.propertyUrl);
-  const state = await new SignJWT({ userId: opts.userId, siteId: opts.siteId, propertyUrl })
+  const propertyUrl = opts.propertyUrl?.trim() ? normalizeSearchConsoleProperty(opts.propertyUrl) : undefined;
+  const state = await new SignJWT({ userId: opts.userId, siteId: opts.siteId, ...(propertyUrl ? { propertyUrl } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt()
     .setExpirationTime("15m")
@@ -301,13 +331,17 @@ export async function completeSearchConsoleOAuth(opts: { code: string; state: st
   const { payload } = await jwtVerify(opts.state, OAUTH_STATE_SECRET);
   const userId = String(payload.userId || "");
   const siteId = String(payload.siteId || "");
-  const propertyUrl = normalizeSearchConsoleProperty(String(payload.propertyUrl || ""));
+  const requestedProperty = payload.propertyUrl ? normalizeSearchConsoleProperty(String(payload.propertyUrl)) : undefined;
   if (!userId || !siteId) throw new Error("Invalid Search Console OAuth state");
 
   const token = await exchangeOAuthCode(opts.code, config);
   if (!token.refresh_token) throw new Error("Google did not return a refresh token. Try again and approve offline access.");
-  const sites = await listSearchConsoleSites(token.access_token);
-  if (!sites.includes(propertyUrl)) throw new Error(`Google account cannot access ${propertyUrl}`);
+  const properties = await fetchSearchConsoleProperties(token.access_token);
+  if (!properties.length) throw new Error("Google account has no accessible Search Console properties");
+  const [site] = await db.select({ domain: sites.domain }).from(sites)
+    .where(and(eq(sites.id, siteId), eq(sites.userId, userId))).limit(1);
+  if (!site) throw new Error("Site not found");
+  const selection = chooseSearchConsoleProperty(properties, site.domain, requestedProperty);
 
   const credentials: OAuthCredentials = {
     type: "oauth",
@@ -322,12 +356,12 @@ export async function completeSearchConsoleOAuth(opts: { code: string; state: st
     .limit(1);
 
   const values = {
-    propertyUrl,
-    status: "connected",
+    propertyUrl: selection.property.siteUrl,
+    status: selection.requiresSelection ? "property_selection_required" : "connected",
     credentialsEncrypted: encryptSecret(JSON.stringify(credentials)),
     credentialHint: "Google OAuth",
     lastTestedAt: new Date(),
-    lastTestResult: `Connected to ${propertyUrl}`,
+    lastTestResult: selection.requiresSelection ? "Choose a Search Console property" : `Connected to ${selection.property.siteUrl}`,
     updatedAt: new Date(),
   };
 
@@ -347,17 +381,52 @@ export async function completeSearchConsoleOAuth(opts: { code: string; state: st
   return serializeSearchConsoleIntegration(created);
 }
 
-export async function syncSearchConsoleMetrics(userId: string, siteId: string) {
-  const [integration] = await db
-    .select()
-    .from(searchConsoleIntegrations)
-    .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
-    .limit(1);
-  if (!integration) throw new Error("Connect Search Console first");
+export function chooseSearchConsoleProperty(properties: SearchConsoleProperty[], siteDomain: string, requested?: string) {
+  if (!properties.length) throw new Error("Google account has no accessible Search Console properties");
+  const exactRequested = requested && properties.find((property) => property.siteUrl === requested);
+  if (requested && !exactRequested) throw new Error(`Google account cannot access ${requested}`);
+  if (exactRequested) return { property: exactRequested, requiresSelection: false };
 
-  const end = daysAgo(3);
+  const host = comparableHost(siteDomain);
+  const domain = properties.find((property) => property.siteUrl === `sc-domain:${host}`);
+  if (domain) return { property: domain, requiresSelection: false };
+  const prefixes = properties.filter((property) => {
+    if (property.siteUrl.startsWith("sc-domain:")) return false;
+    try { return comparableHost(new URL(property.siteUrl).hostname) === host; } catch { return false; }
+  });
+  if (prefixes.length) return { property: prefixes.sort((a, b) => a.siteUrl.length - b.siteUrl.length)[0], requiresSelection: false };
+  const sorted = [...properties].sort((a, b) => a.siteUrl.localeCompare(b.siteUrl));
+  return { property: sorted[0], requiresSelection: sorted.length > 1 };
+}
+
+export async function listSearchConsoleProperties(userId: string, siteId: string) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId, true);
+  const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+  return { integration: serializeSearchConsoleIntegration(integration), properties: await fetchSearchConsoleProperties(token) };
+}
+
+export async function selectSearchConsoleProperty(userId: string, siteId: string, propertyUrl: string) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId, true);
+  const normalized = normalizeSearchConsoleProperty(propertyUrl);
+  const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+  const properties = await fetchSearchConsoleProperties(token);
+  if (!properties.some((property) => property.siteUrl === normalized)) throw new Error(`Google account cannot access ${normalized}`);
+  const [updated] = await db.update(searchConsoleIntegrations).set({
+    propertyUrl: normalized,
+    status: "connected",
+    lastTestedAt: new Date(),
+    lastTestResult: `Connected to ${normalized}`,
+    updatedAt: new Date(),
+  }).where(eq(searchConsoleIntegrations.id, integration.id)).returning();
+  return serializeSearchConsoleIntegration(updated);
+}
+
+export async function syncSearchConsoleMetrics(userId: string, siteId: string) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId);
+
+  const end = daysAgo(0);
   const start = daysAgo(34);
-  const metrics = await querySearchAnalytics(integration, isoDate(start), isoDate(end));
+  const { rows: metrics, metadata } = await querySearchAnalytics(integration, isoDate(start), isoDate(end));
 
   for (const metric of metrics) {
     await db
@@ -387,7 +456,7 @@ export async function syncSearchConsoleMetrics(userId: string, siteId: string) {
 
   const [updated] = await db
     .update(searchConsoleIntegrations)
-    .set({ lastSyncAt: new Date(), status: "connected" })
+    .set({ lastSyncAt: new Date(), status: "connected", syncMetadata: metadata || null })
     .where(eq(searchConsoleIntegrations.id, integration.id))
     .returning();
 
@@ -439,6 +508,7 @@ async function querySearchAnalytics(integration: IntegrationRow, startDate: stri
   const credentials = decryptSearchConsoleCredentials(integration);
   const token = await googleAccessToken(credentials);
   const all: SearchAnalyticsMetric[] = [];
+  let metadata: Record<string, unknown> | undefined;
   const rowLimit = 25000;
 
   for (let startRow = 0; ; startRow += rowLimit) {
@@ -452,20 +522,293 @@ async function querySearchAnalytics(integration: IntegrationRow, startDate: stri
           endDate,
           dimensions: ["date", "page", "query"],
           type: "web",
+          dataState: "all",
           rowLimit,
           startRow,
         }),
         signal: AbortSignal.timeout(30000),
       },
     );
-    const data = await response.json() as { rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }>; error?: { message?: string } };
+    const data = await response.json() as { rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }>; metadata?: Record<string, unknown>; error?: { message?: string } };
     if (!response.ok) throw new Error(data.error?.message || "Search Console sync failed");
     const rows = mapSearchAnalyticsRows(data.rows || []);
     all.push(...rows);
+    metadata ||= data.metadata;
     if (rows.length < rowLimit) break;
   }
 
-  return all;
+  return { rows: all, metadata };
+}
+
+export async function querySearchConsoleAnalytics(userId: string, siteId: string, input: SearchAnalyticsQueryInput) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId);
+  const normalized = normalizeAnalyticsInput(input);
+  return cachedSearchConsoleQuery(userId, siteId, "analytics", { propertyUrl: integration.propertyUrl, ...normalized }, async () => {
+    const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+    const endDate = isoDate(daysAgo(0));
+    const startDate = shiftDate(endDate, -(normalized.range - 1));
+    const baselineEnd = shiftDate(startDate, -1);
+    const baselineStart = shiftDate(baselineEnd, -(normalized.range - 1));
+    const filters = analyticsFilters(normalized);
+    const common = { type: normalized.searchType, dataState: "all", ...(filters.length ? { dimensionFilterGroups: [{ filters }] } : {}) };
+    const grouped = (from: string, to: string) => fetchSearchAnalytics(token, integration.propertyUrl, {
+      ...common, startDate: from, endDate: to, dimensions: [normalized.groupBy], rowLimit: normalized.limit,
+    });
+    const totals = (from: string, to: string) => fetchSearchAnalytics(token, integration.propertyUrl, {
+      ...common, startDate: from, endDate: to, dimensions: [], rowLimit: 1,
+    });
+    const [currentRows, baselineRows, currentTotals, baselineTotals, daily] = await Promise.all([
+      grouped(startDate, endDate),
+      normalized.compare ? grouped(baselineStart, baselineEnd) : Promise.resolve({ rows: [] }),
+      totals(startDate, endDate),
+      normalized.compare ? totals(baselineStart, baselineEnd) : Promise.resolve({ rows: [] }),
+      fetchSearchAnalytics(token, integration.propertyUrl, {
+        ...common,
+        startDate,
+        endDate,
+        dimensions: ["date"],
+        rowLimit: normalized.range,
+      }),
+    ]);
+    const baselineByLabel = new Map((baselineRows.rows || []).map((row) => [String(row.keys?.[0] || ""), row]));
+    const rows = (currentRows.rows || []).map((row) => {
+      const label = String(row.keys?.[0] || "");
+      const baseline = baselineByLabel.get(label);
+      return {
+        label,
+        ...normalizeAnalyticsMetrics(row),
+        baseline: baseline ? normalizeAnalyticsMetrics(baseline) : null,
+        deltaClicks: baseline ? Number(row.clicks || 0) - Number(baseline.clicks || 0) : null,
+        deltaPosition: baseline ? Number((Number(row.position || 0) - Number(baseline.position || 0)).toFixed(2)) : null,
+      };
+    });
+    return {
+      input: normalized,
+      range: { startDate, endDate, baselineStart: normalized.compare ? baselineStart : null, baselineEnd: normalized.compare ? baselineEnd : null },
+      totals: analyticsMetricDeltas(currentTotals.rows?.[0], baselineTotals.rows?.[0]),
+      daily: (daily.rows || []).map((row) => ({ date: String(row.keys?.[0] || ""), ...normalizeAnalyticsMetrics(row) })),
+      rows,
+      metadata: daily.metadata || null,
+      cached: false,
+    };
+  });
+}
+
+export async function listSearchConsoleSitemaps(userId: string, siteId: string, sitemapIndex?: string) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId);
+  const params = { propertyUrl: integration.propertyUrl, sitemapIndex: sitemapIndex?.trim() || null };
+  return cachedSearchConsoleQuery(userId, siteId, "sitemaps", params, async () => {
+    const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+    const url = new URL(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(integration.propertyUrl)}/sitemaps`);
+    if (params.sitemapIndex) url.searchParams.set("sitemapIndex", params.sitemapIndex);
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+    const data = await response.json() as { sitemap?: Array<Record<string, unknown>>; error?: { message?: string } };
+    if (!response.ok) throw googleError(response.status, data.error?.message || "Failed to load Search Console sitemaps");
+    return {
+      items: (data.sitemap || []).map((item) => ({
+        path: String(item.path || ""),
+        type: item.isSitemapsIndex ? "index" : "sitemap",
+        isPending: Boolean(item.isPending),
+        lastSubmitted: item.lastSubmitted || null,
+        lastDownloaded: item.lastDownloaded || null,
+        errors: Number(item.errors || 0),
+        warnings: Number(item.warnings || 0),
+        contents: Array.isArray(item.contents) ? item.contents : [],
+      })),
+      cached: false,
+    };
+  });
+}
+
+export async function inspectSearchConsoleUrl(userId: string, siteId: string, rawUrl: string, force = false) {
+  const integration = await requireSearchConsoleIntegration(userId, siteId);
+  const url = normalizeInspectionUrl(rawUrl, integration.propertyUrl);
+  const [cached] = await db.select().from(searchConsoleUrlInspections)
+    .where(and(eq(searchConsoleUrlInspections.userId, userId), eq(searchConsoleUrlInspections.siteId, siteId), eq(searchConsoleUrlInspections.url, url)))
+    .limit(1);
+  if (!force && cached?.result && Date.now() - cached.inspectedAt.getTime() < INSPECTION_CACHE_MS) {
+    return { url, result: cached.result, inspectedAt: cached.inspectedAt, cached: true, stale: false };
+  }
+
+  try {
+    const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+    const response = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ inspectionUrl: url, siteUrl: integration.propertyUrl, languageCode: "en-US" }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await response.json() as { inspectionResult?: Record<string, unknown>; error?: { message?: string } };
+    if (!response.ok || !data.inspectionResult) throw googleError(response.status, data.error?.message || "URL inspection failed");
+    const result = normalizeInspectionResult(data.inspectionResult);
+    const now = new Date();
+    await db.insert(searchConsoleUrlInspections).values({ userId, siteId, url, status: "ok", result, inspectedAt: now })
+      .onConflictDoUpdate({
+        target: [searchConsoleUrlInspections.siteId, searchConsoleUrlInspections.url],
+        set: { status: "ok", result, errorMessage: null, inspectedAt: now, updatedAt: now },
+      });
+    return { url, result, inspectedAt: now, cached: false, stale: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "URL inspection failed";
+    if (cached?.result && isTransientSearchConsoleError(error)) return { url, result: cached.result, inspectedAt: cached.inspectedAt, cached: true, stale: true, warning: message };
+    const now = new Date();
+    await db.insert(searchConsoleUrlInspections).values({ userId, siteId, url, status: "error", errorMessage: message, inspectedAt: now })
+      .onConflictDoUpdate({
+        target: [searchConsoleUrlInspections.siteId, searchConsoleUrlInspections.url],
+        set: { status: "error", result: null, errorMessage: message, inspectedAt: now, updatedAt: now },
+      });
+    throw error;
+  }
+}
+
+export async function inspectSearchConsoleUrls(userId: string, siteId: string, urls: string[], force = false) {
+  if (!urls.length || urls.length > 10) throw new Error("Choose between 1 and 10 URLs to inspect");
+  const results = [];
+  for (const url of [...new Set(urls)]) {
+    try {
+      results.push({ ok: true, ...(await inspectSearchConsoleUrl(userId, siteId, url, force)) });
+    } catch (error) {
+      results.push({ ok: false, url, error: error instanceof Error ? error.message : "URL inspection failed" });
+    }
+  }
+  return { results, inspected: results.filter((item) => item.ok).length, failed: results.filter((item) => !item.ok).length };
+}
+
+export function normalizeAnalyticsInput(input: SearchAnalyticsQueryInput): SearchAnalyticsQueryInput {
+  if (![7, 28, 90].includes(input.range)) throw new Error("Analytics range must be 7, 28, or 90 days");
+  if (!["page", "query", "country", "device"].includes(input.groupBy)) throw new Error("Unsupported analytics group");
+  if (!["web", "image", "video", "news"].includes(input.searchType)) throw new Error("Unsupported search type");
+  const country = input.country?.trim().toLowerCase();
+  if (country && !/^[a-z]{3}$/.test(country)) throw new Error("Country must be a three-letter Search Console country code");
+  if (input.device && !["DESKTOP", "MOBILE", "TABLET"].includes(input.device)) throw new Error("Unsupported device");
+  return { ...input, country: country || undefined, limit: Math.min(250, Math.max(1, Math.round(input.limit || 50))) };
+}
+
+function analyticsFilters(input: SearchAnalyticsQueryInput) {
+  return [
+    ...(input.country ? [{ dimension: "country", operator: "equals", expression: input.country }] : []),
+    ...(input.device ? [{ dimension: "device", operator: "equals", expression: input.device }] : []),
+  ];
+}
+
+type GoogleAnalyticsRow = { keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number };
+
+async function fetchSearchAnalytics(token: string, propertyUrl: string, body: Record<string, unknown>) {
+  const response = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(propertyUrl)}/searchAnalytics/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+  const data = await response.json() as { rows?: GoogleAnalyticsRow[]; metadata?: Record<string, unknown>; error?: { message?: string } };
+  if (!response.ok) throw googleError(response.status, data.error?.message || "Search Console analytics query failed");
+  return { rows: data.rows || [], metadata: data.metadata };
+}
+
+function normalizeAnalyticsMetrics(row: GoogleAnalyticsRow = {}) {
+  return {
+    clicks: Math.round(Number(row.clicks || 0)),
+    impressions: Math.round(Number(row.impressions || 0)),
+    ctr: Number(row.ctr || 0),
+    position: Number(Number(row.position || 0).toFixed(2)),
+  };
+}
+
+function analyticsMetricDeltas(current: GoogleAnalyticsRow = {}, baseline?: GoogleAnalyticsRow) {
+  const latest = normalizeAnalyticsMetrics(current);
+  const previous = baseline ? normalizeAnalyticsMetrics(baseline) : null;
+  return {
+    clicks: metricDelta(latest.clicks, previous?.clicks ?? null),
+    impressions: metricDelta(latest.impressions, previous?.impressions ?? null),
+    ctr: metricDelta(latest.ctr, previous?.ctr ?? null),
+    position: metricDelta(latest.position, previous?.position ?? null),
+  };
+}
+
+async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind: string, params: unknown, load: () => Promise<T>): Promise<T & { cached: boolean }> {
+  const cacheKey = createHash("sha256").update(`${kind}:${JSON.stringify(params)}`).digest("hex");
+  const [cached] = await db.select().from(searchConsoleQueryCache)
+    .where(and(eq(searchConsoleQueryCache.userId, userId), eq(searchConsoleQueryCache.siteId, siteId), eq(searchConsoleQueryCache.cacheKey, cacheKey)))
+    .limit(1);
+  if (cached && cached.expiresAt.getTime() > Date.now()) return { ...(cached.result as T), cached: true };
+  let result: T;
+  try {
+    result = await load();
+  } catch (error) {
+    if (cached?.result && isTransientSearchConsoleError(error)) {
+      return {
+        ...(cached.result as T),
+        cached: true,
+        stale: true,
+        warning: error instanceof Error ? error.message : "Search Console request failed",
+      };
+    }
+    throw error;
+  }
+  const now = new Date();
+  await db.insert(searchConsoleQueryCache).values({
+    userId, siteId, cacheKey, kind, params, result, expiresAt: new Date(now.getTime() + QUERY_CACHE_MS),
+  }).onConflictDoUpdate({
+    target: [searchConsoleQueryCache.siteId, searchConsoleQueryCache.cacheKey],
+    set: { params, result, expiresAt: new Date(now.getTime() + QUERY_CACHE_MS), updatedAt: now },
+  });
+  await db.delete(searchConsoleQueryCache).where(lt(searchConsoleQueryCache.expiresAt, now));
+  return { ...result, cached: false };
+}
+
+export function normalizeInspectionUrl(rawUrl: string, propertyUrl: string) {
+  const url = new URL(String(rawUrl || "").trim());
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Inspection URL must use HTTP or HTTPS");
+  url.hash = "";
+  if (propertyUrl.startsWith("sc-domain:")) {
+    const propertyHost = comparableHost(propertyUrl.slice("sc-domain:".length));
+    const host = comparableHost(url.hostname);
+    if (host !== propertyHost && !host.endsWith(`.${propertyHost}`)) throw new Error("URL is outside the selected Search Console property");
+  } else if (!url.toString().startsWith(propertyUrl)) {
+    throw new Error("URL is outside the selected Search Console property");
+  }
+  return url.toString();
+}
+
+export function normalizeInspectionResult(result: Record<string, unknown>) {
+  const index = (result.indexStatusResult || {}) as Record<string, unknown>;
+  const rich = (result.richResultsResult || {}) as Record<string, unknown>;
+  return {
+    verdict: index.verdict || "VERDICT_UNSPECIFIED",
+    coverageState: index.coverageState || null,
+    robotsTxtState: index.robotsTxtState || null,
+    indexingState: index.indexingState || null,
+    pageFetchState: index.pageFetchState || null,
+    lastCrawlTime: index.lastCrawlTime || null,
+    crawledAs: index.crawledAs || null,
+    googleCanonical: index.googleCanonical || null,
+    userCanonical: index.userCanonical || null,
+    referringUrls: index.referringUrls || [],
+    sitemaps: index.sitemap || [],
+    richResultsVerdict: rich.verdict || null,
+    richResultItems: rich.detectedItems || [],
+    inspectionResultLink: result.inspectionResultLink || null,
+  };
+}
+
+async function requireSearchConsoleIntegration(userId: string, siteId: string, allowPending = false) {
+  const [integration] = await db.select().from(searchConsoleIntegrations)
+    .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId))).limit(1);
+  if (!integration) throw new Error("Connect Search Console first");
+  if (!allowPending && integration.status === "property_selection_required") throw new Error("Choose a Search Console property first");
+  return integration;
+}
+
+function googleError(status: number, message: string) {
+  if (status === 429) return new Error(`Search Console quota exceeded: ${message}`);
+  if (status === 401 || status === 403) return new Error(`Search Console permission denied: ${message}`);
+  if (status >= 500) return new Error(`Search Console provider unavailable: ${message}`);
+  return new Error(message);
+}
+
+function isTransientSearchConsoleError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /quota exceeded|timeout|aborted|provider unavailable/i.test(message);
 }
 
 function validateCredentials(input: unknown): GoogleCredentials {
@@ -700,14 +1043,16 @@ async function exchangeOAuthCode(code: string, config: { clientId: string; clien
   return { access_token: data.access_token, refresh_token: data.refresh_token };
 }
 
-async function listSearchConsoleSites(token: string) {
+async function fetchSearchConsoleProperties(token: string): Promise<SearchConsoleProperty[]> {
   const response = await fetch("https://www.googleapis.com/webmasters/v3/sites", {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(15000),
   });
-  const data = await response.json() as { siteEntry?: Array<{ siteUrl?: string }>; error?: { message?: string } };
+  const data = await response.json() as { siteEntry?: Array<{ siteUrl?: string; permissionLevel?: string }>; error?: { message?: string } };
   if (!response.ok) throw new Error(data.error?.message || "Search Console test failed");
-  return data.siteEntry?.map((site) => site.siteUrl).filter(Boolean) || [];
+  return (data.siteEntry || [])
+    .filter((site): site is { siteUrl: string; permissionLevel?: string } => Boolean(site.siteUrl))
+    .map((site) => ({ siteUrl: site.siteUrl, permissionLevel: site.permissionLevel || "unknown" }));
 }
 
 function googleOAuthConfig(requestUrl: string) {
@@ -743,7 +1088,9 @@ function parseJson(value: string) {
 }
 
 function comparableHost(hostname: string) {
-  return hostname.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  const value = hostname.trim().toLowerCase();
+  try { return new URL(value.includes("://") ? value : `https://${value}`).hostname.replace(/^www\./, "").replace(/\.$/, ""); }
+  catch { return value.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").replace(/\.$/, ""); }
 }
 
 function daysAgo(days: number) {

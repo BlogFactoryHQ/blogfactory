@@ -20,7 +20,14 @@ import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-clea
 import { ExpectedPostVersionError, publishPost, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { PostNotEditableError, PostRevisionNotFoundError, PostVersionConflictError, currentPostRevision, updatePostWithRevision } from "../services/post-revisions.js";
 import { getPublicUrl } from "../services/s3-client.js";
-import { getSearchConsoleDashboard, getSearchConsoleInsights } from "../services/search-console.js";
+import {
+  getSearchConsoleDashboard,
+  getSearchConsoleInsights,
+  inspectSearchConsoleUrl,
+  inspectSearchConsoleUrls,
+  listSearchConsoleSitemaps,
+  querySearchConsoleAnalytics,
+} from "../services/search-console.js";
 import { drainSeoMetadata, enqueueSeoMetadata, seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
@@ -98,6 +105,7 @@ type ToolErrorCode =
   | "seo_not_ready"
   | "destination_not_ready"
   | "provider_error"
+  | "rate_limited"
   | "internal_error";
 
 export class McpToolError extends Error {
@@ -230,6 +238,61 @@ async function searchConsoleDashboard(principal: McpPrincipal, input: { site_id:
 async function searchConsoleInsights(principal: McpPrincipal, input: { site_id: string }) {
   await requireOwnedAllowedSite(principal, input.site_id);
   return { site_id: input.site_id, insights: await getSearchConsoleInsights(principal.userId, input.site_id) };
+}
+
+async function inspectSearchConsole(principal: McpPrincipal, input: { site_id: string; url: string; force: boolean }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, inspection: await searchConsoleToolCall(() => inspectSearchConsoleUrl(principal.userId, input.site_id, input.url, input.force)) };
+}
+
+async function batchInspectSearchConsole(principal: McpPrincipal, input: { site_id: string; urls: string[]; force: boolean }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, ...(await searchConsoleToolCall(() => inspectSearchConsoleUrls(principal.userId, input.site_id, input.urls, input.force))) };
+}
+
+async function searchConsoleSitemaps(principal: McpPrincipal, input: { site_id: string; sitemap_index?: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, ...(await searchConsoleToolCall(() => listSearchConsoleSitemaps(principal.userId, input.site_id, input.sitemap_index))) };
+}
+
+async function searchConsoleAnalytics(principal: McpPrincipal, input: {
+  site_id: string;
+  range: 7 | 28 | 90;
+  compare: boolean;
+  group_by: "page" | "query" | "country" | "device";
+  search_type: "web" | "image" | "video" | "news";
+  country?: string;
+  device?: "DESKTOP" | "MOBILE" | "TABLET";
+  limit: number;
+}) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return {
+    site_id: input.site_id,
+    analytics: await searchConsoleToolCall(() => querySearchConsoleAnalytics(principal.userId, input.site_id, {
+      range: input.range,
+      compare: input.compare,
+      groupBy: input.group_by,
+      searchType: input.search_type,
+      country: input.country,
+      device: input.device,
+      limit: Math.min(input.limit, 100),
+    })),
+  };
+}
+
+async function searchConsoleToolCall<T>(task: () => Promise<T>) {
+  try {
+    return await task();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Search Console request failed";
+    if (/connect search console|choose a search console property/i.test(message)) {
+      throw new McpToolError("configuration_missing", message, "Open BlogFactory Search Growth and finish the Search Console connection.");
+    }
+    if (/quota exceeded/i.test(message)) {
+      throw new McpToolError("rate_limited", message, "Retry after the Google quota window resets.", true);
+    }
+    throw new McpToolError("provider_error", message, "Verify the Search Console property and Google permissions, then retry.", true);
+  }
 }
 
 type ListPostsInput = {
@@ -1167,6 +1230,55 @@ export const MCP_TOOL_REGISTRY = {
     annotations: PUSH_DRAFT_ANNOTATIONS,
     handler: pushToCmsDraft,
   },
+  inspect_search_console_url: {
+    name: "inspect_search_console_url",
+    description: "Read Google's indexed status, crawl details, canonical choice, and rich-result verdict for one allowed URL.",
+    inputSchema: { site_id: uuid, url: z.string().url(), force: z.boolean().default(false) },
+    outputSchema: successOutputSchema({ site_id: uuid, inspection: z.record(z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: inspectSearchConsole,
+  },
+  batch_inspect_search_console_urls: {
+    name: "batch_inspect_search_console_urls",
+    description: "Inspect Google's indexed status for 1-10 URLs while preserving per-URL failures.",
+    inputSchema: { site_id: uuid, urls: z.array(z.string().url()).min(1).max(10), force: z.boolean().default(false) },
+    outputSchema: successOutputSchema({ site_id: uuid, results: z.array(z.record(z.unknown())), inspected: z.number().int(), failed: z.number().int() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: batchInspectSearchConsole,
+  },
+  list_search_console_sitemaps: {
+    name: "list_search_console_sitemaps",
+    description: "List read-only Search Console sitemap health, processing state, errors, and warnings for one allowed site.",
+    inputSchema: { site_id: uuid, sitemap_index: z.string().url().optional() },
+    outputSchema: successOutputSchema({ site_id: uuid, items: z.array(z.record(z.unknown())), cached: z.boolean() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: searchConsoleSitemaps,
+  },
+  query_search_console_analytics: {
+    name: "query_search_console_analytics",
+    description: "Query a compact 7, 28, or 90-day Search Console comparison grouped by page, query, country, or device.",
+    inputSchema: {
+      site_id: uuid,
+      range: z.union([z.literal(7), z.literal(28), z.literal(90)]).default(28),
+      compare: z.boolean().default(true),
+      group_by: z.enum(["page", "query", "country", "device"]).default("query"),
+      search_type: z.enum(["web", "image", "video", "news"]).default("web"),
+      country: z.string().regex(/^[a-zA-Z]{3}$/).optional(),
+      device: z.enum(["DESKTOP", "MOBILE", "TABLET"]).optional(),
+      limit: z.number().int().min(1).max(100).default(20),
+    },
+    outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: searchConsoleAnalytics,
+  },
 } satisfies Record<typeof ACTIVE_MCP_TOOL_NAMES[number], ToolDefinition>;
 
 export function assertMcpToolRegistry() {
@@ -1279,4 +1391,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal) {
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_insights);
   registerTool(server, principal, MCP_TOOL_REGISTRY.update_draft);
   registerTool(server, principal, MCP_TOOL_REGISTRY.push_to_cms_draft);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.inspect_search_console_url);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.batch_inspect_search_console_urls);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.list_search_console_sitemaps);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.query_search_console_analytics);
 }

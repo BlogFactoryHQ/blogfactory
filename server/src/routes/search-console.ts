@@ -10,7 +10,13 @@ import {
   getSearchConsoleDashboard,
   getSearchConsoleInsights,
   hasSiteAccess,
+  inspectSearchConsoleUrl,
+  inspectSearchConsoleUrls,
+  listSearchConsoleProperties,
+  listSearchConsoleSitemaps,
   normalizeSearchConsoleProperty,
+  querySearchConsoleAnalytics,
+  selectSearchConsoleProperty,
   serializeSearchConsoleIntegration,
   syncSearchConsoleMetrics,
   testSearchConsoleIntegration,
@@ -29,7 +35,7 @@ searchConsoleRoutes.get("/oauth/start", async (c) => {
     const authUrl = await createSearchConsoleOAuthUrl({
       userId,
       siteId,
-      propertyUrl: String(c.req.query("propertyUrl") || ""),
+      propertyUrl: c.req.query("propertyUrl") || undefined,
       requestUrl: c.req.url,
     });
     return c.json({ authUrl });
@@ -51,7 +57,10 @@ searchConsoleRoutes.get("/oauth/callback", async (c) => {
     if (isIndexing) {
       await completeGoogleIndexingOAuth(input);
     } else {
-      await completeSearchConsoleOAuth(input);
+      const integration = await completeSearchConsoleOAuth(input);
+      if (integration.status === "property_selection_required") {
+        return c.redirect(`${appPath}&gsc=select`);
+      }
     }
     return c.redirect(`${appPath}&${resultKey}=connected`);
   } catch (err) {
@@ -74,6 +83,84 @@ searchConsoleRoutes.get("/insights", async (c) => {
   return c.json(await getSearchConsoleInsights(userId, siteId));
 });
 
+searchConsoleRoutes.get("/properties", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json(await listSearchConsoleProperties(userId, siteId));
+  } catch (error) {
+    return c.json(searchConsoleError(error, "Failed to load Search Console properties"), 400);
+  }
+});
+
+searchConsoleRoutes.post("/property", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const siteId = String(body.siteId || body.site_id || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json({ integration: await selectSearchConsoleProperty(userId, siteId, String(body.propertyUrl || body.property_url || "")) });
+  } catch (error) {
+    return c.json(searchConsoleError(error, "Failed to select Search Console property"), 400);
+  }
+});
+
+searchConsoleRoutes.post("/inspect", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const siteId = String(body.siteId || body.site_id || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json(await inspectSearchConsoleUrl(userId, siteId, String(body.url || ""), Boolean(body.force)));
+  } catch (error) {
+    return c.json(searchConsoleError(error, "URL inspection failed"), 400);
+  }
+});
+
+searchConsoleRoutes.post("/inspect/batch", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const siteId = String(body.siteId || body.site_id || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json(await inspectSearchConsoleUrls(userId, siteId, Array.isArray(body.urls) ? body.urls.map(String) : [], Boolean(body.force)));
+  } catch (error) {
+    return c.json(searchConsoleError(error, "Batch URL inspection failed"), 400);
+  }
+});
+
+searchConsoleRoutes.get("/sitemaps", async (c) => {
+  const userId = getUserId(c);
+  const siteId = String(c.req.query("siteId") || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json(await listSearchConsoleSitemaps(userId, siteId, c.req.query("sitemapIndex")));
+  } catch (error) {
+    return c.json(searchConsoleError(error, "Failed to load sitemaps"), 400);
+  }
+});
+
+searchConsoleRoutes.post("/analytics/query", async (c) => {
+  const userId = getUserId(c);
+  const body = await c.req.json();
+  const siteId = String(body.siteId || body.site_id || "");
+  if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
+  try {
+    return c.json(await querySearchConsoleAnalytics(userId, siteId, {
+      range: Number(body.range || 28) as 7 | 28 | 90,
+      compare: body.compare !== false,
+      groupBy: String(body.groupBy || "query") as "page" | "query" | "country" | "device",
+      searchType: String(body.searchType || "web") as "web" | "image" | "video" | "news",
+      country: body.country ? String(body.country) : undefined,
+      device: body.device ? String(body.device).toUpperCase() as "DESKTOP" | "MOBILE" | "TABLET" : undefined,
+      limit: Number(body.limit || 50),
+    }));
+  } catch (error) {
+    return c.json(searchConsoleError(error, "Search Console analytics query failed"), 400);
+  }
+});
+
 searchConsoleRoutes.post("/integrations", async (c) => {
   const userId = getUserId(c);
   const body = await c.req.json();
@@ -82,12 +169,14 @@ searchConsoleRoutes.post("/integrations", async (c) => {
 
   try {
     const { encrypted, hint } = encryptSearchConsoleCredentials(body.credentials);
+    const propertyUrl = normalizeSearchConsoleProperty(String(body.propertyUrl || body.property_url || ""));
+    await testSearchConsoleIntegration({ propertyUrl, credentialsEncrypted: encrypted, credentialHint: hint });
     const [created] = await db
       .insert(searchConsoleIntegrations)
       .values({
         userId,
         siteId,
-        propertyUrl: normalizeSearchConsoleProperty(String(body.propertyUrl || body.property_url || "")),
+        propertyUrl,
         status: "connected",
         credentialsEncrypted: encrypted,
         credentialHint: hint,
@@ -113,10 +202,16 @@ searchConsoleRoutes.put("/integrations/:id", async (c) => {
   try {
     const hasCredentials = Boolean(body.credentials) && Object.values(body.credentials || {}).some(Boolean);
     const credentials = hasCredentials ? encryptSearchConsoleCredentials(body.credentials) : null;
+    const propertyUrl = normalizeSearchConsoleProperty(String(body.propertyUrl || body.property_url || existing.propertyUrl));
+    await testSearchConsoleIntegration({
+      propertyUrl,
+      credentialsEncrypted: credentials?.encrypted || existing.credentialsEncrypted,
+      credentialHint: credentials?.hint || existing.credentialHint,
+    });
     const [updated] = await db
       .update(searchConsoleIntegrations)
       .set({
-        propertyUrl: normalizeSearchConsoleProperty(String(body.propertyUrl || body.property_url || existing.propertyUrl)),
+        propertyUrl,
         ...(credentials ? { credentialsEncrypted: credentials.encrypted, credentialHint: credentials.hint } : {}),
         status: "connected",
       })
@@ -182,3 +277,20 @@ searchConsoleRoutes.post("/sync", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : "Search Console sync failed" }, 400);
   }
 });
+
+function searchConsoleError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  const lower = message.toLowerCase();
+  const code = lower.includes("connect search console")
+    ? "connection_required"
+    : lower.includes("choose a search console property")
+      ? "property_selection_required"
+      : lower.includes("permission denied") || lower.includes("cannot access")
+        ? "permission_denied"
+        : lower.includes("quota exceeded")
+          ? "quota_exceeded"
+          : lower.includes("timeout") || lower.includes("aborted")
+            ? "provider_timeout"
+            : "invalid_request";
+  return { error: message, code };
+}

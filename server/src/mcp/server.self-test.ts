@@ -177,13 +177,27 @@ const crossSiteResult = (await crossSite.json() as any).result;
 assert.equal(crossSiteResult.isError, true);
 assert.equal(crossSiteResult.structuredContent.error.code, "not_found");
 
-for (const name of ["get_search_console_dashboard", "get_search_console_insights"]) {
+for (const name of [
+  "get_search_console_dashboard",
+  "get_search_console_insights",
+  "inspect_search_console_url",
+  "batch_inspect_search_console_urls",
+  "list_search_console_sitemaps",
+  "query_search_console_analytics",
+]) {
   const response = await post(
     {
       jsonrpc: "2.0",
       id: `cross-site-${name}`,
       method: "tools/call",
-      params: { name, arguments: { site_id: "00000000-0000-4000-8000-000000000099" } },
+      params: {
+        name,
+        arguments: {
+          site_id: "00000000-0000-4000-8000-000000000099",
+          ...(name === "inspect_search_console_url" ? { url: "https://example.com/page" } : {}),
+          ...(name === "batch_inspect_search_console_urls" ? { urls: ["https://example.com/page"] } : {}),
+        },
+      },
     },
     { "mcp-protocol-version": MCP_PROTOCOL_VERSION },
   );
@@ -290,8 +304,8 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 12);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 12);
+assert.equal(MCP_TOOL_NAMES.length, 16);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 16);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

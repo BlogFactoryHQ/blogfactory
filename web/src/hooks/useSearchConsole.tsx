@@ -19,6 +19,57 @@ export interface SearchConsoleIntegration {
   last_test_result: string | null;
   lastSyncAt: string | null;
   last_sync_at: string | null;
+  syncMetadata?: { first_incomplete_date?: string } | null;
+  sync_metadata?: { first_incomplete_date?: string } | null;
+}
+
+export interface SearchConsoleProperty {
+  siteUrl: string;
+  permissionLevel: string;
+}
+
+export interface SearchConsoleInspectionResult {
+  verdict: string;
+  coverageState: string | null;
+  robotsTxtState: string | null;
+  indexingState: string | null;
+  pageFetchState: string | null;
+  lastCrawlTime: string | null;
+  crawledAs: string | null;
+  googleCanonical: string | null;
+  userCanonical: string | null;
+  richResultsVerdict: string | null;
+  inspectionResultLink: string | null;
+}
+
+export interface SearchConsoleInspection {
+  url: string;
+  result: SearchConsoleInspectionResult;
+  inspectedAt: string;
+  cached: boolean;
+  stale: boolean;
+  warning?: string;
+}
+
+export interface SearchConsoleAnalyticsResponse {
+  input: { range: 7 | 28 | 90; compare: boolean; groupBy: string; searchType: string; country?: string; device?: string };
+  range: { startDate: string; endDate: string; baselineStart: string | null; baselineEnd: string | null };
+  totals: { clicks: MetricDelta; impressions: MetricDelta; ctr: MetricDelta; position: MetricDelta };
+  daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  rows: Array<{ label: string; clicks: number; impressions: number; ctr: number; position: number; deltaClicks: number | null; deltaPosition: number | null }>;
+  metadata: { first_incomplete_date?: string } | null;
+  cached: boolean;
+}
+
+export interface SearchConsoleSitemap {
+  path: string;
+  type: "index" | "sitemap";
+  isPending: boolean;
+  lastSubmitted: string | null;
+  lastDownloaded: string | null;
+  errors: number;
+  warnings: number;
+  contents: Array<{ type?: string; submitted?: string | number; indexed?: string | number }>;
 }
 
 interface DashboardResponse {
@@ -111,6 +162,7 @@ export function useSearchConsole(siteId?: string | null) {
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
   });
+  const integration = dashboard.data?.integration || null;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
@@ -147,16 +199,35 @@ export function useSearchConsole(siteId?: string | null) {
   });
 
   const startOAuth = useMutation({
+    mutationFn: async (propertyUrl?: string) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      const params = new URLSearchParams({ siteId: resolvedSiteId });
+      if (propertyUrl?.trim()) params.set("propertyUrl", propertyUrl.trim());
+      return api.get<{ authUrl: string }>(`/search-console/oauth/start?${params}`);
+    },
+  });
+
+  const properties = useQuery({
+    queryKey: ["search-console-properties", resolvedSiteId],
+    queryFn: async () => api.get<{ properties: SearchConsoleProperty[] }>(`/search-console/properties?siteId=${encodeURIComponent(resolvedSiteId || "")}`),
+    enabled: Boolean(resolvedSiteId && integration),
+    staleTime: 5 * 60_000,
+  });
+
+  const selectProperty = useMutation({
     mutationFn: async (propertyUrl: string) => {
       if (!resolvedSiteId) throw new Error("Select a site first");
-      const params = new URLSearchParams({ siteId: resolvedSiteId, propertyUrl });
-      return api.get<{ authUrl: string }>(`/search-console/oauth/start?${params}`);
+      return api.post<{ integration: SearchConsoleIntegration }>("/search-console/property", { siteId: resolvedSiteId, propertyUrl });
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["search-console-properties", resolvedSiteId] });
     },
   });
 
   return {
     dashboard: dashboard.data,
-    integration: dashboard.data?.integration || null,
+    integration,
     stats: dashboard.data?.stats || { pageCount: 0, queryCount: 0, clicks: 0, impressions: 0 },
     isLoading: dashboard.isLoading,
     saveIntegration,
@@ -164,6 +235,9 @@ export function useSearchConsole(siteId?: string | null) {
     deleteIntegration,
     sync,
     startOAuth,
+    properties: properties.data?.properties || [],
+    propertiesLoading: properties.isLoading,
+    selectProperty,
   };
 }
 
@@ -181,4 +255,51 @@ export function useSearchConsoleInsights(siteId?: string | null) {
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
   });
+}
+
+export function useSearchConsoleToolkit(siteId?: string | null) {
+  const { activeSiteId } = useSites();
+  const resolvedSiteId = siteId || activeSiteId;
+
+  const inspect = useMutation({
+    mutationFn: async ({ url, force = false }: { url: string; force?: boolean }) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      return api.post<SearchConsoleInspection>("/search-console/inspect", { siteId: resolvedSiteId, url, force });
+    },
+  });
+
+  const inspectBatch = useMutation({
+    mutationFn: async ({ urls, force = false }: { urls: string[]; force?: boolean }) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      return api.post<{ results: Array<({ ok: true } & SearchConsoleInspection) | { ok: false; url: string; error: string }>; inspected: number; failed: number }>(
+        "/search-console/inspect/batch",
+        { siteId: resolvedSiteId, urls, force },
+      );
+    },
+  });
+
+  const analytics = useMutation({
+    mutationFn: async (input: {
+      range: 7 | 28 | 90;
+      compare: boolean;
+      groupBy: "page" | "query" | "country" | "device";
+      searchType: "web" | "image" | "video" | "news";
+      country?: string;
+      device?: "DESKTOP" | "MOBILE" | "TABLET";
+      limit?: number;
+    }) => {
+      if (!resolvedSiteId) throw new Error("Select a site first");
+      return api.post<SearchConsoleAnalyticsResponse>("/search-console/analytics/query", { siteId: resolvedSiteId, ...input });
+    },
+  });
+
+  const sitemaps = useQuery({
+    queryKey: ["search-console-sitemaps", resolvedSiteId],
+    queryFn: async () => api.get<{ items: SearchConsoleSitemap[]; cached: boolean }>(`/search-console/sitemaps?siteId=${encodeURIComponent(resolvedSiteId || "")}`),
+    enabled: Boolean(resolvedSiteId),
+    retry: false,
+    staleTime: 15 * 60_000,
+  });
+
+  return { inspect, inspectBatch, analytics, sitemaps };
 }

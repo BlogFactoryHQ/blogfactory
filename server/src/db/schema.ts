@@ -431,6 +431,7 @@ export const searchConsoleIntegrations = pgTable("search_console_integrations", 
   lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
   lastTestResult: text("last_test_result"),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  syncMetadata: jsonb("sync_metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -446,6 +447,32 @@ export const searchConsoleMetrics = pgTable("search_console_metrics", {
   impressions: integer("impressions").default(0).notNull(),
   ctr: real("ctr").default(0).notNull(),
   position: real("position").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const searchConsoleUrlInspections = pgTable("search_console_url_inspections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  status: text("status").default("ok").notNull(),
+  result: jsonb("result"),
+  errorMessage: text("error_message"),
+  inspectedAt: timestamp("inspected_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const searchConsoleQueryCache = pgTable("search_console_query_cache", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  cacheKey: text("cache_key").notNull(),
+  kind: text("kind").notNull(),
+  params: jsonb("params").notNull(),
+  result: jsonb("result").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -39,13 +39,14 @@ import { useSites } from "@/hooks/useSites";
 import { InternalLinksPanel } from "@/components/search-growth/InternalLinksPanel";
 import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { IndexingPanel } from "@/pages/Indexing";
+import { SearchAnalyticsPanel } from "@/pages/SearchAnalytics";
 import { OptimizePanel } from "@/pages/Optimize";
 import { api } from "@/lib/api";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
 
-const tabs = new Set(["overview", "optimize", "indexing", "internal-links"]);
+const tabs = new Set(["overview", "optimize", "analytics", "indexing", "internal-links"]);
 
 interface InternalLinkSettings {
   internal_link_status?: string | null;
@@ -82,6 +83,7 @@ export default function SearchGrowth() {
     const result = params.get("gsc");
     if (!result) return;
     if (result === "connected") toast.success("Search Console connected");
+    if (result === "select") toast.info("Choose the Search Console property to finish setup");
     if (result === "error") toast.error(params.get("message") || "Search Console connection failed");
     const next = new URLSearchParams(params);
     next.delete("gsc");
@@ -100,6 +102,7 @@ export default function SearchGrowth() {
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="optimize">Optimize</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="indexing">Indexing</TabsTrigger>
           <TabsTrigger value="internal-links">Internal Links</TabsTrigger>
         </TabsList>
@@ -112,6 +115,11 @@ export default function SearchGrowth() {
         {tab === "optimize" && (
           <TabsContent value="optimize" className="mt-0">
             <OptimizePanel />
+          </TabsContent>
+        )}
+        {tab === "analytics" && (
+          <TabsContent value="analytics" className="mt-0">
+            <SearchAnalyticsPanel />
           </TabsContent>
         )}
         {tab === "indexing" && (
@@ -293,6 +301,9 @@ function GrowthBriefing({
                 <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">Growth briefing</span>
                 <Badge variant="secondary">{siteDomain}</Badge>
                 {!insights.range.baselineStart && <Badge variant="outline">Baseline building</Badge>}
+                {(insights.integration?.syncMetadata?.first_incomplete_date || insights.integration?.sync_metadata?.first_incomplete_date) && (
+                  <Badge variant="outline" className="border-amber-300 text-amber-700">Provisional data</Badge>
+                )}
               </div>
               <h2 className="mt-2 text-xl font-semibold text-foreground">Search operations pulse</h2>
               <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from synced Google Search Console data.</p>

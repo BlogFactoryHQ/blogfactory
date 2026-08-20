@@ -1,10 +1,60 @@
 import assert from "node:assert/strict";
-import { buildSearchConsoleInsights, createSearchConsoleOAuthUrl, mapSearchAnalyticsRows, normalizeSearchConsoleProperty } from "./search-console.js";
+import {
+  buildSearchConsoleInsights,
+  chooseSearchConsoleProperty,
+  createSearchConsoleOAuthUrl,
+  mapSearchAnalyticsRows,
+  normalizeAnalyticsInput,
+  normalizeInspectionResult,
+  normalizeInspectionUrl,
+  normalizeSearchConsoleProperty,
+} from "./search-console.js";
 
 assert.equal(normalizeSearchConsoleProperty("sc-domain:WWW.Example.com"), "sc-domain:example.com");
 assert.equal(normalizeSearchConsoleProperty("example.com"), "https://example.com/");
 assert.equal(normalizeSearchConsoleProperty("https://example.com/blog?x=1#top"), "https://example.com/blog");
 assert.throws(() => normalizeSearchConsoleProperty(""), /required/);
+assert.equal(normalizeInspectionUrl("https://blog.example.com/post#top", "sc-domain:example.com"), "https://blog.example.com/post");
+assert.throws(() => normalizeInspectionUrl("https://evil.test/post", "sc-domain:example.com"), /outside/);
+assert.throws(() => normalizeInspectionUrl("https://example.com/other", "https://example.com/blog/"), /outside/);
+assert.deepEqual(normalizeInspectionResult({
+  indexStatusResult: { verdict: "PASS", coverageState: "Submitted and indexed", googleCanonical: "https://example.com/post" },
+  richResultsResult: { verdict: "PASS", detectedItems: [{ richResultType: "Article" }] },
+}), {
+  verdict: "PASS",
+  coverageState: "Submitted and indexed",
+  robotsTxtState: null,
+  indexingState: null,
+  pageFetchState: null,
+  lastCrawlTime: null,
+  crawledAs: null,
+  googleCanonical: "https://example.com/post",
+  userCanonical: null,
+  referringUrls: [],
+  sitemaps: [],
+  richResultsVerdict: "PASS",
+  richResultItems: [{ richResultType: "Article" }],
+  inspectionResultLink: null,
+});
+
+const properties = [
+  { siteUrl: "https://other.example/", permissionLevel: "siteOwner" },
+  { siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" },
+];
+assert.equal(chooseSearchConsoleProperty(properties, "www.example.com").property.siteUrl, "sc-domain:example.com");
+assert.equal(chooseSearchConsoleProperty(properties, "https://www.example.com/blog").property.siteUrl, "sc-domain:example.com");
+assert.equal(chooseSearchConsoleProperty(properties, "missing.example").requiresSelection, true);
+assert.throws(() => chooseSearchConsoleProperty(properties, "example.com", "sc-domain:nope.example"), /cannot access/);
+assert.deepEqual(normalizeAnalyticsInput({ range: 28, compare: true, groupBy: "query", searchType: "web", country: "TUR", device: "MOBILE", limit: 999 }), {
+  range: 28,
+  compare: true,
+  groupBy: "query",
+  searchType: "web",
+  country: "tur",
+  device: "MOBILE",
+  limit: 250,
+});
+assert.throws(() => normalizeAnalyticsInput({ range: 12 as 28, compare: true, groupBy: "query", searchType: "web", limit: 20 }), /range/);
 
 assert.deepEqual(mapSearchAnalyticsRows([
   { keys: ["2026-06-01", "https://example.com/a", "crm"], clicks: 1.4, impressions: 10.2, ctr: 0.1, position: 12.5 },

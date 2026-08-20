@@ -49,7 +49,7 @@ web/src/lib/url-validation.ts URL helpers and source validation
 
 - The deployed `/mcp` endpoint is protected and site-scoped. Personal `bf_mcp_` tokens are hashed, shown once, and limited to the creating user's selected sites.
 - Production OAuth is live through WorkOS AuthKit Standalone Connect. The resource is `https://blogfactory.io/mcp`, CIMD and DCR are enabled, and consent binds one active site into `urn:blogfactory:site_id`. New connections can receive `content:read`, `drafts:write`, and `publish:draft` after issuer, audience, signature, user, site, approval, ownership, and revocation checks pass.
-- The active catalog has ten tools: seven readers plus `generate_draft`, `update_draft`, and `push_to_cms_draft`. CMS delivery is hardcoded to draft mode. Do not add live publish, delete, bulk, credential, or admin MCP tools without a separate product and security decision. Start MCP work with `docs/mcp.md`, then trace `server/src/mcp/`, `server/src/services/mcp-*`, and the related migrations.
+- The active catalog has 16 tools: 13 readers plus `generate_draft`, `update_draft`, and `push_to_cms_draft`. The readers include compact Search Console dashboard, insights, URL inspection, sitemap health, and analytics tools. CMS delivery is hardcoded to draft mode. Do not add live publish, delete, bulk, credential, or admin MCP tools without a separate product and security decision. Start MCP work with `docs/mcp.md`, then trace `server/src/mcp/`, `server/src/services/mcp-*`, and the related migrations.
 
 ## UI Rules
 

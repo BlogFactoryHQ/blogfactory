@@ -6,7 +6,7 @@ BlogFactory exposes a site-scoped MCP endpoint at `https://blogfactory.io/mcp` f
 
 Verified on 2026-08-20: the production endpoint is live and rejects unauthenticated requests with `401 Bearer`. Personal connection tokens and WorkOS browser OAuth are both supported. The protected-resource metadata endpoint advertises `https://blogfactory.io/mcp` with `content:read`, `drafts:write`, and `publish:draft`; CIMD and DCR are enabled for client compatibility.
 
-The active catalog contains ten tools: `whoami`, `list_sites`, `list_personas`, `list_publish_targets`, `list_posts`, `get_post`, `generate_draft`, `get_job`, `update_draft`, and `push_to_cms_draft`. Generation is asynchronous and can consume the user's configured provider budget. Draft updates require `expected_updated_at`; CMS delivery is hardcoded to draft mode and preserves publishing idempotency.
+The active catalog contains 16 tools: `whoami`, `list_sites`, `list_personas`, `list_publish_targets`, `list_posts`, `get_post`, `generate_draft`, `get_job`, `get_search_console_dashboard`, `get_search_console_insights`, `update_draft`, `push_to_cms_draft`, `inspect_search_console_url`, `batch_inspect_search_console_urls`, `list_search_console_sitemaps`, and `query_search_console_analytics`. Search Console tools share BlogFactory's site-scoped Google connection and cache, and analytics is capped at 100 rows for MCP responses. Generation is asynchronous and can consume the user's configured provider budget. Draft updates require `expected_updated_at`; CMS delivery is hardcoded to draft mode and preserves publishing idempotency.
 
 ## Personal connection token
 

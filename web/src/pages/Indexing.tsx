@@ -30,7 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { IndexingIntegration, IndexingProvider, useIndexing } from "@/hooks/useIndexing";
-import { useSearchConsole } from "@/hooks/useSearchConsole";
+import { useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchConsole";
 import { useSites } from "@/hooks/useSites";
 import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
@@ -101,6 +101,7 @@ export function IndexingPanel() {
   const { activeSite } = useSites();
   const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls, startGoogleOAuth } = useIndexing();
   const { integration: searchConsoleIntegration } = useSearchConsole();
+  const { inspect, sitemaps } = useSearchConsoleToolkit();
   const [providerToConnect, setProviderToConnect] = useState<IndexingProvider | null>(null);
   const [editing, setEditing] = useState<IndexingIntegration | null>(null);
   const [bulkUrls, setBulkUrls] = useState("");
@@ -284,6 +285,11 @@ export function IndexingPanel() {
         </BywordCard>
 
         <BywordCard>
+          <SectionHeader icon={Search} title="Sitemap Health" description="Read-only processing status from the selected Search Console property." action={<Button variant="outline" size="sm" onClick={() => sitemaps.refetch()} disabled={sitemaps.isFetching || !searchConsoleIntegration}>{sitemaps.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh</Button>} />
+          {!searchConsoleIntegration ? <div className="p-8 text-center text-sm text-muted-foreground">Connect Search Console in Optimize to load sitemap health.</div> : sitemaps.isLoading ? <div className="flex items-center justify-center p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading sitemaps</div> : sitemaps.isError ? <div className="p-8 text-center text-sm text-destructive">{sitemaps.error.message}</div> : !sitemaps.data?.items.length ? <div className="p-8 text-center text-sm text-muted-foreground">No submitted sitemaps found for this property.</div> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Sitemap</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Last submitted</TableHead><TableHead>Last downloaded</TableHead><TableHead className="text-right">Errors</TableHead><TableHead className="text-right">Warnings</TableHead><TableHead className="text-right">Discovered</TableHead></TableRow></TableHeader><TableBody>{sitemaps.data.items.map((item) => <TableRow key={item.path}><TableCell className="max-w-[360px] truncate font-medium" title={item.path}>{item.path}</TableCell><TableCell>{item.type}</TableCell><TableCell><Badge variant={item.isPending ? "secondary" : "outline"}>{item.isPending ? "Pending" : "Processed"}</Badge></TableCell><TableCell>{item.lastSubmitted ? new Date(item.lastSubmitted).toLocaleString() : "—"}</TableCell><TableCell>{item.lastDownloaded ? new Date(item.lastDownloaded).toLocaleString() : "—"}</TableCell><TableCell className="text-right text-destructive">{item.errors}</TableCell><TableCell className="text-right text-amber-700">{item.warnings}</TableCell><TableCell className="text-right">{item.contents.reduce((sum, content) => sum + Number(content.submitted || 0), 0)}</TableCell></TableRow>)}</TableBody></Table></div>}
+        </BywordCard>
+
+        <BywordCard>
           <SectionHeader icon={SearchCheck} title="Recent Submissions" description="Submission status from connected providers." />
           {isLoading ? (
             <div className="flex items-center justify-center p-12 text-muted-foreground">
@@ -305,6 +311,7 @@ export function IndexingPanel() {
                   <TableHead>Source</TableHead>
                   <TableHead>Time</TableHead>
                   <TableHead>Error</TableHead>
+                  <TableHead className="text-right">Google</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -318,6 +325,14 @@ export function IndexingPanel() {
                       {new Date(submission.createdAt || submission.created_at).toLocaleString()}
                     </TableCell>
                     <TableCell className="max-w-[260px] truncate text-muted-foreground">{submission.errorMessage || submission.error_message || ""}</TableCell>
+                    <TableCell className="text-right"><Button variant="ghost" size="sm" disabled={!searchConsoleIntegration || inspect.isPending} onClick={async () => {
+                      try {
+                        const result = await inspect.mutateAsync({ url: submission.url });
+                        toast.success(`${result.result.coverageState || result.result.verdict}${result.stale ? " · cached" : ""}`);
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : "URL inspection failed");
+                      }
+                    }}>Inspect</Button></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
