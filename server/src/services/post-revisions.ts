@@ -118,10 +118,10 @@ export async function updatePostWithRevision(input: {
     }
 
     await tx.execute(sql`select set_config('blogfactory.revision_source', ${input.source}, true)`);
-    const [updated] = await tx.update(posts).set(input.changes).where(and(
+    const updatedAt = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
+    const [updated] = await tx.update(posts).set({ ...input.changes, updatedAt }).where(and(
       eq(posts.id, input.postId),
       eq(posts.userId, input.userId),
-      eq(posts.updatedAt, input.expectedUpdatedAt),
     )).returning();
     if (!updated) throw new PostVersionConflictError();
     const [revision] = await tx.select().from(postRevisions).where(and(
