@@ -24,6 +24,7 @@ import {
   Newspaper,
   LayoutDashboard,
   Loader2,
+  Cable,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -68,7 +69,8 @@ const monitorNavigation = [
 
 const lowerNavigation = [
   { name: "Integrations", href: "/integrations", icon: Plug },
-  { name: "Article Settings", href: "/settings", icon: Settings },
+  { name: "MCP", href: "/settings?section=mcp", icon: Cable, exact: true },
+  { name: "Article Settings", href: "/settings", icon: Settings, exact: true },
   { name: "Sites", href: "/sites", icon: Globe2 },
 ];
 
@@ -264,9 +266,9 @@ export function AppSidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
-          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
-          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
-          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
         </nav>
 
         <div className="border-t border-sidebar-border px-2.5 py-2.5 overflow-hidden">
@@ -405,17 +407,20 @@ type NavItem = {
   name: string;
   href: string;
   icon: typeof FileText;
+  exact?: boolean;
 };
 
 function SidebarSection({
   title,
   items,
   locationPath,
+  locationSearch,
   isCollapsed,
 }: {
   title: string;
   items: NavItem[];
   locationPath: string;
+  locationSearch: string;
   isCollapsed: boolean;
 }) {
   return (
@@ -427,7 +432,10 @@ function SidebarSection({
       )}
       <div className="space-y-0.5">
         {items.map((item) => {
-          const isActive = item.href === "/" ? locationPath === "/" : locationPath.startsWith(item.href);
+          const currentLocation = `${locationPath}${locationSearch}`;
+          const isActive = item.exact
+            ? currentLocation === item.href
+            : item.href === "/" ? locationPath === "/" : locationPath.startsWith(item.href);
           const inner = (
             <div
               className={cn(

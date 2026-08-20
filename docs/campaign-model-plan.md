@@ -1,5 +1,7 @@
 # Campaign Model Plan
 
+> Historical planning record. This document preserves the original proposal and is not a current product commitment; see the [documentation index](README.md) for current guides.
+
 Campaign, ayni marka sesi ve ayarlarla 5-100 arasi benzersiz makaleyi toplu ureten ust modeldir. Batch Import degil: Batch Import hazir markdown alir; Campaign inputtan makale uretir, ilerlemeyi izler, hatali itemlari retry eder ve uretilen postlari tek kampanya altinda yonetir.
 
 ## Hedef

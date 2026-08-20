@@ -17,7 +17,7 @@ assert.notEqual(generateMcpAccessToken().secret, generated.secret);
 const now = new Date("2026-07-27T12:00:00.000Z");
 assert.deepEqual(parseCreateMcpTokenInput({
   name: " Personal Codex ",
-  scopes: ["content:read", "content:read"],
+  scopes: ["content:read", "drafts:write", "publish:draft", "content:read"],
   site_ids: [
     "11111111-1111-4111-8111-111111111111",
     "11111111-1111-4111-8111-111111111111",
@@ -25,7 +25,7 @@ assert.deepEqual(parseCreateMcpTokenInput({
   expires_at: "2026-08-27T12:00:00.000Z",
 }, now), {
   name: "Personal Codex",
-  scopes: ["content:read"],
+  scopes: ["content:read", "drafts:write", "publish:draft"],
   siteIds: ["11111111-1111-4111-8111-111111111111"],
   expiresAt: new Date("2026-08-27T12:00:00.000Z"),
 });
@@ -33,7 +33,6 @@ assert.deepEqual(parseCreateMcpTokenInput({
 for (const body of [
   { name: "", scopes: ["content:read"], site_ids: ["11111111-1111-4111-8111-111111111111"] },
   { name: "Test", scopes: ["drafts:write"], site_ids: ["11111111-1111-4111-8111-111111111111"] },
-  { name: "Test", scopes: ["content:read", "drafts:write"], site_ids: ["11111111-1111-4111-8111-111111111111"] },
   { name: "Test", scopes: ["content:read", "publish:live"], site_ids: ["11111111-1111-4111-8111-111111111111"] },
   { name: "Test", scopes: ["content:read"], site_ids: ["not-a-uuid"] },
   { name: "Test", scopes: ["content:read"], site_ids: ["11111111-1111-4111-8111-111111111111"], expires_at: "not-a-date" },

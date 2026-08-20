@@ -39,7 +39,7 @@ type McpAuthDependencies = {
   touch: (tokenId: string, usedAt: Date) => Promise<boolean>;
   verifyOAuth?: (token: string) => Promise<McpOAuthIdentity | null>;
   findOAuthUserSite?: (userId: string, siteId: string) => Promise<OAuthUserSite | undefined>;
-  authorizeOAuth?: (identity: McpOAuthIdentity, usedAt: Date) => Promise<{ id: string } | undefined>;
+  authorizeOAuth?: (identity: McpOAuthIdentity, usedAt: Date) => Promise<{ id: string; scopes: string[] } | undefined>;
 };
 
 async function findOAuthUserSite(userId: string, siteId: string) {
@@ -122,7 +122,7 @@ export async function authenticateMcpBearer(
   return {
     tokenId: connection.id,
     userId: oauthUser.userId,
-    scopes: new Set(["content:read"]),
+    scopes: new Set(connection.scopes as McpScope[]),
     siteIds: new Set([oauthUser.siteId]),
     displayName: oauthUser.displayName,
     role: user.role,

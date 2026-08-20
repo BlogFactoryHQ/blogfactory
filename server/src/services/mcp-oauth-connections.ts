@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { mcpOAuthConnections, sites } from "../db/schema.js";
 import { ApiError } from "../http/error-contract.js";
 import type { McpOAuthIdentity } from "../mcp/oauth.js";
+import { MCP_SCOPES } from "../mcp/contracts.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -13,20 +14,20 @@ export async function authorizeMcpOAuthConnection(identity: McpOAuthIdentity, us
       userId: identity.userId,
       siteId: identity.siteId,
       providerConnectionId: identity.connectionId,
-      scopes: ["content:read"],
+      scopes: [...MCP_SCOPES],
     })
     .onConflictDoNothing({ target: mcpOAuthConnections.providerConnectionId });
 
   const [row] = await db
     .update(mcpOAuthConnections)
-    .set({ lastUsedAt: usedAt })
+    .set({ lastUsedAt: usedAt, scopes: [...MCP_SCOPES] })
     .where(and(
       eq(mcpOAuthConnections.providerConnectionId, identity.connectionId),
       eq(mcpOAuthConnections.userId, identity.userId),
       eq(mcpOAuthConnections.siteId, identity.siteId),
       isNull(mcpOAuthConnections.revokedAt),
     ))
-    .returning({ id: mcpOAuthConnections.id });
+    .returning({ id: mcpOAuthConnections.id, scopes: mcpOAuthConnections.scopes });
   return row;
 }
 

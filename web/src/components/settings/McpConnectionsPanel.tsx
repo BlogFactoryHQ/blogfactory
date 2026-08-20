@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
+import { Cable, Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { api, retryTransientApiError } from "@/lib/api";
@@ -57,6 +57,13 @@ type RevokeTarget = {
   name: string;
   kind: "personal" | "oauth";
 };
+
+const MCP_TOOL_GROUPS = [
+  { label: "Identity", tools: ["whoami", "list_sites"] },
+  { label: "Editorial read", tools: ["list_personas", "list_publish_targets", "list_posts", "get_post"] },
+  { label: "Draft workflow", tools: ["generate_draft", "get_job", "update_draft"] },
+  { label: "CMS delivery", tools: ["push_to_cms_draft"] },
+];
 
 function tokenStatus(token: McpToken) {
   if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
@@ -118,7 +125,7 @@ export function McpConnectionsPanel() {
     try {
       const { secret, token } = await api.post<CreatedMcpToken>("/mcp/tokens", {
         name: name.trim(),
-        scopes: ["content:read"],
+        scopes: ["content:read", "drafts:write", "publish:draft"],
         site_ids: siteIds,
         expires_at: expiresOn ? new Date(`${expiresOn}T23:59:59`).toISOString() : null,
       });
@@ -183,6 +190,10 @@ export function McpConnectionsPanel() {
   const oauthConnections = oauthConnectionsQuery.data?.connections || [];
   const siteNames = new Map(sites.map((site) => [site.id, site.name || site.domain]));
   const minExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const connectionsLoading = tokensQuery.isLoading || oauthConnectionsQuery.isLoading;
+  const connectionsError = tokensQuery.isError || oauthConnectionsQuery.isError;
+  const activeConnectionCount = tokens.filter((token) => tokenStatus(token).label === "Active").length
+    + oauthConnections.filter((connection) => !connection.revoked_at).length;
 
   return (
     <>
@@ -190,7 +201,7 @@ export function McpConnectionsPanel() {
         <SectionHeader
           icon={KeyRound}
           title="MCP Connections"
-          description="Connect an AI client to BlogFactory's read-only editorial tools."
+          description="Connect AI clients to BlogFactory's site-scoped editorial workflow."
           action={
             <Button
               type="button"
@@ -204,6 +215,20 @@ export function McpConnectionsPanel() {
         />
 
         <div className="space-y-6 p-4 sm:p-6">
+          <div className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["MCP access", connectionsLoading ? "Checking" : connectionsError ? "Attention" : "Ready"],
+              ["Connections", connectionsLoading ? "—" : `${activeConnectionCount} active`],
+              ["Site scope", activeSite?.domain || "No site selected"],
+              ["Tool catalog", "10 available"],
+            ].map(([label, value]) => (
+              <div key={label} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
+                <p className="type-kicker text-muted-foreground">{label}</p>
+                <p className="mt-2 truncate text-xl font-semibold text-foreground" title={value}>{value}</p>
+              </div>
+            ))}
+          </div>
+
           <section className="space-y-2">
             <Label htmlFor="mcp-endpoint">MCP endpoint</Label>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -239,13 +264,37 @@ export function McpConnectionsPanel() {
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-status-success" aria-hidden="true" />
               <div>
-                <h3 className="text-sm font-semibold">Read-only pilot</h3>
+                <h3 className="text-sm font-semibold">Site-scoped MCP access</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Personal tokens can inspect sites, personas, publish targets, posts, and jobs. Draft changes and publishing remain unavailable.
+                  Connections can inspect content, generate and edit drafts, and send reviewed posts to a CMS as drafts. Live publishing and deletion remain unavailable.
                 </p>
               </div>
             </div>
           </div>
+
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Available tools</h3>
+              <p className="mt-1 text-sm text-muted-foreground">The client can discover these 10 tools for the selected site.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {MCP_TOOL_GROUPS.map((group) => (
+                <div key={group.label} className="rounded-md border border-byword-border bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <Cable className="h-4 w-4 text-byword-blue" aria-hidden="true" />
+                    <p className="type-kicker text-muted-foreground">{group.label}</p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {group.tools.map((tool) => (
+                      <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">
+                        {tool}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           {!sitesLoading && !sites.length && (
             <div className="rounded-md border border-dashed border-byword-border p-6 text-center">
@@ -324,7 +373,7 @@ export function McpConnectionsPanel() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Personal tokens</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Advanced access for internal read-only pilots and clients without OAuth.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Advanced access for internal clients without OAuth.</p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={openCreate} disabled={sitesLoading || !sites.length}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -347,7 +396,7 @@ export function McpConnectionsPanel() {
             <div className="rounded-md border border-dashed border-byword-border p-8 text-center">
               <KeyRound className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
               <p className="mt-3 text-sm font-medium">No personal MCP connections yet.</p>
-              <p className="mt-1 text-sm text-muted-foreground">Create one for an internal read-only pilot.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Create one for a site-scoped internal client.</p>
             </div>
           ) : (
             <Table>
@@ -459,10 +508,10 @@ export function McpConnectionsPanel() {
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Permission</legend>
               <label className="flex items-start gap-3 rounded-md border border-byword-border bg-muted/35 p-3">
-                <Checkbox checked disabled aria-label="Read content permission is required" />
+                <Checkbox checked disabled aria-label="MCP draft permissions are required" />
                 <span>
-                  <span className="block text-sm font-medium">Read content</span>
-                  <span className="block text-xs text-muted-foreground">Required during the read-only pilot.</span>
+                  <span className="block text-sm font-medium">Read content, edit drafts, push CMS drafts</span>
+                  <span className="block text-xs text-muted-foreground">Live publishing and deletion are never granted.</span>
                 </span>
               </label>
             </fieldset>

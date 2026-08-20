@@ -5,8 +5,7 @@ import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs,
 import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
-import { getPostPublications, publishPost } from "../services/publishing.js";
-import { SeoMetadataNotReadyError } from "../services/publishing.js";
+import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
@@ -14,6 +13,19 @@ import { attachPostImage } from "../services/image-post-attachments.js";
 import { normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { optionalEnum, readJsonObject, requiredString, requiredStringArray } from "../http/error-contract.js";
 import { pagination, parsePostListQuery } from "./list-query.js";
+import {
+  EDITORIAL_STATES,
+  PostNotEditableError,
+  PostRevisionNotFoundError,
+  PostVersionConflictError,
+  currentPostRevision,
+  listPostRevisions,
+  restorePostRevision,
+  serializePostRevision,
+  setPostEditorialState,
+  updatePostWithRevision,
+  type EditorialState,
+} from "../services/post-revisions.js";
 
 export const postsRoutes = new Hono();
 
@@ -171,6 +183,109 @@ postsRoutes.get("/:id/publications", async (c) => {
   return c.json({ publications: await getPostPublications(userId, id) });
 });
 
+postsRoutes.get("/:id/revisions", async (c) => {
+  const userId = getUserId(c);
+  try {
+    const rows = await listPostRevisions(userId, c.req.param("id"), Number(c.req.query("limit") || 50));
+    return c.json({ revisions: rows.map(serializePostRevision) });
+  } catch (error) {
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.post("/:id/revisions/:revisionId/restore", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const expectedUpdatedAt = new Date(requiredString(body, "expected_updated_at", ["expectedUpdatedAt"]));
+  if (Number.isNaN(expectedUpdatedAt.getTime())) return c.json({ error: "expected_updated_at must be an ISO timestamp" }, 400);
+  try {
+    const result = await restorePostRevision({
+      userId,
+      postId: c.req.param("id"),
+      revisionId: c.req.param("revisionId"),
+      expectedUpdatedAt,
+    });
+    const seoJob = await enqueueSeoMetadata({ userId, postId: result.post.id, trigger: "revision_restore" });
+    if (seoJob.queued) waitUntil(drainSeoMetadata(userId, 1));
+    return c.json({
+      post: result.post,
+      revision: result.revision ? serializePostRevision(result.revision) : null,
+      seo_job_id: seoJob.jobId,
+    });
+  } catch (error) {
+    if (error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.patch("/:id/editorial-state", async (c) => {
+  const userId = getUserId(c);
+  const body = await readJsonObject(c);
+  const state = requiredString(body, "state") as EditorialState;
+  if (!EDITORIAL_STATES.includes(state)) return c.json({ error: "Invalid editorial state" }, 400);
+  try {
+    const result = await setPostEditorialState({
+      userId,
+      postId: c.req.param("id"),
+      state,
+      expectedRevisionId: requiredString(body, "expected_revision_id", ["expectedRevisionId"]),
+    });
+    return c.json({
+      editorial_state: result.post.editorialState,
+      approved_revision_id: result.post.approvedRevisionId,
+      current_revision: serializePostRevision(result.revision),
+      updated_at: result.post.updatedAt,
+    });
+  } catch (error) {
+    if (error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.get("/:id/preflight", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const requestedIntegrationId = c.req.query("integration_id") || c.req.query("integrationId") || "";
+  const mode = c.req.query("mode") === "publish" ? "publish" : "draft";
+  const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
+  if (!post) return c.json({ error: "Post not found" }, 404);
+  const revision = await currentPostRevision(userId, id);
+  const integrationId = requestedIntegrationId || post.preferredIntegrationId || "";
+  const [integration] = integrationId
+    ? await db.select({ id: siteIntegrations.id, status: siteIntegrations.status, siteId: siteIntegrations.siteId, provider: siteIntegrations.provider })
+      .from(siteIntegrations)
+      .where(and(eq(siteIntegrations.id, integrationId), eq(siteIntegrations.userId, userId)))
+      .limit(1)
+    : [];
+  const seoReady = Boolean(readySeoMetadataForArticle(post.seoMetadata, post.title, post.content));
+  const destinationReady = Boolean(integration && integration.status === "connected" && (!post.siteId || integration.siteId === post.siteId));
+  const approved = Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id);
+  const routingWarnings = post.publishingMetadata && typeof post.publishingMetadata === "object" && Array.isArray((post.publishingMetadata as Record<string, unknown>).routingWarnings)
+    ? (post.publishingMetadata as Record<string, unknown>).routingWarnings as unknown[]
+    : [];
+  const checks = [
+    { id: "saved_revision", label: "Saved revision", status: revision ? "pass" : "blocker", message: revision ? `Revision ${revision.revisionNumber}` : "No saved revision exists" },
+    { id: "seo", label: "Canonical SEO", status: seoReady ? "pass" : "blocker", message: seoReady ? "Current and valid" : "SEO metadata is missing, stale, or invalid" },
+    { id: "destination", label: "CMS destination", status: destinationReady ? "pass" : "blocker", message: destinationReady ? `${integration?.provider} is connected` : "Choose a connected destination for this site" },
+    { id: "cover_image", label: "Cover image", status: post.coverImageUrl ? "pass" : "warning", message: post.coverImageUrl ? "Attached to the saved revision" : "No cover image is attached" },
+    { id: "publishing_metadata", label: "Publishing metadata", status: post.publishingMetadata ? "pass" : "warning", message: post.publishingMetadata ? "Saved for this revision" : "Tags, categories, or provider metadata have not been saved yet" },
+    { id: "review", label: "Editorial review", status: approved ? "pass" : mode === "publish" ? "warning" : "pass", message: approved ? "Current revision is approved" : mode === "publish" ? "Live publishing requires explicit review override" : "Approval is optional for CMS drafts" },
+    ...routingWarnings.filter((warning): warning is string => typeof warning === "string").map((warning, index) => ({ id: `routing_${index}`, label: "Publishing metadata", status: "warning", message: warning })),
+  ];
+  return c.json({
+    mode,
+    revision: revision ? serializePostRevision(revision) : null,
+    editorial_state: post.editorialState,
+    approved_revision_id: post.approvedRevisionId,
+    can_send: !checks.some((check) => check.status === "blocker"),
+    requires_review_override: mode === "publish" && !approved,
+    checks,
+  });
+});
+
 postsRoutes.post("/duplicate-check", async (c) => {
   const userId = getUserId(c);
   const body = await readJsonObject(c);
@@ -298,6 +413,9 @@ postsRoutes.post("/:id/publish", async (c) => {
   const integrationId = requiredString(body, "integrationId", ["integration_id"]);
   const mode = optionalEnum(body, "mode", ["draft", "publish"] as const, "draft");
   const postType = optionalEnum(body, "postType", ["post", "page"] as const, "post");
+  const expectedValue = body.expected_updated_at ?? body.expectedUpdatedAt;
+  const expectedUpdatedAt = typeof expectedValue === "string" ? new Date(expectedValue) : undefined;
+  if (expectedUpdatedAt && Number.isNaN(expectedUpdatedAt.getTime())) return c.json({ error: "expected_updated_at must be an ISO timestamp" }, 400);
   let result;
   try {
     result = await publishPost(userId, id, integrationId, {
@@ -307,9 +425,13 @@ postsRoutes.post("/:id/publish", async (c) => {
       categories: parseList(body.categories),
       excerpt: typeof body.excerpt === "string" ? body.excerpt : undefined,
       publishingMetadata: body.publishingMetadata || body.publishing_metadata,
+      expectedUpdatedAt,
+      reviewOverride: body.review_override === true || body.reviewOverride === true,
     });
   } catch (error) {
     if (error instanceof SeoMetadataNotReadyError) return c.json({ error: error.message, code: "SEO_METADATA_NOT_READY" }, 409);
+    if (error instanceof ExpectedPostVersionError || error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
+    if (error instanceof ReviewRequiredError) return c.json({ error: error.message, code: "REVIEW_REQUIRED" }, 409);
     throw error;
   }
   return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);
@@ -323,7 +445,7 @@ postsRoutes.post("/bulk-cms-publish", async (c) => {
   const integrationId = requiredString(body, "integrationId", ["integration_id"]);
   const mode = optionalEnum(body, "mode", ["draft", "publish"] as const, "draft");
   const postType = optionalEnum(body, "postType", ["post", "page"] as const, "post");
-  const candidates = await db.select({ id: posts.id, title: posts.title, content: posts.content, seoMetadata: posts.seoMetadata }).from(posts).where(and(
+  const candidates = await db.select({ id: posts.id, title: posts.title, content: posts.content, seoMetadata: posts.seoMetadata, editorialState: posts.editorialState }).from(posts).where(and(
     eq(posts.userId, userId),
     inArray(posts.id, ids),
   ));
@@ -350,12 +472,21 @@ postsRoutes.post("/bulk-cms-publish", async (c) => {
       postIds: slugConflicts,
     }, 409);
   }
+  const reviewOverride = body.review_override === true || body.reviewOverride === true;
+  if (mode === "publish" && !reviewOverride) {
+    const unapprovedIds = candidates.filter((post) => post.editorialState !== "approved").map((post) => post.id);
+    if (unapprovedIds.length) return c.json({
+      error: "Some posts have not been approved",
+      code: "REVIEW_REQUIRED",
+      postIds: unapprovedIds,
+    }, 409);
+  }
   if (body.preflightOnly === true) return c.json({ total: candidates.length, failures: [] });
 
   const failures: Array<{ id: string; title: string; error: string }> = [];
   for (const post of candidates) {
     try {
-      const result = await publishPost(userId, post.id, integrationId, { mode, postType });
+      const result = await publishPost(userId, post.id, integrationId, { mode, postType, reviewOverride });
       if (!result.success) failures.push({ id: post.id, title: post.title, error: result.error || "CMS publish failed" });
     } catch (error) {
       failures.push({ id: post.id, title: post.title, error: error instanceof Error ? error.message : "CMS publish failed" });
@@ -442,6 +573,8 @@ postsRoutes.get("/:id", async (c) => {
       inline_images: posts.inlineImages,
       seo_metadata: posts.seoMetadata,
       publishing_metadata: posts.publishingMetadata,
+      editorialState: posts.editorialState,
+      approvedRevisionId: posts.approvedRevisionId,
       created_at: posts.createdAt,
       updated_at: posts.updatedAt,
       persona_name: personas.name,
@@ -520,6 +653,7 @@ postsRoutes.get("/:id", async (c) => {
   const presentedSeo = storedSeo && seoStatus !== "missing" && storedSeo.status !== seoStatus
     ? { ...storedSeo, status: seoStatus }
     : storedSeo;
+  const currentRevision = await currentPostRevision(userId, id);
   return c.json({
     ...result,
     seo_metadata: presentedSeo,
@@ -534,6 +668,9 @@ postsRoutes.get("/:id", async (c) => {
     image_assets: attachedAssets,
     personas: persona_name ? { name: persona_name } : null,
     campaigns: campaign_name ? { name: campaign_name } : null,
+    editorial_state: result.editorialState,
+    approved_revision_id: result.approvedRevisionId,
+    current_revision: currentRevision ? serializePostRevision(currentRevision) : null,
   });
 });
 
@@ -592,21 +729,30 @@ postsRoutes.put("/:id", async (c) => {
   if (typeof coverImageUrl === "string" || coverImageUrl === null) update.coverImageUrl = coverImageUrl;
   if (Array.isArray(inlineImages)) update.inlineImages = normalizeInlineImages(inlineImages, update.coverImageUrl);
   if (!Object.keys(update).length) return c.json({ error: "No valid fields to update" }, 400);
-
-  const [updated] = await db
-    .update(posts)
-    .set(update)
-    .where(and(eq(posts.id, id), eq(posts.userId, userId)))
-    .returning();
-
-  if (!updated) return c.json({ error: "Post not found" }, 404);
+  const expectedUpdatedAt = new Date(requiredString(body, "expected_updated_at", ["expectedUpdatedAt"]));
+  if (Number.isNaN(expectedUpdatedAt.getTime())) return c.json({ error: "expected_updated_at must be an ISO timestamp" }, 400);
+  let updateResult;
+  try {
+    updateResult = await updatePostWithRevision({ userId, postId: id, expectedUpdatedAt, source: "save", changes: update });
+  } catch (error) {
+    if (error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
+    if (error instanceof PostNotEditableError) return c.json({ error: error.message }, 409);
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+  const updated = updateResult.post;
   let seoJob: Awaited<ReturnType<typeof enqueueSeoMetadata>> | null = null;
   if (typeof body.title === "string" || typeof body.content === "string") {
     seoJob = await enqueueSeoMetadata({ userId, postId: id, trigger: "save" });
     if (seoJob.queued) waitUntil(drainSeoMetadata(userId, 1));
   }
   const [fresh] = await db.select({ seoMetadata: posts.seoMetadata }).from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
-  return c.json({ ...updated, seo_metadata: fresh?.seoMetadata || null, seo_job_id: seoJob?.jobId || null });
+  return c.json({
+    ...updated,
+    seo_metadata: fresh?.seoMetadata || null,
+    seo_job_id: seoJob?.jobId || null,
+    current_revision: updateResult.revision ? serializePostRevision(updateResult.revision) : null,
+  });
 });
 
 postsRoutes.put("/:id/seo", async (c) => {

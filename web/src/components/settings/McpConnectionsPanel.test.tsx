@@ -134,7 +134,7 @@ describe("MCP connections panel", () => {
 
     expect(postMock).toHaveBeenCalledWith("/mcp/tokens", {
       name: "Personal Codex",
-      scopes: ["content:read"],
+      scopes: ["content:read", "drafts:write", "publish:draft"],
       site_ids: ["11111111-1111-4111-8111-111111111111"],
       expires_at: null,
     });
@@ -152,7 +152,7 @@ describe("MCP connections panel", () => {
       id: "22222222-2222-4222-8222-222222222222",
       name: "Editorial client",
       prefix: "bf_mcp_abcd",
-      scopes: ["content:read"],
+      scopes: ["content:read", "drafts:write", "publish:draft"],
       site_ids: ["11111111-1111-4111-8111-111111111111"],
       expires_at: null,
       last_used_at: null,
@@ -221,6 +221,11 @@ describe("MCP connections panel", () => {
     ));
     await renderPanel([], [connection]);
 
+    expect(document.body).toHaveTextContent("MCP access");
+    expect(document.body).toHaveTextContent("1 active");
+    expect(document.body).toHaveTextContent("10 available");
+    expect(document.body).toHaveTextContent("generate_draft");
+    expect(document.body).toHaveTextContent("push_to_cms_draft");
     expect(document.body).toHaveTextContent("OAuth MCP client");
     expect(document.body).toHaveTextContent("Example — example.com");
     const revoke = document.querySelector<HTMLButtonElement>('[aria-label="Revoke OAuth MCP client"]');

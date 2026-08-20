@@ -13,6 +13,7 @@ import { publishingFailureState } from "./atomic-state.js";
 import { slugify } from "./slugify.js";
 export { slugify } from "./slugify.js";
 import { readySeoMetadataForArticle, type SeoMetadataV1 } from "./seo-metadata.js";
+import { currentPostRevision, updatePostWithRevision } from "./post-revisions.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -63,12 +64,28 @@ interface PublishOptions {
   categories?: string[];
   excerpt?: string;
   publishingMetadata?: unknown;
+  expectedUpdatedAt?: Date;
+  reviewOverride?: boolean;
 }
 
 export class SeoMetadataNotReadyError extends Error {
   constructor() {
     super("SEO metadata is not ready for the current article version");
     this.name = "SeoMetadataNotReadyError";
+  }
+}
+
+export class ExpectedPostVersionError extends Error {
+  constructor() {
+    super("The post changed after it was read");
+    this.name = "ExpectedPostVersionError";
+  }
+}
+
+export class ReviewRequiredError extends Error {
+  constructor() {
+    super("The current revision has not been approved");
+    this.name = "ReviewRequiredError";
   }
 }
 
@@ -191,6 +208,10 @@ export function serializePublication(row: typeof postPublications.$inferSelect) 
     publish_mode: row.publishMode,
     idempotencyKey: row.idempotencyKey,
     idempotency_key: row.idempotencyKey,
+    revisionId: row.revisionId,
+    revision_id: row.revisionId,
+    reviewOverride: row.reviewOverride,
+    review_override: row.reviewOverride,
     status: row.status,
     externalId: row.externalId,
     external_id: row.externalId,
@@ -228,13 +249,14 @@ export function publishingIdempotencyKey(input: {
   postId: string;
   integrationId: string;
   postUpdatedAt: Date;
+  revisionId?: string | null;
   options: PublishOptions;
 }) {
   return createHash("sha256").update(stableJson({
     userId: input.userId,
     postId: input.postId,
     integrationId: input.integrationId,
-    postUpdatedAt: input.postUpdatedAt.toISOString(),
+    contentVersion: input.revisionId || input.postUpdatedAt.toISOString(),
     options: input.options,
   })).digest("hex");
 }
@@ -248,6 +270,8 @@ async function claimPublication(input: {
   provider: IntegrationProvider;
   mode: PublishMode;
   title: string;
+  revisionId: string | null;
+  reviewOverride: boolean;
 }) {
   const values = {
     userId: input.userId,
@@ -257,6 +281,8 @@ async function claimPublication(input: {
     provider: input.provider,
     publishMode: input.mode,
     idempotencyKey: input.key,
+    revisionId: input.revisionId,
+    reviewOverride: input.reviewOverride,
     status: "processing",
     title: input.title,
   };
@@ -322,12 +348,40 @@ export async function testIntegration(row: IntegrationRow) {
 }
 
 export async function publishPost(userId: string, postId: string, integrationId: string, options: PublishOptions = {}) {
-  const [post] = await db
+  const { expectedUpdatedAt, reviewOverride = false, ...publishOptions } = options;
+  let [post] = await db
     .select()
     .from(posts)
-    .where(and(eq(posts.id, postId), eq(posts.userId, userId)))
+    .where(and(
+      eq(posts.id, postId),
+      eq(posts.userId, userId),
+      expectedUpdatedAt ? eq(posts.updatedAt, expectedUpdatedAt) : undefined,
+    ))
     .limit(1);
-  if (!post) throw new Error("Post not found");
+  if (!post) {
+    if (expectedUpdatedAt) {
+      const [current] = await db.select({ id: posts.id }).from(posts).where(and(eq(posts.id, postId), eq(posts.userId, userId))).limit(1);
+      if (current) throw new ExpectedPostVersionError();
+    }
+    throw new Error("Post not found");
+  }
+  let revision = await currentPostRevision(userId, postId);
+  const mode = publishOptions.mode === "publish" ? "publish" : "draft";
+  const metadataChanged = publishOptions.publishingMetadata !== undefined && stableJson(post.publishingMetadata) !== stableJson(publishOptions.publishingMetadata);
+  const initiallyApproved = Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id);
+  if (mode === "publish" && (!initiallyApproved || metadataChanged) && !reviewOverride) throw new ReviewRequiredError();
+  if (metadataChanged) {
+    const updated = await updatePostWithRevision({
+      userId,
+      postId,
+      expectedUpdatedAt: post.updatedAt,
+      source: "publish_metadata",
+      changes: { publishingMetadata: publishOptions.publishingMetadata },
+    });
+    post = updated.post;
+    revision = updated.revision || revision;
+  }
+  const approved = Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id);
   const canonicalSeo = readySeoMetadataForArticle(post.seoMetadata, post.title, post.content);
   if (!canonicalSeo) {
     throw new SeoMetadataNotReadyError();
@@ -367,15 +421,15 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .from(imageAssets)
     .where(and(eq(imageAssets.userId, userId), eq(imageAssets.postId, postId)));
   const brandCtas = await publishingBrandCtas(userId, integration.siteId);
-  let article = buildArticlePayload(post, canonicalSeo, options, normalizeImagePlacement("auto"), assetRows, brandCtas, ortakAlanProfile);
-  const mode = options.mode === "publish" ? "publish" : "draft";
+  let article = buildArticlePayload(post, canonicalSeo, publishOptions, normalizeImagePlacement("auto"), assetRows, brandCtas, ortakAlanProfile);
   let validation = { errors: [] as string[], warnings: [] as string[] };
   const idempotencyKey = publishingIdempotencyKey({
     userId,
     postId,
     integrationId,
     postUpdatedAt: post.updatedAt,
-    options: { ...options, mode },
+    revisionId: revision?.id,
+    options: { ...publishOptions, mode },
   });
   const claim = await claimPublication({
     key: idempotencyKey,
@@ -386,6 +440,8 @@ export async function publishPost(userId: string, postId: string, integrationId:
     provider,
     mode,
     title: post.title,
+    revisionId: revision?.id || null,
+    reviewOverride: mode === "publish" && !approved && reviewOverride,
   });
 
   if (!claim.claimed) {
@@ -407,7 +463,6 @@ export async function publishPost(userId: string, postId: string, integrationId:
 
   let publication = claim.publication;
   let externalResult: PublishResult | null = null;
-  let publishingMetadata: unknown | undefined;
 
   try {
     if (ortakAlanProfile) {
@@ -416,7 +471,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
         ? config.defaultAuthor as Record<string, unknown>
         : null;
       const coverAsset = assetRows.find((asset) => asset.storagePath === article.coverImageUrl);
-      const metadata = normalizeOrtakAlanMetadata(options.publishingMetadata ?? post.publishingMetadata, {
+      const metadata = normalizeOrtakAlanMetadata(publishOptions.publishingMetadata ?? post.publishingMetadata, {
         excerpt: article.excerpt,
         topicTags: article.tags,
         editorialOwner: String(config.editorialOwner || ""),
@@ -440,7 +495,6 @@ export async function publishPost(userId: string, postId: string, integrationId:
         ? ghostAuthors.find((author) => author.id === metadata.author?.id && author.status === "active")
         : null;
       metadata.author = matchedAuthor || null;
-      publishingMetadata = metadata;
       article = applyOrtakAlanMetadata(article, metadata);
       validation = validateOrtakAlanMetadata(metadata, {
         mode,
@@ -464,15 +518,13 @@ export async function publishPost(userId: string, postId: string, integrationId:
           validationFailed: true,
         };
       }
-    } else if (options.publishingMetadata && typeof options.publishingMetadata === "object") {
-      publishingMetadata = options.publishingMetadata;
     }
 
     externalResult =
       provider === "wordpress"
-        ? await publishWordPress(credentials as WordPressCredentials, article, mode, options)
+        ? await publishWordPress(credentials as WordPressCredentials, article, mode, publishOptions)
         : provider === "ghost"
-          ? await publishGhost(credentials as GhostCredentials, article, mode, options)
+          ? await publishGhost(credentials as GhostCredentials, article, mode, publishOptions)
           : provider === "wix"
             ? await publishWix(credentials as WixCredentials, article, mode)
             : await publishFramer(credentials as FramerCredentials, article, mode, integration.config as Record<string, unknown> | null);
@@ -502,7 +554,6 @@ export async function publishPost(userId: string, postId: string, integrationId:
         .where(and(eq(siteIntegrations.id, integration.id), eq(siteIntegrations.userId, userId)));
 
       const postChanges: Partial<typeof posts.$inferInsert> = {};
-      if (publishingMetadata !== undefined) postChanges.publishingMetadata = publishingMetadata;
       if (mode === "publish") postChanges.status = "published";
       if (Object.keys(postChanges).length) {
         await tx.update(posts).set(postChanges).where(and(eq(posts.id, postId), eq(posts.userId, userId)));

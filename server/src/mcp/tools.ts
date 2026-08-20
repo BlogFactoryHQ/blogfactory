@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, ilike, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { waitUntil } from "@vercel/functions";
 import { db } from "../db/index.js";
 import {
   imageAssets,
@@ -12,20 +13,53 @@ import {
   sites,
 } from "../db/schema.js";
 import { encryptedCredentialStatus } from "../services/api-keys.js";
+import { getOpenRouterKey } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
+import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
+import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
+import { ExpectedPostVersionError, publishPost, SeoMetadataNotReadyError } from "../services/publishing.js";
+import { PostNotEditableError, PostRevisionNotFoundError, PostVersionConflictError, currentPostRevision, updatePostWithRevision } from "../services/post-revisions.js";
 import { getPublicUrl } from "../services/s3-client.js";
 import { getSearchConsoleDashboard, getSearchConsoleInsights } from "../services/search-console.js";
-import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
+import { drainSeoMetadata, enqueueSeoMetadata, seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
 
 export const MCP_POST_CONTENT_LIMIT = 100_000;
+
+type ToolAnnotations = {
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+};
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
+} as const;
+
+const GENERATE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+} as const;
+
+const UPDATE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const PUSH_DRAFT_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
 } as const;
 
 const errorSchema = z.object({
@@ -57,6 +91,13 @@ type ToolErrorCode =
   | "insufficient_scope"
   | "not_found"
   | "validation_error"
+  | "conflict"
+  | "configuration_missing"
+  | "generation_busy"
+  | "generation_failed"
+  | "seo_not_ready"
+  | "destination_not_ready"
+  | "provider_error"
   | "internal_error";
 
 export class McpToolError extends Error {
@@ -339,6 +380,8 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       preferredIntegrationId: siteIntegrations.id,
       integrationSiteId: siteIntegrations.siteId,
       integrationStatus: siteIntegrations.status,
+      editorialState: posts.editorialState,
+      approvedRevisionId: posts.approvedRevisionId,
       updatedAt: posts.updatedAt,
     })
     .from(posts)
@@ -361,7 +404,7 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
     throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
   }
 
-  const [publicationRows, imageRows] = await Promise.all([
+  const [publicationRows, imageRows, revision] = await Promise.all([
     db
       .select({
         id: postPublications.id,
@@ -403,6 +446,7 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
         eq(imageAssets.postId, post.id),
       ))
       .orderBy(asc(imageAssets.type), asc(imageAssets.position), asc(imageAssets.createdAt)),
+    currentPostRevision(principal.userId, post.id),
   ]);
 
   const metadata = seoMetadata(post.seoMetadata);
@@ -426,6 +470,13 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       meta_title: metadata?.metaTitle || null,
       meta_description: metadata?.metaDescription || null,
       validation_errors: metadata?.validationErrors || [],
+    },
+    editorial: {
+      state: post.editorialState,
+      current_revision_id: revision?.id || null,
+      current_revision_number: revision?.revisionNumber || null,
+      approved_revision_id: post.approvedRevisionId,
+      current_revision_approved: Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id),
     },
     publishing: {
       routing_status: post.siteId
@@ -461,6 +512,245 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       }] : [];
     }),
     updated_at: isoDate(post.updatedAt),
+  };
+}
+
+const MCP_DRAFT_SOURCE_TYPES = ["article_keyword", "article_title", "url", "raw_text", "youtube"] as const;
+
+type GenerateDraftInput = {
+  site_id: string;
+  source_type: typeof MCP_DRAFT_SOURCE_TYPES[number];
+  source_value: string;
+  persona_id?: string;
+  preferred_integration_id?: string;
+  variations: number;
+  article_word_count?: number;
+  custom_instructions?: string;
+  generate_images: false;
+};
+
+function validateMcpDraftSource(input: GenerateDraftInput) {
+  if (input.source_type === "url" || input.source_type === "youtube") {
+    let url: URL;
+    try {
+      url = new URL(input.source_value);
+    } catch {
+      throw new McpToolError("validation_error", "Source must be a valid HTTPS URL.", "Correct source_value and try again.");
+    }
+    if (url.protocol !== "https:" || url.username || url.password) {
+      throw new McpToolError("validation_error", "Source must be a public HTTPS URL without embedded credentials.", "Correct source_value and try again.");
+    }
+  }
+  if (input.source_type === "raw_text" && input.source_value.length > 50_000) {
+    throw new McpToolError("validation_error", "Raw text exceeds the 50,000 character limit.", "Shorten source_value and try again.");
+  }
+}
+
+async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  validateMcpDraftSource(input);
+
+  if (input.persona_id) {
+    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+      eq(personas.id, input.persona_id),
+      eq(personas.userId, principal.userId),
+    )).limit(1);
+    if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas and choose an available persona.");
+  }
+  if (input.preferred_integration_id) {
+    const [integration] = await db.select({ id: siteIntegrations.id }).from(siteIntegrations).where(and(
+      eq(siteIntegrations.id, input.preferred_integration_id),
+      eq(siteIntegrations.userId, principal.userId),
+      eq(siteIntegrations.siteId, input.site_id),
+    )).limit(1);
+    if (!integration) throw new McpToolError("not_found", "Publishing target not found.", "Call list_publish_targets and choose a target for this site.");
+  }
+
+  const [activeJob] = await db.select({ id: jobs.id }).from(jobs).where(and(
+    eq(jobs.userId, principal.userId),
+    eq(jobs.siteId, input.site_id),
+    inArray(jobs.sourceType, [...MCP_DRAFT_SOURCE_TYPES]),
+    inArray(jobs.status, ["pending", "running"]),
+  )).limit(1);
+  if (activeJob) throw new McpToolError("generation_busy", "A draft generation job is already running for this site.", `Call get_job with job_id ${activeJob.id}.`, true);
+
+  const openRouterKey = await getOpenRouterKey(principal.userId);
+  if (!openRouterKey) throw new McpToolError("configuration_missing", "OpenRouter is not configured.", "Add an OpenRouter API key in BlogFactory Settings.");
+
+  let modelId: string;
+  try {
+    modelId = await resolveOpenRouterTextModel(openRouterKey, "openai/gpt-4o");
+  } catch {
+    throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Review the OpenRouter model configuration in BlogFactory Settings.");
+  }
+
+  const [job] = await db.insert(jobs).values({
+    userId: principal.userId,
+    siteId: input.site_id,
+    preferredIntegrationId: input.preferred_integration_id || null,
+    sourceType: input.source_type,
+    sourceValue: input.source_value,
+    modelId,
+    personaId: input.persona_id || null,
+    status: "running",
+    currentStep: "starting",
+    generationPlan: { totalDrafts: input.variations, origin: "mcp" },
+  }).returning({ id: jobs.id });
+
+  const { generateContent } = await import("../services/generate-content.js");
+  const generation = generateContent({
+    userId: principal.userId,
+    jobId: job.id,
+    siteId: input.site_id,
+    preferredIntegrationId: input.preferred_integration_id || null,
+    sourceType: input.source_type,
+    sourceValue: input.source_value,
+    modelId,
+    personaId: input.persona_id || null,
+    variations: input.variations,
+    articleWordCount: input.article_word_count,
+    customInstructions: input.custom_instructions,
+    generateImages: false,
+  }).catch(async (error) => {
+    console.error("[mcp] Draft generation failed:", error instanceof Error ? error.name : "UnknownError");
+    await db.update(jobs).set({
+      status: "failed",
+      errorMessage: "Content generation failed",
+      generationError: "Content generation failed",
+      completedAt: new Date(),
+    }).where(and(eq(jobs.id, job.id), eq(jobs.userId, principal.userId)));
+  });
+  waitUntil(generation);
+
+  return {
+    job_id: job.id,
+    status: "running",
+    site_id: input.site_id,
+    source_type: input.source_type,
+    post_ids: [],
+    next_action: "Call get_job with this job_id.",
+  };
+}
+
+type UpdateDraftInput = {
+  post_id: string;
+  expected_updated_at: string;
+  title?: string;
+  content?: string;
+};
+
+async function updateDraft(principal: McpPrincipal, input: UpdateDraftInput) {
+  if (input.title === undefined && input.content === undefined) {
+    throw new McpToolError("validation_error", "Provide title or content to update.", "Read the draft, then send at least one changed field.");
+  }
+  const update: Partial<typeof posts.$inferInsert> = {};
+  if (input.title !== undefined) {
+    const title = cleanPostTitle(input.title);
+    if (!title) throw new McpToolError("validation_error", "Title cannot be empty.", "Provide a non-empty title.");
+    update.title = title;
+  }
+  if (input.content !== undefined) {
+    const content = cleanGeneratedPostContent(input.content);
+    if (!content) throw new McpToolError("validation_error", "Content cannot be empty.", "Provide non-empty Markdown content.");
+    update.content = content;
+  }
+
+  const [allowed] = await db.select({ id: posts.id }).from(posts).where(and(
+    eq(posts.id, input.post_id),
+    eq(posts.userId, principal.userId),
+    inArray(posts.siteId, [...principal.siteIds]),
+  )).limit(1);
+  if (!allowed) throw new McpToolError("not_found", "Draft not found.", "Call list_posts to choose an allowed draft.");
+  let result;
+  try {
+    result = await updatePostWithRevision({
+      userId: principal.userId,
+      postId: input.post_id,
+      expectedUpdatedAt: new Date(input.expected_updated_at),
+      source: "mcp",
+      changes: update,
+      requireDraft: true,
+    });
+  } catch (error) {
+    if (error instanceof PostRevisionNotFoundError) throw new McpToolError("not_found", "Draft not found.", "Call list_posts to choose an allowed draft.");
+    if (error instanceof PostNotEditableError) throw new McpToolError("conflict", error.message, "Choose a draft post.");
+    if (error instanceof PostVersionConflictError) throw new McpToolError("conflict", error.message, "Call get_post, review the current version, and retry with its updated_at.");
+    throw error;
+  }
+  const updated = result.post;
+  if (!updated.siteId) throw new McpToolError("not_found", "Draft not found.", "Call list_posts to choose an allowed draft.");
+
+  const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: updated.id, trigger: "mcp_update" });
+  if (seoJob.queued) waitUntil(drainSeoMetadata(principal.userId, 1));
+  return {
+    post_id: updated.id,
+    site_id: updated.siteId,
+    title: updated.title,
+    seo_status: seoJob.status,
+    seo_job_id: seoJob.jobId,
+    revision_id: result.revision?.id || null,
+    updated_at: isoDate(updated.updatedAt),
+    next_action: "Call get_post to review the saved version.",
+  };
+}
+
+type PushDraftInput = {
+  post_id: string;
+  integration_id: string;
+  expected_updated_at: string;
+  post_type: "post" | "page";
+  tags?: string[];
+  categories?: string[];
+  excerpt?: string;
+  mode?: unknown;
+};
+
+async function pushToCmsDraft(principal: McpPrincipal, input: PushDraftInput) {
+  if (input.mode !== undefined) throw new McpToolError("validation_error", "mode is not accepted; MCP always sends a CMS draft.", "Remove mode and retry.");
+  const [post] = await db.select({ siteId: posts.siteId }).from(posts).where(and(
+    eq(posts.id, input.post_id),
+    eq(posts.userId, principal.userId),
+    inArray(posts.siteId, [...principal.siteIds]),
+  )).limit(1);
+  if (!post?.siteId) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+
+  const [integration] = await db.select({ provider: siteIntegrations.provider, status: siteIntegrations.status }).from(siteIntegrations).where(and(
+    eq(siteIntegrations.id, input.integration_id),
+    eq(siteIntegrations.userId, principal.userId),
+    eq(siteIntegrations.siteId, post.siteId),
+  )).limit(1);
+  if (!integration) throw new McpToolError("not_found", "Publishing target not found.", "Call list_publish_targets for this post's site.");
+  if (integration.status !== "connected") throw new McpToolError("destination_not_ready", "Publishing target is not connected.", "Reconnect the target in BlogFactory Integrations.");
+
+  let result: Awaited<ReturnType<typeof publishPost>>;
+  try {
+    result = await publishPost(principal.userId, input.post_id, input.integration_id, {
+      mode: "draft",
+      postType: input.post_type,
+      tags: input.tags,
+      categories: input.categories,
+      excerpt: input.excerpt,
+      expectedUpdatedAt: new Date(input.expected_updated_at),
+    });
+  } catch (error) {
+    if (error instanceof ExpectedPostVersionError) throw new McpToolError("conflict", error.message, "Call get_post and retry with its updated_at.");
+    if (error instanceof SeoMetadataNotReadyError) throw new McpToolError("seo_not_ready", error.message, "Wait for SEO metadata, review it in get_post, then retry.", true);
+    throw error;
+  }
+  if (!result.success) {
+    const code = result.validationFailed ? "destination_not_ready" : "provider_error";
+    throw new McpToolError(code, result.validationFailed ? "The CMS draft failed validation." : "The CMS provider could not create the draft.", "Review the post and integration in BlogFactory, then retry.", !result.validationFailed);
+  }
+  const publication = result.publication;
+  return {
+    success: true,
+    status: publication.status,
+    provider: integration.provider,
+    external_id: publication.external_id,
+    external_url: publication.external_url,
+    external_edit_url: publication.external_edit_url,
+    deduplicated: Boolean(result.idempotent),
+    site_id: post.siteId,
   };
 }
 
@@ -559,7 +849,7 @@ type ToolDefinition = {
   outputSchema: z.ZodRawShape;
   requiredScope: McpScope;
   siteBound: boolean;
-  annotations: typeof READ_ONLY_ANNOTATIONS;
+  annotations: ToolAnnotations;
   handler: (principal: McpPrincipal, input: any) => Promise<Record<string, unknown>> | Record<string, unknown>;
 };
 
@@ -734,6 +1024,13 @@ export const MCP_TOOL_REGISTRY = {
         meta_description: nullableText,
         validation_errors: z.array(z.string()),
       }),
+      editorial: z.object({
+        state: z.enum(["draft", "in_review", "approved", "changes_requested"]),
+        current_revision_id: uuid.nullable(),
+        current_revision_number: z.number().int().positive().nullable(),
+        approved_revision_id: uuid.nullable(),
+        current_revision_approved: z.boolean(),
+      }),
       publishing: z.object({
         routing_status: z.enum(["ready", "needs_routing"]),
         preferred_integration_id: uuid.nullable(),
@@ -746,6 +1043,33 @@ export const MCP_TOOL_REGISTRY = {
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: getPost,
+  },
+  generate_draft: {
+    name: "generate_draft",
+    description: "Start one asynchronous BlogFactory draft-generation job. This can consume the user's configured provider budget.",
+    inputSchema: {
+      site_id: uuid,
+      source_type: z.enum(MCP_DRAFT_SOURCE_TYPES),
+      source_value: z.string().trim().min(1).max(50_000),
+      persona_id: uuid.optional(),
+      preferred_integration_id: uuid.optional(),
+      variations: z.number().int().min(1).max(3).default(1),
+      article_word_count: z.number().int().min(300).max(5_000).optional(),
+      custom_instructions: z.string().trim().min(1).max(4_000).optional(),
+      generate_images: z.literal(false).default(false),
+    },
+    outputSchema: successOutputSchema({
+      job_id: uuid,
+      status: z.literal("running"),
+      site_id: uuid,
+      source_type: z.enum(MCP_DRAFT_SOURCE_TYPES),
+      post_ids: z.array(uuid),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: GENERATE_ANNOTATIONS,
+    handler: generateDraft,
   },
   get_job: {
     name: "get_job",
@@ -792,6 +1116,57 @@ export const MCP_TOOL_REGISTRY = {
     annotations: READ_ONLY_ANNOTATIONS,
     handler: searchConsoleInsights,
   },
+  update_draft: {
+    name: "update_draft",
+    description: "Update the title and/or Markdown content of one BlogFactory draft using optimistic locking.",
+    inputSchema: {
+      post_id: uuid,
+      expected_updated_at: z.string().datetime({ offset: true }),
+      title: z.string().max(500).optional(),
+      content: z.string().max(MCP_POST_CONTENT_LIMIT).optional(),
+    },
+    outputSchema: successOutputSchema({
+      post_id: uuid,
+      site_id: uuid,
+      title: z.string(),
+      seo_status: seoStatusSchema,
+      seo_job_id: uuid.nullable(),
+      revision_id: uuid.nullable(),
+      updated_at: z.string(),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: UPDATE_ANNOTATIONS,
+    handler: updateDraft,
+  },
+  push_to_cms_draft: {
+    name: "push_to_cms_draft",
+    description: "Send one reviewed BlogFactory post to a connected CMS as a draft. Live publication is unavailable.",
+    inputSchema: {
+      post_id: uuid,
+      integration_id: uuid,
+      expected_updated_at: z.string().datetime({ offset: true }),
+      post_type: z.enum(["post", "page"]).default("post"),
+      tags: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+      categories: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+      excerpt: z.string().trim().max(500).optional(),
+    },
+    outputSchema: successOutputSchema({
+      success: z.literal(true),
+      status: z.literal("draft"),
+      provider: z.string(),
+      external_id: nullableText,
+      external_url: nullableText,
+      external_edit_url: nullableText,
+      deduplicated: z.boolean(),
+      site_id: uuid,
+    }),
+    requiredScope: "publish:draft",
+    siteBound: true,
+    annotations: PUSH_DRAFT_ANNOTATIONS,
+    handler: pushToCmsDraft,
+  },
 } satisfies Record<typeof ACTIVE_MCP_TOOL_NAMES[number], ToolDefinition>;
 
 export function assertMcpToolRegistry() {
@@ -805,12 +1180,9 @@ export function assertMcpToolRegistry() {
     if (!tool.description || !tool.inputSchema || !tool.outputSchema || !tool.handler) {
       throw new Error(`MCP tool ${tool.name} is incomplete`);
     }
-    if (
-      tool.annotations.readOnlyHint !== true
-      || tool.annotations.destructiveHint !== false
-      || tool.annotations.idempotentHint !== true
-      || tool.annotations.openWorldHint !== false
-    ) throw new Error(`MCP tool ${tool.name} has invalid read-only annotations`);
+    if (Object.values(tool.annotations).some((value) => typeof value !== "boolean")) {
+      throw new Error(`MCP tool ${tool.name} has invalid annotations`);
+    }
     if (!MCP_TOOL_NAMES.includes(tool.name) || !MCP_SCOPES.includes(tool.requiredScope) || typeof tool.siteBound !== "boolean") {
       throw new Error(`MCP tool ${tool.name} has invalid registry metadata`);
     }
@@ -901,7 +1273,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal) {
   registerTool(server, principal, MCP_TOOL_REGISTRY.list_publish_targets);
   registerTool(server, principal, MCP_TOOL_REGISTRY.list_posts);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_post);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.generate_draft);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_job);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_dashboard);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_insights);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.update_draft);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.push_to_cms_draft);
 }

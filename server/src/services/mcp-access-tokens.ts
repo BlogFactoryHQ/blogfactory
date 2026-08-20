@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { ApiError } from "../http/error-contract.js";
-import type { McpScope } from "../mcp/contracts.js";
+import { MCP_SCOPES, type McpScope } from "../mcp/contracts.js";
 import { db } from "../db/index.js";
 import { mcpAccessTokens, sites, users } from "../db/schema.js";
 
@@ -17,13 +17,13 @@ export type CreateMcpTokenInput = {
 };
 
 function personalTokenScopes(value: unknown): McpScope[] {
-  if (!Array.isArray(value) || !value.length || value.some((scope) => scope !== "content:read")) {
-    throw new ApiError(400, "validation_error", "personal tokens are read-only during the pilot", [{
+  if (!Array.isArray(value) || !value.includes("content:read") || value.some((scope) => !MCP_SCOPES.includes(scope as McpScope))) {
+    throw new ApiError(400, "validation_error", "personal tokens require content:read and only support MCP scopes", [{
       field: "scopes",
-      message: "Expected only: content:read",
+      message: `Expected content:read and optionally: ${MCP_SCOPES.slice(1).join(", ")}`,
     }]);
   }
-  return ["content:read"];
+  return MCP_SCOPES.filter((scope) => value.includes(scope));
 }
 
 export function hashMcpAccessToken(secret: string) {

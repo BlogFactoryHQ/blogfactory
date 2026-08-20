@@ -1,5 +1,7 @@
 # Optimize + Per-Site Search Console Plan
 
+> Historical planning record. This document preserves the original proposal and is not a current product commitment; see the [documentation index](README.md) for current guides.
+
 ## Summary
 
 Build an MVP Optimize feature that uses Google Search Console data per active site.
