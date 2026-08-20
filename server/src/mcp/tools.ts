@@ -14,6 +14,7 @@ import {
 import { encryptedCredentialStatus } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
 import { getPublicUrl } from "../services/s3-client.js";
+import { getSearchConsoleDashboard, getSearchConsoleInsights } from "../services/search-console.js";
 import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
@@ -178,6 +179,16 @@ async function listPublishTargets(principal: McpPrincipal, input: { site_id: str
       last_tested_at: isoDate(row.lastTestedAt),
     })),
   };
+}
+
+async function searchConsoleDashboard(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, dashboard: await getSearchConsoleDashboard(principal.userId, input.site_id) };
+}
+
+async function searchConsoleInsights(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, insights: await getSearchConsoleInsights(principal.userId, input.site_id) };
 }
 
 type ListPostsInput = {
@@ -761,6 +772,26 @@ export const MCP_TOOL_REGISTRY = {
     annotations: READ_ONLY_ANNOTATIONS,
     handler: getJob,
   },
+  get_search_console_dashboard: {
+    name: "get_search_console_dashboard",
+    description: "Read the connected Search Console status and synchronized performance totals for one allowed site.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, dashboard: z.record(z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: searchConsoleDashboard,
+  },
+  get_search_console_insights: {
+    name: "get_search_console_insights",
+    description: "Read synchronized Search Console trends, opportunities, top pages, and top queries for one allowed site.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, insights: z.record(z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: searchConsoleInsights,
+  },
 } satisfies Record<typeof ACTIVE_MCP_TOOL_NAMES[number], ToolDefinition>;
 
 export function assertMcpToolRegistry() {
@@ -871,4 +902,6 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal) {
   registerTool(server, principal, MCP_TOOL_REGISTRY.list_posts);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_post);
   registerTool(server, principal, MCP_TOOL_REGISTRY.get_job);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_dashboard);
+  registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_insights);
 }
