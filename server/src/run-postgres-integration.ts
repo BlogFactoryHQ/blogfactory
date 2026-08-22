@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
@@ -222,6 +222,37 @@ try {
   assert.equal(searchConsoleSyncState.last_sync_at.toISOString(), searchConsoleSyncedAt.toISOString(), "Search Console last_sync_at was not updated");
   assert.equal(searchConsoleSyncState.sync_metadata.complete_through, "2026-08-20", "Search Console provenance was not persisted");
   assert.equal((await listDueSearchConsoleIntegrations(1, new Date("2026-08-22T13:00:00.000Z")))[0]?.id, otherSearchConsoleIntegrationId, "never-synced Search Console integration was not prioritized");
+  const asOfParts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  const asOf = `${asOfParts.year}-${asOfParts.month}-${asOfParts.day}`;
+  const canonicalParams = {
+    propertyUrl: "sc-domain:mcp-test.example.com",
+    asOf,
+    range: 28,
+    compare: true,
+    searchType: "web",
+    includePreliminary: false,
+  };
+  const canonicalCacheKey = createHash("sha256").update(`performance:${JSON.stringify(canonicalParams)}`).digest("hex");
+  await sql`
+    INSERT INTO search_console_query_cache (user_id, site_id, cache_key, kind, params, result, expires_at)
+    VALUES (${userId}, ${siteId}, ${canonicalCacheKey}, 'performance', ${sql.json(canonicalParams)}, ${sql.json({
+      range: { startDate: "2026-07-24", endDate: "2026-08-20", baselineStart: "2026-06-26", baselineEnd: "2026-07-23" },
+      totals: {
+        clicks: { value: 3, previous: 0, change: 3, changePercent: null },
+        impressions: { value: 30, previous: 0, change: 30, changePercent: null },
+        ctr: { value: 0.1, previous: 0, change: 0.1, changePercent: null },
+        position: { value: 3, previous: 0, change: 3, changePercent: null },
+      },
+      daily: [{ date: "2026-08-20", clicks: 3, impressions: 30, ctr: 0.1, position: 3 }],
+      metadata: { first_incomplete_date: "2026-08-21" },
+      provenance: {
+        source: "google_search_console_api", property: "sc-domain:mcp-test.example.com", scope: "site_total",
+        fetched_at: "", complete_through: "2026-08-20", first_incomplete_date: "2026-08-21", data_status: "complete", cache: "live",
+      },
+    })}, now() + interval '1 hour')
+  `;
   await assert.rejects(() => replaceSearchConsoleSnapshot({
     userId: otherUserId,
     siteId,
@@ -411,6 +442,7 @@ try {
   assert.equal(readPost.structuredContent.data.seo.status, "ready");
   const digest = await callTool("get_workspace_digest", { site_id: siteId });
   assert.equal(digest.structuredContent.data.workspace.site.id, siteId, "workspace digest crossed the site boundary");
+  assert.equal(digest.structuredContent.data.workspace.search_growth.totals.clicks.value, 3, "workspace digest did not use canonical Search Console totals");
   assert.equal(digest.structuredContent.data.workspace.connections.cms.connected, 1, "workspace digest missed the usable CMS destination");
   assert.ok(digest.structuredContent.data.workspace.recent_outputs.some((post: any) => post.id === postId), "workspace digest missed a recent output");
   const actionQueue = await callTool("list_action_items", { site_id: siteId, limit: 50, page: 1 });
