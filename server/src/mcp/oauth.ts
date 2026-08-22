@@ -5,12 +5,13 @@ import {
   type JWTVerifyGetKey,
   type JWTPayload,
 } from "jose";
-import { MCP_SCOPES } from "./contracts.js";
 
 export const MCP_OAUTH_USER_ID_CLAIM = "urn:blogfactory:user_id";
 export const MCP_OAUTH_SITE_ID_CLAIM = "urn:blogfactory:site_id";
 export const MCP_OAUTH_READ_SCOPE = "content:read";
-export const MCP_OAUTH_SCOPES = [...MCP_SCOPES];
+// AuthKit issues these standard OAuth scopes. BlogFactory authorizes its
+// draft-only capabilities from the site-bound consent claims after token verification.
+export const MCP_OAUTH_SCOPES = ["openid", "profile", "email", "offline_access"];
 
 export interface McpOAuthConfig {
   issuer: string;

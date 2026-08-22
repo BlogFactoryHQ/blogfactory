@@ -288,7 +288,7 @@ const oauthUnauthorized = await handleMcpHttpRequest(
 assert.equal(oauthUnauthorized.status, 401);
 assert.equal(
   oauthUnauthorized.headers.get("www-authenticate"),
-  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="content:read drafts:write publish:draft"',
+  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="openid profile email offline_access"',
 );
 if (previousIssuer === undefined) delete process.env.WORKOS_AUTHKIT_ISSUER;
 else process.env.WORKOS_AUTHKIT_ISSUER = previousIssuer;

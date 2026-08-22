@@ -32,12 +32,12 @@ assert.deepEqual(config, {
 assert.deepEqual(mcpProtectedResourceMetadata(config!), {
   resource: "https://blogfactory.io/mcp",
   authorization_servers: ["https://blogfactory-test.authkit.app"],
-  scopes_supported: ["content:read", "drafts:write", "publish:draft"],
+  scopes_supported: ["openid", "profile", "email", "offline_access"],
   bearer_methods_supported: ["header"],
 });
 assert.equal(
   mcpBearerChallenge(config),
-  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="content:read drafts:write publish:draft"',
+  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="openid profile email offline_access"',
 );
 assert.equal(getMcpOAuthConfig({}), null);
 assert.throws(() => getMcpOAuthConfig({

@@ -9,7 +9,7 @@ Verified on 2026-08-22:
 - `GET /mcp` without authentication returns HTTP 401 and a Bearer challenge.
 - `GET /.well-known/oauth-protected-resource` returns HTTP 200 and advertises `https://blogfactory.io/mcp`.
 - WorkOS browser OAuth and personal `bf_mcp_` connection tokens are supported.
-- Scopes are `content:read`, `drafts:write`, and `publish:draft`.
+- OAuth requests AuthKit's standard `openid`, `profile`, `email`, and `offline_access` scopes. BlogFactory then grants its site-bound draft-only capabilities (`content:read`, `drafts:write`, and `publish:draft`) from the approved consent.
 - Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.1`.
 - The exact active catalog contains 20 tools and is asserted by server tests.
 
