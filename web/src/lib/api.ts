@@ -147,6 +147,27 @@ export interface CmsDraftProgress {
   failures: CmsDraftFailure[];
 }
 
+export interface ImagePromptBatchResult {
+  total: number;
+  created: number;
+  existing: number;
+  failures: Array<CmsDraftTarget & { error: string }>;
+}
+
+export async function prepareImagePrompts(targets: CmsDraftTarget[]): Promise<ImagePromptBatchResult> {
+  const result: ImagePromptBatchResult = { total: targets.length, created: 0, existing: 0, failures: [] };
+  for (const target of targets) {
+    try {
+      const prepared = await api.post<{ created: number; existing: number }>(`/images/posts/${target.id}/manual-prompts`, {});
+      result.created += prepared.created;
+      result.existing += prepared.existing;
+    } catch (error) {
+      result.failures.push({ ...target, error: error instanceof Error ? error.message : "Image prompt preparation failed" });
+    }
+  }
+  return result;
+}
+
 export async function pushCmsDrafts(
   targets: CmsDraftTarget[],
   integrationId: string,

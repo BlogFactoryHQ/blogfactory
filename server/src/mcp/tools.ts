@@ -18,6 +18,7 @@ import { getOpenRouterKey } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
+import { plainText, truncateAtWord } from "../services/generation-output.js";
 import { ExpectedPostVersionError, publishPost, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { PostNotEditableError, PostRevisionNotFoundError, PostVersionConflictError, currentPostRevision, updatePostWithRevision } from "../services/post-revisions.js";
 import { ACTION_KINDS, ACTION_SEVERITIES, getReviewPacket, getWorkspaceDigest, listActionItems, type ActionKind, type ActionSeverity } from "../services/control-plane.js";
@@ -713,6 +714,53 @@ type UpdateDraftInput = {
   content?: string;
 };
 
+type CreateDraftInput = {
+  site_id: string;
+  title: string;
+  content: string;
+  persona_id?: string;
+};
+
+async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  const title = cleanPostTitle(input.title);
+  const content = cleanGeneratedPostContent(input.content);
+  if (!title) throw new McpToolError("validation_error", "Title cannot be empty.", "Provide a non-empty title.");
+  if (!content) throw new McpToolError("validation_error", "Content cannot be empty.", "Provide non-empty Markdown content.");
+  if (input.persona_id) {
+    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+      eq(personas.id, input.persona_id),
+      eq(personas.userId, principal.userId),
+      eq(personas.status, "active"),
+    )).limit(1);
+    if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas to choose an active persona.");
+  }
+
+  const [post] = await db.insert(posts).values({
+    userId: principal.userId,
+    siteId: input.site_id,
+    title,
+    content,
+    summary: truncateAtWord(plainText(content, 500), 180),
+    status: "draft",
+    sourceType: "raw_text",
+    sourceRefId: "codex",
+    personaId: input.persona_id || null,
+    modelId: "openai/codex",
+  }).returning();
+  const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_create" });
+  if (seoJob.queued) waitUntil(drainSeoMetadata(principal.userId, 1));
+  return {
+    post_id: post.id,
+    site_id: input.site_id,
+    title: post.title,
+    seo_status: seoJob.status,
+    seo_job_id: seoJob.jobId,
+    updated_at: isoDate(post.updatedAt),
+    next_action: "Call get_post to review the saved draft.",
+  };
+}
+
 async function updateDraft(principal: McpPrincipal, input: UpdateDraftInput) {
   if (input.title === undefined && input.content === undefined) {
     throw new McpToolError("validation_error", "Provide title or content to update.", "Read the draft, then send at least one changed field.");
@@ -1271,6 +1319,29 @@ export const MCP_TOOL_REGISTRY = {
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: getPost,
+  },
+  create_draft: {
+    name: "create_draft",
+    description: "Create one BlogFactory draft from caller-authored Markdown without running a text-generation provider.",
+    inputSchema: {
+      site_id: uuid,
+      title: z.string().trim().min(1).max(500),
+      content: z.string().trim().min(1).max(MCP_POST_CONTENT_LIMIT),
+      persona_id: uuid.optional(),
+    },
+    outputSchema: successOutputSchema({
+      post_id: uuid,
+      site_id: uuid,
+      title: z.string(),
+      seo_status: seoStatusSchema,
+      seo_job_id: uuid.nullable(),
+      updated_at: z.string(),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: UPDATE_ANNOTATIONS,
+    handler: createDraft,
   },
   generate_draft: {
     name: "generate_draft",

@@ -1,7 +1,7 @@
 import { Fragment, useDeferredValue, useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, pushCmsDrafts, type CmsDraftProgress } from "@/lib/api";
+import { api, prepareImagePrompts, pushCmsDrafts, type CmsDraftProgress } from "@/lib/api";
 import { safeFormatDate } from "@/lib/date-format";
 import { deletePostsWithCleanup } from "@/lib/post-cleanup";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -291,6 +291,24 @@ export default function Posts() {
       clearSelection();
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "SEO preparation failed"),
+  });
+
+  const prepareImagePromptsMutation = useMutation({
+    mutationFn: (targets: Array<Pick<Post, "id" | "title">>) => prepareImagePrompts(targets),
+    onSuccess: ({ total, created, existing, failures }) => {
+      queryClient.invalidateQueries({ queryKey: ["image-generation-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      const prepared = total - failures.length;
+      if (failures.length) {
+        setSelectedIds(new Set(failures.map((failure) => failure.id)));
+        toast.error(`${prepared}/${total} posts prepared. ${failures.length} failed and remain selected.`);
+      } else {
+        toast.success(`${total} post${total === 1 ? "" : "s"} prepared`, {
+          description: `${created} prompt${created === 1 ? "" : "s"} created${existing ? `; ${existing} already existed` : ""}.`,
+        });
+        clearSelection();
+      }
+    },
   });
 
   const sourceTypes = facets?.sourceTypes || [];
@@ -669,6 +687,7 @@ export default function Posts() {
               onPublish={handleBulkPublish}
               onPushIntegration={handleBulkPushIntegration}
               onPrepareSeo={() => prepareSeoMutation.mutate({ ids: Array.from(selectedIds) })}
+              onPrepareImagePrompts={() => prepareImagePromptsMutation.mutate(enrichedPosts.filter((post) => selectedIds.has(post.id)))}
               onClear={clearSelection}
               integrations={connectedIntegrations}
               integrationId={bulkIntegrationId || connectedIntegrations[0]?.id || ""}
@@ -677,6 +696,7 @@ export default function Posts() {
               isPublishing={isPublishing}
               isPushingIntegration={bulkPushIntegrationMutation.isPending}
               isPreparingSeo={prepareSeoMutation.isPending}
+              isPreparingImagePrompts={prepareImagePromptsMutation.isPending}
             />
             {allPageSelected && <p className="mb-2 text-center text-sm text-muted-foreground">All {paginatedSelectablePosts.length} posts on this page are selected.</p>}
           </div>

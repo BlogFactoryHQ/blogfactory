@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Trash2, RefreshCw, Send } from "lucide-react";
+import { Check, ImagePlus, Loader2, Trash2, RefreshCw, Send } from "lucide-react";
 import { SiteIntegration } from "@/hooks/useIntegrations";
 import {
   Select,
@@ -26,6 +26,7 @@ interface BulkActionsBarProps {
   onPublish: () => void;
   onPushIntegration: () => void;
   onPrepareSeo: () => void;
+  onPrepareImagePrompts: () => void;
   onClear: () => void;
   integrations: SiteIntegration[];
   integrationId: string;
@@ -34,6 +35,7 @@ interface BulkActionsBarProps {
   isPublishing: boolean;
   isPushingIntegration: boolean;
   isPreparingSeo: boolean;
+  isPreparingImagePrompts: boolean;
 }
 
 export function BulkActionsBar({
@@ -42,6 +44,7 @@ export function BulkActionsBar({
   onPublish,
   onPushIntegration,
   onPrepareSeo,
+  onPrepareImagePrompts,
   onClear,
   integrations,
   integrationId,
@@ -50,8 +53,9 @@ export function BulkActionsBar({
   isPublishing,
   isPushingIntegration,
   isPreparingSeo,
+  isPreparingImagePrompts,
 }: BulkActionsBarProps) {
-  const isLoading = isDeleting || isPublishing || isPushingIntegration || isPreparingSeo;
+  const isLoading = isDeleting || isPublishing || isPushingIntegration || isPreparingSeo || isPreparingImagePrompts;
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
@@ -59,6 +63,10 @@ export function BulkActionsBar({
         <Button variant="outline" size="sm" onClick={onPrepareSeo} disabled={isLoading}>
           {isPreparingSeo ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
           Prepare SEO
+        </Button>
+        <Button variant="outline" size="sm" onClick={onPrepareImagePrompts} disabled={isLoading}>
+          {isPreparingImagePrompts ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-1.5 h-4 w-4" />}
+          Prepare image prompts
         </Button>
         <span className="font-mono text-[12px] font-semibold uppercase text-foreground">
           {selectedCount} post{selectedCount > 1 ? "s" : ""} selected

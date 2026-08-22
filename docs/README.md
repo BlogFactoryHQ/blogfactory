@@ -3,7 +3,7 @@
 ## Current product and operations
 
 - [Repository README](../README.md): product model, current surfaces, architecture, setup, and acceptance checks.
-- [MCP and OAuth](mcp.md): 19-tool catalog, connection setup, Review Card, permissions, and safety boundary.
+- [MCP and OAuth](mcp.md): 20-tool catalog, connection setup, Review Card, permissions, and safety boundary.
 - [Operations and deployment](operations.md): environment, migrations, Vercel, background drains, ledger retention, and production verification.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.
 - [UI system](../UI_UX.md): Device Console rules, current information architecture, and responsive behavior.

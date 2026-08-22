@@ -70,7 +70,7 @@ Expected results:
 - `/api/health`: HTTP 200.
 - Unauthenticated `/mcp`: HTTP 401 with `WWW-Authenticate: Bearer`, never the React shell.
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
-- Authenticated capability response: exactly 19 tools from the server catalog.
+- Authenticated capability response: exactly 20 tools from the server catalog.
 - No live-publish or delete tool in discovery.
 - Relevant production deployment SHA equals `origin/main`.
 

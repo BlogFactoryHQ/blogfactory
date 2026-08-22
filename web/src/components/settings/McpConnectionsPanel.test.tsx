@@ -14,7 +14,7 @@ const { deleteMock, getMock, postMock, toastErrorMock, toastSuccessMock, writeTe
 }));
 
 const capabilities = {
-  tool_count: 19,
+  tool_count: 20,
   tools: ["whoami", "list_sites", "list_personas", "list_publish_targets", "list_posts", "get_post", "generate_draft", "get_job", "get_workspace_digest", "list_action_items", "review_post", "get_search_console_dashboard", "get_search_console_insights", "update_draft", "push_to_cms_draft", "inspect_search_console_url", "batch_inspect_search_console_urls", "list_search_console_sitemaps", "query_search_console_analytics"],
 };
 
@@ -228,7 +228,7 @@ describe("MCP connections panel", () => {
 
     expect(document.body).toHaveTextContent("MCP access");
     expect(document.body).toHaveTextContent("1 active");
-    await vi.waitFor(() => expect(document.body).toHaveTextContent("19 available"));
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("20 available"));
     expect(document.body).toHaveTextContent("generate_draft");
     expect(document.body).toHaveTextContent("push_to_cms_draft");
     expect(document.body).toHaveTextContent("review_post");

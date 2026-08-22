@@ -3,6 +3,7 @@ import {
   ApiError,
   api,
   authRedirectHref,
+  prepareImagePrompts,
   pushCmsDrafts,
   retryTransientApiError,
   shouldRedirectAfterUnauthorized,
@@ -95,4 +96,23 @@ it("does not start a CMS draft batch when preflight fails", async () => {
 
   await expect(pushCmsDrafts([{ id: "one", title: "First" }], "ghost")).rejects.toThrow("Duplicate SEO slug");
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("prepares image prompts for every selected post and retains failures", async () => {
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(new Response(JSON.stringify({ created: 2, existing: 0 }), { status: 201 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: "Missing image settings" }), { status: 400 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ created: 0, existing: 2 }), { status: 200 }));
+
+  await expect(prepareImagePrompts([
+    { id: "one", title: "First" },
+    { id: "two", title: "Second" },
+    { id: "three", title: "Third" },
+  ])).resolves.toEqual({
+    total: 3,
+    created: 2,
+    existing: 2,
+    failures: [{ id: "two", title: "Second", error: "Missing image settings" }],
+  });
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
