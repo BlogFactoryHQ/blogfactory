@@ -9,6 +9,12 @@
   },
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.blogfactory.io" }],
+      "destination": "https://blogfactory.io/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "www.blogfactory.io" }],
       "destination": "https://blogfactory.io/:path*",
@@ -112,7 +118,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!api/|assets/|mcp-review\\.html$).*)",
+      "source": "/((?!api/|assets/|marketing\\.html$|mcp-review\\.html$).*)",
       "destination": "/index.html"
     }
   ]
