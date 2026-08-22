@@ -141,6 +141,7 @@ export function manualPromptImageResolutionSummary(requests: ManualPromptRequest
 }
 
 const AI_REQUEST_TIMEOUT_MS = 35_000;
+const ARTICLE_REPAIR_TIMEOUT_MS = 20_000;
 const MANUAL_PROMPT_SYNC_TIMEOUT_MS = 12_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 45_000;
 const JOB_SYNC_BUDGET_MS = 52_000;
@@ -149,6 +150,10 @@ const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
 
 function hasJobSyncBudget(startedAt: number, requiredMs: number) {
   return JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= requiredMs;
+}
+
+export function canAttemptArticleRepair(elapsedMs: number) {
+  return JOB_SYNC_BUDGET_MS - elapsedMs >= ARTICLE_REPAIR_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000;
 }
 
 export function openRouterImageModelId(modelId: string | null | undefined) {
@@ -408,7 +413,7 @@ async function repairShortArticle(opts: {
 
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(ARTICLE_REPAIR_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${opts.openRouterKey}`,
       "Content-Type": "application/json",
@@ -1049,7 +1054,7 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
         if (isBlogDraftSource(opts.sourceType) && generationContract.minWords && wordCount(genContent) < generationContract.minWords) {
-          if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
+          if (canAttemptArticleRepair(Date.now() - startedAt)) {
             try {
               await db.update(jobs).set({ currentStep: `repairing_length_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
               const repaired = await repairShortArticle({

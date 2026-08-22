@@ -11,11 +11,15 @@ import { handleMcpHttpRequest } from "./server.js";
 import {
   assertMcpToolRegistry,
   capMcpPostContent,
+  mcpDraftModelId,
   MCP_TOOL_REGISTRY,
   MCP_POST_CONTENT_LIMIT,
   reviewPostNextAction,
   safeMcpJobError,
 } from "./tools.js";
+
+assert.equal(mcpDraftModelId("x-ai/grok-4.3"), "x-ai/grok-4.3");
+assert.equal(mcpDraftModelId(null), "openai/gpt-4o");
 
 const principal = {
   tokenId: "00000000-0000-4000-8000-000000000001",

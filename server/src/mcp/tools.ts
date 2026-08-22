@@ -597,6 +597,10 @@ type GenerateDraftInput = {
   generate_images: false;
 };
 
+export function mcpDraftModelId(personaBaseModel?: string | null) {
+  return personaBaseModel?.trim() || "openai/gpt-4o";
+}
+
 function validateMcpDraftSource(input: GenerateDraftInput) {
   if (input.source_type === "url" || input.source_type === "youtube") {
     let url: URL;
@@ -618,12 +622,14 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
   await requireOwnedAllowedSite(principal, input.site_id);
   validateMcpDraftSource(input);
 
+  let personaBaseModel: string | null = null;
   if (input.persona_id) {
-    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+    const [persona] = await db.select({ id: personas.id, baseModel: personas.baseModel }).from(personas).where(and(
       eq(personas.id, input.persona_id),
       eq(personas.userId, principal.userId),
     )).limit(1);
     if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas and choose an available persona.");
+    personaBaseModel = persona.baseModel;
   }
   if (input.preferred_integration_id) {
     const [integration] = await db.select({ id: siteIntegrations.id }).from(siteIntegrations).where(and(
@@ -647,7 +653,7 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
 
   let modelId: string;
   try {
-    modelId = await resolveOpenRouterTextModel(openRouterKey, "openai/gpt-4o");
+    modelId = await resolveOpenRouterTextModel(openRouterKey, mcpDraftModelId(personaBaseModel));
   } catch {
     throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Review the OpenRouter model configuration in BlogFactory Settings.");
   }
