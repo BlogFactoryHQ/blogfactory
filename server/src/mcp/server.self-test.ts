@@ -13,6 +13,8 @@ import {
   capMcpPostContent,
   mcpDraftModelId,
   MCP_TOOL_REGISTRY,
+  MCP_BATCH_DRAFT_LIMIT,
+  mcpDraftContentHash,
   MCP_POST_CONTENT_LIMIT,
   reviewPostNextAction,
   safeMcpJobError,
@@ -81,13 +83,16 @@ const list = await post(
 );
 assert.equal(list.status, 200);
 const listedTools = (await list.json() as any).result.tools;
-assert.equal(listedTools.length, 20);
+assert.equal(listedTools.length, 21);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
 assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
 assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.list_action_items.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.review_post.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.create_draft.requiredScope, "drafts:write");
+assert.equal(MCP_TOOL_REGISTRY.import_drafts.requiredScope, "drafts:write");
+assert.equal(MCP_BATCH_DRAFT_LIMIT, 20);
+assert.equal(mcpDraftContentHash("Title", "Content"), mcpDraftContentHash("Title", "Content"));
 assert.equal(MCP_TOOL_REGISTRY.push_to_cms_draft.requiredScope, "publish:draft");
 assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: true, canPushCmsDraft: true, usableDestinationIds: ["cms"] }), /resolve the blocker/i);
 assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: false, canPushCmsDraft: false, usableDestinationIds: ["cms"] }), /publish:draft/);
@@ -99,6 +104,7 @@ assert.equal(listedTool.name, "whoami");
 for (const tool of listedTools) {
   const mutationAnnotations: Record<string, unknown> = {
     create_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    import_drafts: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     generate_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     push_to_cms_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
@@ -333,8 +339,8 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 20);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 20);
+assert.equal(MCP_TOOL_NAMES.length, 21);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 21);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

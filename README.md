@@ -34,7 +34,7 @@ The removed News surface and legacy operation routes are not part of the current
 
 The hosted Streamable HTTP endpoint is `https://blogfactory.io/mcp`. It supports WorkOS browser OAuth and site-scoped personal connection tokens with three scopes: `content:read`, `drafts:write`, and `publish:draft`.
 
-The server publishes an exact 20-tool catalog. The control-plane tools are:
+The server publishes an exact 21-tool catalog. The control-plane tools are:
 
 - `get_workspace_digest` — the same operational summary used by Overview.
 - `list_action_items` — the same classification and priority order used by Review Queue.
@@ -91,7 +91,7 @@ npm run test:postgres
 git diff --check
 ```
 
-Production acceptance also checks `/api/health` = 200, unauthenticated `/mcp` = 401 Bearer, OAuth protected-resource metadata = 200, the exact 20-tool catalog, and the authenticated generate → job → review → CMS draft workflow.
+Production acceptance also checks `/api/health` = 200, unauthenticated `/mcp` = 401 Bearer, OAuth protected-resource metadata = 200, the exact 21-tool catalog, and the authenticated generate → job → review → CMS draft workflow.
 
 ## Repository guide
 

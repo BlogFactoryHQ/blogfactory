@@ -19,6 +19,7 @@ import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { plainText, truncateAtWord } from "../services/generation-output.js";
+import { hashContent } from "../services/generation-sources.js";
 import { ExpectedPostVersionError, publishPost, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { PostNotEditableError, PostRevisionNotFoundError, PostVersionConflictError, currentPostRevision, updatePostWithRevision } from "../services/post-revisions.js";
 import { ACTION_KINDS, ACTION_SEVERITIES, getReviewPacket, getWorkspaceDigest, listActionItems, type ActionKind, type ActionSeverity } from "../services/control-plane.js";
@@ -39,6 +40,8 @@ import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, 
 export const MCP_REVIEW_APP_URI = "ui://blogfactory/review-post.html";
 
 export const MCP_POST_CONTENT_LIMIT = 100_000;
+export const MCP_BATCH_DRAFT_LIMIT = 20;
+export const MCP_BATCH_TOTAL_CONTENT_LIMIT = 500_000;
 
 type ToolAnnotations = {
   readOnlyHint: boolean;
@@ -721,6 +724,12 @@ type CreateDraftInput = {
   persona_id?: string;
 };
 
+type BatchDraftInput = Pick<CreateDraftInput, "title" | "content"> & { source_ref?: string };
+
+export function mcpDraftContentHash(title: string, content: string) {
+  return hashContent(`${title}\n${content}`);
+}
+
 async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
   await requireOwnedAllowedSite(principal, input.site_id);
   const title = cleanPostTitle(input.title);
@@ -745,6 +754,7 @@ async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
     status: "draft",
     sourceType: "raw_text",
     sourceRefId: "codex",
+    sourceContentHash: mcpDraftContentHash(title, content),
     personaId: input.persona_id || null,
     modelId: "openai/codex",
   }).returning();
@@ -758,6 +768,65 @@ async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
     seo_job_id: seoJob.jobId,
     updated_at: isoDate(post.updatedAt),
     next_action: "Call get_post before any update or CMS delivery to use the current expected_updated_at.",
+  };
+}
+
+async function importDrafts(principal: McpPrincipal, input: { site_id: string; persona_id?: string; drafts: BatchDraftInput[] }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  if (input.drafts.reduce((total, draft) => total + draft.content.length, 0) > MCP_BATCH_TOTAL_CONTENT_LIMIT) {
+    throw new McpToolError("validation_error", "The batch is too large.", `Send at most ${MCP_BATCH_TOTAL_CONTENT_LIMIT} characters per batch.`);
+  }
+  if (input.persona_id) {
+    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+      eq(personas.id, input.persona_id),
+      eq(personas.userId, principal.userId),
+      eq(personas.status, "active"),
+    )).limit(1);
+    if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas and choose an active persona.");
+  }
+
+  const items: Array<{ title: string; post_id: string; status: "created" | "skipped_duplicate" }> = [];
+  let hasQueuedSeoMetadata = false;
+  for (const draft of input.drafts) {
+    const title = cleanPostTitle(draft.title);
+    const content = cleanGeneratedPostContent(draft.content);
+    if (!title) throw new McpToolError("validation_error", "A draft title cannot be empty.", "Provide a non-empty title for every draft.");
+    if (!content) throw new McpToolError("validation_error", "A draft cannot be empty.", "Provide non-empty Markdown for every draft.");
+    const sourceContentHash = mcpDraftContentHash(title, content);
+    const [existing] = await db.select({ id: posts.id }).from(posts).where(and(
+      eq(posts.userId, principal.userId),
+      eq(posts.siteId, input.site_id),
+      eq(posts.sourceContentHash, sourceContentHash),
+    )).limit(1);
+    if (existing) {
+      items.push({ title, post_id: existing.id, status: "skipped_duplicate" });
+      continue;
+    }
+    const [post] = await db.insert(posts).values({
+      userId: principal.userId,
+      siteId: input.site_id,
+      title,
+      content,
+      summary: truncateAtWord(plainText(content, 500), 180),
+      status: "draft",
+      sourceType: "mcp_batch_import",
+      sourceRefId: draft.source_ref?.trim() || "mcp",
+      sourceContentHash,
+      personaId: input.persona_id || null,
+      modelId: "openai/codex",
+    }).returning({ id: posts.id });
+    const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_batch_import" });
+    hasQueuedSeoMetadata ||= seoJob.queued;
+    items.push({ title, post_id: post.id, status: "created" });
+  }
+  if (hasQueuedSeoMetadata) waitUntil(drainSeoMetadata(principal.userId, MCP_BATCH_DRAFT_LIMIT));
+  const created = items.filter((item) => item.status === "created").length;
+  return {
+    site_id: input.site_id,
+    created,
+    skipped_duplicates: items.length - created,
+    items,
+    next_action: "Batch import is complete. Call list_posts to review the imported drafts.",
   };
 }
 
@@ -1342,6 +1411,30 @@ export const MCP_TOOL_REGISTRY = {
     siteBound: true,
     annotations: UPDATE_ANNOTATIONS,
     handler: createDraft,
+  },
+  import_drafts: {
+    name: "import_drafts",
+    description: `Create up to ${MCP_BATCH_DRAFT_LIMIT} caller-authored Markdown drafts in one idempotent batch. It never publishes to a CMS.`,
+    inputSchema: {
+      site_id: uuid,
+      persona_id: uuid.optional(),
+      drafts: z.array(z.object({
+        title: z.string().trim().min(1).max(500),
+        content: z.string().trim().min(1).max(MCP_POST_CONTENT_LIMIT),
+        source_ref: z.string().trim().min(1).max(500).optional(),
+      })).min(1).max(MCP_BATCH_DRAFT_LIMIT),
+    },
+    outputSchema: successOutputSchema({
+      site_id: uuid,
+      created: z.number().int().nonnegative(),
+      skipped_duplicates: z.number().int().nonnegative(),
+      items: z.array(z.object({ title: z.string(), post_id: uuid, status: z.enum(["created", "skipped_duplicate"]) })),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: UPDATE_ANNOTATIONS,
+    handler: importDrafts,
   },
   generate_draft: {
     name: "generate_draft",

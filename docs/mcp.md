@@ -10,8 +10,8 @@ Verified on 2026-08-22:
 - `GET /.well-known/oauth-protected-resource` returns HTTP 200 and advertises `https://blogfactory.io/mcp`.
 - WorkOS browser OAuth and personal `bf_mcp_` connection tokens are supported.
 - OAuth requests AuthKit's standard `openid`, `profile`, `email`, and `offline_access` scopes. BlogFactory then grants its site-bound draft-only capabilities (`content:read`, `drafts:write`, and `publish:draft`) from the approved consent.
-- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.1`.
-- The exact active catalog contains 20 tools and is asserted by server tests.
+- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.2`.
+- The exact active catalog contains 21 tools and is asserted by server tests.
 
 ## Tool catalog
 
@@ -24,6 +24,7 @@ Verified on 2026-08-22:
 | `list_posts` | `content:read` | Find site-scoped content |
 | `get_post` | `content:read` | Read one compact post projection |
 | `create_draft` | `drafts:write` | Create a draft from caller-authored Markdown without provider generation |
+| `import_drafts` | `drafts:write` | Create up to 20 caller-authored Markdown drafts with duplicate-safe retries |
 | `generate_draft` | `drafts:write` | Start asynchronous draft generation |
 | `get_job` | `content:read` | Read safe generation progress and result IDs |
 | `get_workspace_digest` | `content:read` | Return the same operational digest used by Overview |
@@ -115,6 +116,6 @@ MCP_PILOT_TOKEN=bf_mcp_REPLACE_WITH_SECRET \
 npm run test:mcp:pilot
 ```
 
-Required client acceptance covers OAuth, discovery of exactly 20 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
+Required client acceptance covers OAuth, discovery of exactly 21 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
 
 The original research and implementation sequence remains in the [historical MCP roadmap](../BLOGFACTORY_MCP_ROADMAP.md).
