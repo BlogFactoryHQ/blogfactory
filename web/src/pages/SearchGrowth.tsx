@@ -13,6 +13,7 @@ import {
   Loader2,
   Minus,
   MousePointerClick,
+  RefreshCw,
   Send,
   Target,
   TrendingDown,
@@ -240,9 +241,9 @@ function SearchGrowthOverview({
             {
               label: "Search Console",
               value: connectionReady(searchConsole) ? "Connected" : displayConnectionStatus(searchConsole),
-              detail: `Last sync: ${searchConsole.lastSyncAt || searchConsole.last_sync_at || "none yet"}`,
+              detail: insights.provenance ? `Fetched: ${new Date(insights.provenance.fetched_at).toLocaleString()}` : "No performance data fetched yet.",
               state: connectionReady(searchConsole) ? "ready" : "warning",
-              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("optimize")}>Manage GSC</Button>,
+              action: <Button variant="outline" size="sm" onClick={handleSync} disabled={sync.isPending}>{sync.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh Search Console</Button>,
             },
             {
               label: "Indexing",
@@ -301,18 +302,25 @@ function GrowthBriefing({
                 <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">Growth briefing</span>
                 <Badge variant="secondary">{siteDomain}</Badge>
                 {!insights.range.baselineStart && <Badge variant="outline">Baseline building</Badge>}
-                {(insights.integration?.syncMetadata?.first_incomplete_date || insights.integration?.sync_metadata?.first_incomplete_date) && (
-                  <Badge variant="outline" className="border-amber-300 text-amber-700">Provisional data</Badge>
-                )}
+                <Badge variant="outline">{insights.provenance?.data_status === "preliminary" ? "Preliminary data" : `Complete through ${insights.provenance?.complete_through || "—"}`}</Badge>
               </div>
               <h2 className="mt-2 text-xl font-semibold text-foreground">Search operations pulse</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from synced Google Search Console data.</p>
+              <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from Google Search Console data.</p>
             </div>
             <div className="rounded-md border border-byword-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               <span className="font-mono uppercase">Window</span>
               <span className="ml-2 text-foreground">{rangeLabel}</span>
             </div>
           </div>
+          {insights.provenance && (
+            <div className="mt-5 grid gap-3 rounded-md border border-byword-border bg-muted/20 p-3 font-mono text-[11px] sm:grid-cols-2 xl:grid-cols-5">
+              <ProvenanceItem label="Source" value="Google Search Console API" />
+              <ProvenanceItem label="Range" value={`${insights.range.latestStart} – ${insights.range.latestEnd}`} />
+              <ProvenanceItem label="Fetched" value={new Date(insights.provenance.fetched_at).toLocaleString()} />
+              <ProvenanceItem label="Data" value={`Complete through ${insights.provenance.complete_through}`} />
+              <ProvenanceItem label="Cache" value={insights.provenance.cache} />
+            </div>
+          )}
           <SignalStack insights={insights} />
         </div>
         <div className={cn("p-5 lg:p-6", nextMove.toneClass)}>
@@ -395,10 +403,14 @@ function MetricRail({ insights }: { insights: SearchConsoleInsights }) {
         lowerIsBetter
         tooltip="Lower average position is better."
       />
-      <PulseStatic label="Tracked pages" value={formatCompactNumber(insights.totals.pageCount)} />
-      <PulseStatic label="Tracked queries" value={formatCompactNumber(insights.totals.queryCount)} />
+      <PulseStatic label="Analyzed pages" value={formatCompactNumber(insights.opportunity_scope.page_count)} />
+      <PulseStatic label="Analyzed queries" value={formatCompactNumber(insights.opportunity_scope.query_count)} />
     </div>
   );
+}
+
+function ProvenanceItem({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0"><p className="uppercase text-muted-foreground">{label}</p><p className="mt-1 truncate text-foreground" title={value}>{value}</p></div>;
 }
 
 function PulseMetric({

@@ -92,10 +92,10 @@ The action queue contains only real work: editorial review states, requested cha
 ## MCP Status — 2026-08-22
 
 - Production endpoint: `https://blogfactory.io/mcp`.
-- Transport: Streamable HTTP; protocol `2025-11-25`; server `0.4.0`.
+- Transport: Streamable HTTP; protocol `2025-11-25`; server `0.4.3`.
 - Authentication: WorkOS browser OAuth or site-scoped personal `bf_mcp_` tokens. Tokens are hashed and shown once.
 - Scopes remain `content:read`, `drafts:write`, and `publish:draft`.
-- The exact active catalog has 19 tools. Control-plane additions are `get_workspace_digest`, `list_action_items`, and `review_post`.
+- The exact active catalog has 22 tools. Control-plane additions are `get_workspace_digest`, `list_action_items`, and `review_post`.
 - `review_post` links the standalone `ui://blogfactory/review-post.html` MCP App resource. Unsupported clients receive the same structured result as text.
 - `generate_draft` is asynchronous; `update_draft` requires `expected_updated_at`; `push_to_cms_draft` requires current version, explicit destination, valid preflight, and remains idempotent/draft-only.
 - Connections UI reads scope/tool counts from `/api/mcp/capabilities`; never hardcode catalog counts in product UI.

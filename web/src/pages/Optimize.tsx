@@ -328,7 +328,7 @@ export function OptimizePanel() {
                 </Button>
                 <Button size="sm" onClick={handleSync} disabled={sync.isPending}>
                   {sync.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
-                  Sync
+                  Refresh Search Console
                 </Button>
               </div>
             )}

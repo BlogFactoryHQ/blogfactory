@@ -10,8 +10,8 @@ Verified on 2026-08-22:
 - `GET /.well-known/oauth-protected-resource` returns HTTP 200 and advertises `https://blogfactory.io/mcp`.
 - WorkOS browser OAuth and personal `bf_mcp_` connection tokens are supported.
 - OAuth requests AuthKit's standard `openid`, `profile`, `email`, and `offline_access` scopes. BlogFactory then grants its site-bound draft-only capabilities (`content:read`, `drafts:write`, and `publish:draft`) from the approved consent.
-- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.2`.
-- The exact active catalog contains 21 tools and is asserted by server tests.
+- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.3`.
+- The exact active catalog contains 22 tools and is asserted by server tests.
 
 ## Tool catalog
 
@@ -32,14 +32,17 @@ Verified on 2026-08-22:
 | `review_post` | `content:read` | Return the shared revision, preflight, destination, and permission packet |
 | `get_search_console_dashboard` | `content:read` | Read synchronized Search Console status and totals |
 | `get_search_console_insights` | `content:read` | Read trends, opportunities, pages, and queries |
+| `refresh_search_console` | `content:read` | Refresh canonical totals and the opportunity snapshot |
 | `update_draft` | `drafts:write` | Update title/content with optimistic locking |
 | `push_to_cms_draft` | `publish:draft` | Deliver one reviewed version to a CMS as a draft |
 | `inspect_search_console_url` | `content:read` | Inspect one URL using the connected Search Console service |
 | `batch_inspect_search_console_urls` | `content:read` | Inspect a bounded URL batch |
 | `list_search_console_sitemaps` | `content:read` | Read Search Console sitemap health |
-| `query_search_console_analytics` | `content:read` | Query bounded synchronized analytics |
+| `query_search_console_analytics` | `content:read` | Query bounded analytics with complete data by default |
 
 The web Connections surface reads this catalog from authenticated `GET /api/mcp/capabilities`; tool counts and scope lists must not be hardcoded in UI code.
+
+Search Console headline totals use one property-level, date-grouped 28-day dataset across dashboard, insights, workspace digest, and MCP. Responses include source, range, fetch time, completeness boundary, scope, and cache provenance. Page/query rows are labeled as the bounded opportunity dataset; `query_search_console_analytics` excludes preliminary dates unless `include_preliminary` is explicitly enabled.
 
 ## Recommended workflow
 
@@ -116,6 +119,6 @@ MCP_PILOT_TOKEN=bf_mcp_REPLACE_WITH_SECRET \
 npm run test:mcp:pilot
 ```
 
-Required client acceptance covers OAuth, discovery of exactly 21 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
+Required client acceptance covers OAuth, discovery of exactly 22 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
 
 The original research and implementation sequence remains in the [historical MCP roadmap](../BLOGFACTORY_MCP_ROADMAP.md).

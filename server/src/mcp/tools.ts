@@ -32,6 +32,7 @@ import {
   inspectSearchConsoleUrls,
   listSearchConsoleSitemaps,
   querySearchConsoleAnalytics,
+  refreshSearchConsoleData,
 } from "../services/search-console.js";
 import { drainSeoMetadata, enqueueSeoMetadata, seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
@@ -72,6 +73,13 @@ const UPDATE_ANNOTATIONS = {
 } as const;
 
 const PUSH_DRAFT_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
+const REFRESH_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: true,
@@ -249,6 +257,11 @@ async function searchConsoleInsights(principal: McpPrincipal, input: { site_id: 
   return { site_id: input.site_id, insights: await getSearchConsoleInsights(principal.userId, input.site_id) };
 }
 
+async function refreshSearchConsole(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, refresh: await searchConsoleToolCall(() => refreshSearchConsoleData(principal.userId, input.site_id)) };
+}
+
 async function inspectSearchConsole(principal: McpPrincipal, input: { site_id: string; url: string; force: boolean }) {
   await requireOwnedAllowedSite(principal, input.site_id);
   return { site_id: input.site_id, inspection: await searchConsoleToolCall(() => inspectSearchConsoleUrl(principal.userId, input.site_id, input.url, input.force)) };
@@ -273,6 +286,7 @@ async function searchConsoleAnalytics(principal: McpPrincipal, input: {
   country?: string;
   device?: "DESKTOP" | "MOBILE" | "TABLET";
   limit: number;
+  include_preliminary: boolean;
 }) {
   await requireOwnedAllowedSite(principal, input.site_id);
   return {
@@ -285,6 +299,7 @@ async function searchConsoleAnalytics(principal: McpPrincipal, input: {
       country: input.country,
       device: input.device,
       limit: Math.min(input.limit, 100),
+      includePreliminary: input.include_preliminary,
     })),
   };
 }
@@ -1572,6 +1587,16 @@ export const MCP_TOOL_REGISTRY = {
     annotations: READ_ONLY_ANNOTATIONS,
     handler: searchConsoleInsights,
   },
+  refresh_search_console: {
+    name: "refresh_search_console",
+    description: "Refresh the canonical 28-day Search Console totals and the bounded page-query opportunity snapshot for one allowed site.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, refresh: z.record(z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: REFRESH_ANNOTATIONS,
+    handler: refreshSearchConsole,
+  },
   update_draft: {
     name: "update_draft",
     description: "Update the title and/or Markdown content of one BlogFactory draft using optimistic locking.",
@@ -1665,6 +1690,7 @@ export const MCP_TOOL_REGISTRY = {
       country: z.string().regex(/^[a-zA-Z]{3}$/).optional(),
       device: z.enum(["DESKTOP", "MOBILE", "TABLET"]).optional(),
       limit: z.number().int().min(1).max(100).default(20),
+      include_preliminary: z.boolean().default(false),
     },
     outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.unknown()) }),
     requiredScope: "content:read",

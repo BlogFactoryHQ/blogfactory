@@ -29,6 +29,7 @@ export function SearchAnalyticsPanel() {
   const [device, setDevice] = useState<Device>("all");
   const [country, setCountry] = useState("all");
   const [compare, setCompare] = useState(true);
+  const [includePreliminary, setIncludePreliminary] = useState(false);
 
   const run = () => analytics.mutate({
     range,
@@ -38,6 +39,7 @@ export function SearchAnalyticsPanel() {
     country: country === "all" ? undefined : country,
     device: device === "all" ? undefined : device,
     limit: 50,
+    includePreliminary,
   });
 
   useEffect(() => {
@@ -61,12 +63,13 @@ export function SearchAnalyticsPanel() {
     <div className="space-y-6">
       <BywordCard>
         <SectionHeader icon={BarChart3} title="Analytics Explorer" description="Compare search performance without expanding the long-term metrics table." />
-        <div className="grid gap-4 border-t border-byword-border p-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid gap-4 border-t border-byword-border p-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
           <Filter label="Range"><Select value={String(range)} onValueChange={(value) => setRange(Number(value) as Range)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[7, 28, 90].map((value) => <SelectItem key={value} value={String(value)}>{value} days</SelectItem>)}</SelectContent></Select></Filter>
           <Filter label="Group by"><Select value={groupBy} onValueChange={(value) => setGroupBy(value as Group)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["query", "page", "country", "device"].map((value) => <SelectItem key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</SelectItem>)}</SelectContent></Select></Filter>
           <Filter label="Search type"><Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["web", "image", "video", "news"].map((value) => <SelectItem key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</SelectItem>)}</SelectContent></Select></Filter>
           <Filter label="Device"><Select value={device} onValueChange={(value) => setDevice(value as Device)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All devices</SelectItem>{["DESKTOP", "MOBILE", "TABLET"].map((value) => <SelectItem key={value} value={value}>{value[0] + value.slice(1).toLowerCase()}</SelectItem>)}</SelectContent></Select></Filter>
           <Filter label="Country"><Select value={country} onValueChange={setCountry}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All countries</SelectItem>{countryNames.map((item) => <SelectItem key={item.code} value={item.code}>{item.label}</SelectItem>)}</SelectContent></Select></Filter>
+          <div className="flex h-full items-end"><div className="flex h-10 items-center gap-2"><Switch id="include-preliminary" checked={includePreliminary} onCheckedChange={setIncludePreliminary} /><Label htmlFor="include-preliminary" className="text-xs">Include preliminary data</Label></div></div>
           <div className="flex items-end gap-3"><div className="flex h-10 items-center gap-2"><Switch id="compare-period" checked={compare} onCheckedChange={setCompare} /><Label htmlFor="compare-period" className="text-xs">Compare</Label></div><Button className="ml-auto" onClick={run} disabled={analytics.isPending}>{analytics.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}<span className="ml-1.5">Apply</span></Button></div>
         </div>
       </BywordCard>
@@ -74,6 +77,13 @@ export function SearchAnalyticsPanel() {
       {analytics.isError && <AnalyticsState title="Analytics query failed" description={analytics.error.message} />}
       {analytics.isPending && !data && <AnalyticsState title="Loading Search Console" description="Building the selected comparison." loading />}
       {data && <>
+        <div className="grid gap-3 rounded-md border border-byword-border bg-card p-4 font-mono text-[11px] sm:grid-cols-2 xl:grid-cols-5">
+          <Provenance label="Source" value="Google Search Console API" />
+          <Provenance label="Range" value={`${data.range.startDate} – ${data.range.endDate}`} />
+          <Provenance label="Fetched" value={new Date(data.provenance.fetched_at).toLocaleString()} />
+          <Provenance label="Data" value={data.provenance.data_status === "complete" ? `Complete through ${data.provenance.complete_through}` : `Preliminary from ${data.provenance.first_incomplete_date || "latest date"}`} />
+          <Provenance label="Cache" value={data.provenance.cache} />
+        </div>
         <div className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Clicks" value={formatCompactNumber(data.totals.clicks.value)} delta={formatDelta(data.totals.clicks.deltaPercent, { percent: true })} />
           <Metric label="Impressions" value={formatCompactNumber(data.totals.impressions.value)} delta={formatDelta(data.totals.impressions.deltaPercent, { percent: true })} />
@@ -84,7 +94,7 @@ export function SearchAnalyticsPanel() {
         <BywordCard>
           <div className="flex flex-wrap items-center justify-between gap-3 p-5">
             <div><h3 className="font-semibold">Daily performance</h3><p className="text-sm text-muted-foreground">{data.range.startDate} — {data.range.endDate}</p></div>
-            <div className="flex gap-2">{data.cached && <Badge variant="outline">Cached</Badge>}{data.metadata?.first_incomplete_date && <Badge variant="outline" className="border-amber-300 text-amber-700"><TriangleAlert className="mr-1 h-3 w-3" />Provisional from {data.metadata.first_incomplete_date}</Badge>}</div>
+            <div className="flex gap-2">{data.cached && <Badge variant="outline">Cached</Badge>}{data.provenance.data_status === "preliminary" && <Badge variant="outline" className="border-amber-300 text-amber-700"><TriangleAlert className="mr-1 h-3 w-3" />Provisional from {data.provenance.first_incomplete_date || "latest date"}</Badge>}</div>
           </div>
           <div className="h-72 border-t border-byword-border p-4">
             <ResponsiveContainer width="100%" height="100%"><LineChart data={data.daily}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={24} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="clicks" stroke="hsl(var(--byword-blue))" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>
@@ -101,5 +111,6 @@ export function SearchAnalyticsPanel() {
 }
 
 function Filter({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1.5"><Label className="text-xs">{label}</Label>{children}</div>; }
+function Provenance({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><p className="uppercase text-muted-foreground">{label}</p><p className="mt-1 truncate text-foreground" title={value}>{value}</p></div>; }
 function Metric({ label, value, delta }: { label: string; value: string; delta: { label: string } }) { return <div className="border-b border-byword-border p-5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><p className="font-mono text-[11px] font-bold uppercase text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{delta.label}</p></div>; }
 function AnalyticsState({ title, description, loading = false }: { title: string; description: string; loading?: boolean }) { return <BywordCard><div className="flex items-center gap-3 p-6">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <BarChart3 className="h-5 w-5 text-muted-foreground" />}<div><h3 className="font-semibold">{title}</h3><p className="text-sm text-muted-foreground">{description}</p></div></div></BywordCard>; }

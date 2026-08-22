@@ -407,6 +407,8 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       connected: Boolean(searchGrowth.integration),
       segments: searchGrowth.segments,
       totals: searchGrowth.totals,
+      opportunity_scope: searchGrowth.opportunity_scope,
+      provenance: searchGrowth.provenance,
     },
     recent_outputs: recentOutputs.map((post) => ({ ...post, updated_at: post.updated_at.toISOString() })),
     connections: {

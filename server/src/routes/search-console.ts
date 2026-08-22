@@ -16,12 +16,11 @@ import {
   listSearchConsoleSitemaps,
   normalizeSearchConsoleProperty,
   querySearchConsoleAnalytics,
+  refreshSearchConsoleData,
   selectSearchConsoleProperty,
   serializeSearchConsoleIntegration,
-  syncSearchConsoleMetrics,
   testSearchConsoleIntegration,
 } from "../services/search-console.js";
-import { refreshOptimizePages } from "../services/optimize.js";
 import { completeGoogleIndexingOAuth, isGoogleIndexingOAuthState } from "../services/indexing.js";
 
 export const searchConsoleRoutes = new Hono();
@@ -155,6 +154,7 @@ searchConsoleRoutes.post("/analytics/query", async (c) => {
       country: body.country ? String(body.country) : undefined,
       device: body.device ? String(body.device).toUpperCase() as "DESKTOP" | "MOBILE" | "TABLET" : undefined,
       limit: Number(body.limit || 50),
+      includePreliminary: Boolean(body.includePreliminary ?? body.include_preliminary),
     }));
   } catch (error) {
     return c.json(searchConsoleError(error, "Search Console analytics query failed"), 400);
@@ -270,9 +270,7 @@ searchConsoleRoutes.post("/sync", async (c) => {
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
 
   try {
-    const synced = await syncSearchConsoleMetrics(userId, siteId);
-    const refreshed = await refreshOptimizePages(userId, siteId);
-    return c.json({ ...synced, optimizePages: refreshed.updated });
+    return c.json(await refreshSearchConsoleData(userId, siteId));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Search Console sync failed" }, 400);
   }

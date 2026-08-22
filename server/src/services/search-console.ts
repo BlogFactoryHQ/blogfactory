@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { importPKCS8, jwtVerify, SignJWT } from "jose";
-import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   searchConsoleIntegrations,
@@ -85,6 +85,7 @@ interface MetricSummary {
 interface SearchConsoleInsightInput {
   integration?: ReturnType<typeof serializeSearchConsoleIntegration> | null;
   metrics: SearchAnalyticsMetric[];
+  performance?: CanonicalSearchPerformance;
 }
 
 export type SearchAnalyticsRange = 7 | 28 | 90;
@@ -99,6 +100,33 @@ export interface SearchAnalyticsQueryInput {
   country?: string;
   device?: "DESKTOP" | "MOBILE" | "TABLET";
   limit: number;
+  includePreliminary?: boolean;
+}
+
+interface CanonicalPerformanceInput {
+  range: SearchAnalyticsRange;
+  compare: boolean;
+  searchType: SearchAnalyticsType;
+  country?: string;
+  device?: "DESKTOP" | "MOBILE" | "TABLET";
+  includePreliminary: boolean;
+}
+
+interface CanonicalSearchPerformance {
+  range: { startDate: string; endDate: string; baselineStart: string | null; baselineEnd: string | null };
+  totals: ReturnType<typeof analyticsMetricDeltas>;
+  daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  metadata: Record<string, unknown> | null;
+  provenance: {
+    source: "google_search_console_api";
+    property: string;
+    scope: "site_total";
+    fetched_at: string;
+    complete_through: string;
+    first_incomplete_date: string | null;
+    data_status: "complete" | "preliminary";
+    cache: "live" | "cached" | "stale";
+  };
 }
 
 export interface SearchConsoleProperty {
@@ -189,19 +217,40 @@ export async function getSearchConsoleDashboard(userId: string, siteId: string) 
     .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
     .limit(1);
 
-  const metrics = await db
-    .select()
-    .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+  if (!integration) {
+    return {
+      integration: null,
+      range: { startDate: "", endDate: "", baselineStart: null, baselineEnd: null },
+      stats: { clicks: 0, impressions: 0, ctr: 0, position: 0, pageCount: 0, queryCount: 0 },
+      totals: emptyPerformanceTotals(),
+      opportunity_scope: emptyOpportunityScope(null),
+      provenance: null,
+    };
+  }
 
-  const pageCount = new Set(metrics.map((metric) => metric.pageUrl)).size;
-  const queryCount = new Set(metrics.map((metric) => metric.query)).size;
-  const clicks = metrics.reduce((sum, metric) => sum + metric.clicks, 0);
-  const impressions = metrics.reduce((sum, metric) => sum + metric.impressions, 0);
+  const [performance, metrics] = await Promise.all([
+    getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput()),
+    db.select().from(searchConsoleMetrics)
+      .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId))),
+  ]);
+  const latestRows = metrics.filter((metric) => metric.date >= performance.range.startDate && metric.date <= performance.range.endDate);
+  const pageCount = new Set(latestRows.map((metric) => metric.pageUrl)).size;
+  const queryCount = new Set(latestRows.map((metric) => metric.query)).size;
 
   return {
-    integration: integration ? serializeSearchConsoleIntegration(integration) : null,
-    stats: { pageCount, queryCount, clicks, impressions },
+    integration: serializeSearchConsoleIntegration(integration),
+    range: performance.range,
+    stats: {
+      pageCount,
+      queryCount,
+      clicks: performance.totals.clicks.value,
+      impressions: performance.totals.impressions.value,
+      ctr: performance.totals.ctr.value,
+      position: performance.totals.position.value,
+    },
+    totals: performance.totals,
+    opportunity_scope: opportunityScope(latestRows, integration.lastSyncAt),
+    provenance: performance.provenance,
   };
 }
 
@@ -212,13 +261,17 @@ export async function getSearchConsoleInsights(userId: string, siteId: string) {
     .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
     .limit(1);
 
-  const metrics = await db
-    .select()
-    .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+  if (!integration) return buildSearchConsoleInsights({ metrics: [] });
+
+  const [metrics, performance] = await Promise.all([
+    db.select().from(searchConsoleMetrics)
+      .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId))),
+    getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput()),
+  ]);
 
   return buildSearchConsoleInsights({
-    integration: integration ? serializeSearchConsoleIntegration(integration) : null,
+    integration: serializeSearchConsoleIntegration(integration),
+    performance,
     metrics: metrics.map((metric) => ({
       date: metric.date,
       pageUrl: metric.pageUrl,
@@ -231,8 +284,8 @@ export async function getSearchConsoleInsights(userId: string, siteId: string) {
   });
 }
 
-export function buildSearchConsoleInsights({ integration = null, metrics }: SearchConsoleInsightInput) {
-  if (!metrics.length) {
+export function buildSearchConsoleInsights({ integration = null, metrics, performance }: SearchConsoleInsightInput) {
+  if (!metrics.length && !performance) {
     return {
       integration,
       range: { latestStart: "", latestEnd: "", baselineStart: null, baselineEnd: null },
@@ -243,16 +296,18 @@ export function buildSearchConsoleInsights({ integration = null, metrics }: Sear
       topPages: [],
       topQueries: [],
       segments: { needsAttention: 0, ctrOpportunities: 0, strikingDistance: 0, improved: 0 },
+      opportunity_scope: emptyOpportunityScope(integration?.lastSyncAt || null),
+      provenance: null,
     };
   }
 
-  const latestEnd = metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
-  const latestStart = shiftDate(latestEnd, -13);
-  const baselineEnd = shiftDate(latestStart, -1);
-  const baselineStart = shiftDate(baselineEnd, -13);
+  const latestEnd = performance?.range.endDate || metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
+  const latestStart = performance?.range.startDate || shiftDate(latestEnd, -27);
+  const baselineEnd = performance?.range.baselineEnd || shiftDate(latestStart, -1);
+  const baselineStart = performance?.range.baselineStart || shiftDate(baselineEnd, -27);
   const latestRows = metrics.filter((metric) => metric.date >= latestStart && metric.date <= latestEnd);
   const baselineRows = metrics.filter((metric) => metric.date >= baselineStart && metric.date <= baselineEnd);
-  const latest = summarizeSearchMetrics(latestRows);
+  const latest = performance ? metricSummaryFromDeltas(performance.totals) : summarizeSearchMetrics(latestRows);
   const baseline = baselineRows.length ? summarizeSearchMetrics(baselineRows) : null;
   const minImpressions = Math.max(25, Math.round(latest.impressions * 0.005));
   const grouped = groupMetrics(metrics, (metric) => `${metric.pageUrl}\n${metric.query}`);
@@ -268,16 +323,14 @@ export function buildSearchConsoleInsights({ integration = null, metrics }: Sear
 
   return {
     integration,
-    range: { latestStart, latestEnd, baselineStart: baselineRows.length ? baselineStart : null, baselineEnd: baselineRows.length ? baselineEnd : null },
-    totals: {
+    range: { latestStart, latestEnd, baselineStart: performance?.range.baselineStart || (baselineRows.length ? baselineStart : null), baselineEnd: performance?.range.baselineEnd || (baselineRows.length ? baselineEnd : null) },
+    totals: performance?.totals || {
       clicks: metricDelta(latest.clicks, baseline?.clicks ?? null),
       impressions: metricDelta(latest.impressions, baseline?.impressions ?? null),
       ctr: metricDelta(latest.ctr, baseline?.ctr ?? null),
       position: metricDelta(latest.position, baseline?.position ?? null),
-      pageCount: new Set(latestRows.map((metric) => metric.pageUrl)).size,
-      queryCount: new Set(latestRows.map((metric) => metric.query)).size,
     },
-    daily: [...groupMetrics(latestRows, (metric) => metric.date).entries()]
+    daily: performance?.daily || [...groupMetrics(latestRows, (metric) => metric.date).entries()]
       .map(([date, rows]) => ({ date, ...summarizeSearchMetrics(rows) }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     opportunityBubbles: buildOpportunityBubbles(lostClicks, ctrUpside, strikingImpressions, improvedClicks),
@@ -294,6 +347,8 @@ export function buildSearchConsoleInsights({ integration = null, metrics }: Sear
       strikingDistance: strikingDistance.length,
       improved: improved.length,
     },
+    opportunity_scope: opportunityScope(latestRows, integration?.lastSyncAt || null),
+    provenance: performance?.provenance || null,
   };
 }
 
@@ -421,66 +476,89 @@ export async function selectSearchConsoleProperty(userId: string, siteId: string
   return serializeSearchConsoleIntegration(updated);
 }
 
-export async function syncSearchConsoleMetrics(userId: string, siteId: string) {
+export async function refreshSearchConsoleData(userId: string, siteId: string) {
   const integration = await requireSearchConsoleIntegration(userId, siteId);
+  const performance = await getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput(), true);
+  if (performance.provenance.cache === "stale") throw new Error("Search Console refresh could not load current performance data");
+  const snapshotStart = performance.range.baselineStart || performance.range.startDate;
+  const { rows: metrics } = await querySearchAnalytics(integration, snapshotStart, performance.range.endDate, "final");
+  const syncedAt = new Date();
 
-  const end = daysAgo(0);
-  const start = daysAgo(34);
-  const { rows: metrics, metadata } = await querySearchAnalytics(integration, isoDate(start), isoDate(end));
-
-  for (const metric of metrics) {
-    await db
-      .insert(searchConsoleMetrics)
-      .values({
-        userId,
-        siteId,
-        date: metric.date,
-        pageUrl: metric.pageUrl,
-        query: metric.query,
-        clicks: metric.clicks,
-        impressions: metric.impressions,
-        ctr: metric.ctr,
-        position: metric.position,
-      })
-      .onConflictDoUpdate({
-        target: [searchConsoleMetrics.siteId, searchConsoleMetrics.date, searchConsoleMetrics.pageUrl, searchConsoleMetrics.query],
-        set: {
-          clicks: metric.clicks,
-          impressions: metric.impressions,
-          ctr: metric.ctr,
-          position: metric.position,
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  const [updated] = await db
-    .update(searchConsoleIntegrations)
-    .set({ lastSyncAt: new Date(), status: "connected", syncMetadata: metadata || null })
-    .where(eq(searchConsoleIntegrations.id, integration.id))
-    .returning();
-
-  return { synced: metrics.length, integration: serializeSearchConsoleIntegration(updated) };
+  const updated = await replaceSearchConsoleSnapshot({
+    userId,
+    siteId,
+    integrationId: integration.id,
+    startDate: snapshotStart,
+    endDate: performance.range.endDate,
+    metrics,
+    syncedAt,
+    syncMetadata: {
+      first_incomplete_date: performance.provenance.first_incomplete_date,
+      complete_through: performance.provenance.complete_through,
+      fetched_at: performance.provenance.fetched_at,
+    },
+  });
+  const refreshed = await refreshOptimizePages(userId, siteId);
+  return { synced: metrics.length, optimizePages: refreshed.updated, integration: serializeSearchConsoleIntegration(updated), range: performance.range, provenance: performance.provenance };
 }
 
-export async function drainSearchConsoleSync(limit = 10) {
-  const staleBefore = new Date(Date.now() - 12 * 60 * 60 * 1000);
-  const rows = await db
+export async function replaceSearchConsoleSnapshot(input: {
+  userId: string;
+  siteId: string;
+  integrationId: string;
+  startDate: string;
+  endDate: string;
+  metrics: SearchAnalyticsMetric[];
+  syncedAt: Date;
+  syncMetadata: Record<string, unknown>;
+}) {
+  return db.transaction(async (tx) => {
+    await tx.delete(searchConsoleMetrics).where(and(
+      eq(searchConsoleMetrics.userId, input.userId),
+      eq(searchConsoleMetrics.siteId, input.siteId),
+      gte(searchConsoleMetrics.date, input.startDate),
+      lte(searchConsoleMetrics.date, input.endDate),
+    ));
+    for (const metric of input.metrics) {
+      await tx.insert(searchConsoleMetrics).values({ userId: input.userId, siteId: input.siteId, ...metric });
+    }
+    const [row] = await tx.update(searchConsoleIntegrations).set({
+      lastSyncAt: input.syncedAt,
+      status: "connected",
+      syncMetadata: input.syncMetadata,
+    }).where(and(
+      eq(searchConsoleIntegrations.id, input.integrationId),
+      eq(searchConsoleIntegrations.userId, input.userId),
+      eq(searchConsoleIntegrations.siteId, input.siteId),
+    )).returning();
+    if (!row) throw new Error("Search Console integration not found");
+    return row;
+  });
+}
+
+export const syncSearchConsoleMetrics = refreshSearchConsoleData;
+
+export async function listDueSearchConsoleIntegrations(limit = 10, now = new Date()) {
+  const staleBefore = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+  return db
     .select()
     .from(searchConsoleIntegrations)
     .where(and(
       eq(searchConsoleIntegrations.status, "connected"),
       or(isNull(searchConsoleIntegrations.lastSyncAt), lt(searchConsoleIntegrations.lastSyncAt, staleBefore)),
     ))
-    .orderBy(asc(searchConsoleIntegrations.lastSyncAt), asc(searchConsoleIntegrations.createdAt))
+    .orderBy(sql`${searchConsoleIntegrations.lastSyncAt} asc nulls first`, asc(searchConsoleIntegrations.createdAt))
     .limit(limit);
+}
+
+export async function drainSearchConsoleSync(limit = 10) {
+  const rows = await listDueSearchConsoleIntegrations(limit);
 
   const results: Array<{ integrationId: string; siteId: string; synced: number; optimizePages: number; error?: string }> = [];
   for (const row of rows) {
     try {
-      const synced = await syncSearchConsoleMetrics(row.userId, row.siteId);
-      const refreshed = await refreshOptimizePages(row.userId, row.siteId);
-      results.push({ integrationId: row.id, siteId: row.siteId, synced: synced.synced, optimizePages: refreshed.updated });
+      const synced = await refreshSearchConsoleData(row.userId, row.siteId);
+      results.push({ integrationId: row.id, siteId: row.siteId, synced: synced.synced, optimizePages: synced.optimizePages });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Search Console sync failed";
       await db
@@ -504,7 +582,7 @@ export async function hasSiteAccess(userId: string, siteId: string) {
   return Boolean(site);
 }
 
-async function querySearchAnalytics(integration: IntegrationRow, startDate: string, endDate: string) {
+async function querySearchAnalytics(integration: IntegrationRow, startDate: string, endDate: string, dataState: "all" | "final" = "all") {
   const credentials = decryptSearchConsoleCredentials(integration);
   const token = await googleAccessToken(credentials);
   const all: SearchAnalyticsMetric[] = [];
@@ -522,7 +600,7 @@ async function querySearchAnalytics(integration: IntegrationRow, startDate: stri
           endDate,
           dimensions: ["date", "page", "query"],
           type: "web",
-          dataState: "all",
+          dataState,
           rowLimit,
           startRow,
         }),
@@ -543,32 +621,35 @@ async function querySearchAnalytics(integration: IntegrationRow, startDate: stri
 export async function querySearchConsoleAnalytics(userId: string, siteId: string, input: SearchAnalyticsQueryInput) {
   const integration = await requireSearchConsoleIntegration(userId, siteId);
   const normalized = normalizeAnalyticsInput(input);
-  return cachedSearchConsoleQuery(userId, siteId, "analytics", { propertyUrl: integration.propertyUrl, ...normalized }, async () => {
+  const performance = await getCanonicalSearchConsolePerformance(userId, siteId, {
+    range: normalized.range,
+    compare: normalized.compare,
+    searchType: normalized.searchType,
+    country: normalized.country,
+    device: normalized.device,
+    includePreliminary: Boolean(normalized.includePreliminary),
+  });
+  const groupedResult = await cachedSearchConsoleQuery(userId, siteId, "analytics_rows", {
+    propertyUrl: integration.propertyUrl,
+    range: performance.range,
+    groupBy: normalized.groupBy,
+    searchType: normalized.searchType,
+    country: normalized.country,
+    device: normalized.device,
+    limit: normalized.limit,
+    includePreliminary: Boolean(normalized.includePreliminary),
+  }, async () => {
     const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
-    const endDate = isoDate(daysAgo(0));
-    const startDate = shiftDate(endDate, -(normalized.range - 1));
-    const baselineEnd = shiftDate(startDate, -1);
-    const baselineStart = shiftDate(baselineEnd, -(normalized.range - 1));
     const filters = analyticsFilters(normalized);
-    const common = { type: normalized.searchType, dataState: "all", ...(filters.length ? { dimensionFilterGroups: [{ filters }] } : {}) };
+    const common = { type: normalized.searchType, dataState: normalized.includePreliminary ? "all" : "final", ...(filters.length ? { dimensionFilterGroups: [{ filters }] } : {}) };
     const grouped = (from: string, to: string) => fetchSearchAnalytics(token, integration.propertyUrl, {
       ...common, startDate: from, endDate: to, dimensions: [normalized.groupBy], rowLimit: normalized.limit,
     });
-    const totals = (from: string, to: string) => fetchSearchAnalytics(token, integration.propertyUrl, {
-      ...common, startDate: from, endDate: to, dimensions: [], rowLimit: 1,
-    });
-    const [currentRows, baselineRows, currentTotals, baselineTotals, daily] = await Promise.all([
-      grouped(startDate, endDate),
-      normalized.compare ? grouped(baselineStart, baselineEnd) : Promise.resolve({ rows: [] }),
-      totals(startDate, endDate),
-      normalized.compare ? totals(baselineStart, baselineEnd) : Promise.resolve({ rows: [] }),
-      fetchSearchAnalytics(token, integration.propertyUrl, {
-        ...common,
-        startDate,
-        endDate,
-        dimensions: ["date"],
-        rowLimit: normalized.range,
-      }),
+    const [currentRows, baselineRows] = await Promise.all([
+      grouped(performance.range.startDate, performance.range.endDate),
+      normalized.compare && performance.range.baselineStart && performance.range.baselineEnd
+        ? grouped(performance.range.baselineStart, performance.range.baselineEnd)
+        : Promise.resolve({ rows: [] }),
     ]);
     const baselineByLabel = new Map((baselineRows.rows || []).map((row) => [String(row.keys?.[0] || ""), row]));
     const rows = (currentRows.rows || []).map((row) => {
@@ -582,16 +663,101 @@ export async function querySearchConsoleAnalytics(userId: string, siteId: string
         deltaPosition: baseline ? Number((Number(row.position || 0) - Number(baseline.position || 0)).toFixed(2)) : null,
       };
     });
-    return {
-      input: normalized,
-      range: { startDate, endDate, baselineStart: normalized.compare ? baselineStart : null, baselineEnd: normalized.compare ? baselineEnd : null },
-      totals: analyticsMetricDeltas(currentTotals.rows?.[0], baselineTotals.rows?.[0]),
-      daily: (daily.rows || []).map((row) => ({ date: String(row.keys?.[0] || ""), ...normalizeAnalyticsMetrics(row) })),
-      rows,
-      metadata: daily.metadata || null,
-      cached: false,
-    };
+    return { rows };
   });
+  const performanceCache = performance.provenance.cache;
+  const rowsCache = groupedResult.stale ? "stale" : groupedResult.cached ? "cached" : "live";
+  const cache = performanceCache === "stale" || rowsCache === "stale"
+    ? "stale"
+    : performanceCache === rowsCache ? performanceCache : "mixed";
+  return {
+    input: normalized,
+    range: performance.range,
+    totals: performance.totals,
+    daily: performance.daily,
+    rows: groupedResult.rows,
+    metadata: performance.metadata,
+    provenance: { ...performance.provenance, cache },
+    cached: cache === "cached",
+  };
+}
+
+export async function getCanonicalSearchConsolePerformance(
+  userId: string,
+  siteId: string,
+  input: CanonicalPerformanceInput,
+  force = false,
+): Promise<CanonicalSearchPerformance> {
+  const integration = await requireSearchConsoleIntegration(userId, siteId);
+  const asOf = searchConsoleDate();
+  const cached = await cachedSearchConsoleQuery(userId, siteId, "performance", {
+    propertyUrl: integration.propertyUrl,
+    asOf,
+    ...input,
+  }, async () => {
+    const token = await googleAccessToken(decryptSearchConsoleCredentials(integration));
+    const filters = analyticsFilters({ ...input, groupBy: "page", limit: 1 });
+    const days = input.range * (input.compare ? 2 : 1) + 7;
+    const response = await fetchSearchAnalytics(token, integration.propertyUrl, {
+      startDate: shiftDate(asOf, -(days - 1)),
+      endDate: asOf,
+      dimensions: ["date"],
+      type: input.searchType,
+      dataState: "all",
+      rowLimit: Math.min(250, days),
+      ...(filters.length ? { dimensionFilterGroups: [{ filters }] } : {}),
+    });
+    return buildCanonicalSearchPerformance(response.rows, response.metadata || null, input, asOf, integration.propertyUrl);
+  }, force);
+  return {
+    ...cached,
+    provenance: {
+      ...cached.provenance,
+      fetched_at: cached.fetchedAt,
+      cache: cached.stale ? "stale" : cached.cached ? "cached" : "live",
+    },
+  };
+}
+
+export function buildCanonicalSearchPerformance(
+  rows: GoogleAnalyticsRow[],
+  metadata: Record<string, unknown> | null,
+  input: CanonicalPerformanceInput,
+  asOf: string,
+  property: string,
+) {
+  const firstIncompleteDate = typeof metadata?.first_incomplete_date === "string" ? metadata.first_incomplete_date : null;
+  const completeThrough = firstIncompleteDate ? shiftDate(firstIncompleteDate, -1) : asOf;
+  const endDate = input.includePreliminary ? asOf : completeThrough;
+  const startDate = shiftDate(endDate, -(input.range - 1));
+  const baselineEnd = input.compare ? shiftDate(startDate, -1) : null;
+  const baselineStart = baselineEnd ? shiftDate(baselineEnd, -(input.range - 1)) : null;
+  const daily = rows
+    .map((row) => ({ date: String(row.keys?.[0] || ""), ...normalizeAnalyticsMetrics(row) }))
+    .filter((row) => row.date >= startDate && row.date <= endDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const baselineDaily = baselineStart && baselineEnd
+    ? rows.map((row) => ({ date: String(row.keys?.[0] || ""), ...normalizeAnalyticsMetrics(row) }))
+      .filter((row) => row.date >= baselineStart && row.date <= baselineEnd)
+    : [];
+  const current = summarizeDailyAnalytics(daily);
+  const baseline = input.compare ? summarizeDailyAnalytics(baselineDaily) : null;
+  return {
+    range: { startDate, endDate, baselineStart, baselineEnd },
+    totals: analyticsMetricDeltas(current, baseline || undefined),
+    daily,
+    metadata,
+    provenance: {
+      source: "google_search_console_api" as const,
+      property,
+      scope: "site_total" as const,
+      fetched_at: "",
+      complete_through: completeThrough,
+      first_incomplete_date: firstIncompleteDate,
+      data_status: input.includePreliminary ? "preliminary" as const : "complete" as const,
+      cache: "live" as const,
+    },
+  };
 }
 
 export async function listSearchConsoleSitemaps(userId: string, siteId: string, sitemapIndex?: string) {
@@ -681,7 +847,7 @@ export function normalizeAnalyticsInput(input: SearchAnalyticsQueryInput): Searc
   const country = input.country?.trim().toLowerCase();
   if (country && !/^[a-z]{3}$/.test(country)) throw new Error("Country must be a three-letter Search Console country code");
   if (input.device && !["DESKTOP", "MOBILE", "TABLET"].includes(input.device)) throw new Error("Unsupported device");
-  return { ...input, country: country || undefined, limit: Math.min(250, Math.max(1, Math.round(input.limit || 50))) };
+  return { ...input, country: country || undefined, includePreliminary: Boolean(input.includePreliminary), limit: Math.min(250, Math.max(1, Math.round(input.limit || 50))) };
 }
 
 function analyticsFilters(input: SearchAnalyticsQueryInput) {
@@ -725,12 +891,14 @@ function analyticsMetricDeltas(current: GoogleAnalyticsRow = {}, baseline?: Goog
   };
 }
 
-async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind: string, params: unknown, load: () => Promise<T>): Promise<T & { cached: boolean }> {
+async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind: string, params: unknown, load: () => Promise<T>, force = false): Promise<T & { cached: boolean; stale?: boolean; fetchedAt: string }> {
   const cacheKey = createHash("sha256").update(`${kind}:${JSON.stringify(params)}`).digest("hex");
   const [cached] = await db.select().from(searchConsoleQueryCache)
     .where(and(eq(searchConsoleQueryCache.userId, userId), eq(searchConsoleQueryCache.siteId, siteId), eq(searchConsoleQueryCache.cacheKey, cacheKey)))
     .limit(1);
-  if (cached && cached.expiresAt.getTime() > Date.now()) return { ...(cached.result as T), cached: true };
+  if (!force && cached && cached.expiresAt.getTime() > Date.now()) {
+    return { ...(cached.result as T), cached: true, fetchedAt: cached.updatedAt.toISOString() };
+  }
   let result: T;
   try {
     result = await load();
@@ -740,6 +908,7 @@ async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind:
         ...(cached.result as T),
         cached: true,
         stale: true,
+        fetchedAt: cached.updatedAt.toISOString(),
         warning: error instanceof Error ? error.message : "Search Console request failed",
       };
     }
@@ -753,7 +922,7 @@ async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind:
     set: { params, result, expiresAt: new Date(now.getTime() + QUERY_CACHE_MS), updatedAt: now },
   });
   await db.delete(searchConsoleQueryCache).where(lt(searchConsoleQueryCache.expiresAt, now));
-  return { ...result, cached: false };
+  return { ...result, cached: false, fetchedAt: now.toISOString() };
 }
 
 export function normalizeInspectionUrl(rawUrl: string, propertyUrl: string) {
@@ -833,8 +1002,52 @@ function emptyTotals() {
     impressions: metricDelta(0, null),
     ctr: metricDelta(0, null),
     position: metricDelta(0, null),
-    pageCount: 0,
-    queryCount: 0,
+  };
+}
+
+const emptyPerformanceTotals = emptyTotals;
+
+function defaultCanonicalInput(): CanonicalPerformanceInput {
+  return { range: 28, compare: true, searchType: "web", includePreliminary: false };
+}
+
+function emptyOpportunityScope(lastSyncedAt: Date | string | null) {
+  return {
+    scope: "page_query_rows" as const,
+    page_count: 0,
+    query_count: 0,
+    row_count: 0,
+    last_synced_at: lastSyncedAt ? new Date(lastSyncedAt).toISOString() : null,
+  };
+}
+
+function opportunityScope(rows: Array<Pick<SearchAnalyticsMetric, "pageUrl" | "query">>, lastSyncedAt: Date | string | null) {
+  return {
+    scope: "page_query_rows" as const,
+    page_count: new Set(rows.map((row) => row.pageUrl)).size,
+    query_count: new Set(rows.map((row) => row.query)).size,
+    row_count: rows.length,
+    last_synced_at: lastSyncedAt ? new Date(lastSyncedAt).toISOString() : null,
+  };
+}
+
+function summarizeDailyAnalytics(rows: Array<{ clicks: number; impressions: number; position: number }>) {
+  const clicks = rows.reduce((sum, row) => sum + row.clicks, 0);
+  const impressions = rows.reduce((sum, row) => sum + row.impressions, 0);
+  return {
+    clicks,
+    impressions,
+    ctr: impressions ? clicks / impressions : 0,
+    position: impressions ? rows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions : 0,
+  };
+}
+
+function metricSummaryFromDeltas(totals: ReturnType<typeof analyticsMetricDeltas>): MetricSummary {
+  return {
+    clicks: totals.clicks.value,
+    impressions: totals.impressions.value,
+    ctr: totals.ctr.value,
+    position: totals.position.value,
   };
 }
 
@@ -1093,10 +1306,15 @@ function comparableHost(hostname: string) {
   catch { return value.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").replace(/\.$/, ""); }
 }
 
-function daysAgo(days: number) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() - days);
-  return date;
+function searchConsoleDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
 function shiftDate(value: string, days: number) {

@@ -177,6 +177,61 @@ try {
 
   process.env.API_KEY_ENCRYPTION_SECRET ||= "postgres-integration-mcp-secret";
   const { encryptSecret } = await import("./services/api-keys.js");
+  const { listDueSearchConsoleIntegrations, replaceSearchConsoleSnapshot } = await import("./services/search-console.js");
+  const searchConsoleIntegrationId = randomUUID();
+  const otherSearchConsoleIntegrationId = randomUUID();
+  await sql`
+    INSERT INTO search_console_integrations (id, user_id, site_id, property_url, credentials_encrypted)
+    VALUES
+      (${searchConsoleIntegrationId}, ${userId}, ${siteId}, 'sc-domain:mcp-test.example.com', ${encryptSecret('{"test":true}')}),
+      (${otherSearchConsoleIntegrationId}, ${otherUserId}, ${otherSiteId}, 'sc-domain:other-mcp-test.example.com', ${encryptSecret('{"test":true}')})
+  `;
+  await sql`
+    INSERT INTO search_console_metrics (user_id, site_id, date, page_url, query, clicks, impressions, ctr, position)
+    VALUES
+      (${userId}, ${siteId}, '2026-07-10', 'https://mcp-test.example.com/stale', 'stale', 10, 100, 0.1, 5),
+      (${otherUserId}, ${otherSiteId}, '2026-07-10', 'https://other-mcp-test.example.com/private', 'private', 20, 200, 0.1, 4)
+  `;
+  const searchConsoleSyncedAt = new Date("2026-08-22T12:00:00.000Z");
+  await replaceSearchConsoleSnapshot({
+    userId,
+    siteId,
+    integrationId: searchConsoleIntegrationId,
+    startDate: "2026-07-01",
+    endDate: "2026-08-20",
+    syncedAt: searchConsoleSyncedAt,
+    syncMetadata: { complete_through: "2026-08-20" },
+    metrics: [{
+      date: "2026-08-20",
+      pageUrl: "https://mcp-test.example.com/current",
+      query: "current",
+      clicks: 3,
+      impressions: 30,
+      ctr: 0.1,
+      position: 3,
+    }],
+  });
+  const refreshedSearchRows = await sql<{ date: string; query: string }[]>`
+    SELECT date, query FROM search_console_metrics WHERE user_id = ${userId} AND site_id = ${siteId} ORDER BY date
+  `;
+  assert.deepEqual(refreshedSearchRows, [{ date: "2026-08-20", query: "current" }], "Search Console refresh retained stale opportunity rows");
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM search_console_metrics WHERE user_id = ${otherUserId} AND site_id = ${otherSiteId}`)[0]?.count, 1, "Search Console refresh crossed the tenant boundary");
+  const [searchConsoleSyncState] = await sql<{ last_sync_at: Date; sync_metadata: { complete_through?: string } }[]>`
+    SELECT last_sync_at, sync_metadata FROM search_console_integrations WHERE id = ${searchConsoleIntegrationId}
+  `;
+  assert.equal(searchConsoleSyncState.last_sync_at.toISOString(), searchConsoleSyncedAt.toISOString(), "Search Console last_sync_at was not updated");
+  assert.equal(searchConsoleSyncState.sync_metadata.complete_through, "2026-08-20", "Search Console provenance was not persisted");
+  assert.equal((await listDueSearchConsoleIntegrations(1, new Date("2026-08-22T13:00:00.000Z")))[0]?.id, otherSearchConsoleIntegrationId, "never-synced Search Console integration was not prioritized");
+  await assert.rejects(() => replaceSearchConsoleSnapshot({
+    userId: otherUserId,
+    siteId,
+    integrationId: searchConsoleIntegrationId,
+    startDate: "2026-07-01",
+    endDate: "2026-08-20",
+    syncedAt: searchConsoleSyncedAt,
+    syncMetadata: {},
+    metrics: [],
+  }), /not found/i, "cross-user Search Console refresh succeeded");
   const { seoSourceHash } = await import("./services/seo-metadata.js");
   const { MCP_PROTOCOL_VERSION } = await import("./mcp/contracts.js");
   const { handleMcpHttpRequest } = await import("./mcp/server.js");

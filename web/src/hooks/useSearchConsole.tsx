@@ -52,13 +52,33 @@ export interface SearchConsoleInspection {
 }
 
 export interface SearchConsoleAnalyticsResponse {
-  input: { range: 7 | 28 | 90; compare: boolean; groupBy: string; searchType: string; country?: string; device?: string };
+  input: { range: 7 | 28 | 90; compare: boolean; groupBy: string; searchType: string; country?: string; device?: string; includePreliminary?: boolean };
   range: { startDate: string; endDate: string; baselineStart: string | null; baselineEnd: string | null };
   totals: { clicks: MetricDelta; impressions: MetricDelta; ctr: MetricDelta; position: MetricDelta };
   daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>;
   rows: Array<{ label: string; clicks: number; impressions: number; ctr: number; position: number; deltaClicks: number | null; deltaPosition: number | null }>;
   metadata: { first_incomplete_date?: string } | null;
+  provenance: SearchConsoleProvenance;
   cached: boolean;
+}
+
+export interface SearchConsoleProvenance {
+  source: "google_search_console_api";
+  property: string;
+  scope: "site_total";
+  fetched_at: string;
+  complete_through: string;
+  first_incomplete_date: string | null;
+  data_status: "complete" | "preliminary";
+  cache: "live" | "cached" | "mixed" | "stale";
+}
+
+export interface SearchConsoleOpportunityScope {
+  scope: "page_query_rows";
+  page_count: number;
+  query_count: number;
+  row_count: number;
+  last_synced_at: string | null;
 }
 
 export interface SearchConsoleSitemap {
@@ -74,7 +94,11 @@ export interface SearchConsoleSitemap {
 
 interface DashboardResponse {
   integration: SearchConsoleIntegration | null;
-  stats: { pageCount: number; queryCount: number; clicks: number; impressions: number };
+  range: { startDate: string; endDate: string; baselineStart: string | null; baselineEnd: string | null };
+  stats: { pageCount: number; queryCount: number; clicks: number; impressions: number; ctr: number; position: number };
+  totals: { clicks: MetricDelta; impressions: MetricDelta; ctr: MetricDelta; position: MetricDelta };
+  opportunity_scope: SearchConsoleOpportunityScope;
+  provenance: SearchConsoleProvenance | null;
 }
 
 export interface MetricDelta {
@@ -120,8 +144,6 @@ export interface SearchConsoleInsights {
     impressions: MetricDelta;
     ctr: MetricDelta;
     position: MetricDelta;
-    pageCount: number;
-    queryCount: number;
   };
   daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>;
   opportunityBubbles: SearchOpportunityBubble[];
@@ -138,6 +160,8 @@ export interface SearchConsoleInsights {
     strikingDistance: number;
     improved: number;
   };
+  opportunity_scope: SearchConsoleOpportunityScope;
+  provenance: SearchConsoleProvenance | null;
 }
 
 interface SaveInput {
@@ -228,7 +252,7 @@ export function useSearchConsole(siteId?: string | null) {
   return {
     dashboard: dashboard.data,
     integration,
-    stats: dashboard.data?.stats || { pageCount: 0, queryCount: 0, clicks: 0, impressions: 0 },
+    stats: dashboard.data?.stats || { pageCount: 0, queryCount: 0, clicks: 0, impressions: 0, ctr: 0, position: 0 },
     isLoading: dashboard.isLoading,
     saveIntegration,
     testIntegration,
@@ -287,6 +311,7 @@ export function useSearchConsoleToolkit(siteId?: string | null) {
       country?: string;
       device?: "DESKTOP" | "MOBILE" | "TABLET";
       limit?: number;
+      includePreliminary?: boolean;
     }) => {
       if (!resolvedSiteId) throw new Error("Select a site first");
       return api.post<SearchConsoleAnalyticsResponse>("/search-console/analytics/query", { siteId: resolvedSiteId, ...input });

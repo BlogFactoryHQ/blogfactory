@@ -83,7 +83,7 @@ const list = await post(
 );
 assert.equal(list.status, 200);
 const listedTools = (await list.json() as any).result.tools;
-assert.equal(listedTools.length, 21);
+assert.equal(listedTools.length, 22);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
 assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
 assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
@@ -106,6 +106,7 @@ for (const tool of listedTools) {
     create_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     import_drafts: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     generate_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    refresh_search_console: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     push_to_cms_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   };
@@ -215,6 +216,7 @@ assert.equal(crossSiteResult.structuredContent.error.code, "not_found");
 for (const name of [
   "get_search_console_dashboard",
   "get_search_console_insights",
+  "refresh_search_console",
   "inspect_search_console_url",
   "batch_inspect_search_console_urls",
   "list_search_console_sitemaps",
@@ -339,8 +341,8 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 21);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 21);
+assert.equal(MCP_TOOL_NAMES.length, 22);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 22);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

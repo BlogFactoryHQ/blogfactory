@@ -15,7 +15,7 @@ const { deleteMock, getMock, postMock, toastErrorMock, toastSuccessMock, writeTe
 
 const capabilities = {
   tool_count: 20,
-  tools: ["whoami", "list_sites", "list_personas", "list_publish_targets", "list_posts", "get_post", "generate_draft", "get_job", "get_workspace_digest", "list_action_items", "review_post", "get_search_console_dashboard", "get_search_console_insights", "update_draft", "push_to_cms_draft", "inspect_search_console_url", "batch_inspect_search_console_urls", "list_search_console_sitemaps", "query_search_console_analytics"],
+  tools: ["whoami", "list_sites", "list_personas", "list_publish_targets", "list_posts", "get_post", "generate_draft", "get_job", "get_workspace_digest", "list_action_items", "review_post", "get_search_console_dashboard", "get_search_console_insights", "refresh_search_console", "update_draft", "push_to_cms_draft", "inspect_search_console_url", "batch_inspect_search_console_urls", "list_search_console_sitemaps", "query_search_console_analytics"],
 };
 
 vi.mock("@/lib/api", () => ({
