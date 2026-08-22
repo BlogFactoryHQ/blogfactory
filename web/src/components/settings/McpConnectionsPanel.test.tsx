@@ -118,7 +118,7 @@ describe("MCP connections panel", () => {
 
     await act(async () => button("Copy OAuth setup").click());
     expect(writeTextMock).toHaveBeenCalledWith(
-      `codex mcp add blogfactory --url ${window.location.origin}/mcp`,
+      "codex mcp add blogfactory --url https://blogfactory.io/mcp",
     );
 
     await act(async () => button("Create personal token").click());

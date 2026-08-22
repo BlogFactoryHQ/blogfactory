@@ -13,6 +13,10 @@ export const authRoutes = new Hono();
 
 const LOCAL_DEV_EMAIL = "local@blogfactory.dev";
 
+export function publicSignupEnabled(environment = process.env.NODE_ENV) {
+  return environment !== "production";
+}
+
 async function ensureLocalDevWorkspace(userId: string) {
   const now = new Date();
   const [existingSite] = await db
@@ -124,6 +128,10 @@ authRoutes.post("/dev-login", async (c) => {
 });
 
 authRoutes.post("/signup", async (c) => {
+  if (!publicSignupEnabled()) {
+    return c.json({ error: "Public signup is disabled" }, 403);
+  }
+
   const body = await readJsonObject(c);
   const email = requiredString(body, "email");
   const password = requiredString(body, "password");

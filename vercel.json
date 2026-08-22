@@ -7,6 +7,87 @@
       "maxDuration": 60
     }
   },
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.blogfactory.io" }],
+      "destination": "https://blogfactory.io/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/mcp/oauth",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/mcp/oauth",
+      "permanent": false
+    },
+    {
+      "source": "/auth",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/auth",
+      "permanent": true
+    },
+    {
+      "source": "/review",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/review",
+      "permanent": true
+    },
+    {
+      "source": "/runs",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/runs",
+      "permanent": true
+    },
+    {
+      "source": "/create",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/create",
+      "permanent": true
+    },
+    {
+      "source": "/onboarding",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/onboarding",
+      "permanent": true
+    },
+    {
+      "source": "/overview/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/overview/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/sources/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/sources/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/library/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/library/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/control/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/control/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/admin/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "https://app.blogfactory.io/admin/:path*",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "app.blogfactory.io" }],
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    }
+  ],
   "rewrites": [
     {
       "source": "/.well-known/oauth-protected-resource",
@@ -17,8 +98,18 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": "/api/index.js"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "/marketing.html"
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "app.blogfactory.io" }],
+      "destination": "/index.html"
     },
     {
       "source": "/((?!api/|assets/|mcp-review\\.html$).*)",

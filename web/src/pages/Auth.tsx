@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FactoryMark } from "@/components/layout/BywordSurface";
 import { toast } from "sonner";
 
-type View = "signin" | "signup" | "forgot-password" | "reset-password";
+type View = "signin" | "forgot-password" | "reset-password";
 
 export function authReturnTo(state: unknown, queryValue?: string | null) {
   const stateValue = state && typeof state === "object" && "returnTo" in state
@@ -42,7 +41,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = authReturnTo(location.state, new URLSearchParams(location.search).get("returnTo"));
-  const { login, signup, devLogin } = useAuth();
+  const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
   const [view, setView] = useState<View>("signin");
@@ -51,13 +50,6 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-
-  // Sign up fields
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [marketingOptIn, setMarketingOptIn] = useState(true);
 
   // Forgot password fields
   const [forgotEmail, setForgotEmail] = useState("");
@@ -70,24 +62,6 @@ export default function Auth() {
     try {
       await login(email, password, rememberMe);
       toast.success("Welcome back!");
-      navigate(returnTo, { replace: true });
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!consent) {
-      toast.error("You must accept the Privacy Policy and Terms of Service");
-      return;
-    }
-    setIsLoading(true);
-    try {
-      await signup(signupEmail, signupPassword, displayName, consent, marketingOptIn);
-      toast.success("Account request created");
       navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -231,14 +205,9 @@ export default function Auth() {
 
   return (
     <AuthShell>
-        <Tabs defaultValue="signin" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
-            <TabsTrigger value="signin">Sign in</TabsTrigger>
-            <TabsTrigger value="signup">Sign up</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="signin">
-            <form onSubmit={handleSignIn} className="space-y-5">
+        <h1 className="type-panel-title mb-1 text-lg">Sign in</h1>
+        <p className="type-body mb-6">Access your BlogFactory workspace.</p>
+        <form onSubmit={handleSignIn} className="space-y-5">
               <div className="space-y-1.5">
                 <Label htmlFor="signin-email" className="text-xs">Email</Label>
                 <Input
@@ -307,84 +276,7 @@ export default function Auth() {
                 </div>
               )}
 
-            </form>
-          </TabsContent>
-
-          <TabsContent value="signup">
-            <form onSubmit={handleSignUp} className="space-y-5">
-              <div className="space-y-1.5">
-                <Label htmlFor="signup-name" className="text-xs">Display name</Label>
-                <Input
-                  id="signup-name"
-                  type="text"
-                  placeholder="Your name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="signup-email" className="text-xs">Email</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={signupEmail}
-                  onChange={(e) => setSignupEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="signup-password" className="text-xs">Password</Label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  minLength={6}
-                  required
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Minimum 6 characters
-                </p>
-              </div>
-
-              {/* Consent checkbox */}
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="consent"
-                  checked={consent}
-                  onCheckedChange={(checked) => setConsent(checked === true)}
-                  className="mt-0.5"
-                />
-                <Label htmlFor="consent" className="text-xs text-muted-foreground cursor-pointer leading-relaxed">
-                  I agree to the Privacy Policy and Terms of Service
-                </Label>
-              </div>
-
-              {/* Marketing opt-in */}
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="marketing"
-                  checked={marketingOptIn}
-                  onCheckedChange={(checked) => setMarketingOptIn(checked === true)}
-                  className="mt-0.5"
-                />
-                <Label htmlFor="marketing" className="text-xs text-muted-foreground cursor-pointer leading-relaxed">
-                  Yes, I want to receive BlogFactory emails
-                </Label>
-              </div>
-
-              <Button type="submit" className="w-full h-10" disabled={isLoading || !consent}>
-                {isLoading ? "Creating account..." : "Create account"}
-              </Button>
-
-            </form>
-          </TabsContent>
-        </Tabs>
+        </form>
     </AuthShell>
   );
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -98,7 +98,7 @@ export function McpConnectionsPanel() {
   const [creating, setCreating] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
-  const endpoint = useMemo(() => new URL("/mcp", window.location.origin).toString(), []);
+  const endpoint = new URL(import.meta.env.VITE_MCP_URL || "https://blogfactory.io/mcp").toString();
   const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
   const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
 

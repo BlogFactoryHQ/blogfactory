@@ -2,7 +2,7 @@
 
 BlogFactory is an agent control plane for multi-site content operations. Codex, ChatGPT, and other MCP clients can generate and inspect work; the web app remains the place to monitor runs, review revisions, resolve blockers, manage destinations, and approve CMS draft delivery.
 
-[Open BlogFactory](https://blogfactory.io) · [Documentation](docs/README.md) · [MCP guide](docs/mcp.md)
+[Website](https://blogfactory.io) · [Open BlogFactory](https://app.blogfactory.io) · [Documentation](docs/README.md) · [MCP guide](docs/mcp.md)
 
 ## Product model
 
@@ -19,7 +19,7 @@ source -> generation job -> BlogFactory draft -> review/preflight -> CMS draft
 
 | Area | Route | Purpose |
 | --- | --- | --- |
-| Overview | `/` | Attention counts, runs, 30-day outcomes, Search Growth, connections, and agent activity |
+| Overview | `https://app.blogfactory.io/` | Attention counts, runs, 30-day outcomes, Search Growth, connections, and agent activity |
 | Create Content | `/create` | Manual article, campaign, and programmatic generation fallback |
 | Review Queue | `/review` | Prioritized blockers, requested changes, stale approvals, warnings, and draft review |
 | Runs | `/runs` | Generation queue, progress, errors, results, and retry controls |

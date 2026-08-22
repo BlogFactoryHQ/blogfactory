@@ -12,6 +12,6 @@
     ]
   },
   "vars": {
-    "CRON_BASE_URL": "https://blogfactory.io"
+    "CRON_BASE_URL": "https://app.blogfactory.io"
   }
 }

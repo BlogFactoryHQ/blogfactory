@@ -22,7 +22,12 @@ Production is Git-linked to `main`. `vercel.json` runs `npm run db:migrate` for 
 - `/mcp`
 - `/.well-known/oauth-protected-resource`
 
-All remaining application routes rewrite to the React shell. The live aliases are [blogfactory.io](https://blogfactory.io) and `www.blogfactory.io`.
+The production host split is:
+
+- [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
+- [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.
+- `blogfactory.io/mcp` and its OAuth protected-resource metadata remain on the root host.
+- Root `/api/*` remains a temporary compatibility route during the callback and cron transition.
 
 Release flow:
 
@@ -60,6 +65,7 @@ Use `npm run test:postgres` for schema, tenant isolation, operation ledger, and 
 Production boundary checks:
 
 ```bash
+curl -i https://app.blogfactory.io/api/health
 curl -i https://blogfactory.io/api/health
 curl -i https://blogfactory.io/mcp
 curl -i https://blogfactory.io/.well-known/oauth-protected-resource
@@ -67,7 +73,7 @@ curl -i https://blogfactory.io/.well-known/oauth-protected-resource
 
 Expected results:
 
-- `/api/health`: HTTP 200.
+- App and compatibility `/api/health`: HTTP 200.
 - Unauthenticated `/mcp`: HTTP 401 with `WWW-Authenticate: Bearer`, never the React shell.
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
 - Authenticated capability response: exactly 21 tools from the server catalog.

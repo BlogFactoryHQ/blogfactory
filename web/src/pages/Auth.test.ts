@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { authReturnTo } from "./Auth";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import Auth, { authReturnTo } from "./Auth";
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ login: vi.fn(), devLogin: vi.fn() }),
+}));
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 describe("authReturnTo", () => {
   it("keeps internal OAuth paths and rejects external redirects", () => {
@@ -11,5 +25,19 @@ describe("authReturnTo", () => {
     expect(authReturnTo({ returnTo: "https://evil.example/steal" })).toBe("/");
     expect(authReturnTo(null, "https://evil.example/steal")).toBe("/");
     expect(authReturnTo(null)).toBe("/");
+  });
+
+  it("renders login without public signup controls", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(Auth)));
+    });
+
+    expect(container).toHaveTextContent("Sign in");
+    expect(container).not.toHaveTextContent("Sign up");
+    expect(container).not.toHaveTextContent("Create account");
+    await act(async () => root.unmount());
   });
 });

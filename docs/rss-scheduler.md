@@ -38,8 +38,8 @@ GitHub BLOGFACTORY_CRON_SECRET = same value as backend CRON_SECRET
 Optional variables:
 
 ```text
-Cloudflare CRON_BASE_URL = https://blogfactory.io
-GitHub BLOGFACTORY_BASE_URL = https://blogfactory.io
+Cloudflare CRON_BASE_URL = https://app.blogfactory.io
+GitHub BLOGFACTORY_BASE_URL = https://app.blogfactory.io
 ```
 
 The app still decides which feeds are due from

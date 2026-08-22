@@ -39,7 +39,7 @@ jobs:
           DRAIN_QUERY: ${{ matrix.query }}
         run: |
           test -n "$BLOGFACTORY_CRON_SECRET"
-          BASE_URL="${BLOGFACTORY_BASE_URL:-https://blogfactory.io}"
+          BASE_URL="${BLOGFACTORY_BASE_URL:-https://app.blogfactory.io}"
           curl --fail --show-error --silent --max-time 55 \
             -H "Authorization: Bearer ${BLOGFACTORY_CRON_SECRET}" \
             "${BASE_URL%/}/api/cron/drain?${DRAIN_QUERY}"

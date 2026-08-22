@@ -84,7 +84,7 @@ Use `http://localhost:8080/mcp` for local development.
 
 ## OAuth
 
-OAuth fails closed unless `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` are configured together. Production uses `https://blogfactory.io/mcp` as the resource indicator and `https://blogfactory.io/mcp/oauth` as the login URI.
+OAuth fails closed unless `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` are configured together. Production uses `https://blogfactory.io/mcp` as the resource indicator and `https://app.blogfactory.io/mcp/oauth` as the login URI.
 
 Consent lists only the authenticated user's sites and binds the selected site to `urn:blogfactory:site_id`. The server verifies signature, issuer, `/mcp` audience, user and site claims, approval, ownership, and connection revocation before granting scopes.
 
