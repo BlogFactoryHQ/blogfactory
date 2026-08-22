@@ -17,6 +17,7 @@ import { authorizeMcpOAuthConnection } from "../services/mcp-oauth-connections.j
 
 export interface McpPrincipal {
   tokenId: string;
+  clientName: string;
   userId: string;
   scopes: ReadonlySet<McpScope>;
   siteIds: ReadonlySet<string>;
@@ -93,6 +94,7 @@ export async function authenticateMcpBearer(
     if (!await dependencies.touch(token.tokenId, now)) return null;
     return {
       tokenId: token.tokenId,
+      clientName: token.tokenName,
       userId: token.userId,
       scopes: new Set(token.scopes as McpScope[]),
       siteIds: new Set(token.siteIds),
@@ -121,6 +123,7 @@ export async function authenticateMcpBearer(
 
   return {
     tokenId: connection.id,
+    clientName: `OAuth client ${connection.id.slice(0, 8)}`,
     userId: oauthUser.userId,
     scopes: new Set(connection.scopes as McpScope[]),
     siteIds: new Set([oauthUser.siteId]),

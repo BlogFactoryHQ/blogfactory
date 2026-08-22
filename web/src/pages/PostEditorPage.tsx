@@ -210,7 +210,7 @@ export default function PostEditorPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       toast.success("Post deleted");
-      navigate("/posts");
+      navigate("/library/content");
     },
     onError: (error) => {
       toast.error("Failed to delete: " + error.message);
@@ -251,7 +251,7 @@ export default function PostEditorPage() {
   };
 
   const handleBack = () => {
-    navigate("/posts");
+    navigate("/library/content");
   };
 
   if (isLoadingPost) {

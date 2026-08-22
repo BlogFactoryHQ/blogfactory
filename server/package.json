@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@vercel/functions": "^3.7.3",
     "bcryptjs": "^3.0.0",

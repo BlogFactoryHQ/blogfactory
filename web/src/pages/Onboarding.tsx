@@ -196,7 +196,7 @@ export default function Onboarding() {
               <h1 className="mt-6 font-mono text-2xl font-semibold uppercase">Your workspace is ready</h1>
             </div>
             <SiteSummary site={createdSite} />
-            <Button className="mt-8 h-12 w-full" onClick={() => navigate("/content-creator", { replace: true })}>
+            <Button className="mt-8 h-12 w-full" onClick={() => navigate("/create", { replace: true })}>
               Get Started
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

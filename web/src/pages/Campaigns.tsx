@@ -162,15 +162,15 @@ function CampaignList() {
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
           <p className="mt-2 text-muted-foreground">All campaign and programmatic SEO runs with progress, drafts, and item status.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            More than a flat keyword list? <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+            More than a flat keyword list? <Link to="/create?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" asChild>
-            <Link to="/content-creator?mode=programmatic"><Grid2X2 className="mr-2 h-4 w-4" />New Programmatic Run</Link>
+            <Link to="/create?mode=programmatic"><Grid2X2 className="mr-2 h-4 w-4" />New Programmatic Run</Link>
           </Button>
           <Button asChild>
-            <Link to="/content-creator?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
+            <Link to="/create?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
           </Button>
         </div>
       </div>
@@ -253,8 +253,8 @@ function CampaignList() {
                   <p className="font-semibold">No campaigns yet</p>
                   <p className="mt-1 text-sm text-muted-foreground">Start with a keyword batch or import an SEO content brief spreadsheet.</p>
                   <div className="mt-4 flex justify-center gap-2">
-                    <Button variant="outline" asChild><Link to="/content-creator?mode=programmatic">Import Briefs</Link></Button>
-                    <Button asChild><Link to="/content-creator?mode=campaign">New Campaign</Link></Button>
+                    <Button variant="outline" asChild><Link to="/create?mode=programmatic">Import Briefs</Link></Button>
+                    <Button asChild><Link to="/create?mode=campaign">New Campaign</Link></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -267,9 +267,9 @@ function CampaignList() {
                 key={campaign.id}
                 className="cursor-pointer"
                 tabIndex={0}
-                onClick={() => navigate(`/campaigns/${campaign.id}`)}
+                onClick={() => navigate(`/sources/campaigns/${campaign.id}`)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") navigate(`/campaigns/${campaign.id}`);
+                  if (event.key === "Enter") navigate(`/sources/campaigns/${campaign.id}`);
                 }}
               >
                 <TableCell className="font-medium">{campaign.name}</TableCell>
@@ -440,7 +440,7 @@ function CampaignDetail({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild><Link to="/campaigns">Back</Link></Button>
+          <Button variant="outline" asChild><Link to="/sources/campaigns">Back</Link></Button>
           {(campaign.status === "draft" || (campaign.status === "stopped" && resumableCount > 0)) && (
             <Button onClick={() => action.mutate(`/campaigns/${campaign.id}/start`)} disabled={action.isPending}>
               <Play className="mr-2 h-4 w-4" />{campaign.status === "stopped" ? "Resume" : "Start"}
@@ -525,7 +525,7 @@ function CampaignDetail({ id }: { id: string }) {
                 {seoReadyCount} ready · {seoPendingCount} preparing · {seoReviewCount} review · {seoFailedCount} failed or missing
               </p>
               {!allSeoReady && <p className="mt-1 text-xs text-muted-foreground">CMS push unlocks when every generated draft is SEO ready.</p>}
-              {cmsBatchTooLarge && <p className="mt-1 text-xs text-amber-700">CMS batches support 500 posts. Use <Link to={`/posts?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
+              {cmsBatchTooLarge && <p className="mt-1 text-xs text-amber-700">CMS batches support 500 posts. Use <Link to={`/library/content?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
               {seoReviewCount > 0 && <p className="mt-1 text-xs text-amber-700">Open review items and confirm preserved manual fields before publishing.</p>}
             </div>
             <div className="flex flex-wrap items-end gap-3">
@@ -553,7 +553,7 @@ function CampaignDetail({ id }: { id: string }) {
                     Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
                   </Button>
                 </>
-              ) : <Button variant="outline" asChild><Link to="/integrations">Connect CMS</Link></Button>}
+              ) : <Button variant="outline" asChild><Link to="/control/integrations">Connect CMS</Link></Button>}
             </div>
           </div>
         </BywordCard>
@@ -676,7 +676,7 @@ function CampaignDetail({ id }: { id: string }) {
                 <TableCell>
                   {item.postId ? (
                     <Button variant="outline" size="sm" asChild>
-                      <Link to={`/posts/${item.postId}/edit`}><ExternalLink className="mr-2 h-3.5 w-3.5" />Open</Link>
+                      <Link to={`/library/posts/${item.postId}/edit`}><ExternalLink className="mr-2 h-3.5 w-3.5" />Open</Link>
                     </Button>
                   ) : item.status === "failed" ? (
                     <Button variant="outline" size="sm" onClick={() => action.mutate(`/campaigns/${campaign.id}/items/${item.id}/retry`)} disabled={action.isPending}>

@@ -21,7 +21,7 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/((?!api/|assets/|mcp-review\\.html$).*)",
       "destination": "/index.html"
     }
   ]

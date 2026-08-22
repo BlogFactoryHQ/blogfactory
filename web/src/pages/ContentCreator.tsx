@@ -432,7 +432,7 @@ export default function ContentCreator() {
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
-    navigate(mode === "article" ? "/content-creator" : `/content-creator?mode=${mode}`, { replace: true });
+    navigate(mode === "article" ? "/create" : `/create?mode=${mode}`, { replace: true });
   };
 
   // Fetch user settings for image defaults
@@ -881,7 +881,7 @@ export default function ContentCreator() {
     onSuccess: ({ campaign }) => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       toast.success(campaignStartNow ? "Campaign started" : "Campaign created");
-      navigate(`/campaigns/${campaign.id}`);
+      navigate(`/sources/campaigns/${campaign.id}`);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
   });
@@ -979,7 +979,7 @@ export default function ContentCreator() {
               </div>
             </div>
             <Button variant="outline" asChild>
-              <Link to="/batch-import">Open Batch Import</Link>
+              <Link to="/sources/batch-import">Open Batch Import</Link>
             </Button>
           </div>
         </BywordCard>
@@ -1437,7 +1437,7 @@ export default function ContentCreator() {
                 {recentPosts.map((post) => (
                   <Link
                     key={post.id}
-                    to={`/posts/${post.id}/edit`}
+                    to={`/library/posts/${post.id}/edit`}
                     className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
                   >
                     <IconTile icon={FileTextIcon} />
@@ -1494,7 +1494,7 @@ export default function ContentCreator() {
 
               <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
                 Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
-                <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+                <Link to="/create?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
               </div>
 
               {campaignMode === "title_outline" && (

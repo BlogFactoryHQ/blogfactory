@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { authMiddleware } from "./middleware/auth.js";
+import { operationLedgerMiddleware } from "./middleware/operation-ledger.js";
 import { errorResponse, handleApiError, normalizeApiErrors } from "./http/error-contract.js";
 
 import { authRoutes } from "./routes/auth.js";
@@ -29,8 +30,11 @@ import { cronRoutes } from "./routes/cron.js";
 import { programmaticRoutes } from "./routes/programmatic.js";
 import { mcpTokenRoutes } from "./routes/mcp-tokens.js";
 import { mcpOAuthRoutes } from "./routes/mcp-oauth.js";
+import { controlPlaneRoutes } from "./routes/control-plane.js";
+import { operationsRoutes } from "./routes/operations.js";
 import { handleMcpHttpRequest } from "./mcp/server.js";
 import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
+import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
 
 const app = new Hono();
 
@@ -38,6 +42,7 @@ app.use("/api/*", cors());
 app.use("*", logger());
 app.use("/api/*", normalizeApiErrors);
 app.use("/api/*", authMiddleware);
+app.use("/api/*", operationLedgerMiddleware);
 
 app.route("/api/auth", authRoutes);
 app.route("/api/posts", postsRoutes);
@@ -64,6 +69,15 @@ app.route("/api/cron", cronRoutes);
 app.route("/api/programmatic", programmaticRoutes);
 app.route("/api/mcp/tokens", mcpTokenRoutes);
 app.route("/api/mcp/oauth", mcpOAuthRoutes);
+app.route("/api/control-plane", controlPlaneRoutes);
+app.route("/api/operations", operationsRoutes);
+app.get("/api/mcp/capabilities", (c) => c.json({
+  protocol_version: MCP_PROTOCOL_VERSION,
+  server_version: MCP_SERVER_VERSION,
+  scopes: MCP_SCOPES,
+  tools: ACTIVE_MCP_TOOL_NAMES,
+  tool_count: ACTIVE_MCP_TOOL_NAMES.length,
+}));
 
 app.get("/.well-known/oauth-protected-resource", () => handleMcpProtectedResourceMetadata());
 app.all("/mcp", (c) => handleMcpHttpRequest(c.req.raw));

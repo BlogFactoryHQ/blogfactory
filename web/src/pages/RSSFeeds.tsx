@@ -511,11 +511,11 @@ export default function RSSFeeds() {
         description="Monitor, pause, run, and delete all saved sources. News rules and News RSS creation live in Newsroom."
       >
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => navigate("/news")}>
+          <Button variant="outline" onClick={() => navigate("/sources/news")}>
             <Rss className="h-4 w-4" />
             Newsroom
           </Button>
-          <Button onClick={() => navigate("/rss-feeds/new")}>
+          <Button onClick={() => navigate("/sources/rss/new")}>
             <Plus className="h-4 w-4" />
             Add Source
           </Button>

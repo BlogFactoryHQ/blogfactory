@@ -188,7 +188,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             </Button>
             {image.post_id && (
               <Button variant="outline" size="sm" asChild>
-                <Link to={`/posts/${image.post_id}/edit`}>
+                <Link to={`/library/posts/${image.post_id}/edit`}>
                   <ExternalLink className="h-4 w-4 mr-1.5" />
                   Open Post
                 </Link>

@@ -292,7 +292,7 @@ export function InternalLinksPanel() {
                 <p className="text-sm text-muted-foreground">Add an OpenAI API key before creating semantic link embeddings.</p>
               </div>
               <Button type="button" variant="outline" size="sm" asChild>
-                <Link to="/settings?section=api-keys">
+                <Link to="/control/article-settings?section=api-keys">
                   <KeyRound className="mr-2 h-4 w-4" />
                   Access Keys
                 </Link>

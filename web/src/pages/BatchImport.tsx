@@ -378,7 +378,7 @@ export default function BatchImport() {
                       <td className="px-4 py-3">
                         {item.postId ? (
                           <Button asChild variant="outline" size="sm">
-                            <Link to={`/posts/${item.postId}/edit`}>
+                            <Link to={`/library/posts/${item.postId}/edit`}>
                               Open
                               <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                             </Link>
@@ -438,7 +438,7 @@ export default function BatchImport() {
                       </td>
                       <td className="px-4 py-3">
                         <Button asChild variant="outline" size="sm">
-                          <Link to={`/posts/${post.id}/edit`}>
+                          <Link to={`/library/posts/${post.id}/edit`}>
                             Open
                             <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                           </Link>

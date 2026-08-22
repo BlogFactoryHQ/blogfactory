@@ -236,7 +236,7 @@ export function EditorialSafetyPanel({
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={() => setHistoryOpen(true)}><History className="mr-1.5 h-4 w-4" />Revision history</Button>
-            <Button variant="outline" asChild><Link to={`/posts/${postId}/preview`} target="_blank"><Eye className="mr-1.5 h-4 w-4" />BlogFactory preview</Link></Button>
+            <Button variant="outline" asChild><Link to={`/library/posts/${postId}/preview`} target="_blank"><Eye className="mr-1.5 h-4 w-4" />BlogFactory preview</Link></Button>
           </div>
         </div>
       </BywordCard>

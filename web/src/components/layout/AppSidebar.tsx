@@ -3,28 +3,20 @@ import { Link, useLocation } from "react-router-dom";
 import {
   FileText,
   Rss,
-  PenTool,
   ListTodo,
-  Users,
   ImageIcon,
-  BarChart3,
   LogOut,
   Settings,
   ChevronsLeft,
   ChevronsRight,
   Shield,
   Search,
-  SearchCheck,
-  Plug,
   ChevronDown,
   Bell,
-  Globe2,
   Plus,
   Check,
-  Newspaper,
   LayoutDashboard,
   Loader2,
-  Cable,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,29 +44,18 @@ import { FactoryMark } from "@/components/layout/BywordSurface";
 import { toast } from "sonner";
 
 const primaryNavigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Create Content", href: "/content-creator", icon: PenTool },
-  { name: "News", href: "/news", icon: Newspaper },
-  { name: "My Content", href: "/posts", icon: FileText },
-  { name: "Search Growth", href: "/search-growth", icon: SearchCheck },
+  { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Review Queue", href: "/review", icon: FileText },
+  { name: "Runs", href: "/runs", icon: ListTodo },
 ];
 
 const monitorNavigation = [
-  { name: "RSS Feeds", href: "/rss-feeds", icon: Rss },
-  { name: "Job Queue", href: "/jobs", icon: ListTodo },
-  { name: "Brand Voice", href: "/brand-voice", icon: Users },
-  { name: "Image Gallery", href: "/gallery", icon: ImageIcon },
-  { name: "Usage", href: "/usage", icon: BarChart3 },
+  { name: "Sources", href: "/sources", icon: Rss },
+  { name: "Library", href: "/library", icon: ImageIcon },
+  { name: "Control", href: "/control", icon: Settings },
 ];
 
-const lowerNavigation = [
-  { name: "Integrations", href: "/integrations", icon: Plug },
-  { name: "MCP", href: "/settings?section=mcp", icon: Cable, exact: true },
-  { name: "Article Settings", href: "/settings", icon: Settings, exact: true },
-  { name: "Sites", href: "/sites", icon: Globe2 },
-];
-
-const searchNavigation = [...primaryNavigation, ...monitorNavigation, ...lowerNavigation];
+const searchNavigation = [...primaryNavigation, ...monitorNavigation];
 
 export function AppSidebar() {
   const location = useLocation();
@@ -222,14 +203,14 @@ export function AppSidebar() {
                 <div className="grid grid-cols-2 gap-2 p-1">
                   <DropdownMenuItem
                     className="cursor-pointer justify-center gap-2 rounded-sm border border-transparent py-2"
-                    onClick={() => navigate("/sites")}
+                    onClick={() => navigate("/control/sites")}
                   >
                     <Settings className="h-4 w-4" />
                     Manage
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="cursor-pointer justify-center gap-2 rounded-sm border border-dashed border-byword-border py-2"
-                    onClick={() => navigate("/sites")}
+                    onClick={() => navigate("/control/sites")}
                   >
                     <Plus className="h-4 w-4" />
                     Add
@@ -266,9 +247,8 @@ export function AppSidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
-          <SidebarSection title="Create" items={primaryNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
-          <SidebarSection title="Monitor" items={monitorNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
-          <SidebarSection title="Settings" items={lowerNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Operate" items={primaryNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Manage" items={monitorNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
         </nav>
 
         <div className="border-t border-sidebar-border px-2.5 py-2.5 overflow-hidden">
@@ -294,7 +274,7 @@ export function AppSidebar() {
                 <span className="block truncate text-xs font-normal text-muted-foreground">{email}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/jobs")}>
+              <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/runs")}>
                 <Bell className="h-4 w-4" />
                 Notifications
               </DropdownMenuItem>

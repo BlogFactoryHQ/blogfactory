@@ -1,5 +1,5 @@
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
-export const MCP_SERVER_VERSION = "0.3.0";
+export const MCP_SERVER_VERSION = "0.4.0";
 
 export const MCP_SCOPES = [
   "content:read",
@@ -17,6 +17,9 @@ export const MCP_TOOL_NAMES = [
   "get_post",
   "generate_draft",
   "get_job",
+  "get_workspace_digest",
+  "list_action_items",
+  "review_post",
   "get_search_console_dashboard",
   "get_search_console_insights",
   "update_draft",
@@ -36,6 +39,9 @@ export const ACTIVE_MCP_TOOL_NAMES = [
   "get_post",
   "generate_draft",
   "get_job",
+  "get_workspace_digest",
+  "list_action_items",
+  "review_post",
   "get_search_console_dashboard",
   "get_search_console_insights",
   "update_draft",

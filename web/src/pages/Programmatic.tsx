@@ -502,7 +502,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["programmatic-templates"] });
       toast.success(startNow ? "Programmatic campaign started" : "Programmatic campaign created");
-      navigate(`/campaigns/${campaign.id}`);
+      navigate(`/sources/campaigns/${campaign.id}`);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
   });
@@ -700,7 +700,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           {startNow ? "Create & Start" : "Create Campaign"}
         </Button>
         <Button variant="outline" className="w-full" asChild>
-          <Link to="/campaigns">View Campaigns</Link>
+          <Link to="/sources/campaigns">View Campaigns</Link>
         </Button>
       </div>
     </BywordCard>
@@ -1249,7 +1249,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
           <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
           <FlowCard icon={Upload} title="Import Any Sheet" description="Auto-build a template from spreadsheet rows when it is not a standard SEO brief" onClick={() => fileInputRef.current?.click()} />
-          <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/campaigns")} />
+          <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/sources/campaigns")} />
         </div>
 
         <BywordCard>

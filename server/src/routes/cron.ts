@@ -6,6 +6,7 @@ import { drainSearchConsoleSync } from "../services/search-console.js";
 import { drainDeferredImages } from "../services/low-cost-images.js";
 import { drainSeoMetadata, enqueueUntrackedDraftSeoMetadata } from "../services/seo-metadata.js";
 import { safeError } from "../http/error-contract.js";
+import { purgeExpiredOperationEvents } from "../services/operation-events.js";
 
 export const cronRoutes = new Hono();
 
@@ -106,14 +107,15 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "images") return c.json({ ok: true, images: await runImages() });
   if (task === "seo") return c.json({ ok: true, seo: await runSeo() });
 
-  const [campaigns, google, searchConsole, feeds, images, seo] = await Promise.all([
+  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations] = await Promise.all([
     drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
     drainQueuedGoogleIndexing(config.indexing.limit),
     drainSearchConsoleSync(config.searchConsole.limit),
     runFeeds(),
     runImages(),
     runSeo(),
+    purgeExpiredOperationEvents(),
   ]);
 
-  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo });
+  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations });
 });

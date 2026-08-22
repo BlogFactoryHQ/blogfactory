@@ -28,7 +28,7 @@ export default function PostPreviewPage() {
   });
 
   if (isLoading) return <WorkspaceBackground className="flex min-h-screen items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></WorkspaceBackground>;
-  if (error || !post) return <WorkspaceBackground className="flex min-h-screen flex-col items-center justify-center gap-4"><p className="text-muted-foreground">Preview not available.</p><Button asChild variant="outline"><Link to="/posts"><ArrowLeft className="mr-2 h-4 w-4" />Back to content</Link></Button></WorkspaceBackground>;
+  if (error || !post) return <WorkspaceBackground className="flex min-h-screen flex-col items-center justify-center gap-4"><p className="text-muted-foreground">Preview not available.</p><Button asChild variant="outline"><Link to="/library/content"><ArrowLeft className="mr-2 h-4 w-4" />Back to content</Link></Button></WorkspaceBackground>;
 
   return (
     <WorkspaceBackground className="min-h-screen">
@@ -36,7 +36,7 @@ export default function PostPreviewPage() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3"><FactoryMark /><span className="hidden h-6 w-px bg-border sm:block" /><span className="section-label">Saved preview</span></div>
           <div className="flex items-center gap-2">
-            <Button asChild size="sm" variant="outline"><Link to={`/posts/${post.id}/edit`}><Pencil className="mr-1.5 h-4 w-4" />Back to editor</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link to={`/library/posts/${post.id}/edit`}><Pencil className="mr-1.5 h-4 w-4" />Back to editor</Link></Button>
           </div>
         </div>
       </header>

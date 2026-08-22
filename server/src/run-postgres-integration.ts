@@ -354,6 +354,19 @@ try {
   const seoReadyPosts = await callTool("list_posts", { site_id: siteId, seo_status: "ready" });
   assert.deepEqual(seoReadyPosts.structuredContent.data.items.map((post: any) => post.id), [postId], "SEO filtering diverged from get_post");
   assert.equal(readPost.structuredContent.data.seo.status, "ready");
+  const digest = await callTool("get_workspace_digest", { site_id: siteId });
+  assert.equal(digest.structuredContent.data.workspace.site.id, siteId, "workspace digest crossed the site boundary");
+  assert.equal(digest.structuredContent.data.workspace.connections.cms.connected, 1, "workspace digest missed the usable CMS destination");
+  assert.ok(digest.structuredContent.data.workspace.recent_outputs.some((post: any) => post.id === postId), "workspace digest missed a recent output");
+  const actionQueue = await callTool("list_action_items", { site_id: siteId, limit: 50, page: 1 });
+  const postAction = actionQueue.structuredContent.data.items.find((item: any) => item.id === postId);
+  assert.ok(postAction, "action queue missed a draft warning");
+  assert.equal(postAction.severity, "warning", "non-blocking draft checks became blockers");
+  assert.equal(postAction.destination_name, "MCP WordPress", "action queue omitted CMS routing details");
+  const review = await callTool("review_post", { post_id: postId });
+  assert.equal(review.structuredContent.data.review.permissions.can_push_cms_draft, false, "read-only MCP token received CMS draft permission");
+  assert.equal(review.structuredContent.data.review.destinations[0].credential_status, "usable", "review packet missed credential readiness");
+  assert.equal(review.structuredContent.data.review.preflight.has_blockers, false, "review packet blocked warning-only delivery");
   const readPoisonedPost = await callTool("get_post", { post_id: poisonedPostId });
   assert.equal(readPoisonedPost.structuredContent.data.persona, null, "foreign persona leaked from post");
   assert.equal(readPoisonedPost.structuredContent.data.publishing.preferred_integration_id, null, "foreign integration id leaked");
@@ -363,7 +376,10 @@ try {
   assert.deepEqual(readJob.structuredContent.data.result_post_ids, [postId], "foreign or restricted result post ids leaked");
   for (const [name, args] of [
     ["list_publish_targets", { site_id: restrictedSiteId }],
+    ["get_workspace_digest", { site_id: restrictedSiteId }],
+    ["list_action_items", { site_id: restrictedSiteId, limit: 20, page: 1 }],
     ["get_post", { post_id: restrictedPostId }],
+    ["review_post", { post_id: restrictedPostId }],
     ["get_job", { job_id: restrictedJobId }],
     ["get_post", { post_id: otherPostId }],
     ["get_job", { job_id: otherJobId }],
@@ -372,6 +388,23 @@ try {
     assert.equal(denied.isError, true);
     assert.equal(denied.structuredContent.error.code, "not_found");
   }
+
+  const systemJobEvents = await sql<{ action: string; status: string }[]>`
+    SELECT action, status FROM operation_events WHERE user_id = ${userId} AND object_id = ${jobId} AND origin = 'system'
+  `;
+  assert.deepEqual(systemJobEvents, [{ action: "job.completed", status: "succeeded" }], "job completion was not recorded in the operation ledger");
+  const mcpEvents = await sql<{ site_id: string | null; metadata: unknown }[]>`
+    SELECT site_id, metadata FROM operation_events WHERE user_id = ${userId} AND origin = 'mcp'
+  `;
+  assert.ok(mcpEvents.length >= 10, "authenticated MCP calls were not recorded");
+  assert.equal(mcpEvents.some((event) => event.site_id === otherSiteId), false, "MCP ledger crossed the user boundary");
+  assert.equal(JSON.stringify(mcpEvents).includes(secretMarker), false, "operation ledger stored sensitive data");
+  await sql`
+    INSERT INTO operation_events (user_id, site_id, origin, action, status, expires_at)
+    VALUES (${userId}, ${siteId}, 'system', 'retention.test', 'succeeded', now() - interval '1 minute')
+  `;
+  const { purgeExpiredOperationEvents } = await import("./services/operation-events.js");
+  assert.ok(await purgeExpiredOperationEvents() >= 1, "expired operation events were not purged");
 
   await revokeMcpAccessToken(userId, createdToken.token.id);
   assert.equal(

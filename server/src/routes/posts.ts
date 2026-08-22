@@ -5,7 +5,7 @@ import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs,
 import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
-import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
+import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
@@ -26,6 +26,7 @@ import {
   updatePostWithRevision,
   type EditorialState,
 } from "../services/post-revisions.js";
+import { getReviewPacket } from "../services/control-plane.js";
 
 export const postsRoutes = new Hono();
 
@@ -181,6 +182,16 @@ postsRoutes.get("/:id/publications", async (c) => {
   const userId = getUserId(c);
   const id = c.req.param("id");
   return c.json({ publications: await getPostPublications(userId, id) });
+});
+
+postsRoutes.get("/:id/review", async (c) => {
+  const packet = await getReviewPacket({
+    userId: getUserId(c),
+    postId: c.req.param("id"),
+    canPushCmsDraft: true,
+  });
+  if (!packet) return c.json({ error: "Post not found" }, 404);
+  return c.json(packet);
 });
 
 postsRoutes.get("/:id/revisions", async (c) => {
@@ -432,6 +443,7 @@ postsRoutes.post("/:id/publish", async (c) => {
     if (error instanceof SeoMetadataNotReadyError) return c.json({ error: error.message, code: "SEO_METADATA_NOT_READY" }, 409);
     if (error instanceof ExpectedPostVersionError || error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
     if (error instanceof ReviewRequiredError) return c.json({ error: error.message, code: "REVIEW_REQUIRED" }, 409);
+    if (error instanceof SavedRevisionRequiredError) return c.json({ error: error.message, code: "SAVED_REVISION_REQUIRED" }, 409);
     throw error;
   }
   return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);

@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { api, retryTransientApiError } from "@/lib/api";
@@ -58,12 +58,7 @@ type RevokeTarget = {
   kind: "personal" | "oauth";
 };
 
-const MCP_TOOL_GROUPS = [
-  { label: "Identity", tools: ["whoami", "list_sites"] },
-  { label: "Editorial read", tools: ["list_personas", "list_publish_targets", "list_posts", "get_post"] },
-  { label: "Draft workflow", tools: ["generate_draft", "get_job", "update_draft"] },
-  { label: "CMS delivery", tools: ["push_to_cms_draft"] },
-];
+type McpCapabilities = { tools: string[]; tool_count: number };
 
 function tokenStatus(token: McpToken) {
   if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
@@ -115,6 +110,11 @@ export function McpConnectionsPanel() {
   const oauthConnectionsQuery = useQuery({
     queryKey: ["mcp-oauth-connections"],
     queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
+    retry: retryTransientApiError,
+  });
+  const capabilitiesQuery = useQuery({
+    queryKey: ["mcp-capabilities"],
+    queryFn: () => api.get<McpCapabilities>("/mcp/capabilities"),
     retry: retryTransientApiError,
   });
 
@@ -220,7 +220,7 @@ export function McpConnectionsPanel() {
               ["MCP access", connectionsLoading ? "Checking" : connectionsError ? "Attention" : "Ready"],
               ["Connections", connectionsLoading ? "—" : `${activeConnectionCount} active`],
               ["Site scope", activeSite?.domain || "No site selected"],
-              ["Tool catalog", "10 available"],
+              ["Tool catalog", capabilitiesQuery.data ? `${capabilitiesQuery.data.tool_count} available` : "Checking"],
             ].map(([label, value]) => (
               <div key={label} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
                 <p className="type-kicker text-muted-foreground">{label}</p>
@@ -228,6 +228,21 @@ export function McpConnectionsPanel() {
               </div>
             ))}
           </div>
+
+          <section aria-labelledby="mcp-workflow-title" className="space-y-3">
+            <div>
+              <h3 id="mcp-workflow-title" className="text-sm font-semibold">Agent workflow</h3>
+              <p className="mt-1 text-sm text-muted-foreground">One authorization path from client setup to a reviewed CMS draft.</p>
+            </div>
+            <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["01", "Connect client", "Use OAuth from Codex or add the endpoint to an MCP-compatible client."],
+                ["02", "Approve site", "Sign in to BlogFactory and grant access to one site."],
+                ["03", "Generate & review", "Create a draft, wait for the run, then open its Review Card."],
+                ["04", "Send draft", "Choose a ready CMS destination and confirm the draft-only delivery."],
+              ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></li>)}
+            </ol>
+          </section>
 
           <section className="space-y-2">
             <Label htmlFor="mcp-endpoint">MCP endpoint</Label>
@@ -272,35 +287,20 @@ export function McpConnectionsPanel() {
             </div>
           </div>
 
-          <section className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold">Available tools</h3>
-              <p className="mt-1 text-sm text-muted-foreground">The client can discover these 10 tools for the selected site.</p>
+          <details className="rounded-md border border-byword-border bg-card">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><span>Server tool catalog</span><span className="type-meta">{capabilitiesQuery.data ? `${capabilitiesQuery.data.tool_count} tools` : capabilitiesQuery.isError ? "Unavailable" : "Checking"}</span></summary>
+            <div className="flex flex-wrap gap-2 border-t border-byword-border p-4">
+              {capabilitiesQuery.data?.tools?.map((tool) => <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">{tool}</code>)}
+              {capabilitiesQuery.isLoading && <span className="text-sm text-muted-foreground">Loading catalog…</span>}
+              {capabilitiesQuery.isError && <span className="text-sm text-destructive">Tool catalog unavailable.</span>}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {MCP_TOOL_GROUPS.map((group) => (
-                <div key={group.label} className="rounded-md border border-byword-border bg-card p-4">
-                  <div className="flex items-center gap-2">
-                    <Cable className="h-4 w-4 text-byword-blue" aria-hidden="true" />
-                    <p className="type-kicker text-muted-foreground">{group.label}</p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {group.tools.map((tool) => (
-                      <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">
-                        {tool}
-                      </code>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          </details>
 
           {!sitesLoading && !sites.length && (
             <div className="rounded-md border border-dashed border-byword-border p-6 text-center">
               <p className="text-sm font-medium">Add a site before creating an MCP connection.</p>
               <Button asChild variant="link" className="mt-1">
-                <Link to="/sites">Go to Sites</Link>
+                <Link to="/control/sites">Go to Sites</Link>
               </Button>
             </div>
           )}

@@ -89,6 +89,13 @@ export class ReviewRequiredError extends Error {
   }
 }
 
+export class SavedRevisionRequiredError extends Error {
+  constructor() {
+    super("A saved revision is required before CMS delivery");
+    this.name = "SavedRevisionRequiredError";
+  }
+}
+
 interface BrandCta {
   label: string;
   url: string;
@@ -366,6 +373,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     throw new Error("Post not found");
   }
   let revision = await currentPostRevision(userId, postId);
+  if (expectedUpdatedAt && !revision) throw new SavedRevisionRequiredError();
   const mode = publishOptions.mode === "publish" ? "publish" : "draft";
   const metadataChanged = publishOptions.publishingMetadata !== undefined && stableJson(post.publishingMetadata) !== stableJson(publishOptions.publishingMetadata);
   const initiallyApproved = Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id);

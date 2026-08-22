@@ -130,6 +130,7 @@ export async function findMcpAccessToken(tokenHash: string) {
   const [row] = await db
     .select({
       tokenId: mcpAccessTokens.id,
+      tokenName: mcpAccessTokens.name,
       userId: mcpAccessTokens.userId,
       tokenHash: mcpAccessTokens.tokenHash,
       scopes: mcpAccessTokens.scopes,

@@ -871,7 +871,7 @@ export default function Jobs() {
                     {jobPosts.map((post) => (
                       <Link
                         key={post.id}
-                        to={`/posts/${post.id}/edit`}
+                        to={`/library/posts/${post.id}/edit`}
                         className="mb-1.5 flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-calm last:mb-0 hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
                       >
                         <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">

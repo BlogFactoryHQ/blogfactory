@@ -343,6 +343,24 @@ export const mcpOAuthConnections = pgTable("mcp_oauth_connections", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const operationEvents = pgTable("operation_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  origin: text("origin").notNull(),
+  connectionId: uuid("connection_id"),
+  clientName: text("client_name"),
+  action: text("action").notNull(),
+  objectType: text("object_type"),
+  objectId: uuid("object_id"),
+  status: text("status").notNull(),
+  durationMs: integer("duration_ms"),
+  errorCode: text("error_code"),
+  metadata: jsonb("metadata").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 // ── publishing integrations ──
 export const siteIntegrations = pgTable("site_integrations", {
   id: uuid("id").primaryKey().defaultRandom(),

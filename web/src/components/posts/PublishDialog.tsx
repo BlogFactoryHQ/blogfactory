@@ -508,7 +508,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 {brokenCredentials.map((integration) => providerLabels[integration.provider]).join(", ")} credentials cannot be decrypted, so drafts cannot be sent. Re-save the credentials in Integrations.
               </p>
               <Button asChild className="mt-5">
-                <a href="/integrations">Fix credentials</a>
+                <a href="/control/integrations">Fix credentials</a>
               </Button>
             </div>
           ) : connected.length === 0 ? (
@@ -516,7 +516,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               <p className="font-medium text-foreground">Yayın entegrasyonu bağlı değil</p>
               <p className="mt-2 text-sm text-muted-foreground">Önce Integrations bölümünden WordPress, Ghost, Wix veya Framer bağlayın.</p>
               <Button asChild className="mt-5">
-                <a href="/integrations">Integrations aç</a>
+                <a href="/control/integrations">Integrations aç</a>
               </Button>
             </div>
           ) : (

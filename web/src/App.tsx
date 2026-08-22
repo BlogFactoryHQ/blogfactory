@@ -9,9 +9,11 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { RequireSites } from "@/components/layout/RequireSites";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
+import { SectionTabs } from "@/components/layout/SectionTabs";
 
 const Auth = lazy(() => import("@/pages/Auth"));
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Overview = lazy(() => import("@/pages/Overview"));
+const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const Posts = lazy(() => import("@/pages/Posts"));
 const PostEditorPage = lazy(() => import("@/pages/PostEditorPage"));
 const PostPreviewPage = lazy(() => import("@/pages/PostPreviewPage"));
@@ -24,6 +26,7 @@ const BatchImport = lazy(() => import("@/pages/BatchImport"));
 const Jobs = lazy(() => import("@/pages/Jobs"));
 const Personas = lazy(() => import("@/pages/Personas"));
 const Settings = lazy(() => import("@/pages/Settings"));
+const ControlConnections = lazy(() => import("@/pages/ControlConnections"));
 const Integrations = lazy(() => import("@/pages/Integrations"));
 const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
@@ -53,31 +56,41 @@ const App = () => (
                     <Route path="/mcp/oauth" element={<McpOAuthLogin />} />
                     <Route path="/onboarding" element={<Onboarding />} />
                     <Route element={<RequireSites />}>
-                      <Route path="/posts/:id/preview" element={<PostPreviewPage />} />
+                      <Route path="/library/posts/:id/preview" element={<PostPreviewPage />} />
                       <Route element={<AppLayout />}>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/posts" element={<Posts />} />
-                        <Route path="/posts/:id/edit" element={<PostEditorPage />} />
-                        <Route path="/news" element={<News />} />
-                        <Route path="/rss-feeds" element={<RSSFeeds />} />
-                        <Route path="/rss-feeds/new" element={<RSSFeedNew />} />
-                        <Route path="/content-creator" element={<ContentCreator />} />
-                        <Route path="/programmatic" element={<Navigate to="/content-creator?mode=programmatic" replace />} />
-                        <Route path="/campaigns" element={<Campaigns />} />
-                        <Route path="/campaigns/new" element={<Navigate to="/content-creator?mode=campaign" replace />} />
-                        <Route path="/campaigns/:id" element={<Campaigns />} />
-                        <Route path="/batch-import" element={<BatchImport />} />
-                        <Route path="/jobs" element={<Jobs />} />
-                        <Route path="/brand-voice" element={<Personas />} />
-                        <Route path="/personas" element={<Personas />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="/sites" element={<Sites />} />
-                        <Route path="/integrations" element={<Integrations />} />
-                        <Route path="/indexing" element={<Navigate to="/search-growth?tab=indexing" replace />} />
-                        <Route path="/optimize" element={<Navigate to="/search-growth?tab=optimize" replace />} />
-                        <Route path="/search-growth" element={<SearchGrowth />} />
-                        <Route path="/usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
-                        <Route path="/gallery" element={<ImageGallery />} />
+                        <Route path="/" element={<Overview />} />
+                        <Route path="/review" element={<ReviewQueue />} />
+                        <Route path="/runs" element={<Jobs />} />
+                        <Route path="/create" element={<ContentCreator />} />
+                        <Route path="/overview/growth" element={<SearchGrowth />} />
+                        <Route path="/library/posts/:id/edit" element={<PostEditorPage />} />
+                        <Route path="/sources" element={<SectionTabs label="Sources" items={[
+                          { label: "News", to: "/sources/news" }, { label: "RSS", to: "/sources/rss" }, { label: "Campaigns", to: "/sources/campaigns" }, { label: "Batch Import", to: "/sources/batch-import" },
+                        ]} />}>
+                          <Route index element={<Navigate to="/sources/news" replace />} />
+                          <Route path="news" element={<News />} />
+                          <Route path="rss" element={<RSSFeeds />} />
+                          <Route path="rss/new" element={<RSSFeedNew />} />
+                          <Route path="campaigns" element={<Campaigns />} />
+                          <Route path="campaigns/:id" element={<Campaigns />} />
+                          <Route path="batch-import" element={<BatchImport />} />
+                        </Route>
+                        <Route path="/library" element={<SectionTabs label="Library" items={[{ label: "Content", to: "/library/content" }, { label: "Image Gallery", to: "/library/images" }]} />}>
+                          <Route index element={<Navigate to="/library/content" replace />} />
+                          <Route path="content" element={<Posts />} />
+                          <Route path="images" element={<ImageGallery />} />
+                        </Route>
+                        <Route path="/control" element={<SectionTabs label="Control" items={[
+                          { label: "MCP Connections", to: "/control/connections" }, { label: "Integrations", to: "/control/integrations" }, { label: "Sites", to: "/control/sites" }, { label: "Brand Voice", to: "/control/brand-voice" }, { label: "Article Settings", to: "/control/article-settings" }, { label: "Usage", to: "/control/usage" },
+                        ]} />}>
+                          <Route index element={<Navigate to="/control/connections" replace />} />
+                          <Route path="connections" element={<ControlConnections />} />
+                          <Route path="integrations" element={<Integrations />} />
+                          <Route path="sites" element={<Sites />} />
+                          <Route path="brand-voice" element={<Personas />} />
+                          <Route path="article-settings" element={<Settings />} />
+                          <Route path="usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
+                        </Route>
                         <Route path="/admin/users" element={<AdminUsers />} />
                       </Route>
                     </Route>

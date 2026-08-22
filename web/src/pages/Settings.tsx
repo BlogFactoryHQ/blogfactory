@@ -47,7 +47,6 @@ import {
   Clock,
   Filter,
   ArrowRight,
-  Cable,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchImageModels, useImageModels, type LiveImageModel } from "@/hooks/useImageModels";
@@ -82,7 +81,6 @@ import {
   SectionHeader,
   SettingNavItem,
 } from "@/components/layout/BywordSurface";
-import { McpConnectionsPanel } from "@/components/settings/McpConnectionsPanel";
 
 interface ApiKeyMetadata {
   hasOpenrouterKey: boolean;
@@ -802,7 +800,6 @@ export default function Settings() {
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
-    { id: "mcp", title: "MCP", description: "Connect AI clients", icon: Cable },
     { id: "voice", title: "Voice", description: "Tone, image style", icon: MessageSquare },
     { id: "brand", title: "Brand", description: "Profile, CTAs, knowledge", icon: Building2 },
     { id: "advanced", title: "Advanced", description: "Research, TOC, voice", icon: SlidersHorizontal },
@@ -815,8 +812,8 @@ export default function Settings() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Settings"
-        description="Configure article defaults, providers, brand context, and connections."
+        title="Article Settings"
+        description="Configure article defaults, providers, and brand context."
       />
 
       <div className="grid gap-8 lg:grid-cols-[270px_minmax(0,1fr)]">
@@ -834,7 +831,6 @@ export default function Settings() {
         </nav>
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "mcp" && <McpConnectionsPanel />}
           {activeSection === "basics" && (
             <BywordCard>
               <SectionHeader
@@ -1394,7 +1390,7 @@ export default function Settings() {
                 description="Sitemap indexing and semantic internal links now live beside Optimize and Indexing."
                 action={
                   <Button asChild>
-                    <Link to="/search-growth?tab=internal-links">
+                    <Link to="/overview/growth?tab=internal-links">
                       Open Search Growth
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>

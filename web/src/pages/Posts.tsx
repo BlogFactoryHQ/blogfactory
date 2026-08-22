@@ -482,7 +482,7 @@ export default function Posts() {
       postId: post.id,
       requestSearch: cleanDraftTitle(post.title),
     });
-    navigate(`/gallery?${params.toString()}`);
+    navigate(`/library/images?${params.toString()}`);
   };
 
   const openPostInNewTab = (postId: string) => {
@@ -639,7 +639,7 @@ export default function Posts() {
         title="Posts"
         description="Manage drafts, published inventory, batches, and CMS handoff from one workspace."
       >
-        <Button onClick={() => navigate("/content-creator")}>
+        <Button onClick={() => navigate("/create")}>
           <Send className="h-4 w-4" />
           Create drafts
         </Button>
@@ -656,7 +656,7 @@ export default function Posts() {
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => navigate("/integrations")} className="shrink-0">Fix credentials</Button>
+          <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
         </div>
       )}
 

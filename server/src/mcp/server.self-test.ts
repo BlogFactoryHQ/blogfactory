@@ -11,12 +11,15 @@ import { handleMcpHttpRequest } from "./server.js";
 import {
   assertMcpToolRegistry,
   capMcpPostContent,
+  MCP_TOOL_REGISTRY,
   MCP_POST_CONTENT_LIMIT,
+  reviewPostNextAction,
   safeMcpJobError,
 } from "./tools.js";
 
 const principal = {
   tokenId: "00000000-0000-4000-8000-000000000001",
+  clientName: "self-test",
   userId: "00000000-0000-4000-8000-000000000002",
   scopes: new Set(["content:read", "drafts:write"] as const),
   siteIds: new Set([
@@ -26,6 +29,12 @@ const principal = {
   displayName: "Editor",
   role: "user",
   approvalStatus: "approved",
+};
+const startedOperations: unknown[] = [];
+const finishedOperations: unknown[] = [];
+const operationLedger = {
+  start: async (input: unknown) => { startedOperations.push(input); return "00000000-0000-4000-8000-000000000099"; },
+  finish: async (input: unknown) => { finishedOperations.push(input); },
 };
 
 const postAs = (
@@ -42,7 +51,7 @@ const postAs = (
       ...headers,
     },
     body: JSON.stringify(body),
-  }), async (authorization) => authorization === "Bearer test" ? authenticatedPrincipal : null);
+  }), async (authorization) => authorization === "Bearer test" ? authenticatedPrincipal : null, operationLedger);
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
   postAs(body, principal, headers);
@@ -68,7 +77,18 @@ const list = await post(
 );
 assert.equal(list.status, 200);
 const listedTools = (await list.json() as any).result.tools;
+assert.equal(listedTools.length, 19);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
+assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
+assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
+assert.equal(MCP_TOOL_REGISTRY.list_action_items.requiredScope, "content:read");
+assert.equal(MCP_TOOL_REGISTRY.review_post.requiredScope, "content:read");
+assert.equal(MCP_TOOL_REGISTRY.push_to_cms_draft.requiredScope, "publish:draft");
+assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: true, canPushCmsDraft: true, usableDestinationIds: ["cms"] }), /resolve the blocker/i);
+assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: false, canPushCmsDraft: false, usableDestinationIds: ["cms"] }), /publish:draft/);
+assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: false, canPushCmsDraft: true, usableDestinationIds: [] }), /repair a CMS connection/i);
+assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: false, canPushCmsDraft: true, usableDestinationIds: ["cms-a", "cms-b"] }), /choose one destination/i);
+assert.match(reviewPostNextAction({ postId: "post", updatedAt: "now", hasBlockers: false, canPushCmsDraft: true, usableDestinationIds: ["cms"] }), /integration_id cms/);
 const listedTool = listedTools.find((tool: any) => tool.name === "whoami");
 assert.equal(listedTool.name, "whoami");
 for (const tool of listedTools) {
@@ -109,6 +129,9 @@ assert.deepEqual((await call.json() as any).result.structuredContent, {
   },
   next_action: null,
 });
+assert.equal(startedOperations.length, 1);
+assert.equal(finishedOperations.length, 1);
+assert.equal((finishedOperations[0] as any).status, "succeeded");
 
 const denied = await postAs(
   {
@@ -304,8 +327,8 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 16);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 16);
+assert.equal(MCP_TOOL_NAMES.length, 19);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 19);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

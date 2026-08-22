@@ -333,13 +333,13 @@ export default function RSSFeedNew() {
 
       if (result.feed?.routing_status === "needs_routing") {
         toast.warning("Feed saved in a paused state. Complete destination routing before running it.");
-        navigate("/rss-feeds");
+        navigate("/sources/rss");
       } else if (result.ranNow) {
         toast.success(`Feed saved and ${feedDraftQueueLabel(result.queuedJobs || 1)} queued. Check the Job Queue for progress.`);
-        navigate("/jobs");
+        navigate("/runs");
       } else {
         toast.success("Feed saved. Scheduler will run this feed on the next cycle.");
-        navigate("/rss-feeds");
+        navigate("/sources/rss");
       }
     },
     onError: (error) => {
@@ -463,7 +463,7 @@ export default function RSSFeedNew() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbLink href="/rss-feeds">Content Sources</BreadcrumbLink>
+            <BreadcrumbLink href="/sources/rss">Content Sources</BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
@@ -788,7 +788,7 @@ export default function RSSFeedNew() {
                 </Select>
                 {personas.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No active personas. <a href="/brand-voice" className="text-primary underline">Create one first</a>.
+                    No active personas. <a href="/control/brand-voice" className="text-primary underline">Create one first</a>.
                   </p>
                 )}
               </div>
@@ -942,7 +942,7 @@ export default function RSSFeedNew() {
               keywords={keywords}
             />
             <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" onClick={() => navigate("/rss-feeds")} disabled={isSubmitting}>
+              <Button variant="outline" onClick={() => navigate("/sources/rss")} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button variant="outline" onClick={handleSaveAndRun} disabled={isSubmitting || !modelId || selectedModelUnavailable || !routingIsReady}>

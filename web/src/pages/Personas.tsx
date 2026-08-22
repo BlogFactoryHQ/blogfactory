@@ -780,7 +780,7 @@ export default function Personas() {
                       <p className="text-sm text-muted-foreground">Article mechanics live in Settings, not Brand Voice.</p>
                     </div>
                     <Button variant="outline" size="sm" asChild>
-                      <a href="/settings">Open Settings</a>
+                      <a href="/control/article-settings">Open Settings</a>
                     </Button>
                   </div>
                   <div className="grid gap-3 p-4 md:grid-cols-3">

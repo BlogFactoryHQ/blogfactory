@@ -422,10 +422,10 @@ export default function News() {
         description="Add news sources, draft articles, and optionally use source rules for labels, tags, and attribution."
       >
         <Button variant="outline" asChild>
-          <Link to="/posts"><FileText className="mr-2 h-4 w-4" />Review Drafts</Link>
+          <Link to="/library/content"><FileText className="mr-2 h-4 w-4" />Review Drafts</Link>
         </Button>
         <Button variant="outline" asChild>
-          <Link to="/jobs"><ListTodo className="mr-2 h-4 w-4" />Jobs</Link>
+          <Link to="/runs"><ListTodo className="mr-2 h-4 w-4" />Jobs</Link>
         </Button>
       </PageHeader>
 
@@ -778,8 +778,8 @@ export default function News() {
                       <p className="text-sm font-semibold">Draft request sent</p>
                       <p className="mt-1 text-xs text-muted-foreground">Track generation in Jobs, then approve the draft in Posts.</p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" asChild><Link to="/jobs">View Jobs</Link></Button>
-                        <Button size="sm" variant="outline" asChild><Link to="/posts">Review Drafts</Link></Button>
+                        <Button size="sm" variant="outline" asChild><Link to="/runs">View Jobs</Link></Button>
+                        <Button size="sm" variant="outline" asChild><Link to="/library/content">Review Drafts</Link></Button>
                       </div>
                     </div>
                   </div>
@@ -834,7 +834,7 @@ export default function News() {
               )}
             </div>
             <div className="border-t border-byword-border p-4">
-              <Button variant="outline" className="w-full" asChild><Link to="/rss-feeds">Manage all sources</Link></Button>
+              <Button variant="outline" className="w-full" asChild><Link to="/sources/rss">Manage all sources</Link></Button>
             </div>
           </BywordCard>
         </div>
