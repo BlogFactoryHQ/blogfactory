@@ -73,7 +73,7 @@ const App = () => (
                           <Route path="campaigns/:id" element={<Campaigns />} />
                           <Route path="batch-import" element={<BatchImport />} />
                         </Route>
-                        <Route path="/library" element={<SectionTabs label="Library" items={[{ label: "Content", to: "/library/content" }, { label: "Image Gallery", to: "/library/images" }]} />}>
+                        <Route path="/library" element={<SectionTabs label="Content" items={[{ label: "Content", to: "/library/content" }, { label: "Image Gallery", to: "/library/images" }]} />}>
                           <Route index element={<Navigate to="/library/content" replace />} />
                           <Route path="content" element={<Posts />} />
                           <Route path="images" element={<ImageGallery />} />

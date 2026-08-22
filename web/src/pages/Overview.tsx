@@ -55,7 +55,7 @@ export default function Overview() {
       </div>
 
       <BywordCard>
-        <SectionHeader icon={FileText} title="Recent outputs" description="Latest content created or updated for this site." action={<Button asChild variant="outline" size="sm"><Link to="/library">Open library</Link></Button>} />
+        <SectionHeader icon={FileText} title="Recent outputs" description="Latest content created or updated for this site." action={<Button asChild variant="outline" size="sm"><Link to="/library">Open content</Link></Button>} />
         <div className="divide-y divide-byword-border">{data.recent_outputs.map((post) => <Link key={post.id} to={`/library/posts/${post.id}/preview`} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{post.title}</p><p className="text-xs text-muted-foreground">{post.source_type.replace(/_/g, " ")} · {safeFormatDistanceToNow(post.updated_at)}</p></div><Badge variant="secondary">{post.editorial_state.replace(/_/g, " ")}</Badge></Link>)}{!data.recent_outputs.length && <p className="p-5 text-sm text-muted-foreground">No recent outputs.</p>}</div>
       </BywordCard>
 

@@ -45,13 +45,15 @@ import { toast } from "sonner";
 
 const primaryNavigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Create Content", href: "/create", icon: Plus },
   { name: "Review Queue", href: "/review", icon: FileText },
   { name: "Runs", href: "/runs", icon: ListTodo },
+  { name: "Search Growth", href: "/overview/growth", icon: Search },
 ];
 
 const monitorNavigation = [
   { name: "Sources", href: "/sources", icon: Rss },
-  { name: "Library", href: "/library", icon: ImageIcon },
+  { name: "Content", href: "/library", icon: ImageIcon },
   { name: "Control", href: "/control", icon: Settings },
 ];
 
