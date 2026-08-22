@@ -26,12 +26,12 @@ export function postListPath(filters: PostListFilters) {
   if (filters.modelId !== "all") params.set("modelId", filters.modelId);
   if (filters.personaId !== "all") params.set("personaId", filters.personaId);
   if (filters.campaignId !== "all") params.set("campaignId", filters.campaignId);
-  return `/library/content?${params.toString()}`;
+  return `/posts?${params.toString()}`;
 }
 
 export function jobListPath(filters: { page: number; limit: number; search: string; status: string }) {
   const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (filters.status !== "all") params.set("status", filters.status);
-  return `/runs?${params.toString()}`;
+  return `/jobs?${params.toString()}`;
 }

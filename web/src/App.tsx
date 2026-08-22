@@ -17,7 +17,6 @@ const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const Posts = lazy(() => import("@/pages/Posts"));
 const PostEditorPage = lazy(() => import("@/pages/PostEditorPage"));
 const PostPreviewPage = lazy(() => import("@/pages/PostPreviewPage"));
-const News = lazy(() => import("@/pages/News"));
 const RSSFeeds = lazy(() => import("@/pages/RSSFeeds"));
 const RSSFeedNew = lazy(() => import("@/pages/RSSFeedNew"));
 const ContentCreator = lazy(() => import("@/pages/ContentCreator"));
@@ -65,10 +64,9 @@ const App = () => (
                         <Route path="/overview/growth" element={<SearchGrowth />} />
                         <Route path="/library/posts/:id/edit" element={<PostEditorPage />} />
                         <Route path="/sources" element={<SectionTabs label="Sources" items={[
-                          { label: "News", to: "/sources/news" }, { label: "RSS", to: "/sources/rss" }, { label: "Campaigns", to: "/sources/campaigns" }, { label: "Batch Import", to: "/sources/batch-import" },
+                          { label: "RSS", to: "/sources/rss" }, { label: "Campaigns", to: "/sources/campaigns" }, { label: "Batch Import", to: "/sources/batch-import" },
                         ]} />}>
-                          <Route index element={<Navigate to="/sources/news" replace />} />
-                          <Route path="news" element={<News />} />
+                          <Route index element={<Navigate to="/sources/rss" replace />} />
                           <Route path="rss" element={<RSSFeeds />} />
                           <Route path="rss/new" element={<RSSFeedNew />} />
                           <Route path="campaigns" element={<Campaigns />} />

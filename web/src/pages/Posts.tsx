@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, ArrowRight, BarChart3, ChevronDown, ChevronLeft, ChevronRight, Clock, FileText, Layers, Loader2, Send } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, FileText, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
@@ -44,14 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  formatCompactNumber,
-  safePercent,
-  semanticToneClass,
-  topBuckets,
-  type SemanticTone,
-} from "@/lib/search-insights";
-import { cn } from "@/lib/utils";
+import { formatCompactNumber } from "@/lib/search-insights";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { postListPath, type ListPagination } from "@/lib/list-query";
 
@@ -335,21 +328,6 @@ export default function Posts() {
     });
   }, [filteredPosts]);
 
-  const statusCounts = facets?.statusCounts || { total: 0, draft: 0, published: 0 };
-
-  const inventoryInsights = useMemo(() => {
-    const newestTime = enrichedPosts.reduce((max, post) => Math.max(max, new Date(post.created_at).getTime()), 0);
-    const ageDays = newestTime ? Math.max(0, Math.floor((Date.now() - newestTime) / 86_400_000)) : null;
-    const staleDrafts = enrichedPosts.filter((post) => post.status === "draft" && (Date.now() - new Date(post.created_at).getTime()) / 86_400_000 > 14);
-    return {
-      newestAgeDays: ageDays,
-      staleDrafts: staleDrafts.length,
-      sourceBuckets: topBuckets(enrichedPosts, (post) => post.feeds?.name || post.source_type?.replace(/_/g, " "), { limit: 4 }),
-      modelBuckets: topBuckets(enrichedPosts, (post) => formatModelName(post.model_id), { limit: 4 }),
-      personaBuckets: topBuckets(enrichedPosts, (post) => post.personas?.name || "No persona", { limit: 4 }),
-    };
-  }, [enrichedPosts]);
-
   const totalPages = postPagination?.pages || 1;
   const paginatedRows = displayRows;
   const paginatedSelectablePosts = paginatedRows.flatMap((row) => row.type === "draftGroup" ? row.posts : [row.post]);
@@ -456,8 +434,6 @@ export default function Posts() {
     if (postPagination && currentPage > postPagination.pages) setCurrentPage(postPagination.pages);
   }, [currentPage, postPagination]);
 
-  const selectedCount = selectedIds.size;
-
   const toggleJobExpanded = (jobId: string) => {
     setExpandedJobIds((current) => {
       const next = new Set(current);
@@ -486,7 +462,7 @@ export default function Posts() {
   };
 
   const openPostInNewTab = (postId: string) => {
-    window.open(`/posts/${postId}/edit`, "_blank", "noopener,noreferrer");
+    window.open(`/library/posts/${postId}/edit`, "_blank", "noopener,noreferrer");
   };
 
   const renderDraftGroup = (row: Extract<DisplayRow, { type: "draftGroup" }>) => {
@@ -636,7 +612,7 @@ export default function Posts() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Posts"
+        title="Content"
         description="Manage drafts, published inventory, batches, and CMS handoff from one workspace."
       >
         <Button onClick={() => navigate("/create")}>
@@ -659,22 +635,6 @@ export default function Posts() {
           <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
         </div>
       )}
-
-      <InventoryInsights
-        totalPosts={statusCounts.total}
-        draftCount={statusCounts.draft}
-        publishedCount={statusCounts.published}
-        selectedCount={selectedCount}
-        sourceBuckets={inventoryInsights.sourceBuckets}
-        modelBuckets={inventoryInsights.modelBuckets}
-        personaBuckets={inventoryInsights.personaBuckets}
-        newestAgeDays={inventoryInsights.newestAgeDays}
-        staleDrafts={inventoryInsights.staleDrafts}
-        hasCmsConnection={connectedIntegrations.length > 0}
-        onOpenDrafts={() => handleStatusFilterChange("draft")}
-        onPushSelected={handleBulkPushIntegration}
-        pushing={bulkPushIntegrationMutation.isPending}
-      />
 
       <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:mx-0">
         <PostFilters
@@ -751,7 +711,7 @@ export default function Posts() {
           description={`${formatCompactNumber(postPagination?.total || 0)} matching post${postPagination?.total === 1 ? "" : "s"}. Bulk selection is page-scoped.`}
           action={<Badge variant="outline">{postsPerPage} / page</Badge>}
         />
-        <Table>
+        <Table className="min-w-[920px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-12">
@@ -882,168 +842,5 @@ export default function Posts() {
       </AlertDialog>
 
     </BywordPageShell>
-  );
-}
-
-function InventoryInsights({
-  totalPosts,
-  draftCount,
-  publishedCount,
-  selectedCount,
-  sourceBuckets,
-  modelBuckets,
-  personaBuckets,
-  newestAgeDays,
-  staleDrafts,
-  hasCmsConnection,
-  onOpenDrafts,
-  onPushSelected,
-  pushing,
-}: {
-  totalPosts: number;
-  draftCount: number;
-  publishedCount: number;
-  selectedCount: number;
-  sourceBuckets: Array<{ label: string; value: number }>;
-  modelBuckets: Array<{ label: string; value: number }>;
-  personaBuckets: Array<{ label: string; value: number }>;
-  newestAgeDays: number | null;
-  staleDrafts: number;
-  hasCmsConnection: boolean;
-  onOpenDrafts: () => void;
-  onPushSelected: () => void;
-  pushing: boolean;
-}) {
-  const metrics = [
-    { label: "Draft backlog", value: formatCompactNumber(draftCount), detail: "Waiting to publish", tone: draftCount ? "opportunity" as SemanticTone : "success" as SemanticTone },
-    { label: "Published", value: formatCompactNumber(publishedCount), detail: "Live inventory", tone: "success" as SemanticTone },
-    { label: "Selected batch", value: formatCompactNumber(selectedCount), detail: selectedCount ? "Ready for bulk action" : "Nothing selected", tone: selectedCount ? "performance" as SemanticTone : "neutral" as SemanticTone },
-    { label: "Newest content", value: newestAgeDays === null ? "—" : newestAgeDays === 0 ? "Today" : `${newestAgeDays}d`, detail: "Age of newest post", tone: newestAgeDays !== null && newestAgeDays > 7 ? "opportunity" as SemanticTone : "neutral" as SemanticTone },
-  ];
-  const lanes = [
-    {
-      title: "Publish drafts",
-      value: formatCompactNumber(draftCount),
-      detail: draftCount ? "Draft backlog is the fastest path to more live content." : "No drafts are waiting.",
-      tone: draftCount ? "opportunity" as SemanticTone : "success" as SemanticTone,
-      action: "Open drafts",
-      onClick: onOpenDrafts,
-      disabled: draftCount === 0,
-      icon: ArrowRight,
-    },
-    {
-      title: "Push to CMS",
-      value: formatCompactNumber(selectedCount),
-      detail: hasCmsConnection ? "Select rows, then push drafts to the connected CMS." : "Connect a CMS before pushing.",
-      tone: selectedCount && hasCmsConnection ? "performance" as SemanticTone : "neutral" as SemanticTone,
-      action: pushing ? "Pushing..." : "Push selected",
-      onClick: onPushSelected,
-      disabled: !selectedCount || !hasCmsConnection || pushing,
-      icon: Send,
-    },
-    {
-      title: "Review stale drafts",
-      value: formatCompactNumber(staleDrafts),
-      detail: staleDrafts ? "Older drafts may need a quick refresh before publishing." : "No stale draft risk found.",
-      tone: staleDrafts ? "risk" as SemanticTone : "success" as SemanticTone,
-      action: "Review drafts",
-      onClick: onOpenDrafts,
-      disabled: staleDrafts === 0,
-      icon: Clock,
-    },
-  ];
-
-  return (
-    <div className="mb-6 rounded-md border border-byword-border bg-card p-4 factory-panel">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Content inventory</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Draft pressure, publishing inventory, and what is driving the library.</p>
-        </div>
-        <Badge variant="outline">{formatCompactNumber(totalPosts)} total posts</Badge>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {metrics.map((metric) => (
-          <div key={metric.label} className={cn("rounded-md border p-4", semanticToneClass(metric.tone))}>
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
-            <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{metric.value}</p>
-            <p className="mt-1 text-xs opacity-75">{metric.detail}</p>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-        <div className="rounded-md border border-byword-border bg-muted/20 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-byword-blue" />
-            <p className="text-sm font-semibold">Contribution bars</p>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <MiniBucketBars title="Sources" buckets={sourceBuckets} total={totalPosts} tone="performance" />
-            <MiniBucketBars title="Models" buckets={modelBuckets} total={totalPosts} tone="opportunity" />
-            <MiniBucketBars title="Personas" buckets={personaBuckets} total={totalPosts} tone="success" />
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-          {lanes.map((lane) => (
-            <div key={lane.title} className={cn("rounded-md border p-3", semanticToneClass(lane.tone))}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{lane.title}</p>
-                  <p className="mt-1 text-xs opacity-75">{lane.detail}</p>
-                </div>
-                <p className="text-xl font-semibold text-foreground">{lane.value}</p>
-              </div>
-              <Button size="sm" variant="outline" className="mt-3 h-8 w-full bg-card" onClick={lane.onClick} disabled={lane.disabled}>
-                <lane.icon className="mr-1.5 h-3.5 w-3.5" />
-                {lane.action}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniBucketBars({
-  title,
-  buckets,
-  total,
-  tone,
-}: {
-  title: string;
-  buckets: Array<{ label: string; value: number }>;
-  total: number;
-  tone: SemanticTone;
-}) {
-  return (
-    <div>
-      <p className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
-      <div className="space-y-2">
-        {buckets.length ? buckets.map((bucket) => (
-          <div key={bucket.label}>
-            <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-              <span className="truncate text-muted-foreground">{bucket.label}</span>
-              <span className="font-medium">{formatCompactNumber(bucket.value)}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  "h-full rounded-full",
-                  tone === "performance" && "bg-byword-blue",
-                  tone === "opportunity" && "bg-amber-500",
-                  tone === "success" && "bg-green-500",
-                  tone === "risk" && "bg-red-500",
-                  tone === "neutral" && "bg-muted-foreground/40"
-                )}
-                style={{ width: `${Math.max(8, safePercent(bucket.value, total))}%` }}
-              />
-            </div>
-          </div>
-        )) : (
-          <p className="text-xs text-muted-foreground">No data yet.</p>
-        )}
-      </div>
-    </div>
   );
 }

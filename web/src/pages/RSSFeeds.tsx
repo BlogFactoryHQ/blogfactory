@@ -508,18 +508,12 @@ export default function RSSFeeds() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Content Sources"
-        description="Monitor, pause, run, and delete all saved sources. News rules and News RSS creation live in Newsroom."
+        description="Monitor, pause, run, and delete all saved content sources."
       >
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => navigate("/sources/news")}>
-            <Rss className="h-4 w-4" />
-            Newsroom
-          </Button>
-          <Button onClick={() => navigate("/sources/rss/new")}>
-            <Plus className="h-4 w-4" />
-            Add Source
-          </Button>
-        </div>
+        <Button onClick={() => navigate("/sources/rss/new")}>
+          <Plus className="h-4 w-4" />
+          Add Source
+        </Button>
       </PageHeader>
 
       {/* Scheduler Status */}
