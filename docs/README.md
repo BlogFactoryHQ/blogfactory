@@ -1,17 +1,20 @@
 # Documentation
 
-## Current operations
+## Current product and operations
 
-- [Operations and deployment](operations.md): environment, migrations, Vercel, and verification.
-- [MCP pilot and OAuth](mcp.md): read-only access boundary and connection setup.
+- [Repository README](../README.md): product model, current surfaces, architecture, setup, and acceptance checks.
+- [MCP and OAuth](mcp.md): 19-tool catalog, connection setup, Review Card, permissions, and safety boundary.
+- [Operations and deployment](operations.md): environment, migrations, Vercel, background drains, ledger retention, and production verification.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.
+- [UI system](../UI_UX.md): Device Console rules, current information architecture, and responsive behavior.
+- [Agent context](../AGENTS.md): repository-specific implementation and release rules.
 
 ## Historical decision records
 
-The following documents preserve the rationale and acceptance context from the time they were written. They are not current product commitments or release status.
+These files preserve rationale and acceptance context from the date they were written. They are not current release status or product commitments; when they conflict, use the code and current documents above.
 
 - [Campaign model plan](campaign-model-plan.md)
 - [Knowledge documents plan](knowledge-documents-plan.md)
 - [Optimize + Search Console plan](optimize-gsc-plan.md)
 - [Closed-issue audit — 2026-07-12](closed-issue-audit-2026-07-12.md)
-- [MCP roadmap](../BLOGFACTORY_MCP_ROADMAP.md)
+- [Original MCP roadmap](../BLOGFACTORY_MCP_ROADMAP.md)

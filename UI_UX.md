@@ -45,9 +45,28 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 ## Workflow Rules
 
 - Auth, onboarding, and not-found can carry the strongest branded treatment, but the form itself must stay simple.
-- Dashboard, Create, Jobs, Posts, RSS, News, Search Growth, Usage, Settings, Integrations, Sites, Brand Voice, Gallery, Post Editor, Admin, campaigns, and batch import should feel operational and fast.
-- Navigation labels use task language: Dashboard, Create Content, News, My Content, Search Growth, RSS Feeds, Job Queue, Brand Voice, Image Gallery, Usage, Integrations, Article Settings, Sites.
+- Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, Control, Post Editor, and admin should feel operational and fast.
+- Sidebar labels use the current task language: Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, and Control.
+- Visible product wording is **Content**, even though `/library` remains the stable technical URL. Do not show “Library” in navigation or actions.
+- The News surface is removed. RSS, Campaigns, and Batch Import live under Sources.
+- Overview owns cross-workspace summaries. Content owns filters, bulk actions, and inventory; avoid duplicating large analytics panels above its table.
 - Visible search, command, dropdown, toggle, slider, or button controls must work. Do not add fake knobs, switches, sliders, or decorative-only controls.
+
+## Information Architecture
+
+- Operate: Overview `/`, Create Content `/create`, Review Queue `/review`, Runs `/runs`, Search Growth `/overview/growth`.
+- Manage: Sources `/sources`, Content `/library`, Control `/control`.
+- Sources tabs: RSS, Campaigns, Batch Import.
+- Content tabs: Content, Image Gallery.
+- Control tabs: MCP Connections, Integrations, Sites, Brand Voice, Article Settings, Usage.
+- Post editing and preview use `/library/posts/:id/edit` and `/library/posts/:id/preview`.
+
+## MCP Review Card
+
+- Keep the Review Card a small standalone MCP App; do not embed the primary Router, Auth, or React Query application.
+- Show provenance, editorial state, revision/change summary, preflight, destination, and explicit CMS draft approval.
+- Read-only scope, blockers, missing destination selection, and version conflicts must be clear disabled/error states.
+- The card does not edit content, restore revisions, or change editorial state.
 
 ## Input Affordance Rules
 
@@ -63,4 +82,4 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 - Run `npm run test --workspace=web` for frontend changes.
 - Run `git diff --check` before committing.
 - For UI-only work, a missing local backend or `/api/*` proxy `HTTP 500` should not block completion. Verify render/build and note backend-dependent routes separately.
-- Smoke-check desktop and mobile when a dev server is available, especially auth, onboarding, dashboard shell, content creator, posts, jobs, RSS/news, search growth, settings, integrations, gallery, editor, and dialogs/dropdowns.
+- Smoke-check desktop and mobile when a dev server is available, especially auth, onboarding, Overview, Create Content, Review Queue, Runs, Sources, Content, Search Growth, Control, editor, Review Card, and dialogs/dropdowns.

@@ -1,8 +1,8 @@
 # BlogFactory MCP Product and Engineering Roadmap
 
-> Historical engineering decision record. The status and implementation phases below reflect their stated update dates; use the [MCP guide](docs/mcp.md) for the current supported pilot boundary.
+> Historical engineering decision record. This roadmap is superseded by the shipped Agent Control Plane and is retained only for rationale. Use the [README](README.md), [MCP guide](docs/mcp.md), and [agent context](AGENTS.md) for the current product and release boundary.
 
-Status: In implementation — Phases 0-2 and the Phase 3 OAuth implementation are code-complete; WorkOS configuration, deployed-client, mutation, and production gates remain
+Status: Historical/superseded — do not use phase status below as current release state
 Last updated: 2026-07-27
 Target endpoint: `https://blogfactory.io/mcp`
 Primary product boundary: source to BlogFactory draft to reviewed CMS draft
