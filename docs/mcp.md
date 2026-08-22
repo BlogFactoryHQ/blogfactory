@@ -51,6 +51,7 @@ generate_draft
 ```
 
 - Generation returns a job ID and does not wait for provider completion.
+- After `create_draft`, call `get_post` before `update_draft`: background SEO may have refreshed `expected_updated_at`.
 - `review_post` uses the same `ReviewPacket` service as the web review panel.
 - `update_draft` and `push_to_cms_draft` require the current `expected_updated_at` value. A version conflict writes nothing and requires a refresh.
 - Revision, SEO, and destination failures block CMS draft delivery. Cover-image and publishing-metadata warnings do not.

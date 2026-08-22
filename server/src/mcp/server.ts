@@ -15,6 +15,7 @@ const SERVER_INSTRUCTIONS = [
   "Use BlogFactory IDs returned by tools rather than guessing IDs.",
   "Discover sites and personas before acting when the user's target is ambiguous.",
   "Generate one draft operation at a time.",
+  "After create_draft, call get_post before update_draft because background SEO may refresh expected_updated_at.",
   "Use get_job to monitor long-running generation work.",
   "Read the current post before editing it and pass expected_updated_at.",
   "Push only to CMS draft; live publication is unavailable.",

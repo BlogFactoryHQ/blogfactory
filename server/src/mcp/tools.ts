@@ -757,7 +757,7 @@ async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
     seo_status: seoJob.status,
     seo_job_id: seoJob.jobId,
     updated_at: isoDate(post.updatedAt),
-    next_action: "Call get_post to review the saved draft.",
+    next_action: "Call get_post before any update or CMS delivery to use the current expected_updated_at.",
   };
 }
 
