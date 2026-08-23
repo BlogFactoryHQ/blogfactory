@@ -1,0 +1,26 @@
+# BlogFactory documentation
+
+BlogFactory is a self-hosted, MCP-first control plane for content operations. Agents work through site-scoped MCP tools; people review changes and can send an approved version to a selected CMS as a draft. BlogFactory does not give agents live publishing or deletion authority.
+
+## Documentation
+
+- [Documentation index](https://blogfactory.io/docs): task-focused guides for operators and MCP users.
+- [Getting started](https://blogfactory.io/docs/getting-started): product model and the source evidence to CMS-draft workflow.
+- [Self-hosting](https://blogfactory.io/docs/self-hosting): Docker Compose install, readiness, backup, restore, and upgrade guidance.
+- [MCP connections](https://blogfactory.io/docs/mcp): OAuth, personal tokens, scopes, tool catalog, and Review Card behavior.
+- [Content review](https://blogfactory.io/docs/content-review): revision-aware editing, review packets, preflight, and explicit approval.
+- [Search Growth](https://blogfactory.io/docs/search-growth): Search Console data boundaries and operational workflow.
+- [Operations](https://blogfactory.io/docs/operations): environment, migrations, routing, and production verification.
+- [Architecture](https://blogfactory.io/docs/architecture): runtime surfaces, tenancy, safety boundaries, and service ownership.
+- [Help Center](https://blogfactory.io/help): symptom-based setup, connection, delivery, and troubleshooting answers.
+
+## Authoritative source
+
+The public source documentation in the BlogFactory repository is canonical: https://github.com/BoraGkc/blogfactory/tree/main/docs
+
+## Product boundaries
+
+- Self-hosted first; BlogFactory Cloud is coming soon.
+- Users bring their own AI credentials.
+- MCP capabilities are site-scoped and draft-only.
+- Never expose credentials, tokens, prompts, article bodies, or provider responses in audit records.

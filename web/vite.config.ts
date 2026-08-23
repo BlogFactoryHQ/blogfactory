@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
         input: {
           app: path.resolve(__dirname, "index.html"),
           marketing: path.resolve(__dirname, "marketing.html"),
+          help: path.resolve(__dirname, "help.html"),
+          docs: path.resolve(__dirname, "docs.html"),
         },
       },
     },

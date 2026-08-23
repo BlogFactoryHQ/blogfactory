@@ -113,12 +113,27 @@
       "destination": "/marketing.html"
     },
     {
+      "source": "/help",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "/help.html"
+    },
+    {
+      "source": "/docs",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "/docs.html"
+    },
+    {
+      "source": "/docs/:path*",
+      "has": [{ "type": "host", "value": "blogfactory.io" }],
+      "destination": "/docs.html"
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "app.blogfactory.io" }],
       "destination": "/index.html"
     },
     {
-      "source": "/((?!api/|assets/|marketing\\.html$|mcp-review\\.html$).*)",
+      "source": "/((?!api/|assets/|marketing\\.html$|help\\.html$|docs\\.html$|mcp-review\\.html$).*)",
       "destination": "/index.html"
     }
   ]
