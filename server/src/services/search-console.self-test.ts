@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildSearchConsoleInsights,
   buildCanonicalSearchPerformance,
+  chunkSearchConsoleMetrics,
   chooseSearchConsoleProperty,
   createSearchConsoleOAuthUrl,
   mapSearchAnalyticsRows,
@@ -64,6 +65,15 @@ assert.deepEqual(mapSearchAnalyticsRows([
 ]), [
   { date: "2026-06-01", pageUrl: "https://example.com/a", query: "crm", clicks: 1, impressions: 10, ctr: 0.1, position: 12.5 },
 ]);
+assert.deepEqual(chunkSearchConsoleMetrics(Array.from({ length: 2501 }, (_, index) => ({
+  date: "2026-06-01",
+  pageUrl: `https://example.com/${index}`,
+  query: "query",
+  clicks: 1,
+  impressions: 1,
+  ctr: 1,
+  position: 1,
+}))).map((batch) => batch.length), [1000, 1000, 501]);
 
 const emptyInsights = buildSearchConsoleInsights({ metrics: [] });
 assert.equal(emptyInsights.totals.clicks.value, 0);

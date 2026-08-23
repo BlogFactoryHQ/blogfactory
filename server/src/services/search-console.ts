@@ -519,8 +519,10 @@ export async function replaceSearchConsoleSnapshot(input: {
       gte(searchConsoleMetrics.date, input.startDate),
       lte(searchConsoleMetrics.date, input.endDate),
     ));
-    for (const metric of input.metrics) {
-      await tx.insert(searchConsoleMetrics).values({ userId: input.userId, siteId: input.siteId, ...metric });
+    for (const metrics of chunkSearchConsoleMetrics(input.metrics)) {
+      await tx.insert(searchConsoleMetrics).values(
+        metrics.map((metric) => ({ userId: input.userId, siteId: input.siteId, ...metric })),
+      );
     }
     const [row] = await tx.update(searchConsoleIntegrations).set({
       lastSyncAt: input.syncedAt,
@@ -534,6 +536,15 @@ export async function replaceSearchConsoleSnapshot(input: {
     if (!row) throw new Error("Search Console integration not found");
     return row;
   });
+}
+
+export function chunkSearchConsoleMetrics(metrics: SearchAnalyticsMetric[], size = 1000) {
+  const batchSize = Math.max(1, Math.floor(size));
+  const batches: SearchAnalyticsMetric[][] = [];
+  for (let index = 0; index < metrics.length; index += batchSize) {
+    batches.push(metrics.slice(index, index + batchSize));
+  }
+  return batches;
 }
 
 export const syncSearchConsoleMetrics = refreshSearchConsoleData;

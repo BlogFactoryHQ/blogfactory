@@ -16,7 +16,7 @@ npm run typecheck
 npm run lint --workspace=web
 npm run test --workspace=web
 npm run test:server
-VITE_WAITLIST_URL=https://example.com/waitlist npm run build
+npm run build
 git diff --check
 ```
 
