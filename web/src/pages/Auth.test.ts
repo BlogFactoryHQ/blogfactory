@@ -36,9 +36,7 @@ describe("authReturnTo", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(createElement(MemoryRouter, {
-        future: { v7_startTransition: true, v7_relativeSplatPath: true },
-      }, createElement(Auth, { selfHosted: false })));
+      root.render(createElement(MemoryRouter, null, createElement(Auth, { selfHosted: false })));
     });
 
     expect(container).toHaveTextContent("Sign in");
@@ -53,9 +51,7 @@ describe("authReturnTo", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(createElement(MemoryRouter, {
-        future: { v7_startTransition: true, v7_relativeSplatPath: true },
-      }, createElement(Auth, { selfHosted: true })));
+      root.render(createElement(MemoryRouter, null, createElement(Auth, { selfHosted: true })));
     });
 
     expect(container).toHaveTextContent("Create account");
@@ -68,9 +64,7 @@ describe("authReturnTo", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(createElement(MemoryRouter, {
-        future: { v7_startTransition: true, v7_relativeSplatPath: true },
-      }, createElement(Auth)));
+      root.render(createElement(MemoryRouter, null, createElement(Auth)));
     });
     await act(async () => {
       await vi.waitFor(() => expect(container).toHaveTextContent("Create account"));
