@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://blogfactory.io">
-    <img src="docs/assets/content-inventory.png" alt="BlogFactory content operations workspace" width="920" />
+    
   </a>
 </p>
 
