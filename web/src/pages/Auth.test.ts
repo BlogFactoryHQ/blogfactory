@@ -55,6 +55,10 @@ describe("authReturnTo", () => {
     });
 
     expect(container).toHaveTextContent("Create account");
+    await act(async () => {
+      (Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "Create account") as HTMLButtonElement).click();
+    });
+    expect(container).toHaveTextContent("Other accounts wait for administrator approval");
     await act(async () => root.unmount());
   });
 

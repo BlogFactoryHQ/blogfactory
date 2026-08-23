@@ -23,11 +23,11 @@ sed -i.bak \
   -e "s/^BLOGFACTORY_PORT=.*/BLOGFACTORY_PORT=$port/" \
   -e "s|^BLOGFACTORY_URL=.*|BLOGFACTORY_URL=$base_url|" \
   -e "s/^ADMIN_EMAILS=.*/ADMIN_EMAILS=admin@example.com/" \
-  -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=postgres-backup-secret/" \
-  -e "s/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=minio-backup-secret/" \
-  -e "s/^JWT_SECRET=.*/JWT_SECRET=jwt-backup-secret/" \
-  -e "s/^API_KEY_ENCRYPTION_SECRET=.*/API_KEY_ENCRYPTION_SECRET=encryption-backup-secret/" \
-  -e "s/^CRON_SECRET=.*/CRON_SECRET=cron-backup-secret/" \
+  -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=postgres-backup-0123456789abcdef0123456789abcdef/" \
+  -e "s/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=minio-backup-0123456789abcdef0123456789abcdef/" \
+  -e "s/^JWT_SECRET=.*/JWT_SECRET=jwt-backup-0123456789abcdef0123456789abcdef/" \
+  -e "s/^API_KEY_ENCRYPTION_SECRET=.*/API_KEY_ENCRYPTION_SECRET=encryption-backup-0123456789abcdef0123456789abcdef/" \
+  -e "s/^CRON_SECRET=.*/CRON_SECRET=cron-backup-0123456789abcdef0123456789abcdef/" \
   "$env_file"
 
 source_compose=(docker compose --env-file "$env_file" -p "$source_project" -f "$repo_dir/compose.yaml")
@@ -48,7 +48,7 @@ storage_path="$(jq -er '.storagePath // .storage_path' "$tmp_dir/upload.json")"
 "${source_compose[@]}" exec -T postgres pg_dump -U blogfactory -d blogfactory -Fc > "$tmp_dir/blogfactory.dump"
 mkdir "$tmp_dir/objects"
 docker run --rm --user "$(id -u):$(id -g)" --network "${source_project}_default" -e MC_CONFIG_DIR=/tmp/.mc -v "$tmp_dir/objects:/backup" --entrypoint /bin/sh minio/mc:latest -c \
-  'mc alias set local http://minio:9000 blogfactory minio-backup-secret && mc mirror local/blogfactory /backup'
+  'mc alias set local http://minio:9000 blogfactory minio-backup-0123456789abcdef0123456789abcdef && mc mirror local/blogfactory /backup'
 "${source_compose[@]}" down --volumes --remove-orphans
 
 "${target_compose[@]}" up -d
@@ -56,7 +56,7 @@ for _ in {1..90}; do curl --fail --silent "$base_url/api/ready" >/dev/null && br
 "${target_compose[@]}" stop api scheduler
 "${target_compose[@]}" exec -T postgres pg_restore -U blogfactory -d blogfactory --clean --if-exists < "$tmp_dir/blogfactory.dump"
 docker run --rm --network "${target_project}_default" -v "$tmp_dir/objects:/backup:ro" --entrypoint /bin/sh minio/mc:latest -c \
-  'mc alias set local http://minio:9000 blogfactory minio-backup-secret && mc mirror /backup local/blogfactory'
+  'mc alias set local http://minio:9000 blogfactory minio-backup-0123456789abcdef0123456789abcdef && mc mirror /backup local/blogfactory'
 "${target_compose[@]}" start api scheduler
 for _ in {1..60}; do curl --fail --silent "$base_url/api/ready" >/dev/null && break; sleep 2; done
 

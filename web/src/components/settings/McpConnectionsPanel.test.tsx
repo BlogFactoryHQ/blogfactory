@@ -55,10 +55,10 @@ function button(label: string) {
   return match as HTMLButtonElement;
 }
 
-async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[]) {
+async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[], capabilityData = capabilities) {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryDefaults(["mcp-capabilities"], { staleTime: Infinity });
-  queryClient.setQueryData(["mcp-capabilities"], capabilities);
+  queryClient.setQueryData(["mcp-capabilities"], capabilityData);
   if (initialTokens) queryClient.setQueryData(["mcp-tokens"], { tokens: initialTokens });
   if (initialOAuthConnections) {
     queryClient.setQueryData(["mcp-oauth-connections"], { connections: initialOAuthConnections });
@@ -106,6 +106,16 @@ afterEach(async () => {
 });
 
 describe("MCP connections panel", () => {
+  it("shows the personal-token workflow when OAuth is disabled", async () => {
+    await renderPanel([], [], { ...capabilities, oauth_enabled: false });
+
+    expect(document.body).toHaveTextContent("Create a personal token and add this instance endpoint");
+    expect(document.body).toHaveTextContent("Choose the site this token may access");
+    expect(document.body).not.toHaveTextContent("Use OAuth from Codex");
+    expect(button("Create personal token")).toBeEnabled();
+    expect(getMock).not.toHaveBeenCalledWith("/mcp/oauth/connections");
+  });
+
   it("creates a site-scoped read token and clears its one-time secret", async () => {
     const secret = "bf_mcp_one_time_secret";
     postMock.mockResolvedValue({

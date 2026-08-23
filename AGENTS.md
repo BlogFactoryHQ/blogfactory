@@ -82,7 +82,7 @@ server/src/db/schema.ts              Drizzle schema
 server/src/db/migrations/            Additive SQL migrations
 web/src/App.tsx                      Current frontend routes
 web/marketing.html                   Public marketing HTML entry
-web/src/Marketing.tsx                Public private-beta one-pager
+web/src/Marketing.tsx                Public release-candidate one-pager
 web/src/pages/Overview.tsx           Workspace digest
 web/src/pages/ReviewQueue.tsx        Prioritized action queue
 web/src/pages/Posts.tsx              Content inventory

@@ -145,7 +145,7 @@ The repository builds both `index.html` and `marketing.html`. Current production
 - OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
 - MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
 - `publish:draft` means CMS draft delivery, never live publication.
-- Public signup is disabled.
+- Hosted public signup is disabled; self-hosted signup is an environment-gated administrator bootstrap path.
 - Password recovery UI is disabled until real email delivery is connected.
 
 ## Pricing boundary

@@ -12,7 +12,7 @@ BlogFactory is preparing an open-source, self-hosted release. BlogFactory Cloud 
 - Docker Compose is the verified release-candidate self-host topology; the remaining public-release gates stay open in `FEATURE_PLAN.md`.
 - The public site remains a waitlist until the Railway acceptance passes and the repository is public and anonymously cloneable.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not implemented.
-- Public account creation is disabled. Password recovery is not exposed until real email delivery exists.
+- Hosted public account creation is disabled. Self-hosted operators may open signup temporarily for administrator bootstrap and approved additional users. Password recovery is not exposed until real email delivery exists.
 - Users bring their own AI credentials; provider model-cost displays are not BlogFactory subscription pricing.
 
 ## Product model
@@ -35,7 +35,7 @@ source evidence
 
 | Surface | Host / endpoint | Responsibility |
 | --- | --- | --- |
-| Public marketing | `https://blogfactory.io` | Private-beta one-pager and waitlist CTA |
+| Public marketing | `https://blogfactory.io` | Release-candidate one-pager and Cloud waitlist CTA |
 | Authenticated app | `https://app.blogfactory.io` | React control and review application |
 | Web API | `https://app.blogfactory.io/api/*` | Authenticated product API |
 | MCP | `https://blogfactory.io/mcp` | Streamable HTTP agent work layer |

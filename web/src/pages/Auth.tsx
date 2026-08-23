@@ -87,7 +87,7 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
     setIsLoading(true);
     try {
       await signup(email, password, displayName, consent, false);
-      toast.success("Workspace created");
+      toast.success("Account created");
       navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -111,8 +111,8 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
 
   return (
     <AuthShell>
-        <h1 className="type-panel-title mb-1 text-lg">{mode === "login" ? "Sign in" : "Create your workspace"}</h1>
-        <p className="type-body mb-6">{mode === "login" ? "Access your BlogFactory workspace." : "Create the first account for this self-hosted installation."}</p>
+        <h1 className="type-panel-title mb-1 text-lg">{mode === "login" ? "Sign in" : "Create account"}</h1>
+        <p className="type-body mb-6">{mode === "login" ? "Access your BlogFactory workspace." : "Administrator emails are approved immediately. Other accounts wait for administrator approval."}</p>
         <form onSubmit={mode === "login" ? handleSignIn : handleSignUp} className="space-y-5">
               {mode === "signup" && (
                 <div className="space-y-1.5">

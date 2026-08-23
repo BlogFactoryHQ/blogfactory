@@ -137,11 +137,15 @@ export function hasMcpScope(principal: McpPrincipal, scope: McpScope) {
   return principal.scopes.has(scope);
 }
 
-export function allowedMcpOrigin(request: Request, configured = process.env.MCP_ALLOWED_ORIGINS) {
+export function allowedMcpOrigin(
+  request: Request,
+  configured = process.env.MCP_ALLOWED_ORIGINS,
+  selfHosted = process.env.BLOGFACTORY_SELF_HOSTED === "true",
+) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   const allowed = new Set([
-    "https://blogfactory.io",
+    ...(!selfHosted ? ["https://blogfactory.io"] : []),
     ...(configured || "").split(",").map((value) => value.trim()).filter(Boolean),
   ]);
   return allowed.has(origin);

@@ -87,5 +87,7 @@ assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp")), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://blogfactory.io" } })), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://client.example" } }), "https://client.example"), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://evil.example" } })), false);
+assert.equal(allowedMcpOrigin(new Request("https://self-hosted.example/mcp", { headers: { origin: "https://blogfactory.io" } }), "https://self-hosted.example", true), false);
+assert.equal(allowedMcpOrigin(new Request("https://self-hosted.example/mcp", { headers: { origin: "https://self-hosted.example" } }), "https://self-hosted.example", true), true);
 
 console.log("MCP bearer authentication self-check passed");

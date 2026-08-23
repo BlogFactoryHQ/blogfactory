@@ -4,9 +4,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { users } from "../db/schema.js";
 import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
+import { isPlaceholderValue } from "../config/runtime.js";
 
 export function resolveJwtSecret(value = process.env.JWT_SECRET, environment = process.env.NODE_ENV) {
-  if (environment === "production" && (!value || /change-?me/i.test(value))) {
+  if (environment === "production" && isPlaceholderValue(value)) {
     throw new Error("JWT_SECRET must be configured in production");
   }
   return value || "dev-secret";

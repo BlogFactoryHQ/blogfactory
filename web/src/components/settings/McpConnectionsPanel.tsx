@@ -103,11 +103,6 @@ export function McpConnectionsPanel() {
     queryFn: () => api.get<McpTokenList>("/mcp/tokens"),
     retry: retryTransientApiError,
   });
-  const oauthConnectionsQuery = useQuery({
-    queryKey: ["mcp-oauth-connections"],
-    queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
-    retry: retryTransientApiError,
-  });
   const capabilitiesQuery = useQuery({
     queryKey: ["mcp-capabilities"],
     queryFn: () => api.get<McpCapabilities>("/mcp/capabilities"),
@@ -117,6 +112,12 @@ export function McpConnectionsPanel() {
   const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
   const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
   const oauthEnabled = capabilitiesQuery.data?.oauth_enabled === true;
+  const oauthConnectionsQuery = useQuery({
+    queryKey: ["mcp-oauth-connections"],
+    queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
+    retry: retryTransientApiError,
+    enabled: oauthEnabled,
+  });
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -232,12 +233,12 @@ export function McpConnectionsPanel() {
           <section aria-labelledby="mcp-workflow-title" className="space-y-3">
             <div>
               <h3 id="mcp-workflow-title" className="text-sm font-semibold">Agent workflow</h3>
-              <p className="mt-1 text-sm text-muted-foreground">One authorization path from client setup to a reviewed CMS draft.</p>
+              <p className="mt-1 text-sm text-muted-foreground">A site-scoped path from client setup to a reviewed CMS draft.</p>
             </div>
             <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["01", "Connect client", "Use OAuth from Codex or add the endpoint to an MCP-compatible client."],
-                ["02", "Approve site", "Sign in to BlogFactory and grant access to one site."],
+                ["01", "Connect client", oauthEnabled ? "Use OAuth from Codex or add the endpoint to an MCP-compatible client." : "Create a personal token and add this instance endpoint to your MCP client."],
+                ["02", "Scope access", oauthEnabled ? "Sign in to BlogFactory and grant access to one site." : "Choose the site this token may access, then save the token when shown."],
                 ["03", "Generate & review", "Create a draft, wait for the run, then open its Review Card."],
                 ["04", "Send draft", "Choose a ready CMS destination and confirm the draft-only delivery."],
               ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></li>)}

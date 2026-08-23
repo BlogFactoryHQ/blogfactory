@@ -19,11 +19,11 @@ sed -i.bak \
   -e "s/^BLOGFACTORY_PORT=.*/BLOGFACTORY_PORT=$port/" \
   -e "s|^BLOGFACTORY_URL=.*|BLOGFACTORY_URL=$base_url|" \
   -e "s/^ADMIN_EMAILS=.*/ADMIN_EMAILS=admin@example.com/" \
-  -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=postgres-smoke-secret/" \
-  -e "s/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=minio-smoke-secret/" \
-  -e "s/^JWT_SECRET=.*/JWT_SECRET=jwt-smoke-secret/" \
-  -e "s/^API_KEY_ENCRYPTION_SECRET=.*/API_KEY_ENCRYPTION_SECRET=encryption-smoke-secret/" \
-  -e "s/^CRON_SECRET=.*/CRON_SECRET=cron-smoke-secret/" \
+  -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=postgres-smoke-0123456789abcdef0123456789abcdef/" \
+  -e "s/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=minio-smoke-0123456789abcdef0123456789abcdef/" \
+  -e "s/^JWT_SECRET=.*/JWT_SECRET=jwt-smoke-0123456789abcdef0123456789abcdef/" \
+  -e "s/^API_KEY_ENCRYPTION_SECRET=.*/API_KEY_ENCRYPTION_SECRET=encryption-smoke-0123456789abcdef0123456789abcdef/" \
+  -e "s/^CRON_SECRET=.*/CRON_SECRET=cron-smoke-0123456789abcdef0123456789abcdef/" \
   "$env_file"
 
 compose=(docker compose --env-file "$env_file" -p "$project" -f "$repo_dir/compose.yaml")
