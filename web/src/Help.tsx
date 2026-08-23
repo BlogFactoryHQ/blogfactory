@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { BywordCard, FactoryMark, WorkspaceBackground } from "@/components/layout/BywordSurface";
 
-const sourceUrl = "https://github.com/BoraGkc/blogfactory";
+const sourceUrl = "https://github.com/BlogFactoryHQ/blogfactory";
 const issuesUrl = `${sourceUrl}/issues`;
 
 type HelpArticle = {

@@ -49,7 +49,7 @@ services:
     restart: "no"
 
   api:
-    image: ghcr.io/boragkc/blogfactory-api:${BLOGFACTORY_VERSION:-v0.1.0}
+    image: ghcr.io/blogfactoryhq/blogfactory-api:${BLOGFACTORY_VERSION:-v0.1.0}
     build:
       context: ./server
     restart: unless-stopped
@@ -87,7 +87,7 @@ services:
       retries: 20
 
   web:
-    image: ghcr.io/boragkc/blogfactory-web:${BLOGFACTORY_VERSION:-v0.1.0}
+    image: ghcr.io/blogfactoryhq/blogfactory-web:${BLOGFACTORY_VERSION:-v0.1.0}
     build:
       context: ./web
       args:

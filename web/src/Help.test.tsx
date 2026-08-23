@@ -15,7 +15,7 @@ describe("help center", () => {
     expect(text).toContain("Choose a supported deployment target");
     expect(text).toContain("A generation was interrupted by an API restart");
     expect(document.querySelectorAll('a[href="/docs/self-hosting"]')).not.toHaveLength(0);
-    expect(document.querySelectorAll('a[href="https://github.com/BoraGkc/blogfactory/issues"]')).toHaveLength(1);
+    expect(document.querySelectorAll('a[href="https://github.com/BlogFactoryHQ/blogfactory/issues"]')).toHaveLength(1);
     expect(document.querySelectorAll('a[href*="/blob/main/docs/"]')).not.toHaveLength(0);
   });
 

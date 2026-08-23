@@ -8,7 +8,7 @@ import mcpSource from "../../docs/mcp.md?raw";
 import architectureSource from "../../docs/architecture.md?raw";
 import operationsSource from "../../docs/operations.md?raw";
 
-const sourceUrl = "https://github.com/BoraGkc/blogfactory";
+const sourceUrl = "https://github.com/BlogFactoryHQ/blogfactory";
 const docsBaseUrl = "https://blogfactory.io/docs";
 
 const documents = [

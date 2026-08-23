@@ -16,7 +16,7 @@ BlogFactory is a self-hosted, MCP-first control plane for content operations. Ag
 
 ## Authoritative source
 
-The public source documentation in the BlogFactory repository is canonical: https://github.com/BoraGkc/blogfactory/tree/main/docs
+The public source documentation in the BlogFactory repository is canonical: https://github.com/BlogFactoryHQ/blogfactory/tree/main/docs
 
 ## Product boundaries
 

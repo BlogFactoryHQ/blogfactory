@@ -30,7 +30,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/boragkc/${{ matrix.image }}
+          images: ghcr.io/blogfactoryhq/${{ matrix.image }}
           tags: |
             type=ref,event=tag
             type=sha

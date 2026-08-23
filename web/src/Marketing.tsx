@@ -44,7 +44,7 @@ const ecosystem = [
 ] as const;
 
 const trustPoints = ["Bring your own AI", "Site-scoped access", "Never publishes live"] as const;
-const sourceUrl = "https://github.com/BoraGkc/blogfactory";
+const sourceUrl = "https://github.com/BlogFactoryHQ/blogfactory";
 
 const faqs = [
   [

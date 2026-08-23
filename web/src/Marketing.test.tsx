@@ -38,6 +38,6 @@ describe("marketing page", () => {
     expect(navigation?.className).not.toContain("hidden");
     expect(navigation?.querySelectorAll("summary")).toHaveLength(2);
     expect([...navigation?.querySelectorAll("a") || []].map((link) => link.getAttribute("href")))
-      .toEqual(["#workflow", "#why-blogfactory", "#faq", "#faq", "/docs", "/help", "https://github.com/BoraGkc/blogfactory", "https://waitlist.example/form"]);
+      .toEqual(["#workflow", "#why-blogfactory", "#faq", "#faq", "/docs", "/help", "https://github.com/BlogFactoryHQ/blogfactory", "https://waitlist.example/form"]);
   });
 });

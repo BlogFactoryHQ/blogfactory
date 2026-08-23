@@ -112,7 +112,7 @@ See [docs/architecture.md](docs/architecture.md) for request flows, service owne
 Requires Node.js 22, Bun, PostgreSQL, and S3-compatible storage.
 
 ```bash
-git clone https://github.com/BoraGkc/blogfactory.git
+git clone https://github.com/BlogFactoryHQ/blogfactory.git
 cd blogfactory
 npm install
 cp .env.example .env

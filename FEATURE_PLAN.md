@@ -28,7 +28,7 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 - [x] Run the Docker Compose stack on a machine with a working Docker daemon and complete the smoke test in `docs/self-hosting.md`.
 - [x] Preserve the existing Git history, subject to the public-release audit below.
 - [ ] Deploy the prepared Railway topology to a real project and pass the Docker-equivalent health, signup, storage, MCP, and persistence acceptance.
-- [x] Make `BoraGkc/blogfactory` public and verify the anonymous clone path.
+- [x] Make `BlogFactoryHQ/blogfactory` public and verify the anonymous clone path.
 - [ ] Create a tagged release and attach upgrade/migration notes.
 - [ ] Deploy the prepared “Open source / Cloud coming soon” marketing copy only after the source URL is public.
 
