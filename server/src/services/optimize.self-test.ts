@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyOptimizeStatus, fallbackSuggestions, normalizePageUrlForSite } from "./optimize.js";
+import { chunkOptimizePageUpdates, classifyOptimizeStatus, fallbackSuggestions, normalizePageUrlForSite } from "./optimize.js";
 
 assert.equal(classifyOptimizeStatus({
   baseline: { clicks: 100, impressions: 500, position: 4 },
@@ -19,6 +19,7 @@ assert.equal(classifyOptimizeStatus({
 
 assert.equal(normalizePageUrlForSite("https://www.example.com/post#top", "example.com"), "https://www.example.com/post");
 assert.throws(() => normalizePageUrlForSite("https://other.com/post", "example.com"), /does not belong/);
+assert.deepEqual(chunkOptimizePageUpdates(Array.from({ length: 1201 }, (_, index) => index)).map((batch) => batch.length), [500, 500, 201]);
 
 const suggestions = fallbackSuggestions(
   { url: "https://example.com/a", wordCount: 300, sectionCount: 2, features: { faq: false, table: false, video: false, tableOfContents: false, images: 0 } },

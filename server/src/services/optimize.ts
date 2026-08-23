@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
@@ -297,51 +297,57 @@ export async function refreshOptimizePages(userId: string, siteId: string) {
 
   for (const metric of metrics) {
     const key = `${metric.pageUrl}\n${metric.query}`;
-    groups.set(key, [...(groups.get(key) || []), metric]);
+    const rows = groups.get(key);
+    if (rows) rows.push(metric);
+    else groups.set(key, [metric]);
   }
 
-  let updated = 0;
+  const existingRows = await db
+    .select({ pageUrl: optimizePages.pageUrl, targetQuery: optimizePages.targetQuery, optimizedAt: optimizePages.optimizedAt })
+    .from(optimizePages)
+    .where(and(eq(optimizePages.userId, userId), eq(optimizePages.siteId, siteId)));
+  const existingByKey = new Map(existingRows.map((row) => [`${row.pageUrl}\n${row.targetQuery}`, row]));
+  const updates: Array<typeof optimizePages.$inferInsert> = [];
+
   for (const [key, rows] of groups) {
     const [pageUrl, query] = key.split("\n");
     const baseline = summarizeMetrics(rows.filter((row) => row.date >= baselineStart && row.date <= baselineEnd));
     const latest = summarizeMetrics(rows.filter((row) => row.date >= latestStart && row.date <= maxDate));
+    const status = classifyOptimizeStatus({ baseline, latest, optimizedAt: existingByKey.get(key)?.optimizedAt });
+    updates.push({
+      userId,
+      siteId,
+      pageUrl,
+      targetQuery: query,
+      status,
+      baselineMetrics: baseline as never,
+      latestMetrics: latest as never,
+    });
+  }
 
-    const [existing] = await db
-      .select({ optimizedAt: optimizePages.optimizedAt })
-      .from(optimizePages)
-      .where(and(
-        eq(optimizePages.userId, userId),
-        eq(optimizePages.siteId, siteId),
-        eq(optimizePages.pageUrl, pageUrl),
-        eq(optimizePages.targetQuery, query),
-      ))
-      .limit(1);
-
-    const status = classifyOptimizeStatus({ baseline, latest, optimizedAt: existing?.optimizedAt });
+  for (const batch of chunkOptimizePageUpdates(updates)) {
     await db
       .insert(optimizePages)
-      .values({
-        userId,
-        siteId,
-        pageUrl,
-        targetQuery: query,
-        status,
-        baselineMetrics: baseline as never,
-        latestMetrics: latest as never,
-      })
+      .values(batch)
       .onConflictDoUpdate({
         target: [optimizePages.siteId, optimizePages.pageUrl, optimizePages.targetQuery],
         set: {
-          status,
-          baselineMetrics: baseline as never,
-          latestMetrics: latest as never,
+          status: sql`excluded.status`,
+          baselineMetrics: sql`excluded.baseline_metrics`,
+          latestMetrics: sql`excluded.latest_metrics`,
           updatedAt: new Date(),
         },
       });
-    updated += 1;
   }
 
-  return { updated };
+  return { updated: updates.length };
+}
+
+export function chunkOptimizePageUpdates<T>(updates: T[], size = 500) {
+  const batchSize = Math.max(1, Math.floor(size));
+  const batches: T[][] = [];
+  for (let index = 0; index < updates.length; index += batchSize) batches.push(updates.slice(index, index + batchSize));
+  return batches;
 }
 
 export async function listOptimizePages(userId: string, siteId: string, status?: string) {
