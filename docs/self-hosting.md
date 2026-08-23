@@ -122,7 +122,7 @@ If the older application is incompatible with the migrated schema, restore the p
 
 ## Railway runbook
 
-The exact six-service mapping, generated variables, private URLs, health paths, restart policies, and cron command are in [`deploy/railway/README.md`](../deploy/railway/README.md). Only `web` receives a public domain. `api`, Postgres, MinIO, bucket initialization, and cron remain private. Railway injects `PORT`; the API listens on it, and web reaches it through `API_UPSTREAM` on the private network.
+The exact five-service mapping, generated variables, private URLs, health paths, restart policies, and cron command are in [`deploy/railway/README.md`](../deploy/railway/README.md). Only `web` receives a public domain. `api`, Postgres, MinIO, and cron remain private; bucket initialization runs as the API's idempotent pre-deploy command so the topology fits Railway Hobby's five-service ceiling. Railway injects `PORT`; the API listens on it, and web reaches it through `API_UPSTREAM` on the private network.
 
 Before upgrades, create manual Railway volume backups for Postgres and MinIO and also keep portable copies. With a linked Railway project and a local PostgreSQL client:
 

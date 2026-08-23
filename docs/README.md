@@ -7,7 +7,7 @@
 - [MCP and OAuth](mcp.md): 22-tool catalog, connection setup, Review Card, permissions, and safety boundary.
 - [Operations and deployment](operations.md): environment, migrations, host split, background drains, ledger retention, and production verification.
 - [Self-hosting](self-hosting.md): Docker Compose and Railway topology, account flows, readiness, MCP setup, backup/restore, upgrades, rollback, and current ceiling.
-- [Railway deployment contract](../deploy/railway/README.md): six-service template mapping, generated variables, private networking, health, and cron settings.
+- [Railway deployment contract](../deploy/railway/README.md): five-service Hobby-compatible mapping, generated variables, private networking, health, and cron settings.
 - [v0.1.0 public-release audit](security-audit-v0.1.0.md): current secret, history, asset, Actions-log, and dependency release gates.
 - [Release plan](../FEATURE_PLAN.md): canonical open-source-first plan and Cloud-coming-soon gates.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.

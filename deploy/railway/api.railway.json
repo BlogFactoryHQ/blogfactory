@@ -5,6 +5,7 @@
     "dockerfilePath": "/Dockerfile"
   },
   "deploy": {
+    "preDeployCommand": ["bun run src/init-s3-bucket.ts"],
     "healthcheckPath": "/api/ready",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

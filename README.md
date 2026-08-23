@@ -6,11 +6,11 @@ BlogFactory is an agent control plane for multi-site content operations. Agents 
 
 ## Current phase
 
-BlogFactory is preparing an open-source, self-hosted release. BlogFactory Cloud is coming soon.
+BlogFactory is an AGPL-licensed, open-source control plane for self-hosted content operations. BlogFactory Cloud is coming soon.
 
 - The operational product, hosted MCP server, review workflow, Search Console tooling, and draft-only CMS delivery exist.
 - Docker Compose is the verified release-candidate self-host topology; the remaining public-release gates stay open in `FEATURE_PLAN.md`.
-- The public site remains a waitlist until the Railway acceptance passes and the repository is public and anonymously cloneable.
+- The source repository is public and anonymously cloneable. The public site remains in release-candidate language until Railway acceptance and the first tagged release pass.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not implemented.
 - Hosted public account creation is disabled. Self-hosted operators may open signup temporarily for administrator bootstrap and approved additional users. Password recovery is not exposed until real email delivery exists.
 - Users bring their own AI credentials; provider model-cost displays are not BlogFactory subscription pricing.
@@ -178,4 +178,4 @@ Database, tenant-isolation, ledger, and shared control-plane changes also requir
 - [Repository rules for coding agents](AGENTS.md)
 - [Documentation index and historical decision records](docs/README.md)
 
-This checkout is licensed for the v0.1 release candidate, but it is not a public release until every remaining Phase 0 gate in [FEATURE_PLAN.md](FEATURE_PLAN.md) is complete.
+This public checkout is licensed under AGPL-3.0-only. The source is available now; the first tagged `v0.1.0` release waits for every remaining Phase 0 gate in [FEATURE_PLAN.md](FEATURE_PLAN.md).

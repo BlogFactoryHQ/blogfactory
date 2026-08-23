@@ -1,14 +1,13 @@
 # Railway deployment contract
 
-The public template must map the canonical Compose stack to six Railway services:
+The public template maps the canonical Compose stack to five Railway services so it fits Railway Hobby's service ceiling:
 
 | Service | Source | Public | Required configuration |
 | --- | --- | --- | --- |
 | `web` | `ghcr.io/boragkc/blogfactory-web:v0.1.0` | yes | `PORT=80`; `API_UPSTREAM=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:3000` |
-| `api` | `ghcr.io/boragkc/blogfactory-api:v0.1.0` | no | variables below; health path `/api/ready` |
+| `api` | `ghcr.io/boragkc/blogfactory-api:v0.1.0` | no | pre-deploy `bun run src/init-s3-bucket.ts`; variables below; health path `/api/ready` |
 | `Postgres` | Railway managed PostgreSQL | no | managed service defaults |
 | `minio` | `minio/minio:latest` | no | command `/usr/bin/minio server /data --address :9000 --console-address :9001`; volume mounted at `/data` |
-| `bucket-init` | `ghcr.io/boragkc/blogfactory-api:v0.1.0` | no | command `bun run src/init-s3-bucket.ts`; restart `ON_FAILURE` |
 | `cron` | `ghcr.io/boragkc/blogfactory-api:v0.1.0` | no | command `bun run src/run-cron-once.ts`; cron `0 */6 * * *`; restart `NEVER` |
 
 The template asks only for `ADMIN_EMAILS`. It generates independent values for `JWT_SECRET`, `API_KEY_ENCRYPTION_SECRET`, `CRON_SECRET`, and `MINIO_ROOT_PASSWORD` with Railway template variable functions. Do not publish a template with literal defaults.
@@ -35,7 +34,7 @@ S3_BUCKET=blogfactory
 S3_REGION=us-east-1
 ```
 
-MinIO uses `MINIO_ROOT_USER=blogfactory`, a generated `MINIO_ROOT_PASSWORD`, and port `9000`. Mount its persistent volume at `/data`. `bucket-init` receives the same `S3_*` variables as the API and runs:
+MinIO uses `MINIO_ROOT_USER=blogfactory`, a generated `MINIO_ROOT_PASSWORD`, and port `9000`. Mount a 500 MB persistent volume at `/data` on Railway Hobby. Before each API deployment, Railway runs the following idempotent pre-deploy command with the API's `S3_*` variables:
 
 ```sh
 bun run src/init-s3-bucket.ts
