@@ -12,9 +12,11 @@ describe("marketing page", () => {
       "https://waitlist.example/form",
       "https://waitlist.example/form",
       "https://waitlist.example/form",
+      "https://waitlist.example/form",
+      "https://waitlist.example/form",
     ]);
     expect(waitlistLinks.map((link) => link.textContent?.trim()))
-      .toEqual(["Cloud coming soon", "Cloud coming soon", "Cloud coming soon"]);
+      .toEqual(["Cloud coming soon", "Cloud coming soon", "Cloud coming soon", "Cloud coming soon", "Cloud coming soon"]);
     expect(() => renderToStaticMarkup(<Marketing waitlistUrl="http://waitlist.example/form" />))
       .toThrow("VITE_WAITLIST_URL must be a valid HTTPS URL");
   });
@@ -32,7 +34,10 @@ describe("marketing page", () => {
     expect(text).toContain("BlogFactory Cloud");
     expect(document.querySelectorAll('a[data-cta="source"]')).toHaveLength(3);
     expect(text).not.toMatch(/\b\d+[KMB]\+?\b/);
-    expect([...document.querySelectorAll("nav a")].map((link) => link.getAttribute("href")))
-      .toEqual(["#workflow", "#why-blogfactory", "#faq"]);
+    const navigation = document.querySelector<HTMLElement>('nav[aria-label="Marketing sections"]');
+    expect(navigation?.className).not.toContain("hidden");
+    expect(navigation?.querySelectorAll("summary")).toHaveLength(2);
+    expect([...navigation?.querySelectorAll("a") || []].map((link) => link.getAttribute("href")))
+      .toEqual(["#workflow", "#why-blogfactory", "#faq", "#faq", "/docs", "/help", "https://github.com/BoraGkc/blogfactory", "https://waitlist.example/form"]);
   });
 });

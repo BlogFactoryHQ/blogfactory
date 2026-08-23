@@ -1,9 +1,12 @@
 import {
   ArrowRight,
   Bot,
+  BookOpen,
   Cable,
   Check,
+  ChevronDown,
   CircleDot,
+  CircleHelp,
   FileCheck2,
   FileSearch,
   Github,
@@ -221,16 +224,45 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
         Skip to content
       </a>
       <header className="sticky top-0 z-50 border-b border-byword-border bg-card/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-10">
-          <FactoryMark />
-          <div className="flex items-center gap-5">
-            <nav className="hidden items-center gap-5 md:flex" aria-label="Marketing sections">
-              <a href="#workflow" className="type-meta text-foreground transition-colors hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Workflow</a>
-              <a href="#why-blogfactory" className="type-meta text-foreground transition-colors hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Why BlogFactory</a>
-              <a href="#faq" className="type-meta text-foreground transition-colors hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">FAQ</a>
-            </nav>
-            <span className="type-kicker rounded-sm border border-byword-border bg-muted/50 px-2.5 py-1.5">Open-source release candidate</span>
-          </div>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-3 px-4 py-3 sm:px-6 lg:px-10">
+          <FactoryMark className="shrink-0" />
+          <nav className="order-3 flex w-full flex-col gap-2 border-t border-byword-border pt-3 md:order-none md:w-auto md:flex-row md:border-0 md:pt-0" aria-label="Marketing sections">
+              <details name="marketing-menu" className="group relative w-full md:w-auto">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-1.5 rounded-sm px-3 py-2 type-meta text-foreground transition-colors hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:justify-start">
+                  Product <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="relative z-50 mt-2 grid w-full grid-cols-1 overflow-hidden rounded-md border border-byword-border bg-card shadow-[0_12px_32px_rgba(35,37,39,0.12)] md:absolute md:left-0 md:top-full md:mt-3 md:w-[34rem] md:grid-cols-[1.3fr_0.9fr] md:shadow-[0_18px_48px_rgba(35,37,39,0.16)]">
+                  <div className="space-y-2 p-3">
+                    <a href="#workflow" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><Workflow className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">Content workflow</span><span className="mt-1 block text-sm text-muted-foreground">Bring evidence, agent work, review, and CMS drafts into one operation.</span></span></a>
+                    <a href="#why-blogfactory" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><FileCheck2 className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">Human review</span><span className="mt-1 block text-sm text-muted-foreground">Keep approvals, preflight, and destination choice with your team.</span></span></a>
+                    <a href="#faq" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><Radar className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">How it works</span><span className="mt-1 block text-sm text-muted-foreground">See the authority boundary and common questions.</span></span></a>
+                  </div>
+                  <div className="border-t border-byword-border bg-muted/35 p-5 md:border-l md:border-t-0">
+                    <p className="type-kicker text-byword-blue">Draft-only by design</p>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Agents can prepare approved CMS drafts. Live publishing remains outside the agent surface.</p>
+                    <a href="#faq" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-byword-blue hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Read the FAQ <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></a>
+                  </div>
+                </div>
+              </details>
+              <details name="marketing-menu" className="group relative w-full md:w-auto">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-1.5 rounded-sm px-3 py-2 type-meta text-foreground transition-colors hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:justify-start">
+                  Resources <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="relative z-50 mt-2 grid w-full grid-cols-1 overflow-hidden rounded-md border border-byword-border bg-card shadow-[0_12px_32px_rgba(35,37,39,0.12)] md:absolute md:left-0 md:top-full md:mt-3 md:w-[34rem] md:grid-cols-[1.3fr_0.9fr] md:shadow-[0_18px_48px_rgba(35,37,39,0.16)]">
+                  <div className="space-y-2 p-3">
+                    <a href="/docs" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><BookOpen className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">Documentation</span><span className="mt-1 block text-sm text-muted-foreground">Self-hosting, MCP connection, review, and CMS draft delivery.</span></span></a>
+                    <a href="/help" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><CircleHelp className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">Help center</span><span className="mt-1 block text-sm text-muted-foreground">Practical answers for the setup and operational workflow.</span></span></a>
+                    <a href={sourceUrl} target="_blank" rel="noreferrer" className="flex gap-3 rounded-sm p-3 transition-colors hover:bg-byword-blue-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-byword-blue-soft text-byword-blue"><Github className="h-4 w-4" aria-hidden="true" /></span><span><span className="block text-sm font-semibold">Source code</span><span className="mt-1 block text-sm text-muted-foreground">Inspect and run the open-source release candidate yourself.</span></span></a>
+                  </div>
+                  <div className="border-t border-byword-border bg-muted/35 p-5 md:border-l md:border-t-0">
+                    <p className="type-kicker text-byword-blue">Cloud</p>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">BlogFactory Cloud is coming soon. Join the waitlist for updates.</p>
+                    <WaitlistLink href={href} className="mt-6 h-10 px-4 text-xs" />
+                  </div>
+                </div>
+              </details>
+          </nav>
+          <span className="type-kicker rounded-sm border border-byword-border bg-muted/50 px-2.5 py-1.5">Open-source release candidate</span>
         </div>
       </header>
 
@@ -399,10 +431,57 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
         </section>
       </main>
 
-      <footer className="border-t border-byword-border bg-card px-4 py-6 sm:px-6 lg:px-10">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <FactoryMark />
-          <p className="type-meta">Agent work. Human control. CMS drafts.</p>
+      <footer className="border-t border-white/10 bg-secondary px-4 text-secondary-foreground sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-6xl py-14 sm:py-16">
+          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-white/10 pb-10 max-sm:flex-col max-sm:items-stretch">
+            <FactoryMark className="text-white [&>div]:border-white/25 [&>div]:bg-transparent [&>div>div]:text-white [&>span]:text-white" />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 max-sm:flex-col max-sm:items-stretch">
+              <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 max-sm:grid max-sm:grid-cols-2" aria-label="Footer navigation">
+                <a href="#workflow" className="type-meta text-secondary-foreground/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Workflow</a>
+                <a href="#faq" className="type-meta text-secondary-foreground/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">FAQ</a>
+                <a href="/docs" className="type-meta text-secondary-foreground/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Docs</a>
+                <a href="/help" className="type-meta text-secondary-foreground/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Help</a>
+              </nav>
+              <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-sm border border-white/20 px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-sm:justify-center"><Github className="h-4 w-4" aria-hidden="true" />View source</a>
+            </div>
+          </div>
+
+          <div className="grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Product</h2>
+              <nav className="mt-5 grid gap-3" aria-label="Product links">
+                <a href="#workflow" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Content workflow</a>
+                <a href="#why-blogfactory" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Human review</a>
+                <a href="#faq" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Draft-only delivery</a>
+              </nav>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Get started</h2>
+              <nav className="mt-5 grid gap-3" aria-label="Getting started links">
+                <a href="/docs" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Self-host BlogFactory</a>
+                <a href="/docs#connect-mcp" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Connect MCP</a>
+                <a href="/help" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Help center</a>
+              </nav>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Open source</h2>
+              <nav className="mt-5 grid gap-3" aria-label="Open source links">
+                <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Source code</a>
+                <a href={`${sourceUrl}/issues`} target="_blank" rel="noreferrer" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Report an issue</a>
+                <a href="/docs" className="text-sm text-secondary-foreground/65 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Documentation</a>
+              </nav>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Cloud</h2>
+              <p className="mt-5 text-sm leading-6 text-secondary-foreground/65">BlogFactory Cloud is coming soon. Join the waitlist for updates.</p>
+              <WaitlistLink href={href} className="mt-5 h-10 px-4 text-xs max-sm:w-full" />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-secondary-foreground/55 max-sm:flex-col max-sm:items-start">
+            <p>Agent work. Human control. CMS drafts.</p>
+            <p>© {new Date().getFullYear()} BlogFactory</p>
+          </div>
         </div>
       </footer>
     </WorkspaceBackground>
