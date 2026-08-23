@@ -1,0 +1,41 @@
+limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
+
+server {
+  listen 80;
+  server_name _;
+  server_tokens off;
+  root /usr/share/nginx/html;
+  index index.html;
+  client_max_body_size 50m;
+
+  add_header X-Robots-Tag "noindex, nofollow" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+  location /api/auth/ {
+    limit_req zone=auth burst=20 nodelay;
+    proxy_pass ${API_UPSTREAM};
+    include /etc/nginx/proxy_params;
+  }
+
+  location /api/ {
+    proxy_pass ${API_UPSTREAM};
+    include /etc/nginx/proxy_params;
+  }
+
+  location = /mcp {
+    proxy_pass ${API_UPSTREAM};
+    include /etc/nginx/proxy_params;
+  }
+
+  location = /.well-known/oauth-protected-resource {
+    proxy_pass ${API_UPSTREAM};
+    include /etc/nginx/proxy_params;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

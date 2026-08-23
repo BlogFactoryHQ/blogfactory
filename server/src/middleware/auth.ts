@@ -6,7 +6,7 @@ import { users } from "../db/schema.js";
 import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
 
 export function resolveJwtSecret(value = process.env.JWT_SECRET, environment = process.env.NODE_ENV) {
-  if (environment === "production" && (!value || value.startsWith("changeme-"))) {
+  if (environment === "production" && (!value || /change-?me/i.test(value))) {
     throw new Error("JWT_SECRET must be configured in production");
   }
   return value || "dev-secret";
@@ -24,6 +24,7 @@ export async function authMiddleware(c: Context, next: Next) {
   // Public routes that skip auth
   if (
     path === "/api/health" ||
+    path === "/api/ready" ||
     path.startsWith("/api/cron/") ||
     (path.startsWith("/api/auth/") && path !== "/api/auth/me") ||
     path === "/api/search-console/oauth/callback" ||

@@ -4,9 +4,12 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import Auth, { authReturnTo } from "./Auth";
 
+const { apiGetMock } = vi.hoisted(() => ({ apiGetMock: vi.fn() }));
+
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ login: vi.fn(), devLogin: vi.fn() }),
+  useAuth: () => ({ login: vi.fn(), devLogin: vi.fn(), signup: vi.fn() }),
 }));
+vi.mock("@/lib/api", () => ({ api: { get: apiGetMock } }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver = class ResizeObserver {
@@ -35,13 +38,44 @@ describe("authReturnTo", () => {
     await act(async () => {
       root.render(createElement(MemoryRouter, {
         future: { v7_startTransition: true, v7_relativeSplatPath: true },
-      }, createElement(Auth)));
+      }, createElement(Auth, { selfHosted: false })));
     });
 
     expect(container).toHaveTextContent("Sign in");
     expect(container).not.toHaveTextContent("Sign up");
     expect(container).not.toHaveTextContent("Create account");
     expect(container).not.toHaveTextContent("Forgot password");
+    await act(async () => root.unmount());
+  });
+
+  it("offers account creation only for self-hosted builds", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, {
+        future: { v7_startTransition: true, v7_relativeSplatPath: true },
+      }, createElement(Auth, { selfHosted: true })));
+    });
+
+    expect(container).toHaveTextContent("Create account");
+    await act(async () => root.unmount());
+  });
+
+  it("uses the runtime signup configuration", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, {
+        future: { v7_startTransition: true, v7_relativeSplatPath: true },
+      }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Create account"));
+    });
+    expect(apiGetMock).toHaveBeenCalledWith("/auth/config");
     await act(async () => root.unmount());
   });
 });

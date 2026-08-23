@@ -6,6 +6,7 @@ import {
   CircleDot,
   FileCheck2,
   FileSearch,
+  Github,
   KeyRound,
   Layers3,
   LockKeyhole,
@@ -40,6 +41,7 @@ const ecosystem = [
 ] as const;
 
 const trustPoints = ["Bring your own AI", "Site-scoped access", "Never publishes live"] as const;
+const sourceUrl = "https://github.com/BoraGkc/blogfactory";
 
 const faqs = [
   [
@@ -67,8 +69,8 @@ const faqs = [
     "Authorized tools can return the editorial content needed for their task. Credentials, tokens, and provider secrets are never returned, and operation history stores only sanitized metadata.",
   ],
   [
-    "Who is the private beta for?",
-    "Publishers and content teams operating one or more sites who already use AI and need a safer, repeatable way to coordinate editorial work.",
+    "When will BlogFactory Cloud be available?",
+    "Cloud is coming soon. The first release is the self-hosted edition; join the Cloud waitlist if you want BlogFactory to operate the infrastructure for you.",
   ],
 ] as const;
 
@@ -78,10 +80,26 @@ function WaitlistLink({ href, className = "" }: { href: string; className?: stri
       href={href}
       target="_blank"
       rel="noreferrer"
+      data-cta="cloud-waitlist"
       className={`inline-flex h-11 items-center justify-center gap-2 rounded-sm bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_2px_0_hsl(13_100%_35%)] transition-calm hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${className}`}
     >
-      Join the private beta
+      Cloud coming soon
       <ArrowRight className="h-4 w-4" aria-hidden="true" />
+    </a>
+  );
+}
+
+function SourceLink({ className = "" }: { className?: string }) {
+  return (
+    <a
+      href={sourceUrl}
+      target="_blank"
+      rel="noreferrer"
+      data-cta="source"
+      className={`inline-flex h-11 items-center justify-center gap-2 rounded-sm bg-secondary px-5 text-sm font-semibold text-secondary-foreground transition-calm hover:-translate-y-0.5 hover:bg-secondary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${className}`}
+    >
+      <Github className="h-4 w-4" aria-hidden="true" />
+      View source
     </a>
   );
 }
@@ -211,7 +229,7 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
               <a href="#why-blogfactory" className="type-meta text-foreground transition-colors hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Why BlogFactory</a>
               <a href="#faq" className="type-meta text-foreground transition-colors hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">FAQ</a>
             </nav>
-            <span className="type-kicker rounded-sm border border-byword-border bg-muted/50 px-2.5 py-1.5">Private beta</span>
+            <span className="type-kicker rounded-sm border border-byword-border bg-muted/50 px-2.5 py-1.5">Open-source release candidate</span>
           </div>
         </div>
       </header>
@@ -219,14 +237,15 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
       <main id="main-content">
         <section className="px-4 pb-16 pt-16 text-center sm:px-6 sm:pb-20 sm:pt-24 lg:px-10 lg:pt-28">
           <div className="mx-auto max-w-4xl">
-            <p className="type-kicker text-byword-blue">For publishers and teams running one or more sites</p>
+            <p className="type-kicker text-byword-blue">Open source · Self-hosted first · Cloud coming soon</p>
             <h1 className="mx-auto mt-5 max-w-[16ch] text-[42px] font-semibold leading-[0.98] tracking-[-0.035em] text-foreground sm:text-6xl lg:text-[68px]">
               Turn scattered AI content work into reviewed CMS drafts.
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Your agents research and create through BlogFactory. Your team reviews revisions, resolves blockers, and sends approved work to the right CMS—as a draft.
+              Self-host the complete content operations control plane, connect your own AI, and keep reviewed delivery at the CMS draft boundary.
             </p>
-            <div className="mt-8">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <SourceLink />
               <WaitlistLink href={href} />
             </div>
             <ul className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-2" aria-label="Product guarantees">
@@ -242,6 +261,27 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
 
         <section className="px-4 pb-20 sm:px-6 lg:px-10">
           <ProductWorkspace />
+        </section>
+
+        <section className="border-y border-byword-border bg-card/75 px-4 py-16 sm:px-6 lg:px-10" aria-labelledby="editions-title">
+          <div className="mx-auto max-w-6xl">
+            <p className="type-kicker text-byword-blue">Choose your path</p>
+            <h2 id="editions-title" className="mt-3 max-w-3xl text-3xl font-semibold leading-tight sm:text-4xl">Run it yourself now. Let us run it later.</h2>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <BywordCard className="p-6">
+                <p className="type-kicker text-status-success">Open-source release candidate</p>
+                <h3 className="mt-3 text-xl font-semibold">Community self-hosted</h3>
+                <p className="type-body mt-3">Docker Compose, PostgreSQL, S3-compatible storage, the web control plane, and MCP—with your own AI credentials.</p>
+                <SourceLink className="mt-6" />
+              </BywordCard>
+              <BywordCard className="p-6">
+                <p className="type-kicker text-primary">Coming soon</p>
+                <h3 className="mt-3 text-xl font-semibold">BlogFactory Cloud</h3>
+                <p className="type-body mt-3">The same product with managed infrastructure, updates, backups, and workers. No checkout or hosted plan is live yet.</p>
+                <WaitlistLink href={href} className="mt-6" />
+              </BywordCard>
+            </div>
+          </div>
         </section>
 
         <section id="workflow" className="scroll-mt-20 border-y border-byword-border bg-card/75 px-4 py-20 sm:px-6 lg:px-10">
@@ -349,9 +389,10 @@ export function Marketing({ waitlistUrl }: { waitlistUrl?: string }) {
         <section className="px-4 py-24 text-center sm:px-6 lg:px-10">
           <BywordCard className="mx-auto max-w-5xl bg-secondary px-6 py-14 text-secondary-foreground sm:px-12 sm:py-16">
             <LockKeyhole className="mx-auto h-7 w-7 text-primary" aria-hidden="true" />
-            <h2 className="mt-5 text-3xl font-semibold leading-tight text-secondary-foreground sm:text-5xl">Bring your agents. Keep editorial control.</h2>
-            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-secondary-foreground/65">Join the BlogFactory private beta.</p>
-            <div className="mt-8">
+            <h2 className="mt-5 text-3xl font-semibold leading-tight text-secondary-foreground sm:text-5xl">Self-host the operation. Keep editorial control.</h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-secondary-foreground/65">Start with the open-source release candidate. BlogFactory Cloud is coming soon.</p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <SourceLink />
               <WaitlistLink href={href} />
             </div>
           </BywordCard>

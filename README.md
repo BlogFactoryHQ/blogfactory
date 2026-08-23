@@ -2,14 +2,15 @@
 
 BlogFactory is an agent control plane for multi-site content operations. Agents do the production work through MCP; people use the web app to monitor runs, review revisions, resolve blockers, manage destinations, and approve CMS draft delivery.
 
-[Public website](https://blogfactory.io) · [Open the app](https://app.blogfactory.io) · [MCP guide](docs/mcp.md) · [Architecture](docs/architecture.md) · [Operations](docs/operations.md)
+[Public website](https://blogfactory.io) · [Self-hosting](docs/self-hosting.md) · [Release plan](FEATURE_PLAN.md) · [MCP guide](docs/mcp.md) · [Architecture](docs/architecture.md) · [AGPL-3.0-only](LICENSE)
 
 ## Current phase
 
-BlogFactory is preparing for a private-beta launch.
+BlogFactory is preparing an open-source, self-hosted release. BlogFactory Cloud is coming soon.
 
 - The operational product, hosted MCP server, review workflow, Search Console tooling, and draft-only CMS delivery exist.
-- The public site is a waitlist one-pager. It does not contain pricing yet.
+- Docker Compose now describes the release-candidate self-host topology; its Docker smoke test and public-release gates remain open in `FEATURE_PLAN.md`.
+- The public site remains a waitlist until the repository is licensed, audited, public, and anonymously cloneable.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not implemented.
 - Public account creation is disabled. Password recovery is not exposed until real email delivery exists.
 - Users bring their own AI credentials; provider model-cost displays are not BlogFactory subscription pricing.
@@ -123,6 +124,17 @@ The frontend runs at `http://localhost:8080`; Hono runs at `http://localhost:300
 
 Minimum local configuration is workflow-dependent. Start with `DATABASE_URL`, `JWT_SECRET`, `API_KEY_ENCRYPTION_SECRET`, and storage credentials. Add only the provider credentials needed for the flow under test. Production web builds also require a valid `VITE_WAITLIST_URL`.
 
+## Self-host with Docker
+
+```bash
+cp .env.self-host.example .env
+# Fill every required blank and set ADMIN_EMAILS.
+docker compose pull
+docker compose up -d
+```
+
+Open `http://localhost:8080` and create the first account with the configured administrator email. The stack includes the web app, API, PostgreSQL, MinIO, migrations, persistent volumes, and the bounded scheduler. Follow the complete [self-hosting guide](docs/self-hosting.md) before exposing it to the internet.
+
 ## Commands
 
 ```bash
@@ -159,9 +171,11 @@ Database, tenant-isolation, ledger, and shared control-plane changes also requir
 - [Architecture and service ownership](docs/architecture.md)
 - [MCP, OAuth, tool catalog, and Review Card](docs/mcp.md)
 - [Operations, deployment, background work, and release acceptance](docs/operations.md)
+- [Self-hosting with Docker Compose](docs/self-hosting.md)
+- [Canonical release and Cloud roadmap](FEATURE_PLAN.md)
 - [RSS scheduler](docs/rss-scheduler.md)
 - [UI system and information architecture](UI_UX.md)
 - [Repository rules for coding agents](AGENTS.md)
 - [Documentation index and historical decision records](docs/README.md)
 
-This is a private product repository. No open-source license or public contribution policy is implied.
+This checkout is licensed for the v0.1 release candidate, but it is not a public release until every remaining Phase 0 gate in [FEATURE_PLAN.md](FEATURE_PLAN.md) is complete.

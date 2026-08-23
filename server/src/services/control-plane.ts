@@ -310,7 +310,7 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
       source_ref_id: post.sourceRefId,
       status: post.status,
       updated_at: post.updatedAt.toISOString(),
-      web_url: new URL(`/library/posts/${post.id}/preview`, process.env.WEB_APP_URL || process.env.MCP_RESOURCE_URL || "https://blogfactory.io").toString(),
+      web_url: new URL(`/library/posts/${post.id}/preview`, process.env.WEB_APP_URL || process.env.MCP_RESOURCE_URL || "http://localhost:8080").toString(),
     },
     source: { type: post.sourceType, reference: post.sourceRefId },
     editorial: {

@@ -5,6 +5,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 ## Read First
 
 - `README.md` describes the current product, architecture, setup, and acceptance checks.
+- `FEATURE_PLAN.md` is the canonical open-source-first and Cloud-coming-soon roadmap. Unchecked items are not shipped.
 - `docs/architecture.md` maps runtime surfaces, shared services, hosting, data boundaries, and change ownership.
 - `docs/mcp.md` is the current MCP catalog, OAuth, Review Card, and safety boundary.
 - `docs/operations.md` covers migrations, deployment, background work, and production verification.
@@ -25,10 +26,11 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 
 ## Launch Boundary
 
-- The product is preparing for private beta. The public surface is a waitlist one-pager; public signup is disabled.
+- The product is preparing an open-source, self-hosted release first. BlogFactory Cloud is coming soon.
+- The repository remains private and is licensed AGPL-3.0-only while the remaining Phase 0 gates in `FEATURE_PLAN.md` are completed; do not claim the open-source release is live before then.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks do not exist yet. AI provider model costs are not BlogFactory plan prices.
 - Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
-- Password recovery UI stays absent until real email delivery is connected. Do not add a control that only pretends to send recovery mail.
+- Password recovery UI stays absent until real email delivery is connected. Self-hosted signup is an explicit environment-gated bootstrap path, not a hosted signup launch.
 - Marketing is a separate Vite entry (`web/marketing.html` → `web/src/marketing-main.tsx` → `web/src/Marketing.tsx`), not an authenticated app route.
 - Marketing claims must match shipped behavior. Keep product composites labelled and require a real HTTPS `VITE_WAITLIST_URL` for production builds.
 

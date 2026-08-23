@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FactoryMark } from "@/components/layout/BywordSurface";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 
 export function authReturnTo(state: unknown, queryValue?: string | null) {
   const stateValue = state && typeof state === "object" && "returnTo" in state
@@ -35,17 +36,37 @@ function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
-export default function Auth() {
+export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = authReturnTo(location.state, new URLSearchParams(location.search).get("returnTo"));
-  const { login, devLogin } = useAuth();
+  const { login, devLogin, signup } = useAuth();
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [consent, setConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [signupEnabled, setSignupEnabled] = useState(selfHosted ?? false);
+
+  useEffect(() => {
+    if (selfHosted !== undefined) {
+      setSignupEnabled(selfHosted);
+      return;
+    }
+    let active = true;
+    api.get<{ signup_enabled: boolean }>("/auth/config")
+      .then((config) => { if (active) setSignupEnabled(config.signup_enabled); })
+      .catch(() => { if (active) setSignupEnabled(false); });
+    return () => { active = false; };
+  }, [selfHosted]);
+
+  useEffect(() => {
+    if (!signupEnabled && mode === "signup") setMode("login");
+  }, [mode, signupEnabled]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +74,20 @@ export default function Auth() {
     try {
       await login(email, password, rememberMe);
       toast.success("Welcome back!");
+      navigate(returnTo, { replace: true });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await signup(email, password, displayName, consent, false);
+      toast.success("Workspace created");
       navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -76,9 +111,20 @@ export default function Auth() {
 
   return (
     <AuthShell>
-        <h1 className="type-panel-title mb-1 text-lg">Sign in</h1>
-        <p className="type-body mb-6">Access your BlogFactory workspace.</p>
-        <form onSubmit={handleSignIn} className="space-y-5">
+        <h1 className="type-panel-title mb-1 text-lg">{mode === "login" ? "Sign in" : "Create your workspace"}</h1>
+        <p className="type-body mb-6">{mode === "login" ? "Access your BlogFactory workspace." : "Create the first account for this self-hosted installation."}</p>
+        <form onSubmit={mode === "login" ? handleSignIn : handleSignUp} className="space-y-5">
+              {mode === "signup" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="signup-name" className="text-xs">Name</Label>
+                  <Input
+                    id="signup-name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    autoComplete="name"
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="signin-email" className="text-xs">Email</Label>
                 <Input
@@ -100,12 +146,13 @@ export default function Auth() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  minLength={6}
                   required
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
+              {mode === "login" ? <div className="flex items-center space-x-2">
                 <Checkbox
                   id="remember-me"
                   checked={rememberMe}
@@ -114,11 +161,32 @@ export default function Auth() {
                 <Label htmlFor="remember-me" className="text-xs text-muted-foreground cursor-pointer">
                   Remember me for 30 days
                 </Label>
-              </div>
+              </div> : <div className="flex items-start space-x-2">
+                <Checkbox
+                  id="signup-consent"
+                  checked={consent}
+                  onCheckedChange={(checked) => setConsent(checked === true)}
+                />
+                <Label htmlFor="signup-consent" className="cursor-pointer text-xs leading-5 text-muted-foreground">
+                  I accept the terms and privacy policy configured by this installation.
+                </Label>
+              </div>}
 
-              <Button type="submit" className="w-full h-10" disabled={isLoading}>
-                {isLoading ? "Signing in..." : "Sign in"}
+              <Button type="submit" className="w-full h-10" disabled={isLoading || (mode === "signup" && !consent)}>
+                {isLoading ? "Working..." : mode === "login" ? "Sign in" : "Create account"}
               </Button>
+
+              {signupEnabled && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setMode(mode === "login" ? "signup" : "login")}
+                  disabled={isLoading}
+                >
+                  {mode === "login" ? "Create account" : "Back to sign in"}
+                </Button>
+              )}
 
               {import.meta.env.DEV && (
                 <div className="rounded-md border border-byword-border bg-muted/35 p-3">

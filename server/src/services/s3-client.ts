@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 
 const s3 = new S3Client({
@@ -64,6 +65,10 @@ export async function getObjectStream(
 
 export async function deleteObject(key: string) {
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+}
+
+export async function checkBucketAccess() {
+  await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
 }
 
 export function getPublicUrl(key: string): string | null {
