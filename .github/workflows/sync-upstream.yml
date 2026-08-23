@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -41,5 +42,10 @@ jobs:
           git merge --no-edit upstream/main
           npm ci
           npm run test:server
+          npm run typecheck
+          npm run test --workspace=web
           npm run build
           git push origin HEAD:main
+          gh workflow run deploy-cloud.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
