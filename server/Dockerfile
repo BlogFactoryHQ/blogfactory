@@ -1,8 +1,8 @@
-FROM oven/bun:1 AS base
+FROM oven/bun:1.3.14 AS base
 WORKDIR /app
 
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile --production 2>/dev/null || bun install --production
+RUN bun install --frozen-lockfile --production
 
 COPY src/ src/
 COPY tsconfig.json drizzle.config.ts ./
