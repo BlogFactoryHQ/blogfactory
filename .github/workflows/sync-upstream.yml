@@ -1,0 +1,42 @@
+name: Sync public core
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-public-core
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Merge and validate public core
+        run: |
+          git config user.name "blogfactory-cloud-sync[bot]"
+          git config user.email "blogfactory-cloud-sync[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/BlogFactoryHQ/blogfactory.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Private Cloud already contains the latest public core."
+            exit 0
+          fi
+          git merge --no-edit upstream/main
+          npm ci
+          npm run test:server
+          npm run build
+          git push origin HEAD:main
