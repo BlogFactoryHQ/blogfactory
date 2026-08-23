@@ -16,8 +16,10 @@ jobs:
         include:
           - image: blogfactory-api
             context: server
+            dockerfile: server/Dockerfile
           - image: blogfactory-web
-            context: web
+            context: .
+            dockerfile: web/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -37,6 +39,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

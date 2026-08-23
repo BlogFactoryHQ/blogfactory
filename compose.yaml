@@ -89,7 +89,8 @@ services:
   web:
     image: ghcr.io/blogfactoryhq/blogfactory-web:${BLOGFACTORY_VERSION:-v0.1.0}
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       args:
         VITE_WAITLIST_URL: ${VITE_WAITLIST_URL:-https://blogfactory.io}
     restart: unless-stopped
