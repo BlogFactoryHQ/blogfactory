@@ -94,9 +94,11 @@ The web app runs on `http://localhost:8080` and the API on `http://localhost:300
 ## Self-host with Docker
 
 ```bash
+git clone https://github.com/BlogFactoryHQ/blogfactory.git
+cd blogfactory
 cp .env.self-host.example .env
 # Fill every required value and set ADMIN_EMAILS.
-docker compose pull
+docker compose build --pull api web
 docker compose up -d
 ```
 
@@ -105,16 +107,16 @@ The verified topology includes the web app, API, PostgreSQL, MinIO, migrations, 
 ## How the system is shaped
 
 ```text
-operators ── app.blogfactory.io ─┐
-                                 ├─ shared tenant-scoped services ─ PostgreSQL + S3-compatible storage
-agents ───── blogfactory.io/mcp ─┘                                   └─ CMS drafts / Search Console / configured AI providers
+operators ── <instance-origin> ─────┐
+                                    ├─ shared tenant-scoped services ─ PostgreSQL + S3-compatible storage
+agents ───── <instance-origin>/mcp ─┘                                   └─ CMS drafts / Search Console / configured AI providers
 ```
 
 Web and MCP are transports over the same services. Queue classification, revision rules, review preflight, Search Console reads, permissions, and CMS draft delivery are not duplicated in the UI or agent tools.
 
 | Surface | Purpose |
 | --- | --- |
-| [Marketing](https://blogfactory.io) | Product overview and private-beta waitlist |
+| [Marketing](https://blogfactory.io) | Open-source product overview and Cloud launch updates |
 | [Authenticated app](https://app.blogfactory.io) | Operations, review, growth, settings, and audit |
 | `https://blogfactory.io/mcp` | Streamable HTTP agent work layer |
 | `/.well-known/oauth-protected-resource` | MCP protected-resource discovery |
