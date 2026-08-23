@@ -27,12 +27,12 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 ## Launch Boundary
 
 - The product is preparing an open-source, self-hosted release first. BlogFactory Cloud is coming soon.
-- The repository remains private and is licensed AGPL-3.0-only while the remaining Phase 0 gates in `FEATURE_PLAN.md` are completed; do not claim the open-source release is live before then.
+- The repository is public and licensed AGPL-3.0-only. Keep release language at “open-source release candidate” until the remaining Phase 0 gates in `FEATURE_PLAN.md` are completed.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks do not exist yet. AI provider model costs are not BlogFactory plan prices.
 - Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
 - Password recovery UI stays absent until real email delivery is connected. Self-hosted signup is an explicit environment-gated bootstrap path, not a hosted signup launch.
-- Marketing is a separate Vite entry (`web/marketing.html` → `web/src/marketing-main.tsx` → `web/src/Marketing.tsx`), not an authenticated app route.
-- Marketing claims must match shipped behavior. Keep product composites labelled and require a real HTTPS `VITE_WAITLIST_URL` for production builds.
+- Public marketing is owned by the private `BlogFactoryHQ/blogfactory-marketing` Astro repository and Cloudflare Pages project, not this application build.
+- Marketing claims must match shipped behavior. Keep product composites labelled; pricing remains absent until the product and security decisions are complete.
 
 ## Current Information Architecture
 
@@ -58,13 +58,12 @@ Grouped surfaces:
 - Backend: Hono TypeScript app; Bun for local backend development and self-tests.
 - Database: PostgreSQL with Drizzle ORM and additive SQL migrations.
 - Storage: S3-compatible storage, commonly Cloudflare R2.
-- Deploy: the public apex is Cloudflare-fronted; the Git-linked Vercel project builds the app/API and retains compatible marketing, `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
+- Deploy: the private marketing repository owns the Cloudflare-fronted apex; this Git-linked Vercel project builds the app/API and serves `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
 
 ## Project Map
 
 ```text
 api/index.js                         Vercel serverless entrypoint
-middleware.ts                       Vercel apex marketing fallback
 vercel.json                         Build, routing, headers, and function configuration
 cloudflare/cron-worker.ts           Six-hour bounded background drains
 .github/workflows/                  Validation and protected scheduled drains
@@ -81,8 +80,6 @@ server/src/services/operation-events.ts Sanitized 30-day operation ledger
 server/src/db/schema.ts              Drizzle schema
 server/src/db/migrations/            Additive SQL migrations
 web/src/App.tsx                      Current frontend routes
-web/marketing.html                   Public marketing HTML entry
-web/src/Marketing.tsx                Public release-candidate one-pager
 web/src/pages/Overview.tsx           Workspace digest
 web/src/pages/ReviewQueue.tsx        Prioritized action queue
 web/src/pages/Posts.tsx              Content inventory

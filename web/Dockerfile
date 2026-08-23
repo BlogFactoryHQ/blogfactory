@@ -1,9 +1,6 @@
 FROM node:22-alpine AS build
 WORKDIR /workspace/web
 
-ARG VITE_WAITLIST_URL=https://blogfactory.io
-ENV VITE_WAITLIST_URL=$VITE_WAITLIST_URL
-
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./

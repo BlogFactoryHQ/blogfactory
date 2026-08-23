@@ -4,8 +4,6 @@
 
 Copy `.env.example` to `.env` for local development. Set `DATABASE_URL`, `JWT_SECRET`, `API_KEY_ENCRYPTION_SECRET`, storage credentials, and only the integrations required for the workflow being tested. Do not commit populated environment files or expose secrets in shell output.
 
-Production web builds require `VITE_WAITLIST_URL` to be the real public HTTPS waitlist destination. The build fails closed when it is absent or invalid.
-
 The Docker Compose self-host contract is documented separately in [self-hosting.md](self-hosting.md). Use `.env.self-host.example`; never reuse production hosted secrets in a community installation.
 
 Self-hosted production sets `BLOGFACTORY_SELF_HOSTED=true`, which rejects missing and placeholder database, JWT, encryption, cron, administrator, origin, and S3 configuration before serving. `/api/health` remains liveness; `/api/ready` checks PostgreSQL plus S3 bucket access and redacts failure details.
@@ -22,13 +20,13 @@ Never run PostgreSQL integration tests against shared production Neon. Use a dis
 
 ## Production delivery
 
-The Vercel project `editorial-flow-main` is Git-linked to `main`. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, marketing entry, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
+The Vercel project `editorial-flow-main` is Git-linked to `main`. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
 
 - `/api/*`
 - `/mcp`
 - `/.well-known/oauth-protected-resource`
 
-The public apex is Cloudflare-fronted while the authenticated app/API runs on Vercel. The production host split is:
+The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare-fronted public apex while this public repository owns the authenticated app/API on Vercel. The production host split is:
 
 - [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
 - [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.

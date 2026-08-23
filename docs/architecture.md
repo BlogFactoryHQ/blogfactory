@@ -34,13 +34,7 @@ Community deployments use the same boundary on the installer's domain: Nginx ser
 
 ### Public marketing
 
-- HTML entry: `web/marketing.html`
-- React entry: `web/src/marketing-main.tsx`
-- Page: `web/src/Marketing.tsx`
-- Build input: `web/vite.config.ts`
-- Required production variable: `VITE_WAITLIST_URL`
-
-The one-pager explains the evidence → agent work → human review → CMS draft loop. It has no authenticated product state and must not import the app Router, auth providers, or React Query application. Its workspace visuals are labelled composites. Pricing is intentionally absent because no customer billing model has been implemented.
+The private `BlogFactoryHQ/blogfactory-marketing` Astro repository is the sole source for `blogfactory.io`, its blog, documentation, waitlist, and future pricing content. Cloudflare Pages serves that repository and proxies only the allowlisted API, MCP, and OAuth compatibility routes to `app.blogfactory.io`. This public application repository does not build a second marketing page.
 
 ### Authenticated web app
 
@@ -128,15 +122,14 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 
 | Layer | Current responsibility |
 | --- | --- |
-| Cloudflare | Public apex/front door and six-hour cron Worker |
-| Vercel project `editorial-flow-main` | Git-linked app/API build and serverless execution |
+| Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
+| Vercel project `editorial-flow-main` | Public-repository app/API build and serverless execution |
 | `vercel.json` | Migration/build command, API/MCP rewrites, redirects, headers, SPA fallbacks |
-| `middleware.ts` | Vercel fallback that maps the apex root to `marketing.html` |
 | GitHub Actions | Validation plus hourly/daily protected background drains |
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 
-The repository builds both `index.html` and `marketing.html`. Current production uses the public apex and app subdomain as separate surfaces, but the Vercel configuration retains an apex marketing fallback. Verify the actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
+This repository builds the authenticated app, public self-hosting help/docs entries, and the standalone MCP Review Card. Production uses the private marketing repository at the public apex and this repository at the app subdomain. Verify actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
 
 ## Authentication and authority
 
@@ -158,8 +151,7 @@ Do not add checkout until the plan's Cloud gates are complete. Keep customer bil
 
 | If you need to change… | Start here |
 | --- | --- |
-| Public one-pager copy or sections | `web/src/Marketing.tsx`, `web/marketing.html` |
-| Waitlist destination validation | `web/src/lib/https-url.ts`, `web/vite.config.ts` |
+| Public one-pager, blog, waitlist, or future pricing | private `BlogFactoryHQ/blogfactory-marketing` repository |
 | App navigation or route | `web/src/App.tsx`, `web/src/components/layout/AppSidebar.tsx` |
 | Shared page chrome | `web/src/components/layout/BywordSurface.tsx`, `UI_UX.md` |
 | API endpoint | matching file under `server/src/routes/`, then a shared service |
@@ -167,7 +159,7 @@ Do not add checkout until the plan's Cloud gates are complete. Keep customer bil
 | MCP tool | `contracts.ts`, `tools.ts`, exact catalog assertions, `docs/mcp.md` |
 | Review/preflight behavior | `server/src/services/control-plane.ts` or `publishing.ts` |
 | Scheduled work | `server/src/routes/cron.ts`, existing drain service, current trigger config |
-| Production routing | `vercel.json`, `middleware.ts`, hosting control plane, `docs/operations.md` |
+| Production routing | `vercel.json`, hosting control plane, `docs/operations.md` |
 
 ## Developer reading order
 
