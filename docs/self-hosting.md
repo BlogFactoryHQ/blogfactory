@@ -9,7 +9,7 @@ browser + MCP client -> your HTTPS domain -> Nginx web -> Hono API + /mcp
                                           scheduler ----+
 ```
 
-The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. GitHub and GHCR are needed to install or update images; an already-running pinned version continues without them.
+The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. Until the first versioned GHCR release is published, install and update BlogFactory by building from the public source repository.
 
 ## Supported deployment targets
 
@@ -29,16 +29,11 @@ Requirements: Docker Engine with Compose v2, at least 4 GB RAM for a small insta
 cp .env.self-host.example .env
 openssl rand -hex 32 # repeat independently for each blank password/secret
 docker compose config --quiet
-docker compose pull
-docker compose up -d
-```
-
-Set `BLOGFACTORY_URL` to the public origin, `ADMIN_EMAILS` to the first administrator address, and fill every required blank. Keep PostgreSQL and MinIO private; Compose exposes only the web port and binds the MinIO console to localhost. To build the same images from the checkout instead of pulling GHCR:
-
-```bash
 docker compose build --pull api web
 docker compose up -d
 ```
+
+Set `BLOGFACTORY_URL` to the public origin, `ADMIN_EMAILS` to the first administrator address, and fill every required blank. Keep PostgreSQL and MinIO private; Compose exposes only the web port and binds the MinIO console to localhost.
 
 Wait for infrastructure readiness, then create the first account with an address in `ADMIN_EMAILS`:
 
@@ -101,7 +96,17 @@ curl --fail http://localhost:8080/api/ready
 
 ## Upgrade and rollback
 
-Images are pinned through `BLOGFACTORY_VERSION`. Read the release notes and take a verified backup first:
+Before versioned GHCR images are available, update from a reviewed Git commit and rebuild both application images after taking a verified backup:
+
+```bash
+git fetch --tags origin
+git checkout <reviewed-commit-or-tag>
+docker compose build --pull api web
+docker compose up -d
+curl --fail http://localhost:8080/api/ready
+```
+
+After versioned images are published, `BLOGFACTORY_VERSION` will pin both application images. The release notes will identify the first supported tag and rollback procedure:
 
 ```bash
 sed -i.bak 's/^BLOGFACTORY_VERSION=.*/BLOGFACTORY_VERSION=v0.1.1/' .env
