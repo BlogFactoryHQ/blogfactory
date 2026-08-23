@@ -17,7 +17,7 @@ export async function extractContent(opts: ExtractOpts): Promise<{ content: stri
     case "youtube":
       return extractYoutube(opts.sourceValue);
     case "pdf":
-      return extractPdf(opts.sourceValue, opts.userId);
+      return extractPdf(opts.sourceValue);
     case "url":
       return extractUrl(opts.sourceValue, opts.extractModel);
     default:
@@ -81,7 +81,7 @@ async function extractYoutube(url: string): Promise<{ content: string; title?: s
   };
 }
 
-async function extractPdf(storagePath: string, userId: string): Promise<{ content: string; title?: string; metadata?: any }> {
+async function extractPdf(storagePath: string): Promise<{ content: string; title?: string; metadata?: any }> {
   const { body: pdfBuffer } = await getObject(storagePath);
   const base64 = pdfBuffer.toString("base64");
 

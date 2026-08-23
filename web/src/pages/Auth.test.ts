@@ -22,6 +22,7 @@ describe("authReturnTo", () => {
     expect(authReturnTo(null, "/mcp/oauth?external_auth_id=ext_auth_456"))
       .toBe("/mcp/oauth?external_auth_id=ext_auth_456");
     expect(authReturnTo({ returnTo: "//evil.example/steal" })).toBe("/");
+    expect(authReturnTo({ returnTo: "/\\evil.example/steal" })).toBe("/");
     expect(authReturnTo({ returnTo: "https://evil.example/steal" })).toBe("/");
     expect(authReturnTo(null, "https://evil.example/steal")).toBe("/");
     expect(authReturnTo(null)).toBe("/");
@@ -32,12 +33,15 @@ describe("authReturnTo", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(createElement(MemoryRouter, null, createElement(Auth)));
+      root.render(createElement(MemoryRouter, {
+        future: { v7_startTransition: true, v7_relativeSplatPath: true },
+      }, createElement(Auth)));
     });
 
     expect(container).toHaveTextContent("Sign in");
     expect(container).not.toHaveTextContent("Sign up");
     expect(container).not.toHaveTextContent("Create account");
+    expect(container).not.toHaveTextContent("Forgot password");
     await act(async () => root.unmount());
   });
 });

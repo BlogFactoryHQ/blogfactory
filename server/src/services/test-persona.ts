@@ -108,7 +108,6 @@ export async function testPersona(opts: {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
     if (response.status === 429) throw new Error("Rate limit exceeded. Please try again later.");
     if (response.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
     throw new Error(`AI request failed: ${response.status}`);

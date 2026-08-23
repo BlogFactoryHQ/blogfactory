@@ -1,73 +1,112 @@
 # BlogFactory
 
-BlogFactory is an agent control plane for multi-site content operations. Codex, ChatGPT, and other MCP clients can generate and inspect work; the web app remains the place to monitor runs, review revisions, resolve blockers, manage destinations, and approve CMS draft delivery.
+BlogFactory is an agent control plane for multi-site content operations. Agents do the production work through MCP; people use the web app to monitor runs, review revisions, resolve blockers, manage destinations, and approve CMS draft delivery.
 
-[Website](https://blogfactory.io) · [Open BlogFactory](https://app.blogfactory.io) · [Documentation](docs/README.md) · [MCP guide](docs/mcp.md)
+[Public website](https://blogfactory.io) · [Open the app](https://app.blogfactory.io) · [MCP guide](docs/mcp.md) · [Architecture](docs/architecture.md) · [Operations](docs/operations.md)
+
+## Current phase
+
+BlogFactory is preparing for a private-beta launch.
+
+- The operational product, hosted MCP server, review workflow, Search Console tooling, and draft-only CMS delivery exist.
+- The public site is a waitlist one-pager. It does not contain pricing yet.
+- Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not implemented.
+- Public account creation is disabled. Password recovery is not exposed until real email delivery exists.
+- Users bring their own AI credentials; provider model-cost displays are not BlogFactory subscription pricing.
 
 ## Product model
 
 ```text
-source -> generation job -> BlogFactory draft -> review/preflight -> CMS draft
+source evidence
+  -> generation or caller-authored draft
+  -> BlogFactory revision + SEO metadata
+  -> review packet + preflight
+  -> explicit human approval
+  -> selected CMS destination as a draft
 ```
 
-- **MCP is the work layer:** site-scoped reads, draft generation and editing, Search Console analysis, review packets, and CMS draft delivery.
-- **Web is the control layer:** operational digest, action queue, run diagnostics, content management, sources, integrations, settings, and an audit trail.
-- **The MCP Review Card is the approval layer:** revision summary, preflight checks, destination selection, explicit confirmation, and conflict-safe CMS draft delivery inside supported clients.
-- **The safety boundary is draft-only:** there is no MCP live-publish, delete, bulk-mutation, credential, or admin tool.
+- **MCP is the work layer:** site-scoped reads, generation, draft creation and editing, Search Console diagnosis, review, and CMS draft delivery.
+- **The web app is the control layer:** summaries, action queues, run diagnostics, content management, integrations, settings, and audit history.
+- **The Review Card is the approval layer:** revision summary, preflight, destination selection, and explicit CMS draft confirmation inside supported MCP clients.
+- **The authority ceiling is draft-only:** no MCP live publish, delete, credential access, arbitrary provider access, or admin tools.
 
-## Web surfaces
+## Production surfaces
+
+| Surface | Host / endpoint | Responsibility |
+| --- | --- | --- |
+| Public marketing | `https://blogfactory.io` | Private-beta one-pager and waitlist CTA |
+| Authenticated app | `https://app.blogfactory.io` | React control and review application |
+| Web API | `https://app.blogfactory.io/api/*` | Authenticated product API |
+| MCP | `https://blogfactory.io/mcp` | Streamable HTTP agent work layer |
+| OAuth metadata | `https://blogfactory.io/.well-known/oauth-protected-resource` | MCP protected-resource discovery |
+| Root API compatibility | `https://blogfactory.io/api/*` | Temporary compatibility path during host transition |
+
+The public apex is currently Cloudflare-fronted. The app/API is deployed from the Git-linked Vercel project `editorial-flow-main`. Root MCP, OAuth metadata, and compatibility API routes still reach the same backend boundary.
+
+## Marketing one-pager
+
+Marketing is a separate Vite entry, not a route inside the authenticated React application:
+
+```text
+web/marketing.html
+  -> web/src/marketing-main.tsx
+  -> web/src/Marketing.tsx
+```
+
+The same web build also produces the authenticated app from `web/index.html`. `VITE_WAITLIST_URL` is required for production builds and must be the real public HTTPS waitlist destination; the build fails closed when it is missing or invalid. The product workspace shown on the one-pager is an explicitly labelled product composite, not live customer data.
+
+## Application surfaces
 
 | Area | Route | Purpose |
 | --- | --- | --- |
-| Overview | `https://app.blogfactory.io/` | Attention counts, runs, 30-day outcomes, Search Growth, connections, and agent activity |
-| Create Content | `/create` | Manual article, campaign, and programmatic generation fallback |
-| Review Queue | `/review` | Prioritized blockers, requested changes, stale approvals, warnings, and draft review |
+| Overview | `/` | Workspace digest and attention summary |
+| Create Content | `/create` | Manual, campaign, and programmatic creation fallback |
+| Review Queue | `/review` | Prioritized blockers, requested changes, approvals, and warnings |
 | Runs | `/runs` | Generation queue, progress, errors, results, and retry controls |
-| Search Growth | `/overview/growth` | Search Console monitoring, 30-day growth planning, optimization, attributed outcomes, indexing, and internal links |
+| Search Growth | `/overview/growth` | Search Console, growth plans, optimization, indexing, and internal links |
 | Sources | `/sources/*` | RSS, campaigns, and batch import |
-| Content | `/library/*` | Content inventory and image gallery; `/library` is retained as the technical URL |
-| Control | `/control/*` | MCP connections, integrations, sites, brand voice, article settings, and usage |
+| Content | `/library/*` | Content inventory and image gallery |
+| Control | `/control/*` | MCP connections, integrations, sites, brand voice, settings, and usage |
 
-The removed News surface and legacy operation routes are not part of the current navigation.
+`/library` remains the technical URL, but visible product wording is **Content**. The old News surface has been removed.
 
-## MCP
-
-The hosted Streamable HTTP endpoint is `https://blogfactory.io/mcp`. It supports WorkOS browser OAuth and site-scoped personal connection tokens with three scopes: `content:read`, `drafts:write`, and `publish:draft`.
-
-The server publishes an exact 22-tool catalog. The control-plane tools are:
-
-- `get_workspace_digest` — the same operational summary used by Overview.
-- `list_action_items` — the same classification and priority order used by Review Queue.
-- `review_post` — the shared revision/preflight packet and MCP Review Card resource.
-
-See [docs/mcp.md](docs/mcp.md) for the complete catalog, connection commands, OAuth boundary, and review workflow.
-
-## Architecture
-
-| Layer | Technology |
-| --- | --- |
-| Web app | React 18, Vite, Tailwind CSS, React Query |
-| MCP App | `@modelcontextprotocol/ext-apps`, built as a separate inline Vite entry |
-| API and MCP | Hono and TypeScript |
-| Data | PostgreSQL with Drizzle ORM and additive migrations |
-| Storage | S3-compatible storage, commonly Cloudflare R2 |
-| Delivery | Vercel with Cloudflare and GitHub Actions background drains |
+## Repository map
 
 ```text
-web/                         React application and MCP Review Card
-server/src/routes/           Web API routes
-server/src/mcp/              MCP transport, contracts, tools, OAuth, and app resource
-server/src/services/         Shared content, control-plane, publishing, and ledger services
-server/src/db/migrations/    Additive PostgreSQL migrations
-api/                         Vercel serverless entrypoint
-docs/                        Current operations plus historical decision records
+api/index.js                 Vercel serverless adapter for the built Hono app
+server/src/index.ts          API, MCP, OAuth metadata, middleware, and route registration
+server/src/routes/           HTTP transport and request validation
+server/src/services/         Shared product/business logic used by web and MCP
+server/src/mcp/              Tool contracts, handlers, transport, OAuth, and Review Card resource
+server/src/db/               Drizzle schema, migrations, and migration runner
+
+web/index.html               Authenticated app HTML entry
+web/marketing.html           Public one-pager HTML entry
+web/src/App.tsx              Authenticated frontend route tree
+web/src/Marketing.tsx        Public marketing page
+web/src/pages/               Product pages
+web/src/components/          Shared UI and workflow components
+web/src/mcp-review/          Standalone MCP Review Card entry
+
+cloudflare/cron-worker.ts    Six-hour campaign, SEO, and image fallback drain
+.github/workflows/           Validation, hourly RSS, and daily background drains
+middleware.ts                Vercel apex marketing fallback routing
+vercel.json                  Build, redirects, headers, rewrites, and function configuration
 ```
 
-Web and MCP share the control-plane services and contracts. They do not maintain separate action-item classification, review preflight, or publishing implementations. Authenticated MCP calls and important web mutations write sanitized `operation_events` records; the existing scheduler removes them after 30 days.
+See [docs/architecture.md](docs/architecture.md) for request flows, service ownership, background jobs, data boundaries, and a “where do I change this?” guide.
 
-SEO Growth Plans reuse site-scoped campaigns as an operator-controlled planning layer. Search Console opportunities become dated refresh, snippet, internal-link, or indexing tasks; users can also add new-content targets. Regeneration replaces only untouched items, generated work enters the existing review flow, and analytics reports correlated 7/14/28-day GSC movement without claiming causation.
+## Stack
 
-## Local setup
+- npm workspaces: `web` and `server`
+- Frontend: React 18, Vite, Tailwind CSS, React Query, shadcn/ui-style primitives
+- Backend: Hono and TypeScript; Bun for local development and backend self-tests
+- Data: PostgreSQL and Drizzle ORM with additive SQL migrations
+- Storage: S3-compatible object storage, commonly Cloudflare R2
+- Authentication: application JWT plus WorkOS browser OAuth for MCP
+- Delivery: Cloudflare at the public apex, Vercel for app/API, Cloudflare Worker and GitHub Actions for scheduled drains
+
+## Local development
 
 Requires Node.js 22, Bun, PostgreSQL, and S3-compatible storage.
 
@@ -82,26 +121,47 @@ npm run dev
 
 The frontend runs at `http://localhost:8080`; Hono runs at `http://localhost:3000`. Vite proxies `/api/*` and `/mcp` to the backend.
 
-## Verification
+Minimum local configuration is workflow-dependent. Start with `DATABASE_URL`, `JWT_SECRET`, `API_KEY_ENCRYPTION_SECRET`, and storage credentials. Add only the provider credentials needed for the flow under test. Production web builds also require a valid `VITE_WAITLIST_URL`.
+
+## Commands
 
 ```bash
-npm run build
+npm run dev                     # server + web
+npm run build                   # server + app + marketing + MCP Review Card
+npm run typecheck               # web TypeScript
+npm run test --workspace=web    # frontend tests
+npm run test:server             # backend self-tests
+npm run test:postgres           # disposable PostgreSQL integration suite
+npm run test:mcp:pilot          # prepared authenticated live pilot only
+npm run db:migrate              # apply additive migrations
+```
+
+Never point `npm run test:postgres` at shared production Neon.
+
+## Verification
+
+Before a normal pull request or release:
+
+```bash
 npm run typecheck
+npm run lint --workspace=web
 npm run test --workspace=web
 npm run test:server
-npm run test:postgres
+VITE_WAITLIST_URL=https://your-real-waitlist.example npm run build
+npm audit --audit-level=high
 git diff --check
 ```
 
-Production acceptance also checks `/api/health` = 200, unauthenticated `/mcp` = 401 Bearer, OAuth protected-resource metadata = 200, the exact 22-tool catalog, and the authenticated generate → job → review → CMS draft workflow.
+Database, tenant-isolation, ledger, and shared control-plane changes also require `npm run test:postgres` against a disposable database. Production acceptance is documented in [docs/operations.md](docs/operations.md); a green build alone is not live verification.
 
-## Repository guide
+## Documentation
 
-- [Operations and deployment](docs/operations.md)
-- [MCP and OAuth](docs/mcp.md)
+- [Architecture and service ownership](docs/architecture.md)
+- [MCP, OAuth, tool catalog, and Review Card](docs/mcp.md)
+- [Operations, deployment, background work, and release acceptance](docs/operations.md)
 - [RSS scheduler](docs/rss-scheduler.md)
-- [Documentation index](docs/README.md)
-- [UI system](UI_UX.md)
-- [Agent and implementation rules](AGENTS.md)
+- [UI system and information architecture](UI_UX.md)
+- [Repository rules for coding agents](AGENTS.md)
+- [Documentation index and historical decision records](docs/README.md)
 
 This is a private product repository. No open-source license or public contribution policy is implied.

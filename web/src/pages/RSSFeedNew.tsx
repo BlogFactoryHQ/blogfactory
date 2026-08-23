@@ -365,32 +365,6 @@ export default function RSSFeedNew() {
     }
   };
 
-  const isFormValid = () => {
-    if (!feedName) return false;
-
-    switch (platform) {
-      case "rss": {
-        if (!sourceUrl) return false;
-        const urlValidation = validateSourceUrl(sourceUrl);
-        return urlValidation.valid;
-      }
-      case "youtube":
-        if (!youtubeChannelId) return false;
-        // Channel ID should be 24 characters starting with UC
-        return /^UC[\w-]{22}$/.test(youtubeChannelId);
-      case "reddit": {
-        if (!subreddit) return false;
-        const redditValidation = validatePlatformInput("reddit", subreddit);
-        return redditValidation.valid;
-      }
-      case "hackernews":
-      case "github":
-        return true;
-      default:
-        return false;
-    }
-  };
-
   const validateAndGetError = (): string | null => {
     if (!feedName) return "Please enter a feed name.";
 

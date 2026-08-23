@@ -5,10 +5,9 @@ import type { PreviewFeedItem } from "./FeedPreviewItem";
 interface FeedHealthSummaryProps {
   items: PreviewFeedItem[];
   fetchedAt: Date | null;
-  platform: string;
 }
 
-export function FeedHealthSummary({ items, fetchedAt, platform }: FeedHealthSummaryProps) {
+export function FeedHealthSummary({ items, fetchedAt }: FeedHealthSummaryProps) {
   const total = items.length;
   const newCount = items.filter((i) => i.status === "new").length;
   const dupCount = items.filter((i) => i.status === "duplicate").length;

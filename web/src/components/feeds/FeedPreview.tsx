@@ -14,7 +14,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Eye, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { stripHtml, wordCount } from "@/lib/html-utils";
 import { FeedPreviewItem, type PreviewFeedItem, type ItemStatus } from "./FeedPreviewItem";
 import { FeedHealthSummary } from "./FeedHealthSummary";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,7 +23,6 @@ interface FeedPreviewProps {
   platformConfig: Record<string, unknown>;
   filterType: string;
   filterValue?: number;
-  feedSourceUrl?: string;
   keywords?: string[];
 }
 
@@ -45,7 +43,7 @@ type PreviewSourceItem = {
 };
 type PreviewResponse = { items?: PreviewSourceItem[]; error?: string };
 
-export function FeedPreview({ platform, platformConfig, filterType, filterValue, feedSourceUrl, keywords = [] }: FeedPreviewProps) {
+export function FeedPreview({ platform, platformConfig, filterType, filterValue, keywords = [] }: FeedPreviewProps) {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -180,7 +178,7 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
           <div className="px-6 py-3 space-y-3 border-b border-border">
             {/* Health summary */}
             {!isLoading && items.length > 0 && (
-              <FeedHealthSummary items={items} fetchedAt={fetchedAt} platform={platform} />
+              <FeedHealthSummary items={items} fetchedAt={fetchedAt} />
             )}
 
             {/* Controls row */}
@@ -263,7 +261,6 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
                     <FeedPreviewItem
                       key={index}
                       item={item}
-                      index={index}
                       showFullTextColumn={showFullTextColumn}
                     />
                   ))}

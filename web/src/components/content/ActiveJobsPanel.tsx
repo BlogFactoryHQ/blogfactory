@@ -1,5 +1,5 @@
 import { TrackedJob } from "@/hooks/useJobTracker";
-import { GenerationProgress, SourceType } from "@/components/content/GenerationProgress";
+import { GenerationProgress } from "@/components/content/GenerationProgress";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 

@@ -9,7 +9,6 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 // ── users (replaces Supabase auth.users + profiles) ──
 export const users = pgTable("users", {

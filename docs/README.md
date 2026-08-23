@@ -2,12 +2,15 @@
 
 ## Current product and operations
 
-- [Repository README](../README.md): product model, current surfaces, architecture, setup, and acceptance checks.
+- [Repository README](../README.md): current phase, product model, production surfaces, setup, and acceptance checks.
+- [Architecture and developer map](architecture.md): runtime entries, service ownership, tenancy, hosting, background work, and where to make changes.
 - [MCP and OAuth](mcp.md): 22-tool catalog, connection setup, Review Card, permissions, and safety boundary.
-- [Operations and deployment](operations.md): environment, migrations, Vercel, background drains, ledger retention, and production verification.
+- [Operations and deployment](operations.md): environment, migrations, host split, background drains, ledger retention, and production verification.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.
 - [UI system](../UI_UX.md): Device Console rules, current information architecture, and responsive behavior.
 - [Agent context](../AGENTS.md): repository-specific implementation and release rules.
+
+New developers should read the README, architecture map, and AGENTS context first. Pricing and billing are launch decisions, not existing product capabilities; see the architecture map before proposing either.
 
 ## Historical decision records
 

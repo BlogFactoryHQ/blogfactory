@@ -62,6 +62,14 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 - Control tabs: MCP Connections, Integrations, Sites, Brand Voice, Article Settings, Usage.
 - Post editing and preview use `/library/posts/:id/edit` and `/library/posts/:id/preview`.
 
+## Marketing Surface
+
+- Marketing is a separate Vite entry: `web/marketing.html` → `web/src/marketing-main.tsx` → `web/src/Marketing.tsx`.
+- Keep it independent from the authenticated Router, AuthProvider, React Query application, and Device Console navigation.
+- Lead with the shipped evidence → agent work → human review → CMS draft loop and private-beta waitlist.
+- Label product composites clearly. Do not imply live customer data, automatic publishing, public signup, or customer scale that has not been verified.
+- `VITE_WAITLIST_URL` must be a real HTTPS destination. Do not add a pricing section until plans, limits, entitlement ownership, and billing behavior are decided.
+
 ## MCP Review Card
 
 - Keep the Review Card a small standalone MCP App; do not embed the primary Router, Auth, or React Query application.

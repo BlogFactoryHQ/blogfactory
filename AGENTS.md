@@ -5,6 +5,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 ## Read First
 
 - `README.md` describes the current product, architecture, setup, and acceptance checks.
+- `docs/architecture.md` maps runtime surfaces, shared services, hosting, data boundaries, and change ownership.
 - `docs/mcp.md` is the current MCP catalog, OAuth, Review Card, and safety boundary.
 - `docs/operations.md` covers migrations, deployment, background work, and production verification.
 - `UI_UX.md` defines the white Device Console system and current information architecture.
@@ -21,6 +22,15 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 - Reuse BlogFactory's existing generation, Search Console, publishing, tenant authorization, and credentials. Do not create a second service or provider flow.
 - Every database query and mutation must remain user- and site-scoped.
 - Optimistic locking and publishing idempotency are product guarantees, not optional implementation details.
+
+## Launch Boundary
+
+- The product is preparing for private beta. The public surface is a waitlist one-pager; public signup is disabled.
+- Customer pricing, subscriptions, checkout, entitlements, and billing webhooks do not exist yet. AI provider model costs are not BlogFactory plan prices.
+- Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
+- Password recovery UI stays absent until real email delivery is connected. Do not add a control that only pretends to send recovery mail.
+- Marketing is a separate Vite entry (`web/marketing.html` → `web/src/marketing-main.tsx` → `web/src/Marketing.tsx`), not an authenticated app route.
+- Marketing claims must match shipped behavior. Keep product composites labelled and require a real HTTPS `VITE_WAITLIST_URL` for production builds.
 
 ## Current Information Architecture
 
@@ -46,12 +56,16 @@ Grouped surfaces:
 - Backend: Hono TypeScript app; Bun for local backend development and self-tests.
 - Database: PostgreSQL with Drizzle ORM and additive SQL migrations.
 - Storage: S3-compatible storage, commonly Cloudflare R2.
-- Deploy: Vercel runs production migrations, builds both workspaces, serves `web/dist`, and routes `/api/*`, `/mcp`, and OAuth metadata to `api/index.ts`.
+- Deploy: the public apex is Cloudflare-fronted; the Git-linked Vercel project builds the app/API and retains compatible marketing, `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
 
 ## Project Map
 
 ```text
-api/index.ts                         Vercel serverless entrypoint
+api/index.js                         Vercel serverless entrypoint
+middleware.ts                       Vercel apex marketing fallback
+vercel.json                         Build, routing, headers, and function configuration
+cloudflare/cron-worker.ts           Six-hour bounded background drains
+.github/workflows/                  Validation and protected scheduled drains
 server/src/index.ts                  Hono app and route registration
 server/src/routes/control-plane.ts   Shared Overview and Review Queue HTTP endpoints
 server/src/routes/operations.ts      Tenant-scoped operation ledger reads
@@ -65,6 +79,8 @@ server/src/services/operation-events.ts Sanitized 30-day operation ledger
 server/src/db/schema.ts              Drizzle schema
 server/src/db/migrations/            Additive SQL migrations
 web/src/App.tsx                      Current frontend routes
+web/marketing.html                   Public marketing HTML entry
+web/src/Marketing.tsx                Public private-beta one-pager
 web/src/pages/Overview.tsx           Workspace digest
 web/src/pages/ReviewQueue.tsx        Prioritized action queue
 web/src/pages/Posts.tsx              Content inventory
@@ -133,7 +149,7 @@ npm run db:generate
 - Frontend changes: targeted lint, `npm run typecheck`, web tests, and production build.
 - Backend/MCP changes: server self-tests, exact catalog assertions, PostgreSQL integration, and production build.
 - Database integration writes must use a disposable PostgreSQL database, never shared production Neon.
-- Full web lint has known unrelated debt; separate changed-file errors from existing warnings.
+- Run the full web lint; do not hide changed-file failures behind warning filters.
 - A local missing backend or environment may return `/api/*` 500; do not misattribute that to UI-only work.
 - Before release: `git diff --check`, clean intended diff, commit, push, and wait for the Git-linked Vercel deployment to become Ready.
 - Production acceptance: `/api/health` 200; unauthenticated `/mcp` 401 with Bearer challenge; OAuth metadata 200; commit SHA matches deployment; `blogfactory.io` alias is attached; relevant live asset/API markers are present.

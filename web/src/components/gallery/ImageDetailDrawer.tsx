@@ -27,7 +27,7 @@ import { Link } from "react-router-dom";
 import { safeFormatDate } from "@/lib/date-format";
 import { resolveSignedUrl } from "@/hooks/useSignedUrl";
 import type { ImageAsset } from "@/hooks/useImageAssets";
-import { imageProviderName, imageSourceLabel, isStockProvider } from "@/lib/image-labels";
+import { imageProviderName, imageSourceLabel } from "@/lib/image-labels";
 
 interface ImageDetailDrawerProps {
   image: ImageAsset | null;
@@ -68,7 +68,6 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
   );
   const sourceUrl = image.attribution_url || image.source_url;
   const sourceName = imageProviderName(image.provider);
-  const isStock = image.source_kind === "stock" || isStockProvider(image.provider);
   const isAi = image.source_kind === "ai" || image.provider === "openrouter-image";
   const sourceKindLabel = imageSourceLabel(image);
 

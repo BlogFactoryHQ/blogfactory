@@ -29,7 +29,6 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  RefreshCw,
   ImagePlus,
   Star,
 } from "lucide-react";

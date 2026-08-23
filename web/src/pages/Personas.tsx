@@ -1119,7 +1119,7 @@ export default function Personas() {
                               <PersonaPluginsTab pluginsConfig={editedPersona.plugins_config || {}} onChange={(config) => updateEditedPersona({ plugins_config: config })} />
                             </TabsContent>
                             <TabsContent value="test" className="mt-0">
-                              <PersonaTestTab personaId={editedPersona.id} personaName={editedPersona.name} />
+                              <PersonaTestTab personaId={editedPersona.id} />
                             </TabsContent>
                           </div>
                         </Tabs>

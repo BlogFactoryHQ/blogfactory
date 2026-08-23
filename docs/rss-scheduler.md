@@ -26,6 +26,7 @@ GitHub files:
 ```text
 .github/workflows/rss-cron.yml
 .github/workflows/full-cron.yml
+.github/workflows/campaign-cron.yml
 ```
 
 Required secrets:

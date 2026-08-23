@@ -153,7 +153,7 @@ export function OptimizePanel() {
   const { activeSite } = useSites();
   const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
   const { inspectBatch } = useSearchConsoleToolkit();
-  const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
+  const { pages, isLoading: isLoadingPages, analyze, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
   const { addItem: addPlanItem } = useSeoGrowthPlan();
   const initialStatus = (params.get("status") as OptimizeStatus | null) || "needs_attention";
@@ -250,20 +250,6 @@ export function OptimizePanel() {
       toast.success("Search Console disconnected");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to disconnect");
-    }
-  };
-
-  const handleViewSavedAnalysis = async (page: OptimizePage) => {
-    try {
-      const result = await loadAnalyses.mutateAsync({ pageUrl: page.pageUrl, targetQuery: page.targetQuery });
-      const latest = result.analyses[0];
-      if (!latest) {
-        toast.info("No saved analysis for this page yet");
-        return;
-      }
-      setAnalysis(latest);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load analysis");
     }
   };
 

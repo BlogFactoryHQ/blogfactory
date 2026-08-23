@@ -99,7 +99,7 @@ const providers: IndexingProvider[] = ["indexnow", "bing"];
 
 export function IndexingPanel() {
   const { activeSite } = useSites();
-  const { integrations, submissions, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls, startGoogleOAuth } = useIndexing();
+  const { integrations, submissions, isLoading, saveIntegration, testIntegration, deleteIntegration, submitUrls, startGoogleOAuth } = useIndexing();
   const { integration: searchConsoleIntegration } = useSearchConsole();
   const { inspect, sitemaps } = useSearchConsoleToolkit();
   const [providerToConnect, setProviderToConnect] = useState<IndexingProvider | null>(null);

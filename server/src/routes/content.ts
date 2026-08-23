@@ -177,7 +177,6 @@ contentRoutes.post("/extract", async (c) => {
 });
 
 contentRoutes.post("/fetch-social", async (c) => {
-  const userId = getUserId(c);
   const body = await readJsonObject(c);
 
   // Map frontend request shape to service interface

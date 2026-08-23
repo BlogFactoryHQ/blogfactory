@@ -93,7 +93,7 @@ app.onError(handleApiError);
 export { app };
 
 // Default export for Bun local development
-console.log("Backend listening on port 3000");
+if (import.meta.main) console.log("Backend listening on port 3000");
 export default {
   port: 3000,
   fetch: app.fetch,

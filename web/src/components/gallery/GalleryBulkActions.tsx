@@ -70,7 +70,7 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
       for (let i = 0; i < selectedImages.length; i += batchSize) {
         const batch = selectedImages.slice(i, i + batchSize);
         await Promise.all(
-          batch.map(async (img, batchIdx) => {
+          batch.map(async (img) => {
             try {
               const url = await resolveSignedUrl(img.storage_path);
               const res = await fetch(url);

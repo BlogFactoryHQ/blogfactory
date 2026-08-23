@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { safeError } from "../http/error-contract.js";
-import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings, sites, siteIntegrations } from "../db/schema.js";
+import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, sites, siteIntegrations } from "../db/schema.js";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { getOpenRouterKey } from "./api-keys.js";
@@ -14,7 +14,6 @@ import {
   resolveOpenRouterTextModel,
 } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
-import { slugify } from "./slugify.js";
 import { getEffectiveSettings, getGlobalSettings, getPinnedSiteSettings, updateGlobalSettings } from "./user-settings.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings } from "./sports-news.js";
 import { fetchSocialContent } from "./fetch-social-content.js";
@@ -22,7 +21,7 @@ import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
 import { completeSentenceWithinLimit, isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 import { enqueueSeoMetadata, kickSeoMetadataWorker } from "./seo-metadata.js";
-import type { GenerateOpts, GenerationSettings, SeoQaCheck, SourceArticle } from "./generation-types.js";
+import type { GenerateOpts, GenerationSettings, SourceArticle } from "./generation-types.js";
 export type { GenerateOpts } from "./generation-types.js";
 import {
   expandDraftVariations,
@@ -46,16 +45,12 @@ import {
   buildSettingsInstructions,
   buildWriterSystemPrompt,
   findIndexedTopicDuplicate,
-  internalLinkTarget,
   normalizeList,
-  normalizeTopic,
   resolveGenerationContract,
   settingBool,
   settingNumber,
   settingValue,
-  tokenize,
   topicCoveredByText,
-  truncatePromptText,
   type GenerationContract,
 } from "./generation-contracts.js";
 export {

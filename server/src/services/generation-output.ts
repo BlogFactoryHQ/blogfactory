@@ -110,7 +110,7 @@ export function enforceGeneratedArticleContracts(content: string, opts: { source
   let next = normalizeArticleMarkdown(content, opts.topic, opts.settings);
   next = stripInternalSeoSections(next);
   next = normalizeGeneratedStructure(next);
-  if (isBlogDraftSource(opts.sourceType)) next = ensureSectionHeadings(next, opts.topic, opts.settings);
+  if (isBlogDraftSource(opts.sourceType)) next = ensureSectionHeadings(next, opts.settings);
   next = ensureInternalMarkdownLinks(next, opts.settings);
   return next;
 }
@@ -282,7 +282,7 @@ function stripInternalSeoSections(content: string) {
     .trim();
 }
 
-function ensureSectionHeadings(content: string, topic: string, settings?: GenerationSettings) {
+function ensureSectionHeadings(content: string, settings?: GenerationSettings) {
   if (markdownHeadings(content, 2).length >= 2) return content;
   const blocks = content.split(/\n{2,}/);
   const bodyIndexes = blocks

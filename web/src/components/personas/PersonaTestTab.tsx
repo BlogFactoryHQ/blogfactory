@@ -46,10 +46,9 @@ interface TestResult {
 
 interface PersonaTestTabProps {
   personaId: string;
-  personaName: string;
 }
 
-export function PersonaTestTab({ personaId, personaName }: PersonaTestTabProps) {
+export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
   const [testInput, setTestInput] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [isRunning, setIsRunning] = useState(false);

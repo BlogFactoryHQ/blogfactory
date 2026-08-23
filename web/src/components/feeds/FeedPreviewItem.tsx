@@ -40,11 +40,10 @@ export interface PreviewFeedItem {
 
 interface FeedPreviewItemProps {
   item: PreviewFeedItem;
-  index: number;
   showFullTextColumn: boolean;
 }
 
-export function FeedPreviewItem({ item, index, showFullTextColumn }: FeedPreviewItemProps) {
+export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 

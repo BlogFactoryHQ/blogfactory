@@ -228,7 +228,9 @@ describe("MCP connections panel", () => {
 
     expect(document.body).toHaveTextContent("MCP access");
     expect(document.body).toHaveTextContent("1 active");
-    await vi.waitFor(() => expect(document.body).toHaveTextContent("20 available"));
+    await act(async () => {
+      await vi.waitFor(() => expect(document.body).toHaveTextContent("20 available"));
+    });
     expect(document.body).toHaveTextContent("generate_draft");
     expect(document.body).toHaveTextContent("push_to_cms_draft");
     expect(document.body).toHaveTextContent("review_post");
