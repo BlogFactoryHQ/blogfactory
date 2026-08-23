@@ -37,6 +37,9 @@ vi.mock("@/hooks/useSearchConsole", () => ({
   useSearchConsole: () => ({ integration: { id: "gsc-1", status: "connected" } }),
   useSearchConsoleToolkit: () => ({ analytics }),
 }));
+vi.mock("@/hooks/useSeoGrowthPlan", () => ({
+  useSeoGrowthAttribution: () => ({ data: { scope: "blogfactory_correlated_content", disclaimer: "Correlated, not causal.", freshness: { dataThrough: "2026-08-20", syncedAt: null }, cohort: [] } }),
+}));
 
 describe("SearchAnalyticsPanel", () => {
   it("shows preliminary control and canonical provenance", () => {

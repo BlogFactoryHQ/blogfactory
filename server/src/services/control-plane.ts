@@ -16,6 +16,7 @@ import { getSearchConsoleInsights } from "./search-console.js";
 import { listOperationEvents } from "./operation-events.js";
 import { postRevisionSnapshot, type PostRevisionSnapshot } from "./post-revisions.js";
 import { encryptedCredentialStatus, type CredentialStatus } from "./api-keys.js";
+import { getSeoGrowthPlan } from "./seo-growth-plan.js";
 
 export const ACTION_KINDS = [
   "missing_revision",
@@ -352,7 +353,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
   const now = input.now || new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const actions = await listActionItems({ userId: input.userId, siteId: input.siteId, limit: 5, now });
-  const [[runCounts], recentRuns, [outcomes], [cost], [oauthConnections], [personalConnections], activity, searchGrowth, recentOutputs, cmsConnections] = await Promise.all([
+  const [[runCounts], recentRuns, [outcomes], [cost], [oauthConnections], [personalConnections], activity, searchGrowth, seoPlan, recentOutputs, cmsConnections] = await Promise.all([
     db.select({
       running: sql<number>`count(*) filter (where ${jobs.status} in ('pending', 'running'))::int`,
       failed: sql<number>`count(*) filter (where ${jobs.status} = 'failed')::int`,
@@ -375,6 +376,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
     )),
     listOperationEvents({ userId: input.userId, siteId: input.siteId, limit: 8 }),
     getSearchConsoleInsights(input.userId, input.siteId),
+    getSeoGrowthPlan(input.userId, input.siteId, now),
     db.select({ id: posts.id, title: posts.title, status: posts.status, editorial_state: posts.editorialState, source_type: posts.sourceType, updated_at: posts.updatedAt })
       .from(posts).where(and(eq(posts.userId, input.userId), eq(posts.siteId, input.siteId))).orderBy(desc(posts.updatedAt)).limit(5),
     db.select({ status: siteIntegrations.status, credentialsEncrypted: siteIntegrations.credentialsEncrypted })
@@ -409,6 +411,17 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       totals: searchGrowth.totals,
       opportunity_scope: searchGrowth.opportunity_scope,
       provenance: searchGrowth.provenance,
+      plan: seoPlan ? {
+        summary: seoPlan.summary,
+        next_items: seoPlan.items.filter((item) => item.stage === "planned").slice(0, 3).map((item) => ({
+          id: item.id,
+          planned_for: item.plannedFor,
+          action_type: item.actionType,
+          target_query: item.keyword,
+          page_url: item.pageUrl,
+        })),
+        data_through: seoPlan.freshness.dataThrough,
+      } : null,
     },
     recent_outputs: recentOutputs.map((post) => ({ ...post, updated_at: post.updated_at.toISOString() })),
     connections: {

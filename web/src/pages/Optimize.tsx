@@ -40,6 +40,7 @@ import {
 } from "@/hooks/useOptimize";
 import { useIndexing } from "@/hooks/useIndexing";
 import { useSites } from "@/hooks/useSites";
+import { type SeoActionType, useSeoGrowthPlan } from "@/hooks/useSeoGrowthPlan";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { cn } from "@/lib/utils";
 import { toggleInspectionSelection } from "@/lib/search-console";
@@ -154,6 +155,7 @@ export function OptimizePanel() {
   const { inspectBatch } = useSearchConsoleToolkit();
   const { pages, isLoading: isLoadingPages, analyze, loadAnalyses, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
+  const { addItem: addPlanItem } = useSeoGrowthPlan();
   const initialStatus = (params.get("status") as OptimizeStatus | null) || "needs_attention";
   const initialOpportunity = (params.get("opportunity") as OptimizeOpportunity | null) || "all";
   const [status, setStatus] = useState<OptimizeStatus>(statuses.some((item) => item.value === initialStatus) ? initialStatus : "needs_attention");
@@ -270,6 +272,15 @@ export function OptimizePanel() {
       setPageDetail(await loadPageDetail.mutateAsync(page.pageUrl));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load page detail");
+    }
+  };
+
+  const handleAddToPlan = async (page: Pick<OptimizePageInsight, "pageUrl" | "topQuery" | "opportunities" | "suggestedAction">, actionType = planActionType(page.opportunities)) => {
+    try {
+      await addPlanItem.mutateAsync({ targetQuery: page.topQuery, pageUrl: page.pageUrl, actionType, title: page.suggestedAction });
+      toast.success("Added to SEO Growth Plan");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add to plan");
     }
   };
 
@@ -512,6 +523,7 @@ export function OptimizePanel() {
                           <div className="flex flex-wrap justify-end gap-2">
                             <Button variant="outline" size="sm" className="border-byword-blue/35 text-byword-blue hover:bg-byword-blue-soft" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
                             <Button variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary/10" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
+                            <Button variant="outline" size="sm" onClick={() => handleAddToPlan(page)} disabled={addPlanItem.isPending}>Add to plan</Button>
                             {tracked && (
                               <Button variant="ghost" size="sm" onClick={() => markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending}>
                                 Done
@@ -591,6 +603,7 @@ export function OptimizePanel() {
         indexingConnected={connectedIndexing}
         isSubmitting={submitUrls.isPending}
         onSubmitAfterEdit={handleSubmitAfterEdit}
+        onAddToPlan={handleAddToPlan}
         onOpenChange={(open) => !open && setPageDetail(null)}
       />
     </>
@@ -924,12 +937,14 @@ function PageDetailSheet({
   indexingConnected,
   isSubmitting,
   onSubmitAfterEdit,
+  onAddToPlan,
   onOpenChange,
 }: {
   detail: OptimizePageDetail | null;
   indexingConnected: boolean;
   isSubmitting: boolean;
   onSubmitAfterEdit: (pageUrl: string) => Promise<void>;
+  onAddToPlan: (page: Pick<OptimizePageInsight, "pageUrl" | "topQuery" | "opportunities" | "suggestedAction">, actionType?: SeoActionType) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
   const { inspect } = useSearchConsoleToolkit();
@@ -988,7 +1003,7 @@ function PageDetailSheet({
               <div className="mt-3 space-y-3">
                 {actions.map((item, index) => (
                   <div key={`${item.opportunity}-${index}`} className="rounded-lg border border-byword-border p-4">
-                    <Badge variant={item.opportunity === "needs_attention" ? "destructive" : "secondary"}>{humanOpportunity(item.opportunity)}</Badge>
+                    <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant={item.opportunity === "needs_attention" ? "destructive" : "secondary"}>{humanOpportunity(item.opportunity)}</Badge><Button size="sm" variant="outline" onClick={() => insight && onAddToPlan({ ...insight, opportunities: [item.opportunity], suggestedAction: item.title })}>Add to plan</Button></div>
                     <h4 className="mt-2 font-medium text-foreground">{item.title}</h4>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.detail}</p>
                   </div>
@@ -1068,6 +1083,12 @@ function PageDetailSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+function planActionType(opportunities: string[]): SeoActionType {
+  if (opportunities.some((item) => ["needs_attention", "weak_focus", "wrong_page_risk"].includes(item))) return "refresh";
+  if (opportunities.some((item) => ["low_ctr", "zero_clicks"].includes(item))) return "snippet_test";
+  return "internal_link";
 }
 
 function AnalysisInline({ analysis }: { analysis: OptimizeAnalysis }) {

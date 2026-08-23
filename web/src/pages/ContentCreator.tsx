@@ -71,6 +71,7 @@ import {
 import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
 import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { useSites } from "@/hooks/useSites";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 import { ProgrammaticPanel } from "@/pages/Programmatic";
@@ -368,9 +369,11 @@ function GenerationBrief({
 
 export default function ContentCreator() {
   const { user } = useAuth();
+  const { activeSiteId } = useSites();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  const seoPlanParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [sourceType, setSourceType] = useState("url");
@@ -428,7 +431,22 @@ export default function ContentCreator() {
 
   useEffect(() => {
     setCreationMode(parseCreationMode(location.search));
-  }, [location.search]);
+    const itemId = seoPlanParams.get("seoPlanItemId");
+    if (!itemId) return;
+    const action = seoPlanParams.get("seoAction") || "new_content";
+    const targetQuery = seoPlanParams.get("targetQuery") || "";
+    const pageUrl = seoPlanParams.get("pageUrl") || "";
+    setCreationMode("article");
+    setArticleRelatedKeywords(targetQuery);
+    if (action === "new_content") {
+      setSourceType("article_keyword");
+      setArticleKeyword(targetQuery);
+    } else {
+      setSourceType("url");
+      setSourceUrl(stripHttpProtocol(pageUrl));
+      setArticleDirection(seoActionInstruction(action, targetQuery));
+    }
+  }, [location.search, seoPlanParams]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
@@ -741,6 +759,9 @@ export default function ContentCreator() {
           resolution: imageConfig.inline.resolution || "1K",
         } : null,
       } : undefined,
+      siteId: seoPlanParams.get("siteId") || activeSiteId || undefined,
+      campaignId: seoPlanParams.get("campaignId") || undefined,
+      campaignItemId: seoPlanParams.get("seoPlanItemId") || undefined,
     });
 
     const startOneDraft = async (draftIndex?: number) => {
@@ -874,6 +895,7 @@ export default function ContentCreator() {
         imageDeliveryMode,
         manualImageProvider,
         imageConfig: imagesEnabled ? imageConfig : null,
+        siteId: activeSiteId || undefined,
       });
       if (campaignStartNow) await api.post(`/campaigns/${result.campaign.id}/start`);
       return result;
@@ -1660,4 +1682,11 @@ export default function ContentCreator() {
 function parseCreationMode(search: string): CreationMode {
   const mode = new URLSearchParams(search).get("mode");
   return mode === "campaign" || mode === "programmatic" ? mode : "article";
+}
+
+function seoActionInstruction(action: string, targetQuery: string) {
+  const query = targetQuery ? ` for the target query “${targetQuery}”` : "";
+  if (action === "snippet_test") return `Refresh the article and improve its title and meta-description angle${query}. Preserve the canonical topic and do not change the URL.`;
+  if (action === "internal_link") return `Refresh only where useful${query}, and add relevant internal-link opportunities supported by the site index.`;
+  return `Refresh declining or outdated sections${query}. Preserve accurate material and make the smallest evidence-backed revision.`;
 }

@@ -46,6 +46,7 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 
 - Auth, onboarding, and not-found can carry the strongest branded treatment, but the form itself must stay simple.
 - Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, Control, Post Editor, and admin should feel operational and fast.
+- Search Growth tabs are Overview, Growth Plan, Optimize, Analytics, Indexing, and Internal Links. Growth Plan uses native dates and explicit item handoffs; it never implies automatic live publishing.
 - Sidebar labels use the current task language: Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, and Control.
 - Visible product wording is **Content**, even though `/library` remains the stable technical URL. Do not show “Library” in navigation or actions.
 - The News surface is removed. RSS, Campaigns, and Batch Import live under Sources.

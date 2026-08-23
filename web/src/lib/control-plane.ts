@@ -40,7 +40,7 @@ export type WorkspaceDigest = {
   action_items: ActionItem[];
   runs: { running: number; failed: number; recent: Array<{ id: string; status: string; source_type: string; current_step: string; created_at: string }> };
   outcomes: { drafts: number; published: number; cms_drafts: number; cost: number; window_days: number };
-  search_growth: { connected: boolean; segments?: Record<string, unknown>; totals?: Record<string, unknown>; opportunity_scope?: Record<string, unknown>; provenance?: Record<string, unknown> | null };
+  search_growth: { connected: boolean; segments?: Record<string, unknown>; totals?: Record<string, unknown>; opportunity_scope?: Record<string, unknown>; provenance?: Record<string, unknown> | null; plan?: { summary: Record<string, number>; next_items: Array<{ id: string; planned_for: string | null; action_type: string | null; target_query: string | null; page_url: string | null }>; data_through: string | null } | null };
   recent_outputs: Array<{ id: string; title: string; status: string; editorial_state: string; source_type: string; updated_at: string }>;
   connections: { active: number; cms: { total: number; connected: number; attention: number }; search_console: { connected: boolean } };
   activity: OperationEvent[];

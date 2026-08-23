@@ -27,7 +27,7 @@ Verified on 2026-08-22:
 | `import_drafts` | `drafts:write` | Create up to 20 caller-authored Markdown drafts with duplicate-safe retries |
 | `generate_draft` | `drafts:write` | Start asynchronous draft generation |
 | `get_job` | `content:read` | Read safe generation progress and result IDs |
-| `get_workspace_digest` | `content:read` | Return the same operational digest used by Overview |
+| `get_workspace_digest` | `content:read` | Return the same operational digest used by Overview, including SEO-plan progress |
 | `list_action_items` | `content:read` | Return the same prioritized work queue used by Review Queue |
 | `review_post` | `content:read` | Return the shared revision, preflight, destination, and permission packet |
 | `get_search_console_dashboard` | `content:read` | Read synchronized Search Console status and totals |

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { waitUntil } from "@vercel/functions";
-import { asc, and, desc, eq, inArray } from "drizzle-orm";
+import { asc, and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs, personas, posts, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
@@ -10,6 +10,8 @@ import { materializeProgrammaticItems } from "../services/programmatic.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
 import { safeError } from "../http/error-contract.js";
 import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
+import { hasSiteAccess } from "../services/search-console.js";
+import { SEO_PLAN_MODE } from "../services/seo-growth-plan.js";
 
 export const campaignsRoutes = new Hono();
 
@@ -81,7 +83,7 @@ campaignsRoutes.get("/", async (c) => {
   const rows = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.userId, userId))
+    .where(and(eq(campaigns.userId, userId), ne(campaigns.mode, SEO_PLAN_MODE)))
     .orderBy(desc(campaigns.createdAt));
   return c.json(rows);
 });
@@ -95,6 +97,8 @@ campaignsRoutes.post("/", async (c) => {
   if (!isCampaignMode(mode)) return c.json({ error: "Invalid campaign mode" }, 400);
   const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
   if (!modelId) return c.json({ error: "Model is required" }, 400);
+  const siteId = typeof body.siteId === "string" ? body.siteId : typeof body.site_id === "string" ? body.site_id : null;
+  if (siteId && !(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
 
   let items: ParsedCampaignItem[];
   let programmatic: ReturnType<typeof materializeProgrammaticItems> | null = null;
@@ -137,6 +141,7 @@ campaignsRoutes.post("/", async (c) => {
 
   const [campaign] = await db.insert(campaigns).values({
     userId,
+    siteId,
     name,
     mode,
     outlineMode,
@@ -243,6 +248,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
   const id = c.req.param("id");
   const [existing] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   if (!existing) return c.json({ error: "Campaign not found" }, 404);
+  if (existing.mode === SEO_PLAN_MODE) return c.json({ error: "SEO growth plans are started item by item" }, 409);
   if (!["draft", "stopped"].includes(existing.status)) {
     return c.json({ error: "Campaign cannot be started from this state" }, 409);
   }

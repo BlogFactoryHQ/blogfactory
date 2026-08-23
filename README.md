@@ -23,7 +23,7 @@ source -> generation job -> BlogFactory draft -> review/preflight -> CMS draft
 | Create Content | `/create` | Manual article, campaign, and programmatic generation fallback |
 | Review Queue | `/review` | Prioritized blockers, requested changes, stale approvals, warnings, and draft review |
 | Runs | `/runs` | Generation queue, progress, errors, results, and retry controls |
-| Search Growth | `/overview/growth` | Search Console monitoring, optimization, indexing, and internal links |
+| Search Growth | `/overview/growth` | Search Console monitoring, 30-day growth planning, optimization, attributed outcomes, indexing, and internal links |
 | Sources | `/sources/*` | RSS, campaigns, and batch import |
 | Content | `/library/*` | Content inventory and image gallery; `/library` is retained as the technical URL |
 | Control | `/control/*` | MCP connections, integrations, sites, brand voice, article settings, and usage |
@@ -64,6 +64,8 @@ docs/                        Current operations plus historical decision records
 ```
 
 Web and MCP share the control-plane services and contracts. They do not maintain separate action-item classification, review preflight, or publishing implementations. Authenticated MCP calls and important web mutations write sanitized `operation_events` records; the existing scheduler removes them after 30 days.
+
+SEO Growth Plans reuse site-scoped campaigns as an operator-controlled planning layer. Search Console opportunities become dated refresh, snippet, internal-link, or indexing tasks; users can also add new-content targets. Regeneration replaces only untouched items, generated work enters the existing review flow, and analytics reports correlated 7/14/28-day GSC movement without claiming causation.
 
 ## Local setup
 

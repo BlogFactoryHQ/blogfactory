@@ -661,6 +661,8 @@ export async function generateContent(opts: GenerateOpts) {
       siteId: resolvedSiteId,
       feedId: feedRecord?.id || existingJob?.feedId || null,
       preferredIntegrationId: resolvedIntegrationId,
+      campaignId: opts.campaignId || existingJob?.campaignId || null,
+      campaignItemId: opts.campaignItemId || existingJob?.campaignItemId || null,
       status: "running",
       currentStep: "starting",
     }).where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)));
@@ -1330,6 +1332,10 @@ export async function generateContent(opts: GenerateOpts) {
         totalCost,
         completedAt: new Date(),
       }).where(eq(jobs.id, jobId));
+      if (opts.campaignItemId) {
+        await db.update(campaignItems).set({ status: "failed", planningStatus: "blocked", errorMessage: message, completedAt: new Date() })
+          .where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+      }
       return { jobId, status: "failed", error: message, postIds: [] };
     }
 
@@ -1350,6 +1356,15 @@ export async function generateContent(opts: GenerateOpts) {
       totalCost,
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
+    if (opts.campaignItemId) {
+      await db.update(campaignItems).set({
+        status: "completed",
+        planningStatus: "in_progress",
+        postId: createdPostIds[0] || null,
+        completedAt: new Date(),
+        errorMessage: null,
+      }).where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+    }
     if (imageResolutionResults.some((item) => (item.result?.queued || 0) > 0)) {
       await kickDeferredImageWorker(userId);
     }
@@ -1363,6 +1378,10 @@ export async function generateContent(opts: GenerateOpts) {
       errorMessage: err.message,
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
+    if (opts.campaignItemId) {
+      await db.update(campaignItems).set({ status: "failed", planningStatus: "blocked", errorMessage: err.message, completedAt: new Date() })
+        .where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+    }
     return { jobId, status: "failed", error: err.message };
   }
 }

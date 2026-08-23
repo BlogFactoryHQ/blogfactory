@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { waitUntil } from "@vercel/functions";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { jobs } from "../db/schema.js";
+import { campaignItems, campaigns, jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { getOpenRouterKey } from "../services/api-keys.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
@@ -11,6 +11,7 @@ import { readJsonObject, requiredString, safeError } from "../http/error-contrac
 import type { GenerateOpts } from "../services/generation-types.js";
 import type { ExtractOpts } from "../services/extract-content.js";
 import type { FetchOpts } from "../services/fetch-social-content.js";
+import { SEO_PLAN_MODE } from "../services/seo-growth-plan.js";
 
 export const contentRoutes = new Hono();
 
@@ -55,6 +56,20 @@ contentRoutes.post("/generate", async (c) => {
   let releaseScheduled = false;
 
   try {
+    const campaignId = body.campaignId || null;
+    const campaignItemId = body.campaignItemId || null;
+    if (campaignId || campaignItemId) {
+      if (!campaignId || !campaignItemId || !body.siteId) return c.json({ error: "Campaign, item, and site must be supplied together" }, 400);
+      const [planItem] = await db.select({ id: campaignItems.id }).from(campaignItems).innerJoin(campaigns, eq(campaigns.id, campaignItems.campaignId)).where(and(
+        eq(campaignItems.id, campaignItemId),
+        eq(campaignItems.campaignId, campaignId),
+        eq(campaignItems.userId, userId),
+        eq(campaigns.userId, userId),
+        eq(campaigns.siteId, body.siteId),
+        eq(campaigns.mode, SEO_PLAN_MODE),
+      )).limit(1);
+      if (!planItem) return c.json({ error: "SEO plan item not found" }, 404);
+    }
     const openRouterKey = await getOpenRouterKey(userId);
     if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
     const modelId = await resolveOpenRouterTextModel(openRouterKey, body.modelId || "openai/gpt-4o");
@@ -82,9 +97,16 @@ contentRoutes.post("/generate", async (c) => {
       sourceValue: body.sourceValue,
       modelId,
       personaId: body.personaId || null,
+      campaignId,
+      campaignItemId,
       status: "running",
       currentStep: "starting",
     }).returning();
+
+    if (campaignItemId) {
+      await db.update(campaignItems).set({ jobId: job.id, status: "running", planningStatus: "in_progress", startedAt: new Date() })
+        .where(and(eq(campaignItems.id, campaignItemId), eq(campaignItems.userId, userId)));
+    }
 
     const { generateContent } = await import("../services/generate-content.js");
     const generation = generateContent({ ...body, userId, jobId: job.id, modelId })

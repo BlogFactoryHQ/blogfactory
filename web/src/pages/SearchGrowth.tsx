@@ -42,12 +42,13 @@ import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGro
 import { IndexingPanel } from "@/pages/Indexing";
 import { SearchAnalyticsPanel } from "@/pages/SearchAnalytics";
 import { OptimizePanel } from "@/pages/Optimize";
+import { SeoGrowthPlanPanel } from "@/pages/SeoGrowthPlan";
 import { api } from "@/lib/api";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
 
-const tabs = new Set(["overview", "optimize", "analytics", "indexing", "internal-links"]);
+const tabs = new Set(["overview", "plan", "optimize", "analytics", "indexing", "internal-links"]);
 
 interface InternalLinkSettings {
   internal_link_status?: string | null;
@@ -102,6 +103,7 @@ export default function SearchGrowth() {
       <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="plan">Growth Plan</TabsTrigger>
           <TabsTrigger value="optimize">Optimize</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="indexing">Indexing</TabsTrigger>
@@ -116,6 +118,11 @@ export default function SearchGrowth() {
         {tab === "optimize" && (
           <TabsContent value="optimize" className="mt-0">
             <OptimizePanel />
+          </TabsContent>
+        )}
+        {tab === "plan" && (
+          <TabsContent value="plan" className="mt-0">
+            <SeoGrowthPlanPanel />
           </TabsContent>
         )}
         {tab === "analytics" && (

@@ -12,6 +12,7 @@ import { useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchCons
 import { useSites } from "@/hooks/useSites";
 import { formatCompactNumber, formatDelta, formatPercent } from "@/lib/search-insights";
 import { searchConsoleCountryLabel } from "@/lib/search-console";
+import { useSeoGrowthAttribution, type SeoGrowthAttribution } from "@/hooks/useSeoGrowthPlan";
 
 type Range = 7 | 28 | 90;
 type Group = "page" | "query" | "country" | "device";
@@ -23,6 +24,7 @@ export function SearchAnalyticsPanel() {
   const { integration } = useSearchConsole();
   const { analytics } = useSearchConsoleToolkit();
   const countryToolkit = useSearchConsoleToolkit();
+  const attribution = useSeoGrowthAttribution();
   const [range, setRange] = useState<Range>(28);
   const [groupBy, setGroupBy] = useState<Group>("query");
   const [searchType, setSearchType] = useState<SearchType>("web");
@@ -106,8 +108,21 @@ export function SearchAnalyticsPanel() {
           <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>{data.input.groupBy}</TableHead><TableHead className="text-right">Clicks</TableHead><TableHead className="text-right">Impressions</TableHead><TableHead className="text-right">CTR</TableHead><TableHead className="text-right">Position</TableHead><TableHead className="text-right">Δ clicks</TableHead></TableRow></TableHeader><TableBody>{data.rows.map((row) => <TableRow key={row.label}><TableCell className="max-w-[420px] truncate font-medium" title={row.label}>{row.label}</TableCell><TableCell className="text-right">{formatCompactNumber(row.clicks)}</TableCell><TableCell className="text-right">{formatCompactNumber(row.impressions)}</TableCell><TableCell className="text-right">{formatPercent(row.ctr)}</TableCell><TableCell className="text-right">{row.position.toFixed(1)}</TableCell><TableCell className="text-right">{row.deltaClicks === null ? "—" : `${row.deltaClicks > 0 ? "+" : ""}${row.deltaClicks}`}</TableCell></TableRow>)}</TableBody></Table></div>
         </BywordCard>
       </>}
+      {attribution.data && <AttributionPanel data={attribution.data} />}
     </div>
   );
+}
+
+function AttributionPanel({ data }: { data: SeoGrowthAttribution }) {
+  return <BywordCard className="overflow-hidden">
+    <div className="p-5"><h3 className="font-semibold">BlogFactory content</h3><p className="mt-1 text-sm text-muted-foreground">Created or refreshed pages measured separately from whole-site traffic.</p></div>
+    {!data.cohort.length ? <div className="border-t border-byword-border p-6 text-sm text-muted-foreground">Complete plan work and connect its published URL to start the 7-, 14-, and 28-day observation windows.</div> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Page</TableHead><TableHead>Baseline</TableHead><TableHead>7 days</TableHead><TableHead>14 days</TableHead><TableHead>28 days</TableHead></TableRow></TableHeader><TableBody>{data.cohort.map((row) => <TableRow key={row.itemId}><TableCell className="max-w-[340px]"><p className="truncate font-medium" title={row.targetQuery || row.pageUrl}>{row.targetQuery || row.pageUrl}</p><p className="mt-1 truncate text-xs text-muted-foreground" title={row.pageUrl}>{row.pageUrl}</p></TableCell><TableCell><WindowMetric clicks={row.baseline.clicks} position={row.baseline.position} label={row.baselineDate} /></TableCell>{row.windows.map((window) => <TableCell key={window.days}><WindowMetric clicks={window.metrics.clicks} position={window.metrics.position} label={window.status === "observed" && window.delta ? `${window.delta.clicks >= 0 ? "+" : ""}${window.delta.clicks} clicks · ${window.delta.position > 0 ? "+" : ""}${window.delta.position.toFixed(1)} pos.` : `Pending through ${window.endDate}`} muted={window.status === "pending"} /></TableCell>)}</TableRow>)}</TableBody></Table></div>}
+    <p className="border-t border-byword-border px-5 py-3 text-xs text-muted-foreground">{data.disclaimer} GSC data through {data.freshness.dataThrough || "not synced"}.</p>
+  </BywordCard>;
+}
+
+function WindowMetric({ clicks, position, label, muted = false }: { clicks: number; position: number; label: string; muted?: boolean }) {
+  return <div className={muted ? "text-muted-foreground" : ""}><p className="font-medium">{clicks} clicks</p><p className="text-xs">Pos. {position ? position.toFixed(1) : "—"} · {label}</p></div>;
 }
 
 function Filter({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1.5"><Label className="text-xs">{label}</Label>{children}</div>; }
