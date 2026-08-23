@@ -20,13 +20,13 @@ Never run PostgreSQL integration tests against shared production Neon. Use a dis
 
 ## Production delivery
 
-The Vercel project `editorial-flow-main` is Git-linked to `main`. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
+The Vercel project `editorial-flow-main` is deployed from the private `BlogFactoryHQ/blogfactory-cloud` repository. That repository merges this public core through a fail-closed sync workflow, validates it, and performs the production deployment through private CI. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
 
 - `/api/*`
 - `/mcp`
 - `/.well-known/oauth-protected-resource`
 
-The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare-fronted public apex while this public repository owns the authenticated app/API on Vercel. The production host split is:
+The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare-fronted public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment on Vercel. The production host split is:
 
 - [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
 - [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.
@@ -38,7 +38,7 @@ Release flow:
 1. Preserve unrelated worktree changes and inspect the intended diff.
 2. Run checks proportional to the change.
 3. Commit and push `main` when shipping is authorized.
-4. Wait for the Git-linked Vercel deployment with the same commit SHA to become Ready.
+4. Verify that the private Cloud repository contains the public commit, then wait for its `Deploy Cloud` run and Vercel deployment to become Ready.
 5. Confirm the production aliases are attached and `aliasError` is empty.
 6. Verify both the public one-pager marker and the exact app/API/MCP routes affected by the change.
 

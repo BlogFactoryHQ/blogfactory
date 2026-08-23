@@ -123,13 +123,14 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | Layer | Current responsibility |
 | --- | --- |
 | Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
-| Vercel project `editorial-flow-main` | Public-repository app/API build and serverless execution |
+| Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay and Vercel deployment ownership |
+| Vercel project `editorial-flow-main` | Private-repository app/API build and serverless execution |
 | `vercel.json` | Migration/build command, API/MCP rewrites, redirects, headers, SPA fallbacks |
 | GitHub Actions | Validation plus hourly/daily protected background drains |
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 
-This repository builds the authenticated app, public self-hosting help/docs entries, and the standalone MCP Review Card. Production uses the private marketing repository at the public apex and this repository at the app subdomain. Verify actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
+This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
 
 ## Authentication and authority
 
@@ -152,6 +153,7 @@ Do not add checkout until the plan's Cloud gates are complete. Keep customer bil
 | If you need to change… | Start here |
 | --- | --- |
 | Public one-pager, blog, waitlist, or future pricing | private `BlogFactoryHQ/blogfactory-marketing` repository |
+| Hosted app deployment, Cloud-only code, billing, or entitlements | private `BlogFactoryHQ/blogfactory-cloud` repository |
 | App navigation or route | `web/src/App.tsx`, `web/src/components/layout/AppSidebar.tsx` |
 | Shared page chrome | `web/src/components/layout/BywordSurface.tsx`, `UI_UX.md` |
 | API endpoint | matching file under `server/src/routes/`, then a shared service |
