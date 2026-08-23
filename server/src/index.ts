@@ -35,6 +35,10 @@ import { operationsRoutes } from "./routes/operations.js";
 import { handleMcpHttpRequest } from "./mcp/server.js";
 import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
+import { readinessStatus } from "./services/readiness.js";
+import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
+
+validateSelfHostedConfig();
 
 const app = new Hono();
 
@@ -77,14 +81,20 @@ app.get("/api/mcp/capabilities", (c) => c.json({
   scopes: MCP_SCOPES,
   tools: ACTIVE_MCP_TOOL_NAMES,
   tool_count: ACTIVE_MCP_TOOL_NAMES.length,
+  endpoint: resolveMcpEndpoint(process.env, c.req.url),
+  oauth_enabled: Boolean(process.env.WORKOS_AUTHKIT_ISSUER && process.env.WORKOS_API_KEY && process.env.MCP_RESOURCE_URL),
 }));
 
 app.get("/.well-known/oauth-protected-resource", () => handleMcpProtectedResourceMetadata());
 app.all("/mcp", (c) => handleMcpHttpRequest(c.req.raw));
 
 app.get("/api/health", (c) =>
-  c.json({ status: "ok", version: "1.0.0" })
+  c.json({ status: "ok", version: "0.1.0" })
 );
+app.get("/api/ready", async (c) => {
+  const result = await readinessStatus();
+  return c.json({ status: result.ready ? "ready" : "unavailable" }, result.status);
+});
 
 app.notFound((c) => errorResponse(c, 404, "not_found", "API route not found"));
 app.onError(handleApiError);
@@ -93,8 +103,9 @@ app.onError(handleApiError);
 export { app };
 
 // Default export for Bun local development
-if (import.meta.main) console.log("Backend listening on port 3000");
+const port = resolvePort();
+if (import.meta.main) console.log(`Backend listening on port ${port}`);
 export default {
-  port: 3000,
+  port,
   fetch: app.fetch,
 };

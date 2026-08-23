@@ -58,7 +58,7 @@ type RevokeTarget = {
   kind: "personal" | "oauth";
 };
 
-type McpCapabilities = { tools: string[]; tool_count: number };
+type McpCapabilities = { tools: string[]; tool_count: number; endpoint: string; oauth_enabled: boolean };
 
 function tokenStatus(token: McpToken) {
   if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
@@ -98,24 +98,25 @@ export function McpConnectionsPanel() {
   const [creating, setCreating] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
-  const endpoint = new URL(import.meta.env.VITE_MCP_URL || "https://blogfactory.io/mcp").toString();
-  const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
-  const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
-
   const tokensQuery = useQuery({
     queryKey: ["mcp-tokens"],
     queryFn: () => api.get<McpTokenList>("/mcp/tokens"),
-    retry: retryTransientApiError,
-  });
-  const oauthConnectionsQuery = useQuery({
-    queryKey: ["mcp-oauth-connections"],
-    queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
     retry: retryTransientApiError,
   });
   const capabilitiesQuery = useQuery({
     queryKey: ["mcp-capabilities"],
     queryFn: () => api.get<McpCapabilities>("/mcp/capabilities"),
     retry: retryTransientApiError,
+  });
+  const endpoint = new URL(capabilitiesQuery.data?.endpoint || import.meta.env.VITE_MCP_URL || `${window.location.origin}/mcp`).toString();
+  const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
+  const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
+  const oauthEnabled = capabilitiesQuery.data?.oauth_enabled === true;
+  const oauthConnectionsQuery = useQuery({
+    queryKey: ["mcp-oauth-connections"],
+    queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
+    retry: retryTransientApiError,
+    enabled: oauthEnabled,
   });
 
   const submitCreate = async (event: FormEvent) => {
@@ -205,11 +206,11 @@ export function McpConnectionsPanel() {
           action={
             <Button
               type="button"
-              onClick={() => copyText(codexOauthCommand, "OAuth setup command")}
+              onClick={() => oauthEnabled ? copyText(codexOauthCommand, "OAuth setup command") : openCreate()}
               disabled={sitesLoading || !sites.length}
             >
-              <Terminal className="mr-2 h-4 w-4" />
-              Copy OAuth setup
+              {oauthEnabled ? <Terminal className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
+              {oauthEnabled ? "Copy OAuth setup" : "Create personal token"}
             </Button>
           }
         />
@@ -232,12 +233,12 @@ export function McpConnectionsPanel() {
           <section aria-labelledby="mcp-workflow-title" className="space-y-3">
             <div>
               <h3 id="mcp-workflow-title" className="text-sm font-semibold">Agent workflow</h3>
-              <p className="mt-1 text-sm text-muted-foreground">One authorization path from client setup to a reviewed CMS draft.</p>
+              <p className="mt-1 text-sm text-muted-foreground">A site-scoped path from client setup to a reviewed CMS draft.</p>
             </div>
             <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["01", "Connect client", "Use OAuth from Codex or add the endpoint to an MCP-compatible client."],
-                ["02", "Approve site", "Sign in to BlogFactory and grant access to one site."],
+                ["01", "Connect client", oauthEnabled ? "Use OAuth from Codex or add the endpoint to an MCP-compatible client." : "Create a personal token and add this instance endpoint to your MCP client."],
+                ["02", "Scope access", oauthEnabled ? "Sign in to BlogFactory and grant access to one site." : "Choose the site this token may access, then save the token when shown."],
                 ["03", "Generate & review", "Create a draft, wait for the run, then open its Review Card."],
                 ["04", "Send draft", "Choose a ready CMS destination and confirm the draft-only delivery."],
               ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></li>)}
@@ -254,9 +255,9 @@ export function McpConnectionsPanel() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Add this endpoint to a compatible client. OAuth opens BlogFactory in your browser so you can sign in and choose one site.
+              Add this endpoint to a compatible client. Access remains limited to the sites selected for that connection.
             </p>
-            <details className="rounded-md border border-byword-border bg-muted/25 p-3">
+            {oauthEnabled && <details className="rounded-md border border-byword-border bg-muted/25 p-3">
               <summary className="cursor-pointer text-sm font-medium">Codex OAuth setup</summary>
               <div className="mt-3 space-y-3">
                 <p className="text-sm text-muted-foreground">
@@ -272,7 +273,7 @@ export function McpConnectionsPanel() {
                   </Button>
                 </div>
               </div>
-            </details>
+            </details>}
           </section>
 
           <div className="rounded-md border border-byword-border bg-muted/35 p-4">
@@ -305,7 +306,7 @@ export function McpConnectionsPanel() {
             </div>
           )}
 
-          <section className="space-y-3">
+          {oauthEnabled && <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Browser-authorized clients</h3>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -367,7 +368,7 @@ export function McpConnectionsPanel() {
                 })}
               </div>
             )}
-          </section>
+          </section>}
 
           <section className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

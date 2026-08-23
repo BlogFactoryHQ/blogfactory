@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ||= "postgres://blogfactory:blogfactory@localhost:5432/blogfactory";
 const { app } = await import("./index.js");
 
+const authConfig = await app.request("/api/auth/config");
+assert.equal(authConfig.status, 200);
+assert.deepEqual(await authConfig.json(), { signup_enabled: true });
+
 const malformed = await app.request("/api/auth/login", {
   method: "POST",
   headers: { "content-type": "application/json" },

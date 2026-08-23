@@ -1,0 +1,125 @@
+name: blogfactory
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: blogfactory
+      POSTGRES_USER: blogfactory
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blogfactory -d blogfactory"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-blogfactory}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing local/blogfactory
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-blogfactory}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    restart: "no"
+
+  api:
+    image: ghcr.io/boragkc/blogfactory-api:${BLOGFACTORY_VERSION:-v0.1.0}
+    build:
+      context: ./server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BLOGFACTORY_SELF_HOSTED: "true"
+      DATABASE_URL: postgresql://blogfactory:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/blogfactory
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET in .env}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in .env}
+      BLOGFACTORY_ALLOW_SIGNUP: ${BLOGFACTORY_ALLOW_SIGNUP:-true}
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in .env}
+      OPENROUTER_WEBHOOK_SECRET: ${OPENROUTER_WEBHOOK_SECRET:-}
+      WEB_APP_URL: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in .env}
+      MCP_APP_URL: http://web/mcp-review.html
+      MCP_ALLOWED_ORIGINS: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in .env}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-blogfactory}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      S3_BUCKET: blogfactory
+      S3_REGION: us-east-1
+      GOOGLE_SEARCH_CONSOLE_CLIENT_ID: ${GOOGLE_SEARCH_CONSOLE_CLIENT_ID:-}
+      GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET: ${GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET:-}
+      GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: ${GOOGLE_SEARCH_CONSOLE_REDIRECT_URI:-}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  web:
+    image: ghcr.io/boragkc/blogfactory-web:${BLOGFACTORY_VERSION:-v0.1.0}
+    build:
+      context: ./web
+      args:
+        VITE_WAITLIST_URL: ${VITE_WAITLIST_URL:-https://blogfactory.io}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${BLOGFACTORY_PORT:-8080}:80"
+    environment:
+      API_UPSTREAM: http://api:3000
+
+  scheduler:
+    image: curlimages/curl:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in .env}
+      CRON_INTERVAL_SECONDS: ${CRON_INTERVAL_SECONDS:-21600}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        while true; do
+          curl --fail --silent --show-error
+          -H "Authorization: Bearer $${CRON_SECRET}"
+          http://api:3000/api/cron/drain;
+          sleep "$${CRON_INTERVAL_SECONDS}";
+        done
+
+volumes:
+  postgres-data:
+  minio-data:

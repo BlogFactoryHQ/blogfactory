@@ -13,9 +13,14 @@ export const authRoutes = new Hono();
 
 const LOCAL_DEV_EMAIL = "local@blogfactory.dev";
 
-export function publicSignupEnabled(environment = process.env.NODE_ENV) {
-  return environment !== "production";
+export function publicSignupEnabled(
+  environment = process.env.NODE_ENV,
+  selfHostedSignup = process.env.BLOGFACTORY_ALLOW_SIGNUP,
+) {
+  return environment !== "production" || selfHostedSignup === "true";
 }
+
+authRoutes.get("/config", (c) => c.json({ signup_enabled: publicSignupEnabled() }));
 
 async function ensureLocalDevWorkspace(userId: string) {
   const now = new Date();

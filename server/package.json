@@ -1,6 +1,8 @@
 {
-  "name": "@editorial-flow/api",
-  "version": "1.0.0",
+  "name": "@blogfactory/api",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",

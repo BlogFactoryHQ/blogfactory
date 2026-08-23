@@ -28,6 +28,8 @@ React control app                                      MCP auth + tools
 
 The important architectural rule is that web and MCP are two transports over the same services. Queue classification, review preflight, revision logic, Search Console reads, permissions, and CMS draft delivery should not be reimplemented in a page or MCP handler.
 
+Community deployments use the same boundary on the installer's domain: Nginx serves the web app and proxies `/api/*` and `/mcp` to the private Hono service; PostgreSQL, MinIO, and the scheduler also run in the installer's infrastructure. Community MCP tokens, content, credentials, and operation events never route through BlogFactory Cloud.
+
 ## Runtime surfaces
 
 ### Public marketing
@@ -132,6 +134,8 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | `middleware.ts` | Vercel fallback that maps the apex root to `marketing.html` |
 | GitHub Actions | Validation plus hourly/daily protected background drains |
 
+For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
+
 The repository builds both `index.html` and `marketing.html`. Current production uses the public apex and app subdomain as separate surfaces, but the Vercel configuration retains an apex marketing fallback. Verify the actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
 
 ## Authentication and authority
@@ -141,14 +145,14 @@ The repository builds both `index.html` and `marketing.html`. Current production
 - OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
 - MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
 - `publish:draft` means CMS draft delivery, never live publication.
-- Public signup is disabled.
+- Hosted public signup is disabled; self-hosted signup is an environment-gated administrator bootstrap path.
 - Password recovery UI is disabled until real email delivery is connected.
 
 ## Pricing boundary
 
-There is no BlogFactory customer billing system in this codebase today. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage.
+There is no BlogFactory customer billing system in this codebase today. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The approved open-source-first packaging and planned Cloud tiers live in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md).
 
-Before adding a pricing page or payment code, make an explicit product decision for plans, limits, trial behavior, entitlement ownership, and billing provider. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
+Do not add checkout until the plan's Cloud gates are complete. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
 
 ## Where to make a change
 

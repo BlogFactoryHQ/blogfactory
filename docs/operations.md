@@ -6,6 +6,10 @@ Copy `.env.example` to `.env` for local development. Set `DATABASE_URL`, `JWT_SE
 
 Production web builds require `VITE_WAITLIST_URL` to be the real public HTTPS waitlist destination. The build fails closed when it is absent or invalid.
 
+The Docker Compose self-host contract is documented separately in [self-hosting.md](self-hosting.md). Use `.env.self-host.example`; never reuse production hosted secrets in a community installation.
+
+Self-hosted production sets `BLOGFACTORY_SELF_HOSTED=true`, which rejects missing and placeholder database, JWT, encryption, cron, administrator, origin, and S3 configuration before serving. `/api/health` remains liveness; `/api/ready` checks PostgreSQL plus S3 bucket access and redacts failure details.
+
 OAuth is fail-closed: configure `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together or leave all three unset. `MCP_RESOURCE_URL` must be an HTTPS URL ending in `/mcp`.
 
 ## Database migrations
@@ -61,6 +65,13 @@ npm run test --workspace=web
 npm run test:server
 npm run build
 git diff --check
+```
+
+Tagged releases additionally require both disposable container checks:
+
+```bash
+bash scripts/self-host-smoke.sh
+bash scripts/self-host-backup-restore-smoke.sh
 ```
 
 Use `npm run test:postgres` for schema, tenant isolation, operation ledger, and shared control-plane changes. Use `npm run test:mcp:pilot` only with a prepared live account.

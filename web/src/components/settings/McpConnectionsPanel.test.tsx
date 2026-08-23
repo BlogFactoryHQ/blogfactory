@@ -14,6 +14,8 @@ const { deleteMock, getMock, postMock, toastErrorMock, toastSuccessMock, writeTe
 }));
 
 const capabilities = {
+  endpoint: "https://self-hosted.example.com/mcp",
+  oauth_enabled: true,
   tool_count: 20,
   tools: ["whoami", "list_sites", "list_personas", "list_publish_targets", "list_posts", "get_post", "generate_draft", "get_job", "get_workspace_digest", "list_action_items", "review_post", "get_search_console_dashboard", "get_search_console_insights", "refresh_search_console", "update_draft", "push_to_cms_draft", "inspect_search_console_url", "batch_inspect_search_console_urls", "list_search_console_sitemaps", "query_search_console_analytics"],
 };
@@ -53,8 +55,10 @@ function button(label: string) {
   return match as HTMLButtonElement;
 }
 
-async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[]) {
+async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[], capabilityData = capabilities) {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryDefaults(["mcp-capabilities"], { staleTime: Infinity });
+  queryClient.setQueryData(["mcp-capabilities"], capabilityData);
   if (initialTokens) queryClient.setQueryData(["mcp-tokens"], { tokens: initialTokens });
   if (initialOAuthConnections) {
     queryClient.setQueryData(["mcp-oauth-connections"], { connections: initialOAuthConnections });
@@ -77,7 +81,11 @@ async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: 
 beforeEach(() => {
   localStorage.clear();
   deleteMock.mockReset().mockResolvedValue({ revoked: true });
-  getMock.mockReset().mockResolvedValue({ tokens: [] });
+  getMock.mockReset().mockImplementation((path: string) => Promise.resolve(
+    path === "/mcp/capabilities" ? capabilities
+      : path === "/mcp/oauth/connections" ? { connections: [] }
+        : { tokens: [] },
+  ));
   postMock.mockReset();
   toastErrorMock.mockReset();
   toastSuccessMock.mockReset();
@@ -98,6 +106,16 @@ afterEach(async () => {
 });
 
 describe("MCP connections panel", () => {
+  it("shows the personal-token workflow when OAuth is disabled", async () => {
+    await renderPanel([], [], { ...capabilities, oauth_enabled: false });
+
+    expect(document.body).toHaveTextContent("Create a personal token and add this instance endpoint");
+    expect(document.body).toHaveTextContent("Choose the site this token may access");
+    expect(document.body).not.toHaveTextContent("Use OAuth from Codex");
+    expect(button("Create personal token")).toBeEnabled();
+    expect(getMock).not.toHaveBeenCalledWith("/mcp/oauth/connections");
+  });
+
   it("creates a site-scoped read token and clears its one-time secret", async () => {
     const secret = "bf_mcp_one_time_secret";
     postMock.mockResolvedValue({
@@ -118,7 +136,7 @@ describe("MCP connections panel", () => {
 
     await act(async () => button("Copy OAuth setup").click());
     expect(writeTextMock).toHaveBeenCalledWith(
-      "codex mcp add blogfactory --url https://blogfactory.io/mcp",
+      "codex mcp add blogfactory --url https://self-hosted.example.com/mcp",
     );
 
     await act(async () => button("Create personal token").click());
@@ -131,7 +149,6 @@ describe("MCP connections panel", () => {
       setValue?.call(nameInput, "  Personal Codex  ");
       nameInput?.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    getMock.mockImplementationOnce(() => new Promise(() => {}));
     await act(async () => button("Create token").click());
     await act(async () => {
       await vi.waitFor(() => expect(document.body).toHaveTextContent(secret));
