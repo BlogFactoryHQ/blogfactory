@@ -46,6 +46,6 @@ Set `CRON_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:3000/api/cron/drain` and gi
 bun run src/run-cron-once.ts
 ```
 
-For repository-backed acceptance builds, set the API root directory to `/server`, the web root directory to `/web`, and use `/Dockerfile` inside each root. Railway config-file paths remain repository-relative: `/deploy/railway/api.railway.json` and `/deploy/railway/web.railway.json`. Released templates use the pinned GHCR images above and do not need repository access.
+For repository-backed acceptance builds, set the API root directory to `server` with Dockerfile path `server/Dockerfile`, and the web root directory to `web` with Dockerfile path `web/Dockerfile`. Railway resolves Dockerfile and config-file paths from the repository root even when the build context is narrowed: `/deploy/railway/api.railway.json` and `/deploy/railway/web.railway.json`. Released templates use the pinned GHCR images above and do not need repository access.
 
 The `*.railway.json` files contain the checked-in service health, Dockerfile, restart, and cron contracts. Assign the matching file as each repository-backed service's config-as-code path. Publish the template badge only after a real project passes the same smoke and persistence checks as Docker Compose.

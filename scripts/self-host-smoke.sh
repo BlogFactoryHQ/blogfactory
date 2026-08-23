@@ -62,7 +62,7 @@ curl --fail --silent -H "authorization: Bearer $auth_token" -H 'content-type: ap
 MCP_SMOKE_TOKEN="$(jq -er .secret "$tmp_dir/mcp-token.json")" MCP_SMOKE_URL="$base_url/mcp" \
   bun run "$repo_dir/server/src/run-self-host-mcp-smoke.ts"
 
-"${compose[@]}" restart api
+"${compose[@]}" up -d --no-deps --force-recreate api
 for _ in {1..60}; do
   curl --fail --silent "$base_url/api/ready" >/dev/null && break
   sleep 2

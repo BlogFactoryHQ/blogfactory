@@ -11,7 +11,8 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 ENV API_UPSTREAM=http://api:3000
-ENV NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
+ENV NGINX_ENVSUBST_FILTER=^(API_UPSTREAM|NGINX_RESOLVER)$
+COPY docker/15-resolver.envsh /docker-entrypoint.d/15-resolver.envsh
 COPY docker/default.conf.template /etc/nginx/templates/default.conf.template
 COPY docker/proxy_params /etc/nginx/proxy_params
 COPY --from=build /app/dist /usr/share/nginx/html
