@@ -47,7 +47,7 @@ storage_path="$(jq -er '.storagePath // .storage_path' "$tmp_dir/upload.json")"
 "${source_compose[@]}" stop api scheduler
 "${source_compose[@]}" exec -T postgres pg_dump -U blogfactory -d blogfactory -Fc > "$tmp_dir/blogfactory.dump"
 mkdir "$tmp_dir/objects"
-docker run --rm --network "${source_project}_default" -v "$tmp_dir/objects:/backup" --entrypoint /bin/sh minio/mc:latest -c \
+docker run --rm --user "$(id -u):$(id -g)" --network "${source_project}_default" -e MC_CONFIG_DIR=/tmp/.mc -v "$tmp_dir/objects:/backup" --entrypoint /bin/sh minio/mc:latest -c \
   'mc alias set local http://minio:9000 blogfactory minio-backup-secret && mc mirror local/blogfactory /backup'
 "${source_compose[@]}" down --volumes --remove-orphans
 
