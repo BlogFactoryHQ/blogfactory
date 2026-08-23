@@ -32,6 +32,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 - Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
 - Password recovery UI stays absent until real email delivery is connected. Self-hosted signup is an explicit environment-gated bootstrap path, not a hosted signup launch.
 - Public marketing is owned by the private `BlogFactoryHQ/blogfactory-marketing` Astro repository and Cloudflare Pages project, not this application build.
+- The hosted app deployment is owned by the private `BlogFactoryHQ/blogfactory-cloud` repository. This public repository is the canonical shared core; Cloud syncs merge from here and never copy private code back automatically.
 - Marketing claims must match shipped behavior. Keep product composites labelled; pricing remains absent until the product and security decisions are complete.
 
 ## Current Information Architecture
@@ -58,7 +59,7 @@ Grouped surfaces:
 - Backend: Hono TypeScript app; Bun for local backend development and self-tests.
 - Database: PostgreSQL with Drizzle ORM and additive SQL migrations.
 - Storage: S3-compatible storage, commonly Cloudflare R2.
-- Deploy: the private marketing repository owns the Cloudflare-fronted apex; this Git-linked Vercel project builds the app/API and serves `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
+- Deploy: the private marketing repository owns the Cloudflare-fronted apex; the private Cloud repository validates this shared core and deploys the app/API to Vercel through CI. Vercel serves `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
 
 ## Project Map
 
@@ -150,6 +151,6 @@ npm run db:generate
 - Database integration writes must use a disposable PostgreSQL database, never shared production Neon.
 - Run the full web lint; do not hide changed-file failures behind warning filters.
 - A local missing backend or environment may return `/api/*` 500; do not misattribute that to UI-only work.
-- Before release: `git diff --check`, clean intended diff, commit, push, and wait for the Git-linked Vercel deployment to become Ready.
+- Before release: `git diff --check`, clean intended diff, commit, push, then verify the private Cloud sync/deploy run and wait for the Vercel deployment to become Ready.
 - Production acceptance: `/api/health` 200; unauthenticated `/mcp` 401 with Bearer challenge; OAuth metadata 200; commit SHA matches deployment; `blogfactory.io` alias is attached; relevant live asset/API markers are present.
 - Rollback uses the last Ready Vercel deployment. Keep schema changes additive so rollback stays possible.
