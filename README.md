@@ -9,7 +9,7 @@ BlogFactory is an agent control plane for multi-site content operations. Agents 
 BlogFactory is preparing an open-source, self-hosted release. BlogFactory Cloud is coming soon.
 
 - The operational product, hosted MCP server, review workflow, Search Console tooling, and draft-only CMS delivery exist.
-- Docker Compose now describes the release-candidate self-host topology; its Docker smoke test and public-release gates remain open in `FEATURE_PLAN.md`.
+- Docker Compose is the verified release-candidate self-host topology; the remaining public-release gates stay open in `FEATURE_PLAN.md`.
 - The public site remains a waitlist until the repository is licensed, audited, public, and anonymously cloneable.
 - Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not implemented.
 - Public account creation is disabled. Password recovery is not exposed until real email delivery exists.

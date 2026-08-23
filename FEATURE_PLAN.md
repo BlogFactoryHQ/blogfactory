@@ -34,7 +34,7 @@ There is no founder plan, lifetime hosting, launch discount, checkout, subscript
 - [x] Add the owner-selected AGPL-3.0-only license.
 - [ ] Audit the current tree and Git history for secrets, private customer data, licensed assets, and internal-only documents.
 - [ ] Confirm every bundled screenshot and brand asset is cleared for public redistribution.
-- [ ] Run the Docker Compose stack on a machine with a working Docker daemon and complete the smoke test in `docs/self-hosting.md`.
+- [x] Run the Docker Compose stack on a machine with a working Docker daemon and complete the smoke test in `docs/self-hosting.md`.
 - [x] Preserve the existing Git history, subject to the public-release audit below.
 - [ ] Make `BoraGkc/blogfactory` public and verify the anonymous clone path.
 - [ ] Create a tagged release and attach upgrade/migration notes.
