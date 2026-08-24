@@ -202,7 +202,7 @@ export function McpConnectionsPanel() {
         <SectionHeader
           icon={KeyRound}
           title="MCP Connections"
-          description="Connect AI clients to BlogFactory's site-scoped editorial workflow."
+          description="Let Codex or another MCP client work with BlogFactory drafts. Start by choosing how the client will authenticate."
           action={
             <Button
               type="button"
@@ -232,17 +232,17 @@ export function McpConnectionsPanel() {
 
           <section aria-labelledby="mcp-workflow-title" className="space-y-3">
             <div>
-              <h3 id="mcp-workflow-title" className="text-sm font-semibold">Agent workflow</h3>
-              <p className="mt-1 text-sm text-muted-foreground">A site-scoped path from client setup to a reviewed CMS draft.</p>
+              <h3 id="mcp-workflow-title" className="text-sm font-semibold">Connect a client</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Do this once per AI client. Provider and CMS credentials are never given to the client.</p>
             </div>
-            <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-2 xl:grid-cols-4">
+            <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-3">
               {[
-                ["01", "Connect client", oauthEnabled ? "Use OAuth from Codex or add the endpoint to an MCP-compatible client." : "Create a personal token and add this instance endpoint to your MCP client."],
-                ["02", "Scope access", oauthEnabled ? "Sign in to BlogFactory and grant access to one site." : "Choose the site this token may access, then save the token when shown."],
-                ["03", "Generate & review", "Create a draft, wait for the run, then open its Review Card."],
-                ["04", "Send draft", "Choose a ready CMS destination and confirm the draft-only delivery."],
-              ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></li>)}
+                ["01", oauthEnabled ? "Copy the OAuth command" : "Create a personal token", oauthEnabled ? "Run the command in Codex. It opens BlogFactory in your browser for approval." : "Choose the site this client may access. Copy the token when it appears; it is shown once."],
+                ["02", "Add the server", `Use ${endpoint} as the MCP server endpoint. Token connections use it with Bearer authentication.`],
+                ["03", "Verify in this list", "Ask the client to list BlogFactory tools, then return here. Its last-used time will update after the first successful request."],
+              ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{description}</p></li>)}
             </ol>
+            <Button asChild variant="link" size="sm" className="h-auto justify-start px-0"><a href="/docs/mcp" target="_blank" rel="noreferrer">Open the complete MCP client guide</a></Button>
           </section>
 
           <section className="space-y-2">
@@ -374,7 +374,7 @@ export function McpConnectionsPanel() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Personal tokens</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Advanced access for internal clients without OAuth.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Use this when OAuth is unavailable: create one token, then add it with the endpoint above to your AI client.</p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={openCreate} disabled={sitesLoading || !sites.length}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -397,7 +397,7 @@ export function McpConnectionsPanel() {
             <div className="rounded-md border border-dashed border-byword-border p-8 text-center">
               <KeyRound className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
               <p className="mt-3 text-sm font-medium">No personal MCP connections yet.</p>
-              <p className="mt-1 text-sm text-muted-foreground">Create one for a site-scoped internal client.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Create a token for Codex or another MCP-compatible client.</p>
             </div>
           ) : (
             <Table>
@@ -544,25 +544,30 @@ export function McpConnectionsPanel() {
           <AlertDialogHeader>
             <AlertDialogTitle>Copy your connection token</AlertDialogTitle>
             <AlertDialogDescription>
-              This secret will not be shown again. Store it in your MCP client now.
+              This secret is shown once. Complete the client setup before closing this dialog.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="rounded-md border border-byword-border bg-muted/45 p-4">
             <code className="block break-all font-mono text-xs">{createdSecret}</code>
           </div>
-          <details className="rounded-md border border-byword-border bg-muted/25 p-3">
-            <summary className="cursor-pointer text-sm font-medium">Codex token setup</summary>
+          <details open className="rounded-md border border-byword-border bg-muted/25 p-3">
+            <summary className="cursor-pointer text-sm font-medium">Where this token goes</summary>
             <div className="mt-3 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Save this token as <code className="font-mono text-xs">BLOGFACTORY_MCP_TOKEN</code>, then run:
+                <strong className="text-foreground">Codex:</strong> save the copied value in your shell as <code className="font-mono text-xs">BLOGFACTORY_MCP_TOKEN</code>, then run this command:
               </p>
               <code className="block break-all rounded-sm border border-byword-border bg-card p-3 font-mono text-xs">
                 {codexTokenCommand}
               </code>
+              <p className="text-sm text-muted-foreground"><strong className="text-foreground">Other clients:</strong> add <code className="font-mono text-xs">{endpoint}</code> as the MCP server URL and use this token as the Bearer token.</p>
             </div>
           </details>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeSecret}>I saved it</AlertDialogCancel>
+            <AlertDialogCancel onClick={closeSecret}>I connected my client</AlertDialogCancel>
+            <Button type="button" variant="outline" onClick={() => copyText(codexTokenCommand, "Codex setup command")}>
+              <Terminal className="mr-2 h-4 w-4" />
+              Copy Codex command
+            </Button>
             <Button type="button" onClick={() => createdSecret && copyText(createdSecret, "Token")}>
               <Copy className="mr-2 h-4 w-4" />
               Copy token

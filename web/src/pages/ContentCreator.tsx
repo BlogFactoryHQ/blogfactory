@@ -521,6 +521,10 @@ export default function ContentCreator() {
   }, [fallbackTextModelId, modelId, textModels]);
 
   const handlePersonaChange = (nextPersonaId: string) => {
+    if (nextPersonaId === "default") {
+      setPersonaId("");
+      return;
+    }
     setPersonaId(nextPersonaId);
     const selectedPersona = activePersonas.find((persona) => persona.id === nextPersonaId);
     setModelId(resolveLiveModelId(selectedPersona?.base_model));
@@ -712,7 +716,6 @@ export default function ContentCreator() {
     ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`
     : "Off";
   const articleBriefBlockers = [
-    !personaId ? "Select a voice persona." : "",
     !getSourceValue().trim() ? "Add source content." : "",
     selectedModelUnavailable ? "Pick a live OpenRouter model." : "",
     shouldWarnForCost(costWarningInput(articleCostEstimate)) ? "Projected cost needs confirmation." : "",
@@ -731,7 +734,7 @@ export default function ContentCreator() {
     const buildPayload = (draftIndex?: number) => ({
       sourceType,
       sourceValue,
-      personaId,
+      personaId: personaId || null,
       modelId,
       variations: 1,
       draftBatchId,
@@ -810,10 +813,6 @@ export default function ContentCreator() {
   };
 
   const handleGenerate = async () => {
-    if (!personaId) {
-      toast.error("Please select a persona.");
-      return;
-    }
     if (selectedModelUnavailable) {
       toast.error("Selected model is no longer available on OpenRouter.");
       return;
@@ -856,7 +855,7 @@ export default function ContentCreator() {
       const plan = await api.post<ArticlePlanResponse>("/content/article-plan", {
         sourceType,
         sourceValue,
-        personaId,
+        personaId: personaId || null,
         modelId,
         relatedKeywords: articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5),
         articleDirection,
@@ -1327,25 +1326,21 @@ export default function ContentCreator() {
           <div className="space-y-7 p-6">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Voice Persona</Label>
-                <Select value={personaId} onValueChange={handlePersonaChange}>
+                <Label>Brand voice <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Select value={personaId || "default"} onValueChange={handlePersonaChange}>
                   <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Select persona..." />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {activePersonas.length === 0 ? (
-                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                        No personas yet. Create one first.
-                      </div>
-                    ) : (
-                      activePersonas.map((persona) => (
+                    <SelectItem value="default">Default editorial voice</SelectItem>
+                    {activePersonas.map((persona) => (
                         <SelectItem key={persona.id} value={persona.id}>
                           {persona.name}
                         </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Use the built-in editorial voice now; add a brand voice when you need one.</p>
               </div>
 
               <div className="space-y-2">
@@ -1363,7 +1358,7 @@ export default function ContentCreator() {
             <GenerationBrief
               title="Generation brief"
               source={getSourceLabel()}
-              persona={selectedPersona?.name || ""}
+              persona={selectedPersona?.name || "Default editorial voice"}
               model={selectedTextModel?.name || modelId}
               estimate={articleCostEstimate}
               imagePlan={imagePlanLabel}
@@ -1418,7 +1413,7 @@ export default function ContentCreator() {
 
             <Button
               onClick={handleGenerate}
-              disabled={activePersonas.length === 0 || selectedModelUnavailable}
+              disabled={selectedModelUnavailable}
               className="h-12 w-full text-base"
             >
               <Sparkles className="mr-2 h-5 w-5" />
@@ -1426,13 +1421,7 @@ export default function ContentCreator() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
-            {activePersonas.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground">
-                Create a persona first to start generating content.
-              </p>
-            )}
-
-            {activePersonas.length > 0 && !isGenerating && (
+            {!isGenerating && (
               <p className="flex items-center justify-center gap-1.5 text-center text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 Estimated generation time: about {variations * 15} seconds.

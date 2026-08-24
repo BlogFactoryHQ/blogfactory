@@ -143,15 +143,16 @@ const searchConsoleOAuthSteps = [
 ];
 
 const searchConsoleServiceAccountSteps = [
-  "Use this only when you cannot connect a personal Google account.",
-  "In Google Cloud, create a service account key and download it as JSON.",
-  "In Search Console, add the service account client_email as a user for this property, then paste the whole JSON file here.",
+  "In Google Cloud, create a service account, add a JSON key, and download the file.",
+  "Open the JSON file and copy its client_email value.",
+  "A Search Console property owner must add that email under Settings > Users and permissions.",
+  "Paste the entire JSON file below. BlogFactory stores it encrypted and uses read-only Search Console access.",
 ];
 
 export function OptimizePanel() {
   const [params, setParams] = useSearchParams();
   const { activeSite } = useSites();
-  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
+  const { integration, oauthEnabled, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
   const { inspectBatch } = useSearchConsoleToolkit();
   const { pages, isLoading: isLoadingPages, analyze, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
@@ -197,6 +198,14 @@ export function OptimizePanel() {
   useEffect(() => {
     if (integration?.status === "property_selection_required") setConnectOpen(true);
   }, [integration?.status]);
+
+  useEffect(() => {
+    if (params.get("connect") !== "search-console") return;
+    setConnectOpen(true);
+    const next = new URLSearchParams(params);
+    next.delete("connect");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const toggleInspectionUrl = (url: string, checked: boolean) => {
     setSelectedUrls((current) => {
@@ -532,6 +541,7 @@ export function OptimizePanel() {
       <SearchConsoleDialog
         open={connectOpen}
         integration={integration}
+        oauthEnabled={oauthEnabled}
         activeSiteDomain={activeSite?.domain || ""}
         onClose={() => setConnectOpen(false)}
         onOAuth={async (propertyUrl) => {
@@ -605,9 +615,10 @@ export default function Optimize() {
   );
 }
 
-function SearchConsoleDialog({
+export function SearchConsoleDialog({
   open,
   integration,
+  oauthEnabled,
   activeSiteDomain,
   onClose,
   onOAuth,
@@ -620,6 +631,7 @@ function SearchConsoleDialog({
 }: {
   open: boolean;
   integration: SearchConsoleIntegration | null;
+  oauthEnabled: boolean;
   activeSiteDomain: string;
   onClose: () => void;
   onOAuth: (propertyUrl?: string) => Promise<void>;
@@ -632,6 +644,7 @@ function SearchConsoleDialog({
 }) {
   const [propertyUrl, setPropertyUrl] = useState("");
   const [serviceAccountJson, setServiceAccountJson] = useState("");
+  const callbackUrl = `${window.location.origin}/api/search-console/oauth/callback`;
 
   useEffect(() => {
     if (open) {
@@ -696,24 +709,50 @@ function SearchConsoleDialog({
           <div className="rounded-lg border border-byword-border p-4">
             <h3 className="font-semibold text-foreground">Google OAuth</h3>
             <p className="mt-1 text-sm text-muted-foreground">Approve read-only Search Console access. BlogFactory stores the refresh token encrypted.</p>
-            <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-              {searchConsoleOAuthSteps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting}>
-              {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
-              Continue with Google
-            </Button>
+            {oauthEnabled ? (
+              <>
+                <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+                  {searchConsoleOAuthSteps.map((step) => <li key={step}>{step}</li>)}
+                </ol>
+                <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting}>
+                  {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
+                  Continue with Google
+                </Button>
+              </>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                  <strong>Google OAuth is not configured on this server.</strong> If you run this instance, complete the one-time setup below. If someone else runs it, send them this guide.
+                </div>
+                <ol className="space-y-3 text-sm leading-6">
+                  <li><strong>1. Enable the API.</strong> Open the <a className="font-semibold text-byword-blue underline underline-offset-2" href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noreferrer">Search Console API in Google Cloud</a> and enable it for your project.</li>
+                  <li><strong>2. Configure consent.</strong> Set up the OAuth consent screen for the Google accounts that will connect.</li>
+                  <li><strong>3. Create credentials.</strong> Create an OAuth client with application type <strong>Web application</strong>.</li>
+                  <li><strong>4. Add the callback URL.</strong><code className="mt-2 block break-all rounded-sm border border-byword-border bg-card p-3 font-mono text-xs">{callbackUrl}</code></li>
+                  <li><strong>5. Configure the API service.</strong><code className="mt-2 block whitespace-pre-wrap rounded-sm border border-byword-border bg-card p-3 font-mono text-xs">GOOGLE_SEARCH_CONSOLE_CLIENT_ID=…{"\n"}GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET=…</code></li>
+                  <li><strong>6. Restart BlogFactory.</strong><code className="mt-2 block overflow-x-auto rounded-sm border border-byword-border bg-card p-3 font-mono text-xs">docker compose up -d --no-deps --force-recreate api</code></li>
+                </ol>
+                <p className="text-xs leading-5 text-muted-foreground">Return to this dialog after restart. The Google button will appear automatically. BlogFactory requests only <code className="font-mono">webmasters.readonly</code>.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline" size="sm"><a href="/docs/self-hosting" target="_blank" rel="noreferrer">Open full self-hosting guide <ExternalLink className="ml-1.5 h-3.5 w-3.5" /></a></Button>
+                  <Button asChild variant="outline" size="sm"><a href="https://developers.google.com/webmaster-tools/v1/how-tos/authorizing" target="_blank" rel="noreferrer">Google authorization guide <ExternalLink className="ml-1.5 h-3.5 w-3.5" /></a></Button>
+                </div>
+              </div>
+            )}
           </div>
           <details className="rounded-lg border border-byword-border p-4">
-            <summary className="cursor-pointer font-semibold text-foreground">Advanced: service account JSON</summary>
+            <summary className="cursor-pointer font-semibold text-foreground">Alternative: service account JSON (no OAuth)</summary>
             <div className="mt-4 space-y-3">
+              <p className="text-sm leading-6 text-muted-foreground">A service account is a Google identity for this BlogFactory server, not a person. Its downloaded JSON file contains the identity and private key. Keep that file secret and paste it only into your own instance.</p>
               <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
                 {searchConsoleServiceAccountSteps.map((step) => (
                   <li key={step}>{step}</li>
                 ))}
               </ol>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm"><a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noreferrer">Open service accounts <ExternalLink className="ml-1.5 h-3.5 w-3.5" /></a></Button>
+                <Button asChild variant="outline" size="sm"><a href="https://support.google.com/webmasters/answer/7687615?hl=en" target="_blank" rel="noreferrer">Property permission guide <ExternalLink className="ml-1.5 h-3.5 w-3.5" /></a></Button>
+              </div>
               {integration && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Leave JSON blank to keep the saved credential.</p>}
               <div className="space-y-2">
                 <Label>Service account JSON</Label>

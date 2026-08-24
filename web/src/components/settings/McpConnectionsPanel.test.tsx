@@ -109,8 +109,8 @@ describe("MCP connections panel", () => {
   it("shows the personal-token workflow when OAuth is disabled", async () => {
     await renderPanel([], [], { ...capabilities, oauth_enabled: false });
 
-    expect(document.body).toHaveTextContent("Create a personal token and add this instance endpoint");
-    expect(document.body).toHaveTextContent("Choose the site this token may access");
+    expect(document.body).toHaveTextContent("Create a personal token");
+    expect(document.body).toHaveTextContent("Choose the site this client may access");
     expect(document.body).not.toHaveTextContent("Use OAuth from Codex");
     expect(button("Create personal token")).toBeEnabled();
     expect(getMock).not.toHaveBeenCalledWith("/mcp/oauth/connections");
@@ -153,6 +153,7 @@ describe("MCP connections panel", () => {
     await act(async () => {
       await vi.waitFor(() => expect(document.body).toHaveTextContent(secret));
     });
+    expect(document.body).toHaveTextContent("Where this token goes");
 
     expect(postMock).toHaveBeenCalledWith("/mcp/tokens", {
       name: "Personal Codex",
@@ -165,7 +166,7 @@ describe("MCP connections panel", () => {
     await act(async () => button("Copy token").click());
     expect(writeTextMock).toHaveBeenCalledWith(secret);
 
-    await act(async () => button("I saved it").click());
+    await act(async () => button("I connected my client").click());
     expect(document.body).not.toHaveTextContent(secret);
   });
 

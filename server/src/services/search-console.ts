@@ -210,6 +210,10 @@ export function mapSearchAnalyticsRows(rows: Array<{ keys?: string[]; clicks?: n
     .filter((row): row is SearchAnalyticsMetric => Boolean(row));
 }
 
+export function searchConsoleOAuthEnabled(env: NodeJS.ProcessEnv = process.env) {
+  return Boolean(env.GOOGLE_SEARCH_CONSOLE_CLIENT_ID && env.GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET);
+}
+
 export async function getSearchConsoleDashboard(userId: string, siteId: string) {
   const [integration] = await db
     .select()
@@ -219,6 +223,7 @@ export async function getSearchConsoleDashboard(userId: string, siteId: string) 
 
   if (!integration) {
     return {
+      oauth_enabled: searchConsoleOAuthEnabled(),
       integration: null,
       range: { startDate: "", endDate: "", baselineStart: null, baselineEnd: null },
       stats: { clicks: 0, impressions: 0, ctr: 0, position: 0, pageCount: 0, queryCount: 0 },
@@ -238,6 +243,7 @@ export async function getSearchConsoleDashboard(userId: string, siteId: string) 
   const queryCount = new Set(latestRows.map((metric) => metric.query)).size;
 
   return {
+    oauth_enabled: searchConsoleOAuthEnabled(),
     integration: serializeSearchConsoleIntegration(integration),
     range: performance.range,
     stats: {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyDraftAction, filterActionItems, revisionChangeSummary } from "./control-plane.js";
+import { classifyDraftAction, cmsConnectionReady, filterActionItems, generationReadiness, revisionChangeSummary } from "./control-plane.js";
 import { seoSourceHash } from "./seo-metadata.js";
 
 const title = "A useful article title";
@@ -58,6 +58,13 @@ const mixed = classifyDraftAction({ ...base, seoMetadata: null, coverImageUrl: n
 assert.equal(filterActionItems([mixed], "warning").length, 0);
 assert.equal(filterActionItems([mixed], "blocker")[0]?.severity, "blocker");
 assert.equal(filterActionItems([mixed], undefined, "missing_cover")[0]?.severity, "warning");
+
+assert.deepEqual(generationReadiness("missing"), { ready: false, credential_status: "missing" });
+assert.deepEqual(generationReadiness("usable"), { ready: true, credential_status: "usable" });
+assert.deepEqual(generationReadiness("undecryptable"), { ready: false, credential_status: "undecryptable" });
+assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: new Date() }, "usable"), true);
+assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: null }, "usable"), false);
+assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: new Date() }, "undecryptable"), false);
 
 assert.deepEqual(revisionChangeSummary(
   { title: "New", content: "one two three", summary: null, cover_image_url: null, inline_images: null, publishing_metadata: null },
