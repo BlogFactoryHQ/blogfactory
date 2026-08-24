@@ -68,8 +68,16 @@ async function enter(name: string, value: string) {
 }
 
 beforeEach(() => {
-  integrationMocks.save.mockReset().mockResolvedValue({ integration: { id: "integration-1" } });
-  integrationMocks.test.mockReset().mockResolvedValue({ success: true, message: "Connected" });
+  const integration = {
+    id: "integration-1",
+    provider: "wix",
+    displayName: "Wix",
+    display_name: "Wix",
+    status: "pending",
+    config: {},
+  };
+  integrationMocks.save.mockReset().mockResolvedValue({ integration });
+  integrationMocks.test.mockReset().mockResolvedValue({ success: true, message: "Connected", integration: { ...integration, status: "connected", ready: true } });
   integrationMocks.remove.mockReset();
 });
 
@@ -159,5 +167,18 @@ describe("Integrations setup dialog", () => {
       credentials: { apiKey: "wix-key", siteId: "site-123", memberId: "member-123" },
     }));
     expect(integrationMocks.test).toHaveBeenCalledWith("integration-1");
+  });
+
+  it("keeps the saved connection open when its test fails", async () => {
+    integrationMocks.test.mockRejectedValueOnce(new Error("Wix rejected the key"));
+    await renderPage();
+    await act(async () => connectButton("Wix").click());
+    await enter("integration-wix-apiKey-value", "wix-key");
+    await enter("integration-wix-siteId-value", "site-123");
+    await enter("integration-wix-memberId-value", "member-123");
+
+    await act(async () => button("Connect and test").click());
+
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Manage Wix");
   });
 });

@@ -138,7 +138,7 @@ export default function Integrations() {
   const [editing, setEditing] = useState<SiteIntegration | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  const connectedCount = integrations.filter((integration) => connectionReady(integration) && integration.lastTestedAt).length;
+  const connectedCount = integrations.filter(connectionReady).length;
   const fromFirstDraft = searchParams.get("from") === "first-draft";
   const lastPublish = useMemo(() => {
     const dates = integrations.map((integration) => integration.lastPublishAt).filter(Boolean) as string[];
@@ -221,7 +221,7 @@ export default function Integrations() {
             <div className="divide-y divide-byword-border">
               {integrations.map((integration) => {
                 const details = providerDetails[integration.provider];
-                const ready = connectionReady(integration) && Boolean(integration.lastTestedAt);
+                const ready = connectionReady(integration);
                 return (
                   <div key={integration.id} className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-start gap-4">
@@ -307,18 +307,22 @@ export default function Integrations() {
           setEditing(null);
         }}
         onSave={async (input) => {
+          let result;
           try {
-            const result = await saveIntegration.mutateAsync(input);
-            try {
-              const test = await testIntegration.mutateAsync(result.integration.id);
-              toast.success(test.message || `${providerDetails[input.provider].name} connected and tested`);
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "Connection test failed";
-              toast.error(`${providerDetails[input.provider].name} was saved, but the test failed: ${message}`);
-            }
-            return result.integration;
+            result = await saveIntegration.mutateAsync(input);
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to save integration");
+            throw error;
+          }
+          try {
+            const test = await testIntegration.mutateAsync(result.integration.id);
+            toast.success(test.message || `${providerDetails[input.provider].name} connected and tested`);
+            return test.integration;
+          } catch (error) {
+            setProviderToConnect(null);
+            setEditing(result.integration);
+            const message = error instanceof Error ? error.message : "Connection test failed";
+            toast.error(`${providerDetails[input.provider].name} was saved, but the test failed: ${message}`);
             throw error;
           }
         }}

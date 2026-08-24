@@ -5,7 +5,7 @@ import { connect } from "framer-api";
 import { and, eq, desc, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
-import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
+import { decryptSecret, encryptSecret, encryptedCredentialStatus, testedConnectionReady } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { stripUnclosedBoldMarkers } from "./post-cleanup.js";
 import { getObject } from "./s3-client.js";
@@ -181,6 +181,7 @@ export function serializeIntegration(row: IntegrationRow) {
     displayName: row.displayName,
     display_name: row.displayName,
     status: row.status,
+    ready: testedConnectionReady(row),
     credentialStatus: encryptedCredentialStatus(row.credentialsEncrypted),
     credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
     credentialHint: row.credentialHint,
@@ -401,7 +402,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .where(and(eq(siteIntegrations.id, integrationId), eq(siteIntegrations.userId, userId)))
     .limit(1);
   if (!integration) throw new Error("Integration not found");
-  if (integration.status !== "connected") throw new Error("Integration is not connected");
+  if (!testedConnectionReady(integration)) throw new Error("Integration is not ready; save and test it first");
   if (post.siteId && integration.siteId !== post.siteId) throw new Error("Publishing target does not belong to this post's destination site");
 
   const [site] = await db

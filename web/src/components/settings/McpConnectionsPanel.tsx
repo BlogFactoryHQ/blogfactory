@@ -4,6 +4,7 @@ import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lu
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { api, retryTransientApiError } from "@/lib/api";
+import { useMcpCapabilities } from "@/hooks/useMcpCapabilities";
 import { useSites } from "@/hooks/useSites";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -58,8 +59,6 @@ type RevokeTarget = {
   kind: "personal" | "oauth";
 };
 
-type McpCapabilities = { tools: string[]; tool_count: number; endpoint: string; oauth_enabled: boolean };
-
 function tokenStatus(token: McpToken) {
   if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
   if (token.expires_at && new Date(token.expires_at).getTime() <= Date.now()) {
@@ -103,11 +102,7 @@ export function McpConnectionsPanel() {
     queryFn: () => api.get<McpTokenList>("/mcp/tokens"),
     retry: retryTransientApiError,
   });
-  const capabilitiesQuery = useQuery({
-    queryKey: ["mcp-capabilities"],
-    queryFn: () => api.get<McpCapabilities>("/mcp/capabilities"),
-    retry: retryTransientApiError,
-  });
+  const capabilitiesQuery = useMcpCapabilities();
   const endpoint = new URL(capabilitiesQuery.data?.endpoint || import.meta.env.VITE_MCP_URL || `${window.location.origin}/mcp`).toString();
   const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
   const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;

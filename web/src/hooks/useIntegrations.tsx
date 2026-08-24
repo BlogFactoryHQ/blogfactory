@@ -13,6 +13,7 @@ export interface SiteIntegration {
   displayName: string;
   display_name: string;
   status: "connected" | "error" | string;
+  ready?: boolean;
   credentialStatus?: "usable" | "missing" | "undecryptable" | string;
   credential_status?: "usable" | "missing" | "undecryptable" | string;
   credentialHint: string | null;
@@ -94,7 +95,7 @@ export function useIntegrations(siteId?: string | null) {
 
   const testIntegration = useMutation({
     mutationFn: async (id: string) => api.post<{ success: boolean; message?: string; error?: string; integration: SiteIntegration }>(`/integrations/${id}/test`),
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
 
   const deleteIntegration = useMutation({

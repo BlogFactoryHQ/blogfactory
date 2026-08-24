@@ -40,7 +40,7 @@ integrationsRoutes.post("/", async (c) => {
         siteId,
         provider,
         displayName: String(body.displayName || body.display_name || defaultDisplayName(provider)),
-        status: "connected",
+        status: "pending",
         credentialsEncrypted: encrypted,
         credentialHint: hint,
         config: sanitizeConfig(body.config),
@@ -75,7 +75,9 @@ integrationsRoutes.put("/:id", async (c) => {
         displayName: String(body.displayName || body.display_name || existing.displayName),
         ...(credentials ? { credentialsEncrypted: credentials.encrypted, credentialHint: credentials.hint } : {}),
         config: sanitizeConfig(body.config ?? existing.config),
-        status: "connected",
+        status: "pending",
+        lastTestedAt: null,
+        lastTestResult: null,
       })
       .where(and(eq(siteIntegrations.id, id), eq(siteIntegrations.userId, userId)))
       .returning();

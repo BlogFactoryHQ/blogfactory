@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyDraftAction, cmsConnectionReady, filterActionItems, generationReadiness, revisionChangeSummary } from "./control-plane.js";
+import { classifyDraftAction, filterActionItems, generationReadiness, revisionChangeSummary } from "./control-plane.js";
 import { seoSourceHash } from "./seo-metadata.js";
 
 const title = "A useful article title";
@@ -35,8 +35,7 @@ const base = {
   publishingMetadata: { tags: ["test"] },
   preferredIntegrationId: "00000000-0000-4000-8000-000000000003",
   integrationSiteId: "00000000-0000-4000-8000-000000000002",
-  integrationStatus: "connected",
-  integrationCredentialStatus: "usable" as const,
+  integrationReady: true,
   usableDestinationCount: 1,
   updatedAt: new Date("2026-08-21T00:00:00.000Z"),
   revision: { id: "00000000-0000-4000-8000-000000000004", revisionNumber: 2 },
@@ -46,7 +45,7 @@ const base = {
 assert.equal(classifyDraftAction(base), null);
 assert.equal(classifyDraftAction({ ...base, revision: null })?.kind, "missing_revision");
 assert.equal(classifyDraftAction({ ...base, seoMetadata: null })?.kind, "seo_not_ready");
-assert.equal(classifyDraftAction({ ...base, preferredIntegrationId: null, integrationSiteId: null, integrationStatus: null, integrationCredentialStatus: "missing", usableDestinationCount: 0 })?.kind, "destination_not_ready");
+assert.equal(classifyDraftAction({ ...base, preferredIntegrationId: null, integrationSiteId: null, integrationReady: false, usableDestinationCount: 0 })?.kind, "destination_not_ready");
 assert.equal(classifyDraftAction({ ...base, editorialState: "changes_requested" })?.kind, "changes_requested");
 assert.equal(classifyDraftAction({ ...base, editorialState: "in_review" })?.kind, "in_review");
 assert.equal(classifyDraftAction({ ...base, editorialState: "approved", approvedRevisionId: "00000000-0000-4000-8000-000000000099" })?.kind, "stale_approval");
@@ -62,10 +61,6 @@ assert.equal(filterActionItems([mixed], undefined, "missing_cover")[0]?.severity
 assert.deepEqual(generationReadiness("missing"), { ready: false, credential_status: "missing" });
 assert.deepEqual(generationReadiness("usable"), { ready: true, credential_status: "usable" });
 assert.deepEqual(generationReadiness("undecryptable"), { ready: false, credential_status: "undecryptable" });
-assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: new Date() }, "usable"), true);
-assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: null }, "usable"), false);
-assert.equal(cmsConnectionReady({ status: "connected", lastTestedAt: new Date() }, "undecryptable"), false);
-
 assert.deepEqual(revisionChangeSummary(
   { title: "New", content: "one two three", summary: null, cover_image_url: null, inline_images: null, publishing_metadata: null },
   { title: "Old", content: "one two", summary: null, cover_image_url: null, inline_images: null, publishing_metadata: null },

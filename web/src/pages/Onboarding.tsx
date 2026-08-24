@@ -24,6 +24,7 @@ import { InputAffordance } from "@/components/ui/input-affordance";
 import { BywordCard, FactoryDivider, FactoryMark, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import { useJobTracker, type JobTerminalResult, type TrackedJob } from "@/hooks/useJobTracker";
+import { useOpenRouterSetup } from "@/hooks/useOpenRouterSetup";
 import { useSites, type Site } from "@/hooks/useSites";
 import type { LiveTextModel } from "@/hooks/useTextModels";
 import { api } from "@/lib/api";
@@ -93,9 +94,7 @@ export default function Onboarding() {
   const [step, setStep] = useState<OnboardingStep>("loading");
   const [siteUrl, setSiteUrl] = useState("");
   const [openRouterKey, setOpenRouterKey] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
   const [keyError, setKeyError] = useState("");
-  const [generationVerified, setGenerationVerified] = useState(false);
   const [topic, setTopic] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [generationError, setGenerationError] = useState("");
@@ -108,14 +107,11 @@ export default function Onboarding() {
     enabled: Boolean(site?.id),
     staleTime: 15_000,
   });
-  const savedKeyCheckQuery = useQuery({
-    queryKey: ["onboarding-openrouter-check", site?.id],
-    queryFn: () => api.post<{ ok: boolean }>("/settings/api-keys/test", { provider: "openrouter" }),
-    enabled: Boolean(site?.id && digestQuery.data?.connections.generation.ready && !generationVerified),
-    retry: false,
-    staleTime: 60_000,
+  const openRouter = useOpenRouterSetup({
+    siteId: site?.id,
+    checkSaved: Boolean(site?.id && digestQuery.data?.connections.generation.ready),
   });
-  const generationReady = generationVerified || savedKeyCheckQuery.isSuccess;
+  const generationReady = openRouter.verified;
   const modelsQuery = useQuery({
     queryKey: ["text-models"],
     queryFn: () => api.get<LiveTextModel[]>("/models/text"),
@@ -165,12 +161,12 @@ export default function Onboarding() {
       return;
     }
     if (step !== "loading") return;
-    if (!digestQuery.data.connections.generation.ready || savedKeyCheckQuery.isError) {
+    if (!digestQuery.data.connections.generation.ready || openRouter.savedKeyCheck.isError) {
       setStep("key");
       return;
     }
-    if (savedKeyCheckQuery.isSuccess) setStep("topic");
-  }, [digestQuery.data, navigate, result, savedKeyCheckQuery.isError, savedKeyCheckQuery.isSuccess, site, sitesLoading, step]);
+    if (openRouter.savedKeyCheck.isSuccess) setStep("topic");
+  }, [digestQuery.data, navigate, openRouter.savedKeyCheck.isError, openRouter.savedKeyCheck.isSuccess, result, site, sitesLoading, step]);
 
   const submitSite = async (event: FormEvent) => {
     event.preventDefault();
@@ -192,24 +188,14 @@ export default function Onboarding() {
   const submitOpenRouter = async (event: FormEvent) => {
     event.preventDefault();
     if (!openRouterKey.trim()) return;
-    setSavingKey(true);
     setKeyError("");
     try {
-      await api.put("/settings/api-keys", { provider: "openrouter", apiKey: openRouterKey });
-      await api.post("/settings/api-keys/test", { provider: "openrouter" });
-      setGenerationVerified(true);
+      await openRouter.saveAndVerify.mutateAsync(openRouterKey);
       setOpenRouterKey("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["control-plane-overview", site?.id] }),
-        queryClient.invalidateQueries({ queryKey: ["text-models"] }),
-        queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
-      ]);
       setStep("topic");
       toast.success("OpenRouter key saved and verified");
     } catch (error) {
       setKeyError(errorMessage(error, "The key could not be saved and verified."));
-    } finally {
-      setSavingKey(false);
     }
   };
 
@@ -326,8 +312,8 @@ export default function Onboarding() {
                   <label htmlFor="onboarding-openrouter-key" className="text-sm font-medium">OpenRouter API key</label>
                   <Input id="onboarding-openrouter-key" type="password" value={openRouterKey} onChange={(event) => setOpenRouterKey(event.target.value)} placeholder="sk-or-…" autoComplete="off" spellCheck={false} autoFocus />
                 </div>
-                {(keyError || savedKeyCheckQuery.error) && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert"><p className="font-semibold">The key did not pass verification.</p><p className="mt-1">{keyError || errorMessage(savedKeyCheckQuery.error, "The saved key is no longer accepted by OpenRouter.")}</p><p className="mt-2">Check that the full key was copied, replace it above, and try again.</p></div>}
-                <Button type="submit" className="h-11" disabled={!openRouterKey.trim() || savingKey}>{savingKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}Save, test, and continue</Button>
+                {(keyError || openRouter.savedKeyCheck.error) && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert"><p className="font-semibold">The key did not pass verification.</p><p className="mt-1">{keyError || errorMessage(openRouter.savedKeyCheck.error, "The saved key is no longer accepted by OpenRouter.")}</p><p className="mt-2">Check that the full key was copied, replace it above, and try again.</p></div>}
+                <Button type="submit" className="h-11" disabled={!openRouterKey.trim() || openRouter.saveAndVerify.isPending}>{openRouter.saveAndVerify.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}Save, test, and continue</Button>
               </form>
             </div>
           </BywordCard>

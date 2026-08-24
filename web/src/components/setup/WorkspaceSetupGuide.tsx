@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Bot, Check, CheckCircle2, Copy, ExternalLink, FileCheck2, Globe2, KeyRound, Loader2, SearchCheck, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -7,7 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { api } from "@/lib/api";
+import { useMcpCapabilities } from "@/hooks/useMcpCapabilities";
+import { useOpenRouterSetup } from "@/hooks/useOpenRouterSetup";
+import { useSearchConsole } from "@/hooks/useSearchConsole";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import { cn } from "@/lib/utils";
 
@@ -44,23 +46,15 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
   const queryClient = useQueryClient();
   const [step, setStep] = useState<WorkspaceSetupStep>(initialStep);
   const [openRouterKey, setOpenRouterKey] = useState("");
-  const [generationVerified, setGenerationVerified] = useState(false);
-  const searchConsoleQuery = useQuery({
-    queryKey: ["search-console", digest.site.id],
-    queryFn: () => api.get<{ oauth_enabled: boolean }>(`/search-console/dashboard?siteId=${encodeURIComponent(digest.site.id)}`),
-    staleTime: 60_000,
-  });
-  const mcpCapabilitiesQuery = useQuery({
-    queryKey: ["mcp-capabilities"],
-    queryFn: () => api.get<{ endpoint: string }>("/mcp/capabilities"),
-    staleTime: 60_000,
-  });
+  const openRouter = useOpenRouterSetup({ siteId: digest.site.id });
+  const { oauthEnabled } = useSearchConsole(digest.site.id);
+  const mcpCapabilitiesQuery = useMcpCapabilities();
 
   useEffect(() => {
     if (open) setStep(initialStep);
   }, [initialStep, open]);
 
-  const generationReady = digest.connections.generation.ready || generationVerified;
+  const generationReady = digest.connections.generation.ready || openRouter.verified;
   const cmsReady = digest.connections.cms.connected > 0;
   const searchReady = digest.connections.search_console.connected;
   const mcpConfigured = digest.connections.active > 0;
@@ -85,35 +79,17 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
     toast.success("Setup status refreshed");
   };
 
-  const saveOpenRouter = useMutation({
-    mutationFn: async () => {
-      await api.put("/settings/api-keys", { provider: "openrouter", apiKey: openRouterKey });
-      return api.post<{ ok: boolean }>("/settings/api-keys/test", { provider: "openrouter" });
-    },
-    onSuccess: async () => {
-      setGenerationVerified(true);
-      setOpenRouterKey("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["control-plane-overview", digest.site.id] }),
-        queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
-        queryClient.invalidateQueries({ queryKey: ["text-models"] }),
-        queryClient.invalidateQueries({ queryKey: ["image-models"] }),
-      ]);
-      toast.success("OpenRouter key saved and verified");
-    },
-  });
-  const verifySavedOpenRouter = useMutation({
-    mutationFn: () => api.post<{ ok: boolean }>("/settings/api-keys/test", { provider: "openrouter" }),
+  const saveOpenRouter = () => openRouter.saveAndVerify.mutate(openRouterKey, {
     onSuccess: () => {
-      setGenerationVerified(true);
-      toast.success("Saved OpenRouter key works");
+      setOpenRouterKey("");
+      toast.success("OpenRouter key saved and verified");
     },
   });
 
   const submitOpenRouter = (event: FormEvent) => {
     event.preventDefault();
     if (!openRouterKey.trim()) return;
-    saveOpenRouter.mutate();
+    saveOpenRouter();
   };
 
   const next = () => setStep(stepOrder[Math.min(stepOrder.length - 1, currentIndex + 1)]);
@@ -178,9 +154,9 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                 <SetupSection icon={KeyRound} title="Connect OpenRouter" description="Required for article and prompt generation. The key belongs to your user account and is stored encrypted.">
                   {generationReady ? (
                     <div className="space-y-3">
-                      <StatusPanel ready title={generationVerified ? "OpenRouter is verified" : "OpenRouter key saved"} detail={generationVerified ? "The key passed a live provider check." : "Verify the saved key now, or continue if you already tested it in Article Settings."} />
-                      {!generationVerified && <Button type="button" variant="outline" onClick={() => verifySavedOpenRouter.mutate()} disabled={verifySavedOpenRouter.isPending}>{verifySavedOpenRouter.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Verify saved key</Button>}
-                      {verifySavedOpenRouter.error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{verifySavedOpenRouter.error instanceof Error ? verifySavedOpenRouter.error.message : "The saved key could not be verified."}</p>}
+                      <StatusPanel ready title={openRouter.verified ? "OpenRouter is verified" : "OpenRouter key saved"} detail={openRouter.verified ? "The key passed a live provider check." : "Verify the saved key now, or continue if you already tested it in Article Settings."} />
+                      {!openRouter.verified && <Button type="button" variant="outline" onClick={() => openRouter.verifySaved.mutate(undefined, { onSuccess: () => toast.success("Saved OpenRouter key works") })} disabled={openRouter.verifySaved.isPending}>{openRouter.verifySaved.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Verify saved key</Button>}
+                      {openRouter.verifySaved.error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{openRouter.verifySaved.error instanceof Error ? openRouter.verifySaved.error.message : "The saved key could not be verified."}</p>}
                     </div>
                   ) : (
                     <form onSubmit={submitOpenRouter} className="space-y-4">
@@ -193,9 +169,9 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                         <label htmlFor="setup-openrouter-key" className="text-sm font-medium">OpenRouter API key</label>
                         <Input id="setup-openrouter-key" type="password" value={openRouterKey} onChange={(event) => setOpenRouterKey(event.target.value)} placeholder="sk-or-…" autoComplete="off" spellCheck={false} autoFocus />
                       </div>
-                      {saveOpenRouter.error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{saveOpenRouter.error instanceof Error ? saveOpenRouter.error.message : "The key could not be verified."}</p>}
-                      <Button type="submit" disabled={!openRouterKey.trim() || saveOpenRouter.isPending}>
-                        {saveOpenRouter.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {openRouter.saveAndVerify.error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{openRouter.saveAndVerify.error instanceof Error ? openRouter.saveAndVerify.error.message : "The key could not be verified."}</p>}
+                      <Button type="submit" disabled={!openRouterKey.trim() || openRouter.saveAndVerify.isPending}>
+                        {openRouter.saveAndVerify.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Save and verify key
                       </Button>
                     </form>
@@ -215,7 +191,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
 
               {step === "search-console" && (
                 <SetupSection icon={SearchCheck} title="Connect Google Search Console" description="Optional. This gives BlogFactory read-only search performance evidence for the selected property.">
-                  {searchReady ? <StatusPanel ready title="Search Console connected" detail="Search evidence is available for this site." /> : searchConsoleQuery.data?.oauth_enabled ? (
+                  {searchReady ? <StatusPanel ready title="Search Console connected" detail="Search evidence is available for this site." /> : oauthEnabled ? (
                     <>
                       <InstructionList items={["Open the connection screen.", "Choose the Google account that can read this Search Console property.", "Approve read-only access and select the property."]} />
                       <Button asChild className="mt-5" onClick={() => onOpenChange(false)}><Link to="/overview/growth?tab=optimize&connect=search-console">Continue with Google <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
