@@ -60,6 +60,16 @@ export function encryptedCredentialStatus(value?: string | null): CredentialStat
   }
 }
 
+export function testedConnectionReady(connection: {
+  status?: string | null;
+  lastTestedAt?: Date | string | null;
+  credentialsEncrypted?: string | null;
+}) {
+  return connection.status === "connected"
+    && Boolean(connection.lastTestedAt)
+    && encryptedCredentialStatus(connection.credentialsEncrypted) === "usable";
+}
+
 export function accountCredentialStatus(_provider: Provider, value?: string | null): CredentialStatus {
   return encryptedCredentialStatus(value);
 }

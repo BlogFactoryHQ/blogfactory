@@ -21,12 +21,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { SearchConsoleIntegration, SearchConsoleProperty, useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchConsole";
+import { SearchConsoleDialog } from "@/components/search-growth/SearchConsoleDialog";
+import { useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchConsole";
 import {
   ContentSnapshot,
   OptimizeAnalysis,
@@ -136,22 +136,10 @@ const opportunityMeta: Record<string, { label: string; action: string; tone: str
   },
 };
 
-const searchConsoleOAuthSteps = [
-  "Use the Google account that owns or can read this Search Console property.",
-  "Click Continue with Google and approve read-only Search Console access.",
-  "If access fails, open Search Console Settings > Users and permissions and add that Google account.",
-];
-
-const searchConsoleServiceAccountSteps = [
-  "Use this only when you cannot connect a personal Google account.",
-  "In Google Cloud, create a service account key and download it as JSON.",
-  "In Search Console, add the service account client_email as a user for this property, then paste the whole JSON file here.",
-];
-
 export function OptimizePanel() {
   const [params, setParams] = useSearchParams();
   const { activeSite } = useSites();
-  const { integration, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
+  const { integration, oauthEnabled, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
   const { inspectBatch } = useSearchConsoleToolkit();
   const { pages, isLoading: isLoadingPages, analyze, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
@@ -197,6 +185,14 @@ export function OptimizePanel() {
   useEffect(() => {
     if (integration?.status === "property_selection_required") setConnectOpen(true);
   }, [integration?.status]);
+
+  useEffect(() => {
+    if (params.get("connect") !== "search-console") return;
+    setConnectOpen(true);
+    const next = new URLSearchParams(params);
+    next.delete("connect");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const toggleInspectionUrl = (url: string, checked: boolean) => {
     setSelectedUrls((current) => {
@@ -532,6 +528,7 @@ export function OptimizePanel() {
       <SearchConsoleDialog
         open={connectOpen}
         integration={integration}
+        oauthEnabled={oauthEnabled}
         activeSiteDomain={activeSite?.domain || ""}
         onClose={() => setConnectOpen(false)}
         onOAuth={async (propertyUrl) => {
@@ -603,146 +600,6 @@ export default function Optimize() {
       <OptimizePanel />
     </BywordPageShell>
   );
-}
-
-function SearchConsoleDialog({
-  open,
-  integration,
-  activeSiteDomain,
-  onClose,
-  onOAuth,
-  onSave,
-  isSaving,
-  isOAuthStarting,
-  properties,
-  onSelectProperty,
-  isSelectingProperty,
-}: {
-  open: boolean;
-  integration: SearchConsoleIntegration | null;
-  activeSiteDomain: string;
-  onClose: () => void;
-  onOAuth: (propertyUrl?: string) => Promise<void>;
-  onSave: (input: { id?: string; propertyUrl: string; credentials?: Record<string, string> }) => Promise<void>;
-  isSaving: boolean;
-  isOAuthStarting: boolean;
-  properties: SearchConsoleProperty[];
-  onSelectProperty: (propertyUrl: string) => Promise<void>;
-  isSelectingProperty: boolean;
-}) {
-  const [propertyUrl, setPropertyUrl] = useState("");
-  const [serviceAccountJson, setServiceAccountJson] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setPropertyUrl(integration?.propertyUrl || defaultSearchConsoleProperty(activeSiteDomain));
-      setServiceAccountJson("");
-    }
-  }, [activeSiteDomain, integration, open]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) onClose();
-  };
-
-  const handleOAuth = async () => {
-    const property = propertyUrl.trim();
-    await onOAuth(property || undefined);
-  };
-
-  const handleManualSubmit = async () => {
-    let credentials: Record<string, string> | undefined;
-    if (serviceAccountJson.trim()) {
-      try {
-        credentials = JSON.parse(serviceAccountJson);
-      } catch {
-        toast.error("Service account JSON must be valid JSON");
-        return;
-      }
-    }
-    if (!integration && !credentials) {
-      toast.error("Paste service account JSON first");
-      return;
-    }
-    await onSave({ id: integration?.id, propertyUrl: propertyUrl || integration?.propertyUrl || "", credentials });
-    setServiceAccountJson("");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{integration ? "Manage" : "Connect"} Search Console</DialogTitle>
-          <DialogDescription>Connect the Google account that has access to this Search Console property.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <Label>Property URL</Label>
-            <Input value={propertyUrl} onChange={(event) => setPropertyUrl(event.target.value)} placeholder="Optional — choose after Google sign-in" />
-          </div>
-          {properties.length > 0 && (
-            <div className="space-y-2 rounded-lg border border-byword-border p-4">
-              <Label>Accessible Google properties</Label>
-              <div className="flex gap-2">
-                <Select value={propertyUrl} onValueChange={setPropertyUrl}>
-                  <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="Choose a property" /></SelectTrigger>
-                  <SelectContent>{properties.map((property) => <SelectItem key={property.siteUrl} value={property.siteUrl}>{property.siteUrl} · {property.permissionLevel}</SelectItem>)}</SelectContent>
-                </Select>
-                <Button variant="outline" onClick={() => onSelectProperty(propertyUrl)} disabled={!propertyUrl || isSelectingProperty}>
-                  {isSelectingProperty && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Use
-                </Button>
-              </div>
-            </div>
-          )}
-          <div className="rounded-lg border border-byword-border p-4">
-            <h3 className="font-semibold text-foreground">Google OAuth</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Approve read-only Search Console access. BlogFactory stores the refresh token encrypted.</p>
-            <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-              {searchConsoleOAuthSteps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            <Button className="mt-4 w-full" onClick={handleOAuth} disabled={isOAuthStarting}>
-              {isOAuthStarting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
-              Continue with Google
-            </Button>
-          </div>
-          <details className="rounded-lg border border-byword-border p-4">
-            <summary className="cursor-pointer font-semibold text-foreground">Advanced: service account JSON</summary>
-            <div className="mt-4 space-y-3">
-              <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-                {searchConsoleServiceAccountSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-              {integration && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Leave JSON blank to keep the saved credential.</p>}
-              <div className="space-y-2">
-                <Label>Service account JSON</Label>
-                <Textarea value={serviceAccountJson} onChange={(event) => setServiceAccountJson(event.target.value)} className="min-h-[160px] font-mono text-xs" placeholder="{ ... }" />
-              </div>
-              <Button variant="outline" onClick={handleManualSubmit} disabled={isSaving}>
-                {isSaving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                Save service account
-              </Button>
-            </div>
-          </details>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function defaultSearchConsoleProperty(domain: string) {
-  const value = domain.trim();
-  if (!value) return "";
-  try {
-    const parsed = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
-    return `sc-domain:${parsed.hostname.replace(/^www\./, "")}`;
-  } catch {
-    return `sc-domain:${value.replace(/^https?:\/\//i, "").replace(/^www\./, "").replace(/\/.*$/, "")}`;
-  }
 }
 
 function AnalyzeDialog({

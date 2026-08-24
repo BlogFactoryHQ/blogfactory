@@ -12,6 +12,7 @@ export interface TrackedJob {
   step: GenerationStep;
   error: string;
   draftProgress: DraftProgress | null;
+  backendStep?: string;
   startedAt: Date;
 }
 
@@ -30,6 +31,19 @@ interface JobStatus {
   generation_error?: string | null;
   generation_plan?: JobPlan | null;
   result_post_ids?: string[] | null;
+  total_cost?: number | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface JobTerminalResult {
+  jobId: string;
+  status: "completed" | "failed";
+  postIds: string[];
+  totalCost: number;
+  createdAt: string | null;
+  completedAt: string | null;
+  error: string;
 }
 
 export const parseDraftProgress = (step: string, plan: JobPlan | null | undefined, resultPostIds: string[]): DraftProgress | null => {
@@ -55,7 +69,7 @@ export const parseDraftProgress = (step: string, plan: JobPlan | null | undefine
   return { current: 1, total, completed: (resultPostIds || []).length, failedDrafts };
 };
 
-export function useJobTracker(onJobComplete?: () => void) {
+export function useJobTracker(onJobComplete?: (result: JobTerminalResult) => void) {
   const [activeJobs, setActiveJobs] = useState<TrackedJob[]>([]);
   const pollingRefs = useRef<Map<string, boolean>>(new Map());
   const pollJobRef = useRef<(trackId: string, jobId: string, totalVariations: number) => void>(() => {});
@@ -105,41 +119,61 @@ export function useJobTracker(onJobComplete?: () => void) {
           else if (step.startsWith("generating_images") || step.startsWith("resolving_images")) genStep = "images";
           else if (step.startsWith("generating") || step.startsWith("repairing") || step.startsWith("completed") || step.startsWith("retrying")) genStep = "generating";
 
-          updateJob(trackId, { draftProgress: progress, step: genStep });
+          updateJob(trackId, { draftProgress: progress, step: genStep, backendStep: step });
 
           if (job.status === "completed" || job.status === "failed") {
             const postIds = job.result_post_ids || [];
             const failedDrafts = job.generation_plan?.failedDrafts || [];
             const total = job.generation_plan?.totalDrafts || totalVariations;
+            const terminalError = postIds.length > 0
+              ? failedDrafts.length
+                ? `${postIds.length}/${total} drafts created. ${failedDrafts.length} draft${failedDrafts.length === 1 ? "" : "s"} failed: ${failedDrafts.map((draft) => `Draft ${draft.index + 1}: ${draft.error}`).join("; ")}`
+                : ""
+              : job.error_message || job.generation_error || "No posts were generated";
             if (postIds.length > 0) {
               updateJob(trackId, {
                 step: "complete",
                 draftProgress: { current: total, total, completed: postIds.length, failedDrafts },
-                error: failedDrafts.length
-                  ? `${postIds.length}/${total} drafts created. ${failedDrafts.length} draft${failedDrafts.length === 1 ? "" : "s"} failed: ${failedDrafts.map((draft) => `Draft ${draft.index + 1}: ${draft.error}`).join("; ")}`
-                  : "",
+                error: terminalError,
               });
             } else {
               updateJob(trackId, {
                 step: "error",
-                error: job.error_message || job.generation_error || "No posts were generated",
+                error: terminalError,
               });
             }
             pollingRefs.current.delete(trackId);
-            onJobComplete?.();
+            onJobComplete?.({
+              jobId,
+              status: postIds.length > 0 ? "completed" : "failed",
+              postIds,
+              totalCost: Number(job.total_cost || 0),
+              createdAt: job.created_at || null,
+              completedAt: job.completed_at || null,
+              error: terminalError,
+            });
             setTimeout(() => removeJob(trackId), 8000);
             return;
           }
         } catch {
-          break;
+          continue;
         }
       }
 
       updateJob(trackId, {
         step: "error",
-        error: "Generation timed out. Check the Jobs page for status.",
+        error: "Generation timed out. Check Runs for status.",
       });
       pollingRefs.current.delete(trackId);
+      onJobComplete?.({
+        jobId,
+        status: "failed",
+        postIds: [],
+        totalCost: 0,
+        createdAt: null,
+        completedAt: null,
+        error: "Generation timed out. Check Runs for status.",
+      });
     },
     [updateJob, removeJob, onJobComplete]
   );
@@ -165,6 +199,7 @@ export function useJobTracker(onJobComplete?: () => void) {
         step: params.immediateComplete ? "complete" : "extracting",
         error: "",
         draftProgress: params.variations > 1 ? { current: 1, total: params.variations, completed: 0 } : null,
+        backendStep: "starting",
         startedAt: new Date(),
       };
 

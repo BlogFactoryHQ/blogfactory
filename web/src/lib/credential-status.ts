@@ -3,7 +3,8 @@ export function credentialUsable(value?: { credentialStatus?: string; credential
   return status === undefined || status === "usable";
 }
 
-export function connectionReady(value?: { status?: string; credentialStatus?: string; credential_status?: string } | null) {
+export function connectionReady(value?: { ready?: boolean; status?: string; credentialStatus?: string; credential_status?: string } | null) {
+  if (typeof value?.ready === "boolean") return value.ready;
   return value?.status === "connected" && credentialUsable(value);
 }
 

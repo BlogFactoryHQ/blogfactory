@@ -13,8 +13,7 @@ import {
   siteIntegrations,
   sites,
 } from "../db/schema.js";
-import { encryptedCredentialStatus } from "../services/api-keys.js";
-import { getOpenRouterKey } from "../services/api-keys.js";
+import { encryptedCredentialStatus, getOpenRouterKey, testedConnectionReady } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
@@ -242,6 +241,7 @@ async function listPublishTargets(principal: McpPrincipal, input: { site_id: str
       display_name: row.displayName,
       status: row.status,
       credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
+      ready: testedConnectionReady(row),
       last_tested_at: isoDate(row.lastTestedAt),
     })),
   };
@@ -358,6 +358,8 @@ async function listPosts(principal: McpPrincipal, input: ListPostsInput) {
       preferredIntegrationId: siteIntegrations.id,
       integrationSiteId: siteIntegrations.siteId,
       integrationStatus: siteIntegrations.status,
+      integrationLastTestedAt: siteIntegrations.lastTestedAt,
+      integrationCredentialsEncrypted: siteIntegrations.credentialsEncrypted,
       createdAt: posts.createdAt,
       updatedAt: posts.updatedAt,
     })
@@ -393,7 +395,7 @@ async function listPosts(principal: McpPrincipal, input: ListPostsInput) {
     routing_status: row.siteId
       && row.preferredIntegrationId
       && row.integrationSiteId === row.siteId
-      && row.integrationStatus === "connected"
+      && testedConnectionReady({ status: row.integrationStatus, lastTestedAt: row.integrationLastTestedAt, credentialsEncrypted: row.integrationCredentialsEncrypted })
       ? "ready"
       : "needs_routing",
     created_at: isoDate(row.createdAt),
@@ -467,6 +469,8 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       preferredIntegrationId: siteIntegrations.id,
       integrationSiteId: siteIntegrations.siteId,
       integrationStatus: siteIntegrations.status,
+      integrationLastTestedAt: siteIntegrations.lastTestedAt,
+      integrationCredentialsEncrypted: siteIntegrations.credentialsEncrypted,
       editorialState: posts.editorialState,
       approvedRevisionId: posts.approvedRevisionId,
       updatedAt: posts.updatedAt,
@@ -569,7 +573,7 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       routing_status: post.siteId
         && post.preferredIntegrationId
         && post.integrationSiteId === post.siteId
-        && post.integrationStatus === "connected"
+        && testedConnectionReady({ status: post.integrationStatus, lastTestedAt: post.integrationLastTestedAt, credentialsEncrypted: post.integrationCredentialsEncrypted })
         ? "ready"
         : "needs_routing",
       preferred_integration_id: post.preferredIntegrationId,
@@ -920,13 +924,13 @@ async function pushToCmsDraft(principal: McpPrincipal, input: PushDraftInput) {
   )).limit(1);
   if (!post?.siteId) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
 
-  const [integration] = await db.select({ provider: siteIntegrations.provider, status: siteIntegrations.status, credentialsEncrypted: siteIntegrations.credentialsEncrypted }).from(siteIntegrations).where(and(
+  const [integration] = await db.select({ provider: siteIntegrations.provider, status: siteIntegrations.status, lastTestedAt: siteIntegrations.lastTestedAt, credentialsEncrypted: siteIntegrations.credentialsEncrypted }).from(siteIntegrations).where(and(
     eq(siteIntegrations.id, input.integration_id),
     eq(siteIntegrations.userId, principal.userId),
     eq(siteIntegrations.siteId, post.siteId),
   )).limit(1);
   if (!integration) throw new McpToolError("not_found", "Publishing target not found.", "Call list_publish_targets for this post's site.");
-  if (integration.status !== "connected" || encryptedCredentialStatus(integration.credentialsEncrypted) !== "usable") throw new McpToolError("destination_not_ready", "Publishing target is not ready.", "Reconnect the target in BlogFactory Integrations.");
+  if (!testedConnectionReady(integration)) throw new McpToolError("destination_not_ready", "Publishing target is not ready.", "Save and test the target in BlogFactory Integrations.");
 
   let result: Awaited<ReturnType<typeof publishPost>>;
   try {
@@ -1115,7 +1119,7 @@ async function reviewPost(principal: McpPrincipal, input: { post_id: string }) {
       updatedAt: review.post.updated_at,
       hasBlockers: review.preflight.has_blockers,
       canPushCmsDraft: review.permissions.can_push_cms_draft,
-      usableDestinationIds: review.destinations.filter((destination) => destination.status === "connected" && destination.credential_status === "usable").map((destination) => destination.id),
+      usableDestinationIds: review.destinations.filter((destination) => destination.ready).map((destination) => destination.id),
     }),
   };
 }
@@ -1162,6 +1166,7 @@ const targetItem = z.object({
   provider: z.string(),
   display_name: z.string(),
   status: z.string(),
+  ready: z.boolean(),
   credential_status: z.enum(["usable", "missing", "undecryptable"]),
   last_tested_at: nullableText,
 });
@@ -1269,7 +1274,7 @@ const reviewPacket = z.object({
     has_blockers: z.boolean(),
     checks: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(["pass", "warning", "blocker"]), message: z.string() })),
   }),
-  destinations: z.array(z.object({ id: uuid, provider: z.string(), display_name: z.string(), status: z.string(), credential_status: z.enum(["usable", "missing", "undecryptable"]), preferred: z.boolean() })),
+  destinations: z.array(z.object({ id: uuid, provider: z.string(), display_name: z.string(), status: z.string(), ready: z.boolean(), credential_status: z.enum(["usable", "missing", "undecryptable"]), preferred: z.boolean() })),
   publications: z.array(z.object({ id: uuid, status: z.string(), external_url: nullableText, external_edit_url: nullableText, updated_at: z.string() })),
   permissions: z.object({ can_push_cms_draft: z.boolean() }),
   links: z.object({ edit: z.string(), preview: z.string() }),
@@ -1521,6 +1526,7 @@ export const MCP_TOOL_REGISTRY = {
         search_growth: z.object({ connected: z.boolean(), segments: z.record(z.unknown()), totals: z.record(z.unknown()) }),
         recent_outputs: z.array(z.object({ id: uuid, title: z.string(), status: z.string(), editorial_state: z.string(), source_type: z.string(), updated_at: z.string() })),
         connections: z.object({
+          generation: z.object({ ready: z.boolean(), credential_status: z.enum(["usable", "missing", "undecryptable"]) }),
           active: z.number().int(),
           cms: z.object({ total: z.number().int(), connected: z.number().int(), attention: z.number().int() }),
           search_console: z.object({ connected: z.boolean() }),

@@ -129,6 +129,14 @@ const helpArticles: HelpArticle[] = [
   },
   {
     category: "MCP & Connections",
+    title: "Where does a personal MCP token go?",
+    symptom: "You created a token but do not know what to do with the one-time secret.",
+    solution: "Add the instance /mcp endpoint to Codex or another MCP-compatible client, then use the copied secret as its Bearer token. The in-app token dialog includes the exact Codex command.",
+    href: "/docs/mcp",
+    linkLabel: "Open the MCP client guide",
+  },
+  {
+    category: "MCP & Connections",
     title: "Keep tokens and credentials safe",
     symptom: "You need to understand what an MCP connection can expose.",
     solution: "Tokens are shown once and stored hashed. Tool responses never return provider secrets, while every operation remains scoped to the authorized site.",
@@ -166,6 +174,14 @@ const helpArticles: HelpArticle[] = [
     solution: "No. WordPress, Ghost, Wix, and Framer destinations receive approved content as drafts only. Live publishing and deletion are outside the agent surface.",
     href: documentation("README.md"),
     linkLabel: "Read the authority boundary",
+  },
+  {
+    category: "Search Growth & Troubleshooting",
+    title: "Google OAuth is not configured",
+    symptom: "The Search Console dialog says this self-hosted instance has no Google OAuth client.",
+    solution: "The instance operator must enable the Search Console API, create a Web application OAuth client, add the displayed callback URL, set the two server environment variables, and restart the API. The dialog now shows every step and keeps service-account JSON as an alternative.",
+    href: "/docs/self-hosting",
+    linkLabel: "Open the Search Console admin guide",
   },
   {
     category: "Search Growth & Troubleshooting",

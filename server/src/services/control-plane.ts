@@ -15,7 +15,7 @@ import { readySeoMetadataForArticle, seoStatusForArticle } from "./seo-metadata.
 import { getSearchConsoleInsights } from "./search-console.js";
 import { listOperationEvents } from "./operation-events.js";
 import { postRevisionSnapshot, type PostRevisionSnapshot } from "./post-revisions.js";
-import { encryptedCredentialStatus, type CredentialStatus } from "./api-keys.js";
+import { encryptedCredentialStatus, getApiKeyMetadata, testedConnectionReady, type CredentialStatus } from "./api-keys.js";
 import { getSeoGrowthPlan } from "./seo-growth-plan.js";
 
 export const ACTION_KINDS = [
@@ -30,6 +30,10 @@ export const ACTION_KINDS = [
   "stale_draft",
 ] as const;
 export const ACTION_SEVERITIES = ["blocker", "review", "warning"] as const;
+
+export function generationReadiness(credentialStatus: CredentialStatus) {
+  return { ready: credentialStatus === "usable", credential_status: credentialStatus };
+}
 
 export type ActionKind = typeof ACTION_KINDS[number];
 export type ActionSeverity = typeof ACTION_SEVERITIES[number];
@@ -76,8 +80,7 @@ type DraftActionInput = {
   publishingMetadata: unknown;
   preferredIntegrationId: string | null;
   integrationSiteId: string | null;
-  integrationStatus: string | null;
-  integrationCredentialStatus?: CredentialStatus;
+  integrationReady?: boolean;
   integrationDisplayName?: string | null;
   integrationProvider?: string | null;
   usableDestinationCount?: number;
@@ -95,8 +98,7 @@ export function classifyDraftAction(input: DraftActionInput): ActionItem | null 
   const preferredRoutingReady = Boolean(
     input.preferredIntegrationId
     && input.integrationSiteId === input.siteId
-    && input.integrationStatus === "connected"
-    && input.integrationCredentialStatus === "usable",
+    && input.integrationReady,
   );
   const destinationReady = preferredRoutingReady || Boolean(input.usableDestinationCount);
   if (!input.revision) reasons.push({ kind: "missing_revision", severity: "blocker", label: "Saved revision", message: "No saved revision exists." });
@@ -162,6 +164,7 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     preferredIntegrationId: posts.preferredIntegrationId,
     integrationSiteId: siteIntegrations.siteId,
     integrationStatus: siteIntegrations.status,
+    integrationLastTestedAt: siteIntegrations.lastTestedAt,
     integrationCredentialsEncrypted: siteIntegrations.credentialsEncrypted,
     integrationDisplayName: siteIntegrations.displayName,
     integrationProvider: siteIntegrations.provider,
@@ -173,12 +176,12 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     ))
     .where(and(eq(posts.userId, userId), eq(posts.siteId, siteId), eq(posts.status, "draft")))
     .orderBy(desc(posts.updatedAt)),
-  db.select({ credentialsEncrypted: siteIntegrations.credentialsEncrypted }).from(siteIntegrations).where(and(
+  db.select({ status: siteIntegrations.status, lastTestedAt: siteIntegrations.lastTestedAt, credentialsEncrypted: siteIntegrations.credentialsEncrypted }).from(siteIntegrations).where(and(
     eq(siteIntegrations.userId, userId),
     eq(siteIntegrations.siteId, siteId),
     eq(siteIntegrations.status, "connected"),
   ))]);
-  const usableDestinationCount = connectedDestinations.filter((destination) => encryptedCredentialStatus(destination.credentialsEncrypted) === "usable").length;
+  const usableDestinationCount = connectedDestinations.filter(testedConnectionReady).length;
   if (!rows.length) return [];
 
   // ponytail: one bounded projection scan; move classification into SQL if draft volume makes this measurable.
@@ -193,7 +196,11 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     const item = classifyDraftAction({
       ...row,
       siteId: row.siteId,
-      integrationCredentialStatus: encryptedCredentialStatus(row.integrationCredentialsEncrypted),
+      integrationReady: testedConnectionReady({
+        status: row.integrationStatus,
+        lastTestedAt: row.integrationLastTestedAt,
+        credentialsEncrypted: row.integrationCredentialsEncrypted,
+      }),
       usableDestinationCount,
       revision: latest.get(row.id) || null,
       now,
@@ -281,7 +288,7 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
 
   const [revisionRows, destinations, publicationRows] = await Promise.all([
     db.select().from(postRevisions).where(and(eq(postRevisions.userId, input.userId), eq(postRevisions.postId, post.id))).orderBy(desc(postRevisions.revisionNumber)).limit(2),
-    db.select({ id: siteIntegrations.id, provider: siteIntegrations.provider, displayName: siteIntegrations.displayName, status: siteIntegrations.status, credentialsEncrypted: siteIntegrations.credentialsEncrypted })
+    db.select({ id: siteIntegrations.id, provider: siteIntegrations.provider, displayName: siteIntegrations.displayName, status: siteIntegrations.status, lastTestedAt: siteIntegrations.lastTestedAt, credentialsEncrypted: siteIntegrations.credentialsEncrypted })
       .from(siteIntegrations).where(and(eq(siteIntegrations.userId, input.userId), eq(siteIntegrations.siteId, post.siteId))).orderBy(desc(siteIntegrations.updatedAt)),
     db.select({ id: postPublications.id, status: postPublications.status, externalUrl: postPublications.externalUrl, externalEditUrl: postPublications.externalEditUrl, updatedAt: postPublications.updatedAt })
       .from(postPublications).where(and(eq(postPublications.userId, input.userId), eq(postPublications.postId, post.id))).orderBy(desc(postPublications.updatedAt)).limit(5),
@@ -289,7 +296,7 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
   const currentRevision = revisionRows[0] || null;
   const previousRevision = revisionRows[1] || null;
   const seoReady = Boolean(readySeoMetadataForArticle(post.seoMetadata, post.title, post.content));
-  const usableDestinations = destinations.filter((destination) => destination.status === "connected" && encryptedCredentialStatus(destination.credentialsEncrypted) === "usable");
+  const usableDestinations = destinations.filter(testedConnectionReady);
   const hasPublishingMetadata = Boolean(post.publishingMetadata && typeof post.publishingMetadata === "object" && Object.keys(post.publishingMetadata).length);
   const checks = [
     { id: "saved_revision", label: "Saved revision", status: currentRevision ? "pass" : "blocker", message: currentRevision ? `Revision ${currentRevision.revisionNumber}` : "No saved revision exists" },
@@ -329,6 +336,7 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
       provider: destination.provider,
       display_name: destination.displayName,
       status: destination.status,
+      ready: testedConnectionReady(destination),
       credential_status: encryptedCredentialStatus(destination.credentialsEncrypted),
       preferred: destination.id === post.preferredIntegrationId,
     })),
@@ -353,7 +361,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
   const now = input.now || new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const actions = await listActionItems({ userId: input.userId, siteId: input.siteId, limit: 5, now });
-  const [[runCounts], recentRuns, [outcomes], [cost], [oauthConnections], [personalConnections], activity, searchGrowth, seoPlan, recentOutputs, cmsConnections] = await Promise.all([
+  const [[runCounts], recentRuns, [outcomes], [cost], [oauthConnections], [personalConnections], activity, searchGrowth, seoPlan, recentOutputs, cmsConnections, apiKeys] = await Promise.all([
     db.select({
       running: sql<number>`count(*) filter (where ${jobs.status} in ('pending', 'running'))::int`,
       failed: sql<number>`count(*) filter (where ${jobs.status} = 'failed')::int`,
@@ -379,8 +387,9 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
     getSeoGrowthPlan(input.userId, input.siteId, now),
     db.select({ id: posts.id, title: posts.title, status: posts.status, editorial_state: posts.editorialState, source_type: posts.sourceType, updated_at: posts.updatedAt })
       .from(posts).where(and(eq(posts.userId, input.userId), eq(posts.siteId, input.siteId))).orderBy(desc(posts.updatedAt)).limit(5),
-    db.select({ status: siteIntegrations.status, credentialsEncrypted: siteIntegrations.credentialsEncrypted })
+    db.select({ status: siteIntegrations.status, credentialsEncrypted: siteIntegrations.credentialsEncrypted, lastTestedAt: siteIntegrations.lastTestedAt })
       .from(siteIntegrations).where(and(eq(siteIntegrations.userId, input.userId), eq(siteIntegrations.siteId, input.siteId))),
+    getApiKeyMetadata(input.userId),
   ]);
   const [cmsDrafts] = await db.select({ count: count() }).from(postPublications).where(and(
     eq(postPublications.userId, input.userId),
@@ -425,11 +434,12 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
     },
     recent_outputs: recentOutputs.map((post) => ({ ...post, updated_at: post.updated_at.toISOString() })),
     connections: {
+      generation: generationReadiness(apiKeys.openrouterCredentialStatus),
       active: Number(oauthConnections?.count || 0) + Number(personalConnections?.count || 0),
       cms: {
         total: cmsConnections.length,
-        connected: cmsConnections.filter((connection) => connection.status === "connected" && encryptedCredentialStatus(connection.credentialsEncrypted) === "usable").length,
-        attention: cmsConnections.filter((connection) => connection.status !== "connected" || encryptedCredentialStatus(connection.credentialsEncrypted) !== "usable").length,
+        connected: cmsConnections.filter(testedConnectionReady).length,
+        attention: cmsConnections.filter((connection) => !testedConnectionReady(connection)).length,
       },
       search_console: { connected: Boolean(searchGrowth.integration) },
     },

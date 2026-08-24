@@ -50,6 +50,37 @@ curl --fail http://localhost:8080/api/auth/config
 
 To add another isolated user, temporarily set signup to `true`, recreate `api`, let the user create a pending account, approve it in the admin UI, and set signup back to `false`. v0.1 does not provide a shared team workspace; each user's sites and content remain isolated.
 
+## Complete application setup
+
+The Overview setup card separates the two required workspace steps from optional capabilities. A connected site and a usable OpenRouter key are enough to generate content. CMS draft delivery, Search Console, and MCP can be connected only when that workspace needs them.
+
+### AI generation
+
+Each user brings their own OpenRouter key. Open **Control -> Article Settings -> Keys**, save and test the OpenRouter key, then choose text and image models under **Models**. The key is stored encrypted and is required for article generation.
+
+**Manual Prompt** changes only image delivery: BlogFactory creates Midjourney-ready prompt slots instead of calling an image model. Article and prompt generation still use OpenRouter, so Manual Prompt does not remove the OpenRouter requirement.
+
+### CMS draft delivery
+
+Open **Control -> Integrations**, choose the active site, and follow the provider-specific guide for WordPress, Ghost, Wix, or Framer. Save and test the connection before selecting it as a destination. BlogFactory sends reviewed content as a CMS draft; it does not publish live or delete provider content.
+
+### Google Search Console
+
+Search Console supports either instance-wide Google OAuth or a per-site service account. OAuth is the simpler user flow after the instance administrator completes this one-time setup:
+
+1. Create or select a Google Cloud project and enable the Search Console API.
+2. Configure the OAuth consent screen and create a **Web application** OAuth client.
+3. Add `https://<your-domain>/api/search-console/oauth/callback` as an authorized redirect URI.
+4. Set `GOOGLE_SEARCH_CONSOLE_CLIENT_ID` and `GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET` in `.env`. Set `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI` to the same callback when the public request URL cannot be derived reliably.
+5. Recreate the API service with `docker compose up -d --no-deps --force-recreate api`.
+6. Open **Search Growth -> Optimize**, select **Connect Search Console**, and approve the read-only `webmasters.readonly` permission.
+
+Google documents the OAuth registration, API activation, consent, and read-only scope in [Authorize Requests](https://developers.google.com/webmaster-tools/v1/how-tos/authorizing). If OAuth is not configured, BlogFactory hides the Google button and keeps **Advanced: service account JSON** available. Create a service-account JSON key, then have a Search Console property owner add its `client_email` under **Settings -> Users and permissions** before saving the JSON in BlogFactory. Google documents the owner-only user-management path in [Managing owners, users, and permissions](https://support.google.com/webmasters/answer/7687615?hl=en).
+
+### MCP clients
+
+Open **Control -> MCP Connections**. A self-hosted instance works without WorkOS: create a site-scoped personal token, store the shown secret in the client environment, and use the instance endpoint such as `https://content.example.com/mcp`. Browser OAuth is optional and appears only when its WorkOS configuration is complete.
+
 ## Acceptance
 
 ```bash

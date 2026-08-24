@@ -7,6 +7,7 @@ const {
   accountCredentialStatus,
   encryptedCredentialStatus,
   encryptSecret,
+  testedConnectionReady,
 } = await import("./api-keys.js");
 const { serializeIntegration } = await import("./publishing.js");
 const { serializeIndexingIntegration } = await import("./indexing.js");
@@ -15,10 +16,13 @@ const { serializeSearchConsoleIntegration } = await import("./search-console.js"
 const encrypted = encryptSecret("sk-or-test-secret");
 assert.equal(encryptedCredentialStatus(encrypted), "usable");
 assert.equal(accountCredentialStatus("openrouter", encrypted), "usable");
+assert.equal(testedConnectionReady({ status: "connected", lastTestedAt: new Date(), credentialsEncrypted: encrypted }), true);
+assert.equal(testedConnectionReady({ status: "connected", lastTestedAt: null, credentialsEncrypted: encrypted }), false);
 
 process.env.API_KEY_ENCRYPTION_SECRET = "credential-health-wrong-secret";
 assert.equal(encryptedCredentialStatus(encrypted), "undecryptable");
 assert.equal(accountCredentialStatus("openrouter", encrypted), "undecryptable");
+assert.equal(testedConnectionReady({ status: "connected", lastTestedAt: new Date(), credentialsEncrypted: encrypted }), false);
 
 process.env.OPENROUTER_API_KEY = "sk-or-env-must-not-mask-user-key";
 assert.equal(accountCredentialStatus("openrouter", encrypted), "undecryptable");
@@ -42,6 +46,7 @@ const baseIntegration = {
 };
 const serializedPublishing = serializeIntegration(baseIntegration as never);
 assert.equal(serializedPublishing.credential_status, "undecryptable");
+assert.equal(serializedPublishing.ready, false);
 assert.equal(JSON.stringify(serializedPublishing).includes("sk-or-test-secret"), false);
 
 const baseIndexing = {

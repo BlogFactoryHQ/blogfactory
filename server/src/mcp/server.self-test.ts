@@ -86,6 +86,7 @@ const listedTools = (await list.json() as any).result.tools;
 assert.equal(listedTools.length, 22);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
 assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
+assert.ok(listedTools.find((tool: any) => tool.name === "get_workspace_digest").outputSchema.properties.data.properties.workspace.properties.connections.properties.generation);
 assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.list_action_items.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.review_post.requiredScope, "content:read");

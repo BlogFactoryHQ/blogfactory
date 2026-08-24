@@ -93,6 +93,7 @@ export interface SearchConsoleSitemap {
 }
 
 interface DashboardResponse {
+  oauth_enabled: boolean;
   integration: SearchConsoleIntegration | null;
   range: { startDate: string; endDate: string; baselineStart: string | null; baselineEnd: string | null };
   stats: { pageCount: number; queryCount: number; clicks: number; impressions: number; ctr: number; position: number };
@@ -251,6 +252,7 @@ export function useSearchConsole(siteId?: string | null) {
 
   return {
     dashboard: dashboard.data,
+    oauthEnabled: dashboard.data?.oauth_enabled === true,
     integration,
     stats: dashboard.data?.stats || { pageCount: 0, queryCount: 0, clicks: 0, impressions: 0, ctr: 0, position: 0 },
     isLoading: dashboard.isLoading,
