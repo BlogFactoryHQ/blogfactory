@@ -76,6 +76,15 @@ Each connection is site-scoped. Clients discover the active catalog from the ser
 
 BlogFactory is a self-hosted release candidate. BlogFactory Cloud is coming soon; pricing, subscriptions, checkout, and hosted public account creation are not implemented. Read the [release plan](FEATURE_PLAN.md) for the remaining public-release gates.
 
+## Companion projects
+
+| Project | Use it when |
+| --- | --- |
+| [Ghost Publisher MCP](https://github.com/BlogFactoryHQ/ghost-publisher-mcp) | You need a local, Ghost-specific MCP server for drafts, diagnostics, scheduling, and separately approved publishing |
+| [Source-Backed Blog Writer](https://github.com/BlogFactoryHQ/source-backed-blog-writer-skill) | You need a portable Agent Skill for researching, drafting, refreshing, or auditing evidence-backed articles |
+
+Both projects are separate distributions. They do not add live-publishing authority to BlogFactory or become part of BlogFactory Cloud merely by being installed.
+
 ## Start locally
 
 BlogFactory uses npm workspaces: a React/Vite web app and a Hono/TypeScript API, backed by PostgreSQL and S3-compatible storage.
