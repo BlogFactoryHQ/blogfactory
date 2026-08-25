@@ -41,9 +41,11 @@ diagnostics() {
       --filter "label=com.docker.compose.service=$service" | head -n 1)"
     if [[ -n "$container_id" ]]; then
       echo "--- $service logs ---" >&2
+      docker inspect --format '{{json .State.Health}}' "$container_id" >&2 || true
       docker logs --tail 100 "$container_id" >&2 || true
     fi
   done
+  curl --verbose --max-time 5 -H "Host: ${host:-unknown}" http://127.0.0.1/api/ready >&2 || true
 }
 
 finish() {
@@ -123,7 +125,7 @@ app_curl() {
   curl --noproxy '*' -H "Host: $host" "$@"
 }
 
-for _ in {1..60}; do
+for _ in {1..24}; do
   app_curl --fail --silent "http://127.0.0.1/api/ready" >/dev/null && break
   sleep 5
 done
