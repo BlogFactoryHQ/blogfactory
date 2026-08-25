@@ -19,6 +19,7 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 - [x] Runtime signup configuration, instance-local MCP URL resolution, PostgreSQL/MinIO readiness, and fail-closed self-host secrets.
 - [x] Versioned Compose image contract, source-build fallback, multi-architecture GHCR workflow, and disposable smoke/restore workflows.
 - [x] Railway service topology and config-as-code contracts; marketplace publication still requires a real-project acceptance run.
+- [x] Dokploy five-service blueprint, generated-secret contract, upstream validators, and disposable real-instance acceptance workflow.
 
 ### Required before calling the release public
 
@@ -27,7 +28,7 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 - [x] Confirm every bundled screenshot and brand asset is cleared for public redistribution.
 - [x] Run the Docker Compose stack on a machine with a working Docker daemon and complete the smoke test in `docs/self-hosting.md`.
 - [x] Preserve the existing Git history, subject to the public-release audit below.
-- [ ] Deploy the prepared Railway topology to a real project and pass the Docker-equivalent health, signup, storage, MCP, and persistence acceptance.
+- [ ] Run the Dokploy blueprint on a disposable GitHub Actions instance and pass the Docker-equivalent health, signup, storage, MCP, scheduler, and persistence acceptance.
 - [x] Make `BlogFactoryHQ/blogfactory` public and verify the anonymous clone path.
 - [ ] Create a tagged release and attach upgrade/migration notes.
 - [x] Deploy the private-site “Open source / Cloud coming soon” marketing copy after the source URL became public.
@@ -35,7 +36,8 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 ## Phase 1 — self-host distribution
 
 - [ ] Publish a versioned container image after the first tagged release.
-- [ ] Publish the accepted Railway template and guided deploy based on the same container and environment contract.
+- [ ] Submit the accepted Dokploy blueprint to the public template catalog and add its deploy link only after upstream merge.
+- [ ] Publish a Railway template only after a separate real-project acceptance run; Railway is not a Phase 0 gate.
 - [ ] Add a Render Blueprint only after its full web/API/worker flow passes the same smoke test.
 - [ ] Submit to self-hosted directories after the repository, license, documentation, and release history satisfy each directory's rules.
 - [ ] Add upgrade, backup, restore, and rollback acceptance checks to each release.

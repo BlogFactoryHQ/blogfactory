@@ -1,0 +1,143 @@
+name: Dokploy template acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "deploy/dokploy/**"
+      - "scripts/dokploy-template-acceptance.sh"
+      - ".github/workflows/dokploy-template-acceptance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dokploy-template-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-blueprint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - name: Run upstream validators and preview build
+        env:
+          TEMPLATE_DIR: deploy/dokploy/blueprints/blogfactory
+        run: |
+          git clone --depth 1 --branch canary https://github.com/Dokploy/templates.git "$RUNNER_TEMP/dokploy-templates"
+          cp -R "$TEMPLATE_DIR" "$RUNNER_TEMP/dokploy-templates/blueprints/blogfactory"
+
+          cd "$RUNNER_TEMP/dokploy-templates/build-scripts"
+          npm ci
+          npx tsx validate-docker-compose.ts --file ../blueprints/blogfactory/docker-compose.yml
+          npx tsx validate-template.ts --dir ../blueprints/blogfactory
+          cd ..
+          node build-scripts/generate-meta.js --check
+
+          cd app
+          pnpm install
+          pnpm build
+
+  acceptance:
+    needs: validate-blueprint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install BlogFactory smoke dependencies
+        run: npm ci --workspace=server
+      - name: Install pinned Dokploy
+        run: |
+          curl --fail --show-error --location \
+            https://github.com/Dokploy/dokploy/releases/download/v0.30.2/install.sh \
+            --output "$RUNNER_TEMP/dokploy-install.sh"
+          sudo bash "$RUNNER_TEMP/dokploy-install.sh"
+          for _ in {1..120}; do
+            curl --fail --silent http://127.0.0.1:3000/register >/dev/null && break
+            sleep 5
+          done
+          curl --fail --silent http://127.0.0.1:3000/register >/dev/null
+      - name: Bootstrap owner and API key
+        env:
+          DOKPLOY_URL: http://127.0.0.1:3000
+          KEY_FILE: ${{ runner.temp }}/dokploy-api-key
+        run: |
+          mkdir -p "$RUNNER_TEMP/playwright"
+          cd "$RUNNER_TEMP/playwright"
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium
+          node <<'NODE'
+          const fs = require("node:fs");
+          const { chromium } = require("playwright");
+
+          function findKey(value) {
+            if (!value || typeof value !== "object") return null;
+            if (typeof value.key === "string" && value.key.length >= 20) return value.key;
+            for (const child of Object.values(value)) {
+              const key = findKey(child);
+              if (key) return key;
+            }
+            return null;
+          }
+
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            const base = process.env.DOKPLOY_URL;
+
+            await page.goto(`${base}/register`);
+            await page.getByLabel("First Name").fill("BlogFactory");
+            await page.getByLabel("Last Name").fill("Acceptance");
+            await page.getByLabel("Email").fill("dokploy-acceptance@example.com");
+            await page.getByLabel("Password", { exact: true }).fill("dokploy-owner-password");
+            await page.getByLabel("Confirm Password").fill("dokploy-owner-password");
+            await page.getByRole("button", { name: "Register" }).click();
+            await page.waitForURL(/\/dashboard\//, { timeout: 60_000 });
+
+            await page.goto(`${base}/dashboard/settings/profile`);
+            await page.getByRole("button", { name: "Generate New Key" }).click();
+            await page.getByPlaceholder("My API Key").fill("BlogFactory Acceptance");
+            await page.getByRole("combobox", { name: "Organization" }).click();
+            await page.getByRole("option", { name: "My Organization" }).click();
+
+            const responsePromise = page.waitForResponse(
+              (response) => response.url().includes("user.createApiKey") && response.request().method() === "POST",
+            );
+            await page.getByRole("button", { name: "Generate", exact: true }).click();
+            const response = await responsePromise;
+            const key = findKey(await response.json());
+            if (!key) throw new Error("Dokploy API key was not returned by the UI flow");
+            fs.writeFileSync(process.env.KEY_FILE, key, { mode: 0o600 });
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+      - name: Deploy and verify BlogFactory through Dokploy
+        env:
+          DOKPLOY_API_KEY_FILE: ${{ runner.temp }}/dokploy-api-key
+          DOKPLOY_URL: http://127.0.0.1:3000
+        run: bash scripts/dokploy-template-acceptance.sh
+      - name: Record acceptance evidence
+        if: success()
+        run: |
+          {
+            echo "## Dokploy template acceptance"
+            echo ""
+            echo "- Dokploy: v0.30.2"
+            echo "- BlogFactory image: v0.1.0-rc.1"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Result: real import, deploy, persistence, MCP, storage, scheduler, and closed-signup checks passed"
+          } >> "$GITHUB_STEP_SUMMARY"

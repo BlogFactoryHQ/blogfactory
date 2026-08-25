@@ -6,7 +6,8 @@
 - [Architecture and developer map](architecture.md): runtime entries, service ownership, tenancy, hosting, background work, and where to make changes.
 - [MCP and OAuth](mcp.md): 22-tool catalog, connection setup, Review Card, permissions, and safety boundary.
 - [Operations and deployment](operations.md): environment, migrations, host split, background drains, ledger retention, and production verification.
-- [Self-hosting](self-hosting.md): Docker Compose and Railway topology, account flows, readiness, MCP setup, backup/restore, upgrades, rollback, and current ceiling.
+- [Self-hosting](self-hosting.md): Docker Compose, Dokploy, and Railway topology; account flows, readiness, MCP setup, backup/restore, upgrades, rollback, and current ceiling.
+- [Dokploy blueprint](../deploy/dokploy/blueprints/blogfactory/README.md): generated secrets, first-administrator bootstrap, and the five-service one-click contract awaiting acceptance.
 - [Railway deployment contract](../deploy/railway/README.md): five-service Hobby-compatible mapping, generated variables, private networking, health, and cron settings.
 - [v0.1.0 public-release audit](security-audit-v0.1.0.md): current secret, history, asset, Actions-log, and dependency release gates.
 - [Release plan](../FEATURE_PLAN.md): canonical open-source-first plan and Cloud-coming-soon gates.
