@@ -293,10 +293,10 @@ try {
   `;
   await sql`
     INSERT INTO site_integrations (
-      id, user_id, site_id, provider, display_name, credentials_encrypted, credential_hint, config
+      id, user_id, site_id, provider, display_name, credentials_encrypted, credential_hint, config, last_tested_at
     ) VALUES (
       ${integrationId}, ${userId}, ${siteId}, 'wordpress', 'MCP WordPress',
-      ${encryptSecret(secretMarker)}, ${secretMarker}, ${sql.json({ secret: secretMarker })}
+      ${encryptSecret(secretMarker)}, ${secretMarker}, ${sql.json({ secret: secretMarker })}, now()
     )
   `;
   await sql`
