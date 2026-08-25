@@ -76,9 +76,14 @@ Each connection is site-scoped. Clients discover the active catalog from the ser
 
 BlogFactory is a self-hosted release candidate. BlogFactory Cloud is coming soon; pricing, subscriptions, checkout, and hosted public account creation are not implemented. Read the [release plan](FEATURE_PLAN.md) for the remaining public-release gates.
 
-## Companion writing skill
+## Companion projects
 
-The [Source-Backed Blog Writer](https://github.com/BlogFactoryHQ/source-backed-blog-writer-skill) is a portable Agent Skill for researching, drafting, refreshing, and auditing evidence-backed SEO articles. Use it independently or bring its drafts into BlogFactory for human review and draft-only CMS delivery.
+| Project | Use it when |
+| --- | --- |
+| [Ghost Publisher MCP](https://github.com/BlogFactoryHQ/ghost-publisher-mcp) | You need a local, Ghost-specific MCP server for drafts, diagnostics, scheduling, and separately approved publishing |
+| [Source-Backed Blog Writer](https://github.com/BlogFactoryHQ/source-backed-blog-writer-skill) | You need a portable Agent Skill for researching, drafting, refreshing, or auditing evidence-backed articles |
+
+Both projects work independently. They can supply or deliver content around BlogFactory, but they do not broaden BlogFactory's server-enforced draft-only authority.
 
 ## Start locally
 
