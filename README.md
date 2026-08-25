@@ -68,13 +68,13 @@ Each connection is site-scoped. Clients discover the active catalog from the ser
 
 <p align="center"><sub>Product captures from <a href="https://blogfactory.io">blogfactory.io</a>. Values belong to the captured workspace; the tool catalog is discovered live.</sub></p>
 
-## What ships in the release candidate
+## What ships in v0.1.0
 
 | Operate | Grow | Control | Deliver |
 | --- | --- | --- | --- |
 | Sources, content inventory, revisions, review queue, runs, and image workflows | Search Console diagnostics, optimization, growth plans, indexing, and internal links | Site-scoped access, MCP connections, integrations, brand voice, settings, usage, and audit history | Preflight, explicit destination selection, optimistic locking, idempotent CMS **draft** delivery |
 
-BlogFactory is a self-hosted release candidate. BlogFactory Cloud is coming soon; pricing, subscriptions, checkout, and hosted public account creation are not implemented. Read the [release plan](FEATURE_PLAN.md) for the remaining public-release gates.
+Self-host BlogFactory for free. BlogFactory Cloud is coming soon; pricing, subscriptions, checkout, and hosted public account creation are not implemented. Read the [release plan](FEATURE_PLAN.md) for the distribution roadmap.
 
 ## Companion projects
 

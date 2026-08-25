@@ -30,12 +30,12 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 - [x] Preserve the existing Git history, subject to the public-release audit below.
 - [x] Run the Dokploy blueprint on a disposable GitHub Actions instance and pass the Docker-equivalent health, signup, storage, MCP, scheduler, and persistence acceptance ([RC acceptance](https://github.com/BlogFactoryHQ/blogfactory/actions/runs/32888770507)).
 - [x] Make `BlogFactoryHQ/blogfactory` public and verify the anonymous clone path.
-- [ ] Create a tagged release and attach upgrade/migration notes.
+- [x] Create a tagged release and attach upgrade/migration notes ([v0.1.0](https://github.com/BlogFactoryHQ/blogfactory/releases/tag/v0.1.0)).
 - [x] Deploy the private-site “Open source / Cloud coming soon” marketing copy after the source URL became public.
 
 ## Phase 1 — self-host distribution
 
-- [ ] Publish a versioned container image after the first tagged release.
+- [x] Publish versioned public multi-architecture API and web container images after the first tagged release.
 - [ ] Submit the accepted Dokploy blueprint to the public template catalog and add its deploy link only after upstream merge.
 - [ ] Publish a Railway template only after a separate real-project acceptance run; Railway is not a Phase 0 gate.
 - [ ] Add a Render Blueprint only after its full web/API/worker flow passes the same smoke test.

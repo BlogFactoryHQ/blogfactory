@@ -137,7 +137,7 @@ jobs:
             echo "## Dokploy template acceptance"
             echo ""
             echo "- Dokploy: v0.30.2"
-            echo "- BlogFactory image: v0.1.0-rc.1"
+            echo "- BlogFactory image: v0.1.0"
             echo "- Commit: $GITHUB_SHA"
             echo "- Result: real import, deploy, persistence, MCP, storage, scheduler, and closed-signup checks passed"
           } >> "$GITHUB_STEP_SUMMARY"
