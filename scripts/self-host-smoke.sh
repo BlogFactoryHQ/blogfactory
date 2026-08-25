@@ -35,6 +35,12 @@ for _ in {1..90}; do
   sleep 2
 done
 curl --fail --silent "$base_url/api/ready" | grep -q '"status":"ready"'
+curl --fail --silent "$base_url/" | grep -q '<title>BlogFactory</title>'
+for _ in {1..30}; do
+  "${compose[@]}" logs scheduler 2>&1 | grep -q "Scheduler drain completed" && break
+  sleep 2
+done
+"${compose[@]}" logs scheduler 2>&1 | grep -q "Scheduler drain completed"
 
 status="$(curl --silent --output "$tmp_dir/mcp-response" --dump-header "$tmp_dir/mcp-headers" --write-out '%{http_code}' "$base_url/mcp")"
 test "$status" = "401"

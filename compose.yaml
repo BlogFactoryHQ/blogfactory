@@ -112,12 +112,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        while true; do
-          curl --fail --silent --show-error
-          -H "Authorization: Bearer $${CRON_SECRET}"
-          http://api:3000/api/cron/drain;
-          sleep "$${CRON_INTERVAL_SECONDS}";
-        done
+        while true; do curl --fail --silent --show-error --output /dev/null -H "Authorization: Bearer $${CRON_SECRET}" http://api:3000/api/cron/drain && echo "Scheduler drain completed"; sleep "$${CRON_INTERVAL_SECONDS}"; done
 
 volumes:
   postgres-data:
