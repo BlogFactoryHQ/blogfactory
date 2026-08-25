@@ -77,6 +77,11 @@ services:
       - 80
     environment:
       API_UPSTREAM: http://api:3000
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1 && wget -q -O /dev/null http://api:3000/api/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   scheduler:
     image: curlimages/curl:8.15.0
