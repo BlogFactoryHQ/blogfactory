@@ -194,7 +194,7 @@ app_curl --fail --silent -H "authorization: Bearer $auth_token" "http://127.0.0.
 app_curl --fail --silent "http://127.0.0.1/api/storage/$storage_path" | cmp - "$tmp_dir/object.txt"
 
 closed_env="$(sed 's/^BLOGFACTORY_ALLOW_SIGNUP=.*/BLOGFACTORY_ALLOW_SIGNUP=false/' <<<"$env_text")"
-api_post compose.saveEnvironment "$(jq -nc --arg id "$compose_id" --arg env "$closed_env" '{composeId:$id,env:$env,createEnvFile:false}')" >/dev/null
+api_post compose.saveEnvironment "$(jq -nc --arg id "$compose_id" --arg env "$closed_env" '{composeId:$id,env:$env,createEnvFile:true}')" >/dev/null
 api_post compose.deploy "$(jq -nc --arg id "$compose_id" '{composeId:$id,title:"Disable public signup"}')" >/dev/null
 wait_for_deployment "$deployment_id" >/dev/null
 
