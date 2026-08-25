@@ -16,6 +16,14 @@
 
 New developers should read the README, feature plan, architecture map, and AGENTS context first. Unchecked roadmap items are not existing product capabilities.
 
+## Independent open-source tools
+
+- [Free & Open Source Tools hub](https://blogfactory.io/open-source-tools/)
+- [Source-Backed Blog Writer](https://blogfactory.io/open-source-tools/source-backed-blog-writer/): a CC BY 4.0 Agent Skill for evidence-backed article research and drafting.
+- [Ghost Publisher MCP](https://blogfactory.io/open-source-tools/ghost-publisher-mcp/): an MIT-licensed local Ghost CMS MCP server with explicit write controls.
+
+These projects are maintained by BlogFactoryHQ but install and operate independently from BlogFactory.
+
 ## Historical decision records
 
 These files preserve rationale and acceptance context from the date they were written. They are not current release status or product commitments; when they conflict, use the code and current documents above.

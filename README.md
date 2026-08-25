@@ -78,10 +78,12 @@ BlogFactory is a self-hosted release candidate. BlogFactory Cloud is coming soon
 
 ## Companion projects
 
+Explore both projects in the [Free & Open Source Tools hub](https://blogfactory.io/open-source-tools/).
+
 | Project | Use it when |
 | --- | --- |
-| [Ghost Publisher MCP](https://github.com/BlogFactoryHQ/ghost-publisher-mcp) | You need a local, Ghost-specific MCP server for drafts, diagnostics, scheduling, and separately approved publishing |
-| [Source-Backed Blog Writer](https://github.com/BlogFactoryHQ/source-backed-blog-writer-skill) | You need a portable Agent Skill for researching, drafting, refreshing, or auditing evidence-backed articles |
+| [Ghost Publisher MCP](https://github.com/BlogFactoryHQ/ghost-publisher-mcp) | You need a local, Ghost-specific MCP server for drafts, diagnostics, scheduling, and separately approved publishing. [Overview and install](https://blogfactory.io/open-source-tools/ghost-publisher-mcp/) |
+| [Source-Backed Blog Writer](https://github.com/BlogFactoryHQ/source-backed-blog-writer-skill) | You need a portable Agent Skill for researching, drafting, refreshing, or auditing evidence-backed articles. [Overview and install](https://blogfactory.io/open-source-tools/source-backed-blog-writer/) |
 
 Both projects work independently. They can supply or deliver content around BlogFactory, but they do not broaden BlogFactory's server-enforced draft-only authority.
 
