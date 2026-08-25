@@ -32,7 +32,7 @@ services:
       retries: 20
 
   api:
-    image: ghcr.io/blogfactoryhq/blogfactory-api:v0.1.0-rc.1
+    image: ghcr.io/blogfactoryhq/blogfactory-api:v0.1.0
     restart: unless-stopped
     command: >-
       sh -c "bun run src/init-s3-bucket.ts && bun run src/db/migrate.ts && exec bun run src/index.ts"
@@ -68,7 +68,7 @@ services:
       retries: 20
 
   web:
-    image: ghcr.io/blogfactoryhq/blogfactory-web:v0.1.0-rc.1
+    image: ghcr.io/blogfactoryhq/blogfactory-web:v0.1.0
     restart: unless-stopped
     depends_on:
       api:

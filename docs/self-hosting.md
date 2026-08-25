@@ -9,14 +9,14 @@ browser + MCP client -> your HTTPS domain -> Nginx web -> Hono API + /mcp
                                           scheduler ----+
 ```
 
-The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. Until the first versioned GHCR release is published, install and update BlogFactory by building from the public source repository.
+The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. The public `v0.1.0` GHCR images are available for Linux amd64 and arm64; building from the public source repository remains supported.
 
 ## Supported deployment targets
 
 | Target | v0.1 status |
 | --- | --- |
 | Docker Compose | Canonical supported installation |
-| Dokploy | RC acceptance passed; public catalog link waits for final-image acceptance and upstream merge |
+| Dokploy | Final-image acceptance pending; public catalog link waits for upstream merge |
 | Railway | Guided topology prepared; deferred until a separate real-project acceptance run |
 | Render | Planned, unsupported until the same acceptance passes |
 | Vercel | Expert topology requiring external database, storage, and cron; not guided self-hosting |
@@ -30,7 +30,7 @@ Requirements: Docker Engine with Compose v2, at least 4 GB RAM for a small insta
 cp .env.self-host.example .env
 openssl rand -hex 32 # repeat independently for each blank password/secret
 docker compose config --quiet
-docker compose build --pull api web
+docker compose pull api web
 docker compose up -d
 ```
 
@@ -128,7 +128,7 @@ curl --fail http://localhost:8080/api/ready
 
 ## Upgrade and rollback
 
-Before versioned GHCR images are available, update from a reviewed Git commit and rebuild both application images after taking a verified backup:
+To build from source instead, update from a reviewed Git commit and rebuild both application images after taking a verified backup:
 
 ```bash
 git fetch --tags origin
@@ -138,7 +138,7 @@ docker compose up -d
 curl --fail http://localhost:8080/api/ready
 ```
 
-After versioned images are published, `BLOGFACTORY_VERSION` will pin both application images. The release notes will identify the first supported tag and rollback procedure:
+For image-based upgrades, `BLOGFACTORY_VERSION` pins both application images. Release notes identify the supported tag and rollback procedure:
 
 ```bash
 sed -i.bak 's/^BLOGFACTORY_VERSION=.*/BLOGFACTORY_VERSION=v0.1.1/' .env

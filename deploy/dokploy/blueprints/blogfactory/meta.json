@@ -1,7 +1,7 @@
 {
   "id": "blogfactory",
   "name": "BlogFactory",
-  "version": "v0.1.0-rc.1",
+  "version": "v0.1.0",
   "description": "Self-hosted control plane for AI-assisted content operations and human-approved CMS draft delivery.",
   "logo": "blogfactory.svg",
   "links": {
