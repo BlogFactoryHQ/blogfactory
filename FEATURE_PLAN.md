@@ -28,7 +28,7 @@ Cloud pricing, limits, checkout, subscriptions, and entitlements have not been d
 - [x] Confirm every bundled screenshot and brand asset is cleared for public redistribution.
 - [x] Run the Docker Compose stack on a machine with a working Docker daemon and complete the smoke test in `docs/self-hosting.md`.
 - [x] Preserve the existing Git history, subject to the public-release audit below.
-- [ ] Run the Dokploy blueprint on a disposable GitHub Actions instance and pass the Docker-equivalent health, signup, storage, MCP, scheduler, and persistence acceptance.
+- [x] Run the Dokploy blueprint on a disposable GitHub Actions instance and pass the Docker-equivalent health, signup, storage, MCP, scheduler, and persistence acceptance ([RC acceptance](https://github.com/BlogFactoryHQ/blogfactory/actions/runs/32888770507)).
 - [x] Make `BlogFactoryHQ/blogfactory` public and verify the anonymous clone path.
 - [ ] Create a tagged release and attach upgrade/migration notes.
 - [x] Deploy the private-site “Open source / Cloud coming soon” marketing copy after the source URL became public.

@@ -16,7 +16,7 @@ The running Community instance does not call `blogfactory.io`. Content and crede
 | Target | v0.1 status |
 | --- | --- |
 | Docker Compose | Canonical supported installation |
-| Dokploy | Blueprint prepared; public catalog link waits for the disposable real-instance acceptance and upstream merge |
+| Dokploy | RC acceptance passed; public catalog link waits for final-image acceptance and upstream merge |
 | Railway | Guided topology prepared; deferred until a separate real-project acceptance run |
 | Render | Planned, unsupported until the same acceptance passes |
 | Vercel | Expert topology requiring external database, storage, and cron; not guided self-hosting |
