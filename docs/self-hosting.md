@@ -16,7 +16,8 @@ The running Community instance does not call `blogfactory.io`. Content and crede
 | Target | v0.1 status |
 | --- | --- |
 | Docker Compose | Canonical supported installation |
-| Railway | Guided topology prepared; template badge waits for a real acceptance run |
+| Dokploy | RC acceptance passed; public catalog link waits for final-image acceptance and upstream merge |
+| Railway | Guided topology prepared; deferred until a separate real-project acceptance run |
 | Render | Planned, unsupported until the same acceptance passes |
 | Vercel | Expert topology requiring external database, storage, and cron; not guided self-hosting |
 | Netlify | Unsupported because it does not provide the complete API, worker, and data topology |
@@ -155,6 +156,16 @@ docker compose up -d
 ```
 
 If the older application is incompatible with the migrated schema, restore the pre-upgrade PostgreSQL dump and matching MinIO copy instead of trying to reverse migrations.
+
+## Dokploy runbook
+
+The upstream-compatible blueprint is in [`deploy/dokploy/blueprints/blogfactory`](../deploy/dokploy/blueprints/blogfactory). It creates web, API, scheduler, PostgreSQL, and MinIO services with persistent database and object-storage volumes. Only web receives a Dokploy domain. The API initializes the S3 bucket and runs locked additive migrations before serving.
+
+Dokploy generates independent database, storage, JWT, encryption, cron, and administrator values during import. After deployment, copy `ADMIN_EMAILS` from the Compose environment, register the first administrator with that exact address, then set `BLOGFACTORY_ALLOW_SIGNUP=false` and redeploy. Add AI, CMS, and Google credentials later from the relevant BlogFactory control surfaces.
+
+The repository validates the blueprint with Dokploy's own validators and preview build. Its real acceptance workflow installs pinned Dokploy `v0.30.2` on a disposable GitHub Actions Ubuntu runner, imports through the Dokploy API, and verifies readiness, private-service health, signup, storage, MCP, scheduler execution, restart persistence, and closed signup. Run it from **Actions -> Dokploy template acceptance** or by changing the blueprint. A green validator without the real deploy job is not acceptance.
+
+Do not add a public Dokploy deploy link until the acceptance passes against final `v0.1.0` images and the upstream catalog PR is merged.
 
 ## Railway runbook
 

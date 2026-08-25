@@ -1,6 +1,6 @@
 # v0.1.0 public-release audit
 
-Audit date: 2026-08-23. Status: **security and history audit passed; the source is public; tagged release readiness still waits for Railway acceptance.**
+Audit date: 2026-08-23. Status: **security and history audit passed; the source is public; tagged release readiness still waits for Dokploy acceptance.**
 
 ## Results
 
@@ -16,6 +16,6 @@ Audit date: 2026-08-23. Status: **security and history audit passed; the source 
 
 ## Remaining release gates
 
-Deploy the prepared Railway topology to a real project and pass the same health, signup, storage, MCP, and persistence acceptance as Docker Compose before publishing its template. Repository visibility, anonymous clone, tag/release creation, and the live marketing cutover remain separate unchecked publication actions in `FEATURE_PLAN.md`.
+Deploy the prepared Dokploy blueprint to the workflow's disposable real instance and pass the same health, signup, storage, MCP, scheduler, and persistence acceptance as Docker Compose before the final tag. Repository visibility, anonymous clone, tag/release creation, upstream catalog publication, and the live marketing cutover remain separate publication actions in `FEATURE_PLAN.md`.
 
-Until that acceptance run is complete, keep the public repository in release-candidate language, do not push `v0.1.0`, do not publish a Railway badge, and do not cut over the live marketing surface.
+Until that acceptance run is complete, keep the public repository in release-candidate language, do not push `v0.1.0`, do not publish a Dokploy deploy link, and do not cut over the live marketing surface.
