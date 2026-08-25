@@ -34,7 +34,7 @@ cleanup() {
 
 diagnostics() {
   echo "Dokploy acceptance diagnostics" >&2
-  docker ps -a --filter "label=com.docker.compose.project=$app_name" >&2 || true
+  docker ps -a --format 'table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Status}}' >&2 || true
   for service in postgres minio api web scheduler; do
     container_id="$(docker ps -aq \
       --filter "label=com.docker.compose.project=$app_name" \
@@ -111,10 +111,12 @@ echo "Dokploy deployment completed"
 
 compose_state="$(api_get compose.one "composeId=$compose_id")"
 test "$(jq -r '.composeStatus' <<<"$compose_state")" = "done"
+app_name="$(jq -er '.appName' <<<"$compose_state")"
 host="$(jq -er '.domains[] | select(.serviceName == "web") | .host' <<<"$compose_state")"
 env_text="$(jq -er '.env' <<<"$compose_state")"
 admin_email="$(sed -n 's/^ADMIN_EMAILS=//p' <<<"$env_text")"
 test -n "$admin_email"
+echo "Dokploy route created for $host"
 printf '127.0.0.1 %s\n' "$host" | sudo tee -a /etc/hosts >/dev/null
 
 app_curl() {
