@@ -19,6 +19,8 @@
   <a href="LICENSE">AGPL-3.0-only</a>
 </p>
 
+<p align="center"><a href="https://repocloud.io/details/BlogFactory/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" width="185" height="42" /></a></p>
+
 <p align="center">
   <code>Self-hosted</code>
   <code>Bring your own AI</code>
