@@ -478,7 +478,7 @@ try {
   ] as const) {
     const denied = await callTool(name, args);
     assert.equal(denied.isError, true);
-    assert.equal(denied.structuredContent.error.code, "not_found");
+    assert.equal(denied.structuredContent.error.code, "site_id" in args ? "forbidden" : "not_found");
   }
 
   const systemJobEvents = await sql<{ action: string; status: string }[]>`
