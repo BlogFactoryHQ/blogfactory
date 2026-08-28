@@ -9,14 +9,15 @@ browser + MCP client -> your HTTPS domain -> Nginx web -> Hono API + /mcp
                                           scheduler ----+
 ```
 
-The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. Until the first versioned GHCR release is published, install and update BlogFactory by building from the public source repository.
+The running Community instance does not call `blogfactory.io`. Content and credentials go only to the AI, CMS, and Google integrations you configure. The public `v0.1.0` GHCR images are available for Linux amd64 and arm64; building from the public source repository remains supported.
 
 ## Supported deployment targets
 
 | Target | v0.1 status |
 | --- | --- |
 | Docker Compose | Canonical supported installation |
-| Railway | Guided topology prepared; template badge waits for a real acceptance run |
+| Dokploy | Final-image acceptance passed ([run](https://github.com/BlogFactoryHQ/blogfactory/actions/runs/32890291524)); public catalog link waits for upstream merge |
+| Railway | Guided topology prepared; deferred until a separate real-project acceptance run |
 | Render | Planned, unsupported until the same acceptance passes |
 | Vercel | Expert topology requiring external database, storage, and cron; not guided self-hosting |
 | Netlify | Unsupported because it does not provide the complete API, worker, and data topology |
@@ -29,7 +30,7 @@ Requirements: Docker Engine with Compose v2, at least 4 GB RAM for a small insta
 cp .env.self-host.example .env
 openssl rand -hex 32 # repeat independently for each blank password/secret
 docker compose config --quiet
-docker compose build --pull api web
+docker compose pull api web
 docker compose up -d
 ```
 
@@ -127,7 +128,7 @@ curl --fail http://localhost:8080/api/ready
 
 ## Upgrade and rollback
 
-Before versioned GHCR images are available, update from a reviewed Git commit and rebuild both application images after taking a verified backup:
+To build from source instead, update from a reviewed Git commit and rebuild both application images after taking a verified backup:
 
 ```bash
 git fetch --tags origin
@@ -137,7 +138,7 @@ docker compose up -d
 curl --fail http://localhost:8080/api/ready
 ```
 
-After versioned images are published, `BLOGFACTORY_VERSION` will pin both application images. The release notes will identify the first supported tag and rollback procedure:
+For image-based upgrades, `BLOGFACTORY_VERSION` pins both application images. Release notes identify the supported tag and rollback procedure:
 
 ```bash
 sed -i.bak 's/^BLOGFACTORY_VERSION=.*/BLOGFACTORY_VERSION=v0.1.1/' .env
@@ -155,6 +156,16 @@ docker compose up -d
 ```
 
 If the older application is incompatible with the migrated schema, restore the pre-upgrade PostgreSQL dump and matching MinIO copy instead of trying to reverse migrations.
+
+## Dokploy runbook
+
+The upstream-compatible blueprint is in [`deploy/dokploy/blueprints/blogfactory`](../deploy/dokploy/blueprints/blogfactory). It creates web, API, scheduler, PostgreSQL, and MinIO services with persistent database and object-storage volumes. Only web receives a Dokploy domain. The API initializes the S3 bucket and runs locked additive migrations before serving.
+
+Dokploy generates independent database, storage, JWT, encryption, cron, and administrator values during import. After deployment, copy `ADMIN_EMAILS` from the Compose environment, register the first administrator with that exact address, then set `BLOGFACTORY_ALLOW_SIGNUP=false` and redeploy. Add AI, CMS, and Google credentials later from the relevant BlogFactory control surfaces.
+
+The repository validates the blueprint with Dokploy's own validators and preview build. Its real acceptance workflow installs pinned Dokploy `v0.30.2` on a disposable GitHub Actions Ubuntu runner, imports through the Dokploy API, and verifies readiness, private-service health, signup, storage, MCP, scheduler execution, restart persistence, and closed signup. Run it from **Actions -> Dokploy template acceptance** or by changing the blueprint. A green validator without the real deploy job is not acceptance.
+
+Do not add a public Dokploy deploy link until the acceptance passes against final `v0.1.0` images and the upstream catalog PR is merged.
 
 ## Railway runbook
 
