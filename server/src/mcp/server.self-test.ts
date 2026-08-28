@@ -212,7 +212,7 @@ const crossSite = await post(
 );
 const crossSiteResult = (await crossSite.json() as any).result;
 assert.equal(crossSiteResult.isError, true);
-assert.equal(crossSiteResult.structuredContent.error.code, "not_found");
+assert.equal(crossSiteResult.structuredContent.error.code, "forbidden");
 
 for (const name of [
   "get_search_console_dashboard",
@@ -241,7 +241,7 @@ for (const name of [
   );
   const result = (await response.json() as any).result;
   assert.equal(result.isError, true);
-  assert.equal(result.structuredContent.error.code, "not_found");
+  assert.equal(result.structuredContent.error.code, "forbidden");
 }
 
 const invalidInput = await post(
