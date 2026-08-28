@@ -230,9 +230,14 @@ describe("MCP connections panel", () => {
       id: "33333333-3333-4333-8333-333333333333",
       name: "OAuth MCP client",
       scopes: ["content:read"],
-      site_id: "11111111-1111-4111-8111-111111111111",
-      site_name: "Example",
-      site_domain: "example.com",
+      site_ids: [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+      sites: [
+        { id: "11111111-1111-4111-8111-111111111111", name: "Ortakalan", domain: "ortakalan.io" },
+        { id: "22222222-2222-4222-8222-222222222222", name: "Ideal Plastik", domain: "idealplastik.com.tr" },
+      ],
       last_used_at: "2026-07-27T12:30:00.000Z",
       revoked_at: null,
       created_at: "2026-07-27T12:00:00.000Z",
@@ -253,7 +258,7 @@ describe("MCP connections panel", () => {
     expect(document.body).toHaveTextContent("push_to_cms_draft");
     expect(document.body).toHaveTextContent("review_post");
     expect(document.body).toHaveTextContent("OAuth MCP client");
-    expect(document.body).toHaveTextContent("Example — example.com");
+    expect(document.body).toHaveTextContent("Ortakalan — ortakalan.io, Ideal Plastik — idealplastik.com.tr");
     const revoke = document.querySelector<HTMLButtonElement>('[aria-label="Revoke OAuth MCP client"]');
     expect(revoke).toBeEnabled();
     await act(async () => revoke?.click());

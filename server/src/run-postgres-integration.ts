@@ -159,13 +159,18 @@ try {
   const oauthIdentity = {
     connectionId: `app_consent_${randomUUID()}`,
     userId,
-    siteId,
+    siteIds: [siteId, restrictedSiteId].sort(),
   };
   const oauthConnection = await authorizeMcpOAuthConnection(oauthIdentity, new Date());
   assert.ok(oauthConnection?.id, "OAuth connection was not persisted");
+  assert.equal(
+    await authorizeMcpOAuthConnection({ ...oauthIdentity, siteIds: [siteId] }, new Date()),
+    undefined,
+    "existing OAuth grant silently changed its allowed sites",
+  );
   assert.deepEqual(
-    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_id),
-    [siteId],
+    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_ids),
+    [oauthIdentity.siteIds],
     "OAuth connection site grant was not listed",
   );
   await revokeMcpOAuthConnection(userId, oauthConnection!.id);

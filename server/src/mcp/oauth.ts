@@ -8,6 +8,7 @@ import {
 
 export const MCP_OAUTH_USER_ID_CLAIM = "urn:blogfactory:user_id";
 export const MCP_OAUTH_SITE_ID_CLAIM = "urn:blogfactory:site_id";
+export const MCP_OAUTH_SITE_IDS_CLAIM = "urn:blogfactory:site_ids";
 export const MCP_OAUTH_READ_SCOPE = "content:read";
 // AuthKit issues these standard OAuth scopes. BlogFactory authorizes its
 // draft-only capabilities from the site-bound consent claims after token verification.
@@ -23,7 +24,7 @@ export interface McpOAuthConfig {
 export interface McpOAuthIdentity {
   connectionId: string;
   userId: string;
-  siteId: string;
+  siteIds: string[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -95,17 +96,29 @@ export function mcpBearerChallenge(config = getMcpOAuthConfig()) {
 export function mcpOAuthIdentityFromClaims(payload: JWTPayload): McpOAuthIdentity | null {
   const connectionId = payload.sid;
   const userId = payload[MCP_OAUTH_USER_ID_CLAIM];
-  const siteId = payload[MCP_OAUTH_SITE_ID_CLAIM];
+  const pluralClaim = payload[MCP_OAUTH_SITE_IDS_CLAIM];
+  let siteIds: unknown = pluralClaim;
+  if (typeof pluralClaim === "string") {
+    try {
+      siteIds = JSON.parse(pluralClaim);
+    } catch {
+      return null;
+    }
+  } else if (pluralClaim === undefined) {
+    siteIds = [payload[MCP_OAUTH_SITE_ID_CLAIM]];
+  }
   if (
     typeof connectionId !== "string"
     || connectionId.length === 0
     || connectionId.length > 255
     || typeof userId !== "string"
     || !UUID_PATTERN.test(userId)
-    || typeof siteId !== "string"
-    || !UUID_PATTERN.test(siteId)
+    || !Array.isArray(siteIds)
+    || siteIds.length === 0
+    || siteIds.length > 100
+    || siteIds.some((siteId) => typeof siteId !== "string" || !UUID_PATTERN.test(siteId))
   ) return null;
-  return { connectionId, userId, siteId };
+  return { connectionId, userId, siteIds: [...new Set(siteIds as string[])].sort() };
 }
 
 export function isInvalidMcpOAuthTokenError(error: unknown) {

@@ -8,6 +8,7 @@ import {
 } from "jose";
 import {
   MCP_OAUTH_SITE_ID_CLAIM,
+  MCP_OAUTH_SITE_IDS_CLAIM,
   MCP_OAUTH_USER_ID_CLAIM,
   getMcpOAuthConfig,
   handleMcpProtectedResourceMetadata,
@@ -62,9 +63,25 @@ const claims = {
 assert.deepEqual(mcpOAuthIdentityFromClaims(claims), {
   connectionId: claims.sid,
   userId: claims[MCP_OAUTH_USER_ID_CLAIM],
-  siteId: claims[MCP_OAUTH_SITE_ID_CLAIM],
+  siteIds: [claims[MCP_OAUTH_SITE_ID_CLAIM]],
 });
 assert.equal(mcpOAuthIdentityFromClaims({ ...claims, [MCP_OAUTH_SITE_ID_CLAIM]: "other-site" }), null);
+const secondSiteId = "44444444-4444-4444-8444-444444444444";
+assert.deepEqual(mcpOAuthIdentityFromClaims({
+  ...claims,
+  [MCP_OAUTH_SITE_ID_CLAIM]: undefined,
+  [MCP_OAUTH_SITE_IDS_CLAIM]: [secondSiteId, claims[MCP_OAUTH_SITE_ID_CLAIM]],
+}), {
+  connectionId: claims.sid,
+  userId: claims[MCP_OAUTH_USER_ID_CLAIM],
+  siteIds: [claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId],
+});
+assert.deepEqual(mcpOAuthIdentityFromClaims({
+  ...claims,
+  [MCP_OAUTH_SITE_ID_CLAIM]: undefined,
+  [MCP_OAUTH_SITE_IDS_CLAIM]: JSON.stringify([claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId]),
+})?.siteIds, [claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId]);
+assert.equal(mcpOAuthIdentityFromClaims({ ...claims, [MCP_OAUTH_SITE_IDS_CLAIM]: [] }), null);
 assert.equal(mcpOAuthIdentityFromClaims({ ...claims, sid: undefined }), null);
 assert.equal(isInvalidMcpOAuthTokenError(new errors.JWTInvalid("invalid token")), true);
 assert.equal(isInvalidMcpOAuthTokenError(new errors.JOSEError("JWKS fetch failed")), false);
