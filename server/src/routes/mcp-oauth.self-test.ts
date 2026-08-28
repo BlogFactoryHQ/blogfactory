@@ -13,8 +13,8 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.route("/", createMcpOAuthRoutes({
-  complete: async (requestedUserId, externalAuthId) => {
-    calls.push({ action: "complete", userId: requestedUserId, value: externalAuthId });
+  complete: async (requestedUserId, externalAuthId, siteIds) => {
+    calls.push({ action: "complete", userId: requestedUserId, value: { externalAuthId, siteIds } });
     return { redirect_uri: "https://blogfactory-test.authkit.app/continue" };
   },
   list: async (requestedUserId) => {
@@ -31,11 +31,17 @@ app.onError(handleApiError);
 const completed = await app.request("/complete", {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ external_auth_id: "ext_auth_01K0BLOGFACTORY" }),
+  body: JSON.stringify({
+    external_auth_id: "ext_auth_01K0BLOGFACTORY",
+    site_ids: ["22222222-2222-4222-8222-222222222222"],
+  }),
 });
 assert.equal(completed.status, 200);
 assert.equal(calls.at(-1)?.userId, userId);
-assert.equal(calls.at(-1)?.value, "ext_auth_01K0BLOGFACTORY");
+assert.deepEqual(calls.at(-1)?.value, {
+  externalAuthId: "ext_auth_01K0BLOGFACTORY",
+  siteIds: ["22222222-2222-4222-8222-222222222222"],
+});
 
 const listed = await app.request("/connections");
 assert.deepEqual(await listed.json(), {

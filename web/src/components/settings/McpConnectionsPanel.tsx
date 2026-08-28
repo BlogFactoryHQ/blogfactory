@@ -41,9 +41,8 @@ interface McpOAuthConnection {
   id: string;
   name: string;
   scopes: string[];
-  site_id: string;
-  site_name: string;
-  site_domain: string;
+  site_ids: string[];
+  sites: Array<{ id: string; name: string; domain: string }>;
   last_used_at: string | null;
   revoked_at: string | null;
   created_at: string;
@@ -328,6 +327,11 @@ export function McpConnectionsPanel() {
               <div className="divide-y divide-byword-border rounded-md border border-byword-border">
                 {oauthConnections.map((connection) => {
                   const active = !connection.revoked_at;
+                  const authorizedSites = new Map(connection.sites.map((site) => [site.id, site]));
+                  const siteLabels = connection.site_ids.map((siteId) => {
+                    const site = authorizedSites.get(siteId);
+                    return site ? `${site.name} — ${site.domain}` : "Removed site";
+                  });
                   return (
                     <div key={connection.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
@@ -335,8 +339,8 @@ export function McpConnectionsPanel() {
                           <p className="font-medium">{connection.name}</p>
                           <Badge variant={active ? "default" : "destructive"}>{active ? "Active" : "Revoked"}</Badge>
                         </div>
-                        <p className="mt-1 truncate text-sm text-muted-foreground" title={`${connection.site_name} — ${connection.site_domain}`}>
-                          {connection.site_name} — {connection.site_domain} · {connection.scopes.map(scopeLabel).join(", ")}
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground" title={siteLabels.join(", ")}>
+                          {siteLabels.join(", ")} · {connection.scopes.map(scopeLabel).join(", ")}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Connected {formatDate(connection.created_at)} · Last used {formatDate(connection.last_used_at)}

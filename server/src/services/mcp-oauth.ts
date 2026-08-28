@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { sites, users } from "../db/schema.js";
 import { ApiError } from "../http/error-contract.js";
-import { MCP_OAUTH_SITE_ID_CLAIM, getMcpOAuthConfig } from "../mcp/oauth.js";
+import { MCP_OAUTH_SITE_IDS_CLAIM, getMcpOAuthConfig } from "../mcp/oauth.js";
 
 type OAuthAccount = {
   id: string;
@@ -42,6 +42,7 @@ const productionDependencies: McpOAuthCompletionDependencies = {
 export async function completeMcpOAuthLogin(
   userId: string,
   externalAuthId: unknown,
+  requestedSiteIds: unknown,
   dependencies = productionDependencies,
 ) {
   if (
@@ -61,6 +62,15 @@ export async function completeMcpOAuthLogin(
   if (!account.sites.length) {
     throw new ApiError(409, "conflict", "Add an active site before connecting an MCP client");
   }
+  if (!Array.isArray(requestedSiteIds) || !requestedSiteIds.length || requestedSiteIds.length > 100) {
+    throw new ApiError(400, "validation_error", "Select at least one site");
+  }
+  const selected = new Set(requestedSiteIds);
+  const selectedSites = account.sites.filter((site) => selected.has(site.id));
+  if (selected.size !== requestedSiteIds.length || selectedSites.length !== requestedSiteIds.length) {
+    throw new ApiError(403, "forbidden", "One or more selected sites are unavailable");
+  }
+  const siteIds = selectedSites.map((site) => site.id).sort();
 
   const response = await dependencies.request("https://api.workos.com/authkit/oauth2/complete", {
     method: "POST",
@@ -72,13 +82,13 @@ export async function completeMcpOAuthLogin(
       external_auth_id: externalAuthId,
       user: { id: account.id, email: account.email },
       user_consent_options: [{
-        claim: MCP_OAUTH_SITE_ID_CLAIM,
+        claim: MCP_OAUTH_SITE_IDS_CLAIM,
         type: "enum",
-        label: "BlogFactory site",
-        choices: account.sites.map((site) => ({
-          value: site.id,
-          label: `${site.name} — ${site.domain}`,
-        })),
+        label: "BlogFactory sites",
+        choices: [{
+          value: JSON.stringify(siteIds),
+          label: selectedSites.map((site) => `${site.name} — ${site.domain}`).join(", "),
+        }],
       }],
     }),
     signal: AbortSignal.timeout(10_000),

@@ -89,12 +89,14 @@ Use `http://localhost:8080/mcp` for local development.
 
 OAuth fails closed unless `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` are configured together. Production uses `https://blogfactory.io/mcp` as the resource indicator and `https://app.blogfactory.io/mcp/oauth` as the login URI.
 
-Consent lists only the authenticated user's sites and binds the selected site to `urn:blogfactory:site_id`. The server verifies signature, issuer, `/mcp` audience, user and site claims, approval, ownership, and connection revocation before granting scopes.
+Consent lists only the authenticated user's active sites and binds the selected IDs to `urn:blogfactory:site_ids`. AuthKit currently supports one `enum` value per consent option, so BlogFactory serializes the selected UUID array into that value; token verification also accepts a native array claim. Existing grants using `urn:blogfactory:site_id` remain valid. Both forms are normalized to one allowed-site set, and the server verifies signature, issuer, `/mcp` audience, approval, current ownership, the original persisted grant, and revocation before granting scopes. Reconnect the client to authorize additional sites; an existing grant never expands automatically.
 
 ```bash
 codex mcp add blogfactory --url https://blogfactory.io/mcp
 codex mcp login blogfactory
 ```
+
+After deploying a multisite authorization change, revoke the previous client grant and reconnect. Select the intended sites explicitly, then confirm `whoami.allowed_site_ids`, `list_sites`, and a site-scoped read for every selected site. A site omitted during consent must continue returning a not-found response.
 
 ## Shared control plane and audit
 

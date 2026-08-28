@@ -375,7 +375,11 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
     db.select({ total: sql<number>`coalesce(sum(${generationLogs.cost}), 0)::float8` }).from(generationLogs)
       .innerJoin(posts, and(eq(posts.id, generationLogs.postId), eq(posts.userId, input.userId), eq(posts.siteId, input.siteId)))
       .where(and(eq(generationLogs.userId, input.userId), gte(generationLogs.createdAt, thirtyDaysAgo))),
-    db.select({ count: count() }).from(mcpOAuthConnections).where(and(eq(mcpOAuthConnections.userId, input.userId), eq(mcpOAuthConnections.siteId, input.siteId), isNull(mcpOAuthConnections.revokedAt))),
+    db.select({ count: count() }).from(mcpOAuthConnections).where(and(
+      eq(mcpOAuthConnections.userId, input.userId),
+      sql`${input.siteId}::uuid = ANY(coalesce(${mcpOAuthConnections.siteIds}, ARRAY[${mcpOAuthConnections.siteId}]::uuid[]))`,
+      isNull(mcpOAuthConnections.revokedAt),
+    )),
     db.select({ count: count() }).from(mcpAccessTokens).where(and(
       eq(mcpAccessTokens.userId, input.userId),
       isNull(mcpAccessTokens.revokedAt),
