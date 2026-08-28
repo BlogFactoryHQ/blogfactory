@@ -112,6 +112,7 @@ const successOutputSchema = (data: z.ZodRawShape) => ({
 
 type ToolErrorCode =
   | "insufficient_scope"
+  | "forbidden"
   | "not_found"
   | "validation_error"
   | "conflict"
@@ -137,7 +138,7 @@ export class McpToolError extends Error {
 
 async function requireOwnedAllowedSite(principal: McpPrincipal, siteId: string) {
   if (!principal.siteIds.has(siteId)) {
-    throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    throw new McpToolError("forbidden", "Site is not authorized for this connection.", "Call list_sites to choose an allowed site.");
   }
   const [site] = await db
     .select({ id: sites.id })
@@ -145,7 +146,7 @@ async function requireOwnedAllowedSite(principal: McpPrincipal, siteId: string) 
     .where(and(eq(sites.id, siteId), eq(sites.userId, principal.userId)))
     .limit(1);
   if (!site) {
-    throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    throw new McpToolError("forbidden", "Site is not authorized for this connection.", "Call list_sites to choose an allowed site.");
   }
 }
 
