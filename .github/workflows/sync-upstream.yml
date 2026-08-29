@@ -39,7 +39,11 @@ jobs:
             echo "Private Cloud already contains the latest public core."
             exit 0
           fi
-          git merge --no-edit upstream/main
+          git merge --no-edit upstream/main || {
+            test -f .git/MERGE_HEAD
+            git rm -f --ignore-unmatch -- .github/workflows/full-cron.yml .github/workflows/rss-cron.yml
+            git commit --no-edit
+          }
           npm ci
           npm run test:server
           npm run typecheck
