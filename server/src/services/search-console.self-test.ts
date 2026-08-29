@@ -11,6 +11,7 @@ import {
   normalizeInspectionUrl,
   normalizeSearchConsoleProperty,
   searchConsoleOAuthEnabled,
+  storedSearchConsoleMetricRange,
 } from "./search-console.js";
 
 assert.equal(normalizeSearchConsoleProperty("sc-domain:WWW.Example.com"), "sc-domain:example.com");
@@ -78,6 +79,12 @@ assert.deepEqual(chunkSearchConsoleMetrics(Array.from({ length: 2501 }, (_, inde
 
 assert.equal(searchConsoleOAuthEnabled({}), false);
 assert.equal(searchConsoleOAuthEnabled({ GOOGLE_SEARCH_CONSOLE_CLIENT_ID: "client-id" }), false);
+assert.deepEqual(storedSearchConsoleMetricRange({
+  startDate: "2026-08-01",
+  endDate: "2026-08-28",
+  baselineStart: "2026-07-04",
+  baselineEnd: "2026-07-31",
+}), { startDate: "2026-07-04", endDate: "2026-08-28" });
 assert.equal(searchConsoleOAuthEnabled({ GOOGLE_SEARCH_CONSOLE_CLIENT_ID: "client-id", GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET: "client-secret" }), true);
 
 const emptyInsights = buildSearchConsoleInsights({ metrics: [] });
