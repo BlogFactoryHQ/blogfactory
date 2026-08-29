@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
@@ -282,11 +282,7 @@ export function normalizePageUrlForSite(pageUrl: string, siteDomain: string) {
   return normalized;
 }
 
-export async function refreshOptimizePages(userId: string, siteId: string) {
-  const metrics = await db
-    .select()
-    .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+export async function refreshOptimizePages(userId: string, siteId: string, metrics: GscMetric[]) {
   if (!metrics.length) return { updated: 0 };
 
   const maxDate = metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
@@ -702,6 +698,10 @@ function groupBy<T>(items: T[], key: (item: T) => string) {
 }
 
 async function selectGscMetrics(userId: string, siteId: string): Promise<GscMetric[]> {
+  const [latest] = await db.select({ date: sql<string | null>`max(${searchConsoleMetrics.date})` })
+    .from(searchConsoleMetrics)
+    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+  if (!latest?.date) return [];
   return db
     .select({
       date: searchConsoleMetrics.date,
@@ -713,7 +713,12 @@ async function selectGscMetrics(userId: string, siteId: string): Promise<GscMetr
       position: searchConsoleMetrics.position,
     })
     .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+    .where(and(
+      eq(searchConsoleMetrics.userId, userId),
+      eq(searchConsoleMetrics.siteId, siteId),
+      gte(searchConsoleMetrics.date, shiftDate(latest.date, -27)),
+      lte(searchConsoleMetrics.date, latest.date),
+    ));
 }
 
 async function snapshotPage(url: string): Promise<ContentSnapshot> {
