@@ -25,8 +25,6 @@ jobs:
             query: "task=campaigns&maxCampaigns=1&maxItemsPerCampaign=1"
           - name: Google indexing
             query: "task=indexing&limit=10"
-          - name: Search Console sync
-            query: "task=search-console&limit=1"
           - name: Due feeds
             query: "task=feeds&maxFeeds=1&maxPostsPerFeed=1"
           - name: Deferred images

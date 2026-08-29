@@ -46,7 +46,7 @@ Rollback is promotion of the last Ready Vercel deployment. Keep database changes
 
 ## Background work
 
-The Cloudflare Worker runs bounded campaign, SEO, and deferred-image drains every six hours. GitHub Actions runs RSS hourly, the full background matrix daily, and a campaign drain on manual dispatch. Every trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
+The Cloudflare Worker runs bounded campaign, SEO, and deferred-image drains every six hours. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch. Search Console refresh is manual. Every trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
 
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 

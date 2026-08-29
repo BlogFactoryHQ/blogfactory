@@ -11,7 +11,7 @@ Vercel cron is not used.
 
 ```text
 Cloudflare Worker Cron: campaign, SEO, and image fallback every 6 hours
-GitHub Actions: RSS hourly, full background drain daily
+GitHub Actions: RSS every 6 hours, full background drain daily
 ```
 
 Cloudflare files:
