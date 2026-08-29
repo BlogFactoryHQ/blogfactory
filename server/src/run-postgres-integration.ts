@@ -159,13 +159,18 @@ try {
   const oauthIdentity = {
     connectionId: `app_consent_${randomUUID()}`,
     userId,
-    siteId,
+    siteIds: [siteId, restrictedSiteId].sort(),
   };
   const oauthConnection = await authorizeMcpOAuthConnection(oauthIdentity, new Date());
   assert.ok(oauthConnection?.id, "OAuth connection was not persisted");
+  assert.equal(
+    await authorizeMcpOAuthConnection({ ...oauthIdentity, siteIds: [siteId] }, new Date()),
+    undefined,
+    "existing OAuth grant silently changed its allowed sites",
+  );
   assert.deepEqual(
-    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_id),
-    [siteId],
+    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_ids),
+    [oauthIdentity.siteIds],
     "OAuth connection site grant was not listed",
   );
   await revokeMcpOAuthConnection(userId, oauthConnection!.id);
@@ -473,7 +478,7 @@ try {
   ] as const) {
     const denied = await callTool(name, args);
     assert.equal(denied.isError, true);
-    assert.equal(denied.structuredContent.error.code, "not_found");
+    assert.equal(denied.structuredContent.error.code, "site_id" in args ? "forbidden" : "not_found");
   }
 
   const systemJobEvents = await sql<{ action: string; status: string }[]>`

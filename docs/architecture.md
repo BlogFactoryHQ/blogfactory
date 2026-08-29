@@ -112,8 +112,8 @@ Background work is split across bounded triggers that all call the protected `/a
 | Trigger | Schedule | Work |
 | --- | --- | --- |
 | Cloudflare Worker | Every 6 hours | Campaign fallback, SEO metadata, deferred images |
-| GitHub `rss-cron.yml` | Hourly | Due RSS feeds |
-| GitHub `full-cron.yml` | Daily | Campaigns, indexing, Search Console, feeds, images |
+| GitHub `rss-cron.yml` | Every 6 hours | Due RSS feeds |
+| GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
 | GitHub `campaign-cron.yml` | Manual | Bounded campaign drain |
 
 The backend decides eligibility and claims work. Schedulers must stay thin; do not create a second queue or duplicate job classification in a Worker or workflow.
@@ -126,7 +126,7 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay and Vercel deployment ownership |
 | Vercel project `editorial-flow-main` | Private-repository app/API build and serverless execution |
 | `vercel.json` | Migration/build command, API/MCP rewrites, redirects, headers, SPA fallbacks |
-| GitHub Actions | Validation plus hourly/daily protected background drains |
+| GitHub Actions | Validation plus protected background drains |
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 

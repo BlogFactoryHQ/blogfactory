@@ -16,6 +16,7 @@ const SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters.readonl
 const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const OAUTH_STATE_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
 const QUERY_CACHE_MS = 15 * 60 * 1000;
+const STORED_INSIGHTS_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 const INSPECTION_CACHE_MS = 24 * 60 * 60 * 1000;
 
 type IntegrationRow = typeof searchConsoleIntegrations.$inferSelect;
@@ -215,13 +216,8 @@ export function searchConsoleOAuthEnabled(env: NodeJS.ProcessEnv = process.env) 
 }
 
 export async function getSearchConsoleDashboard(userId: string, siteId: string) {
-  const [integration] = await db
-    .select()
-    .from(searchConsoleIntegrations)
-    .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
-    .limit(1);
-
-  if (!integration) {
+  const insights = await getSearchConsoleInsights(userId, siteId);
+  if (!insights.integration) {
     return {
       oauth_enabled: searchConsoleOAuthEnabled(),
       integration: null,
@@ -233,30 +229,26 @@ export async function getSearchConsoleDashboard(userId: string, siteId: string) 
     };
   }
 
-  const [performance, metrics] = await Promise.all([
-    getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput()),
-    db.select().from(searchConsoleMetrics)
-      .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId))),
-  ]);
-  const latestRows = metrics.filter((metric) => metric.date >= performance.range.startDate && metric.date <= performance.range.endDate);
-  const pageCount = new Set(latestRows.map((metric) => metric.pageUrl)).size;
-  const queryCount = new Set(latestRows.map((metric) => metric.query)).size;
-
   return {
     oauth_enabled: searchConsoleOAuthEnabled(),
-    integration: serializeSearchConsoleIntegration(integration),
-    range: performance.range,
-    stats: {
-      pageCount,
-      queryCount,
-      clicks: performance.totals.clicks.value,
-      impressions: performance.totals.impressions.value,
-      ctr: performance.totals.ctr.value,
-      position: performance.totals.position.value,
+    integration: insights.integration,
+    range: {
+      startDate: insights.range.latestStart,
+      endDate: insights.range.latestEnd,
+      baselineStart: insights.range.baselineStart,
+      baselineEnd: insights.range.baselineEnd,
     },
-    totals: performance.totals,
-    opportunity_scope: opportunityScope(latestRows, integration.lastSyncAt),
-    provenance: performance.provenance,
+    stats: {
+      pageCount: insights.opportunity_scope.page_count,
+      queryCount: insights.opportunity_scope.query_count,
+      clicks: insights.totals.clicks.value,
+      impressions: insights.totals.impressions.value,
+      ctr: insights.totals.ctr.value,
+      position: insights.totals.position.value,
+    },
+    totals: insights.totals,
+    opportunity_scope: insights.opportunity_scope,
+    provenance: insights.provenance,
   };
 }
 
@@ -269,25 +261,33 @@ export async function getSearchConsoleInsights(userId: string, siteId: string) {
 
   if (!integration) return buildSearchConsoleInsights({ metrics: [] });
 
-  const [metrics, performance] = await Promise.all([
-    db.select().from(searchConsoleMetrics)
-      .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId))),
-    getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput()),
-  ]);
+  const cached = await cachedSearchConsoleQuery(userId, siteId, "stored_insights", {
+    lastSyncAt: integration.lastSyncAt?.toISOString() || null,
+  }, async () => {
+    const performance = await getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput());
+    const range = storedSearchConsoleMetricRange(performance.range);
+    const metrics = await db.select({
+      date: searchConsoleMetrics.date,
+      pageUrl: searchConsoleMetrics.pageUrl,
+      query: searchConsoleMetrics.query,
+      clicks: searchConsoleMetrics.clicks,
+      impressions: searchConsoleMetrics.impressions,
+      ctr: searchConsoleMetrics.ctr,
+      position: searchConsoleMetrics.position,
+    }).from(searchConsoleMetrics).where(and(
+      eq(searchConsoleMetrics.userId, userId),
+      eq(searchConsoleMetrics.siteId, siteId),
+      gte(searchConsoleMetrics.date, range.startDate),
+      lte(searchConsoleMetrics.date, range.endDate),
+    ));
+    return buildSearchConsoleInsights({ integration: serializeSearchConsoleIntegration(integration), performance, metrics });
+  }, false, STORED_INSIGHTS_CACHE_MS);
+  const { cached: _cached, fetchedAt: _fetchedAt, stale: _stale, ...insights } = cached;
+  return insights;
+}
 
-  return buildSearchConsoleInsights({
-    integration: serializeSearchConsoleIntegration(integration),
-    performance,
-    metrics: metrics.map((metric) => ({
-      date: metric.date,
-      pageUrl: metric.pageUrl,
-      query: metric.query,
-      clicks: metric.clicks,
-      impressions: metric.impressions,
-      ctr: metric.ctr,
-      position: metric.position,
-    })),
-  });
+export function storedSearchConsoleMetricRange(range: CanonicalSearchPerformance["range"]) {
+  return { startDate: range.baselineStart || range.startDate, endDate: range.endDate };
 }
 
 export function buildSearchConsoleInsights({ integration = null, metrics, performance }: SearchConsoleInsightInput) {
@@ -504,7 +504,7 @@ export async function refreshSearchConsoleData(userId: string, siteId: string) {
       fetched_at: performance.provenance.fetched_at,
     },
   });
-  const refreshed = await refreshOptimizePages(userId, siteId);
+  const refreshed = await refreshOptimizePages(userId, siteId, metrics);
   return { synced: metrics.length, optimizePages: refreshed.updated, integration: serializeSearchConsoleIntegration(updated), range: performance.range, provenance: performance.provenance };
 }
 
@@ -908,7 +908,7 @@ function analyticsMetricDeltas(current: GoogleAnalyticsRow = {}, baseline?: Goog
   };
 }
 
-async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind: string, params: unknown, load: () => Promise<T>, force = false): Promise<T & { cached: boolean; stale?: boolean; fetchedAt: string }> {
+async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind: string, params: unknown, load: () => Promise<T>, force = false, ttlMs = QUERY_CACHE_MS): Promise<T & { cached: boolean; stale?: boolean; fetchedAt: string }> {
   const cacheKey = createHash("sha256").update(`${kind}:${JSON.stringify(params)}`).digest("hex");
   const [cached] = await db.select().from(searchConsoleQueryCache)
     .where(and(eq(searchConsoleQueryCache.userId, userId), eq(searchConsoleQueryCache.siteId, siteId), eq(searchConsoleQueryCache.cacheKey, cacheKey)))
@@ -933,10 +933,10 @@ async function cachedSearchConsoleQuery<T>(userId: string, siteId: string, kind:
   }
   const now = new Date();
   await db.insert(searchConsoleQueryCache).values({
-    userId, siteId, cacheKey, kind, params, result, expiresAt: new Date(now.getTime() + QUERY_CACHE_MS),
+    userId, siteId, cacheKey, kind, params, result, expiresAt: new Date(now.getTime() + ttlMs),
   }).onConflictDoUpdate({
     target: [searchConsoleQueryCache.siteId, searchConsoleQueryCache.cacheKey],
-    set: { params, result, expiresAt: new Date(now.getTime() + QUERY_CACHE_MS), updatedAt: now },
+    set: { params, result, expiresAt: new Date(now.getTime() + ttlMs), updatedAt: now },
   });
   await db.delete(searchConsoleQueryCache).where(lt(searchConsoleQueryCache.expiresAt, now));
   return { ...result, cached: false, fetchedAt: now.toISOString() };

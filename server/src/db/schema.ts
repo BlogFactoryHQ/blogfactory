@@ -340,7 +340,8 @@ export const mcpAccessTokens = pgTable("mcp_access_tokens", {
 export const mcpOAuthConnections = pgTable("mcp_oauth_connections", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  siteIds: uuid("site_ids").array(),
   providerConnectionId: text("provider_connection_id").notNull().unique(),
   scopes: text("scopes").array().notNull(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
