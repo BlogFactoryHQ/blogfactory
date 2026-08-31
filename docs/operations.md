@@ -48,6 +48,15 @@ Rollback is promotion of the last Ready Vercel deployment. Keep database changes
 
 The Cloudflare Worker runs bounded campaign, SEO, and deferred-image drains every six hours. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch. Search Console refresh is manual. Every trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
 
+The isolated Cloud pilot may run `npm run worker --workspace=server` with
+`BACKGROUND_EXECUTION_MODE=worker`. In that mode API requests only enqueue SEO
+and deferred-image work, campaign routes leave running items for the worker,
+and one persistent process drains campaigns, SEO, and deferred images. The
+default is `inline`, so current Vercel and community behavior is unchanged.
+Polling and bounded concurrency are configurable through the
+`BACKGROUND_WORKER_*` environment values; do not enable more than one worker
+until the domain claim and stale-recovery checks have passed for that topology.
+
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
 Do not disable a failing scheduled workflow to make Actions appear clean. Confirm the affected task, timeout, and backend behavior before a narrow fix.
