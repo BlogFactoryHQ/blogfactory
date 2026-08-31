@@ -1,5 +1,9 @@
 type BackgroundDrainTask = "seo" | "images";
 
+export function persistentBackgroundExecution(env: Record<string, string | undefined> = process.env) {
+  return env.BACKGROUND_EXECUTION_MODE === "worker";
+}
+
 export function backgroundDrainUrl(task: BackgroundDrainTask, userId?: string, env: Record<string, string | undefined> = process.env) {
   const host = env.VERCEL_URL?.trim();
   if (!host || !env.CRON_SECRET) return null;
@@ -10,6 +14,7 @@ export function backgroundDrainUrl(task: BackgroundDrainTask, userId?: string, e
 }
 
 export async function dispatchBackgroundDrain(task: BackgroundDrainTask, userId?: string) {
+  if (persistentBackgroundExecution()) return true;
   const url = backgroundDrainUrl(task, userId);
   if (!url) return false;
   try {
