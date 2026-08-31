@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { backgroundDrainUrl } from "./background-drain.js";
+import { backgroundDrainUrl, persistentBackgroundExecution } from "./background-drain.js";
+
+assert.equal(persistentBackgroundExecution({}), false);
+assert.equal(persistentBackgroundExecution({ BACKGROUND_EXECUTION_MODE: "worker" }), true);
+assert.equal(persistentBackgroundExecution({ BACKGROUND_EXECUTION_MODE: "inline" }), false);
 
 assert.equal(backgroundDrainUrl("seo", "00000000-0000-4000-8000-000000000001", {}), null);
 assert.equal(

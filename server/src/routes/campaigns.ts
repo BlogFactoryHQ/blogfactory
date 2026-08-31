@@ -12,8 +12,14 @@ import { safeError } from "../http/error-contract.js";
 import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
 import { hasSiteAccess } from "../services/search-console.js";
 import { SEO_PLAN_MODE } from "../services/seo-growth-plan.js";
+import { persistentBackgroundExecution } from "../services/background-drain.js";
 
 export const campaignsRoutes = new Hono();
+
+function kickCampaign(id: string, label: string) {
+  if (persistentBackgroundExecution()) return;
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error(`[campaign] ${label} failed`, safeError(err))));
+}
 
 const snapshotKeys = [
   "articleWordCount",
@@ -268,7 +274,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
     .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)))
     .returning();
 
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed", safeError(err))));
+  kickCampaign(id, "Run");
   return c.json({ campaign });
 });
 
@@ -282,7 +288,7 @@ campaignsRoutes.post("/:id/run-next", async (c) => {
   }
 
   await reconcileStaleCampaignItems(id, userId);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed", safeError(err))));
+  kickCampaign(id, "Run next");
   const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   return c.json({ campaign, queued: true }, 202);
 });
@@ -299,7 +305,7 @@ campaignsRoutes.post("/:id/retry-failed", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry failed", safeError(err))));
+  kickCampaign(id, "Retry");
   return c.json({ campaign });
 });
 
@@ -308,7 +314,7 @@ campaignsRoutes.post("/:id/items/:itemId/retry", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId, [c.req.param("itemId")]);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry item failed", safeError(err))));
+  kickCampaign(id, "Retry item");
   return c.json({ campaign });
 });
 
