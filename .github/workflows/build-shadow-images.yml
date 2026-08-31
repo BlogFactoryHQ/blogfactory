@@ -2,6 +2,13 @@ name: Build Cloud shadow images
 
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/cloud-phase-a-b]
+    paths:
+      - ".github/workflows/build-shadow-images.yml"
+      - "server/**"
+      - "web/**"
+      - "package*.json"
 
 permissions:
   contents: read
