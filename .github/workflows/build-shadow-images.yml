@@ -1,0 +1,60 @@
+name: Build Cloud shadow images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: npm ci
+      - run: npm run test:server
+      - run: npm run typecheck
+      - run: npm run test --workspace=web
+      - run: npm run build
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - image: blogfactory-cloud-api
+            context: server
+            dockerfile: server/Dockerfile
+          - image: blogfactory-cloud-web
+            context: .
+            dockerfile: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/blogfactoryhq/${{ matrix.image }}:sha-${{ github.sha }}
+      - name: Record immutable image
+        run: echo '${{ matrix.image }}=ghcr.io/blogfactoryhq/${{ matrix.image }}@${{ steps.build.outputs.digest }}' >> "$GITHUB_STEP_SUMMARY"

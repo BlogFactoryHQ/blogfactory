@@ -19,3 +19,7 @@ repository remains the canonical open-source core.
 The sync workflow fails closed on merge conflicts and validates the merged
 core before updating `main`. Public scheduled drains and image-release
 workflows are intentionally absent here so production jobs do not run twice.
+
+The isolated Hetzner/Neon/R2 Phase A-B shadow runbook and digest-pinned Dokploy
+stack live in [`deploy/cloud/`](deploy/cloud/README.md). They do not change the
+Vercel production origin or customer DNS.

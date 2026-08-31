@@ -1,0 +1,101 @@
+name: blogfactory-cloud-shadow
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-runtime-env: &runtime-env
+  NODE_ENV: production
+  PORT: 3000
+  BLOGFACTORY_SELF_HOSTED: "true"
+  BLOGFACTORY_ALLOW_SIGNUP: ${BLOGFACTORY_ALLOW_SIGNUP:-false}
+  DATABASE_URL: ${DATABASE_URL:?Set the pooled runtime DATABASE_URL in Dokploy}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in Dokploy}
+  API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET in Dokploy}
+  CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in Dokploy}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in Dokploy}
+  WEB_APP_URL: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in Dokploy}
+  MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+  MCP_APP_URL: http://web/mcp-review.html
+  MCP_ALLOWED_ORIGINS: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in Dokploy}
+  WORKOS_AUTHKIT_ISSUER: ${WORKOS_AUTHKIT_ISSUER:-}
+  WORKOS_API_KEY: ${WORKOS_API_KEY:-}
+  S3_ENDPOINT: ${S3_ENDPOINT:?Set the EU-jurisdiction R2 endpoint in Dokploy}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set the bucket-scoped R2 access key in Dokploy}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set the bucket-scoped R2 secret in Dokploy}
+  S3_BUCKET: ${S3_BUCKET:?Set the isolated R2 bucket in Dokploy}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
+  BACKGROUND_EXECUTION_MODE: worker
+
+services:
+  migrate:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/db/migrate.ts"]
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set the direct migration DATABASE_URL in Dokploy}
+    restart: "no"
+    logging: *logging
+
+  api:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/index.ts"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - 3000
+    environment:
+      <<: *runtime-env
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  worker:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/worker.ts"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *runtime-env
+      BACKGROUND_WORKER_POLL_MS: ${BACKGROUND_WORKER_POLL_MS:-5000}
+      BACKGROUND_WORKER_CAMPAIGN_ITEMS: ${BACKGROUND_WORKER_CAMPAIGN_ITEMS:-1}
+      BACKGROUND_WORKER_SEO_JOBS: ${BACKGROUND_WORKER_SEO_JOBS:-2}
+      BACKGROUND_WORKER_IMAGE_JOBS: ${BACKGROUND_WORKER_IMAGE_JOBS:-1}
+      BACKGROUND_WORKER_HEARTBEAT_FILE: /tmp/blogfactory-worker-heartbeat
+      BACKGROUND_WORKER_HEARTBEAT_URL: ${BACKGROUND_WORKER_HEARTBEAT_URL:-}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bun -e "const {statSync}=require('node:fs');const p=process.env.BACKGROUND_WORKER_HEARTBEAT_FILE;try{if(Date.now()-statSync(p).mtimeMs>600000)process.exit(1)}catch{process.exit(1)}"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging: *logging
+
+  web:
+    image: ${BLOGFACTORY_WEB_IMAGE:?Pin the web image by sha256 digest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${BLOGFACTORY_BIND_ADDRESS:-127.0.0.1}:${BLOGFACTORY_SHADOW_PORT:-8080}:80"
+    environment:
+      API_UPSTREAM: http://api:3000
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1 && wget -q -O /dev/null http://api:3000/api/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
