@@ -43,7 +43,8 @@ function validAdminEmails(value: string | undefined) {
 function validDatabaseUrl(value: string | undefined) {
   try {
     if (!validUrl(value, ["postgres:", "postgresql:"])) return false;
-    return strongSecret(decodeURIComponent(new URL(value!).password));
+    const password = decodeURIComponent(new URL(value!).password);
+    return !isPlaceholderValue(password) && password.trim().length >= 16;
   } catch {
     return false;
   }

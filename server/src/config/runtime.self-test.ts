@@ -21,9 +21,16 @@ const valid = {
   S3_BUCKET: "blogfactory",
 };
 assert.doesNotThrow(() => validateSelfHostedConfig(valid));
+assert.doesNotThrow(() => validateSelfHostedConfig({
+  ...valid,
+  DATABASE_URL: `postgresql://blogfactory:${"p".repeat(16)}@postgres/blogfactory`,
+}));
 assert.throws(() => validateSelfHostedConfig({ ...valid, JWT_SECRET: "change-me-jwt" }), /JWT_SECRET/);
 assert.throws(() => validateSelfHostedConfig({ ...valid, CRON_SECRET: "short" }), /CRON_SECRET/);
-assert.throws(() => validateSelfHostedConfig({ ...valid, DATABASE_URL: "postgresql://blogfactory:password@postgres/blogfactory" }), /DATABASE_URL/);
+assert.throws(() => validateSelfHostedConfig({
+  ...valid,
+  DATABASE_URL: `postgresql://blogfactory:${"p".repeat(15)}@postgres/blogfactory`,
+}), /DATABASE_URL/);
 assert.throws(() => validateSelfHostedConfig({ ...valid, ADMIN_EMAILS: "not-an-email" }), /ADMIN_EMAILS/);
 assert.throws(() => validateSelfHostedConfig({ ...valid, WEB_APP_URL: "content.example.com" }), /WEB_APP_URL/);
 assert.throws(() => validateSelfHostedConfig({ ...valid, MCP_ALLOWED_ORIGINS: "https://content.example.com/path" }), /MCP_ALLOWED_ORIGINS/);
