@@ -8,7 +8,7 @@ const expiresAt = new Date(launchAt.getTime() + 60 * 86_400_000);
 
 const inserted = await db.execute(sql`
   INSERT INTO billing_entitlements (user_id, plan_code, source, status, effective_at, expires_at, limits)
-  SELECT id, 'advanced', 'transition', 'active', ${launchAt}, ${expiresAt}, ${JSON.stringify(PLAN_LIMITS.advanced)}::jsonb
+  SELECT id, 'advanced', 'transition', 'active', ${launchAt.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz, ${JSON.stringify(PLAN_LIMITS.advanced)}::jsonb
   FROM users
   ON CONFLICT (user_id) DO NOTHING
   RETURNING user_id`);
