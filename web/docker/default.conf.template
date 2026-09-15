@@ -8,6 +8,7 @@ server {
   root /usr/share/nginx/html;
   index index.html;
   client_max_body_size 50m;
+  proxy_read_timeout 300s;
   limit_req_status 429;
   set $api_backend ${API_UPSTREAM};
 
@@ -21,6 +22,13 @@ server {
     limit_req zone=auth burst=20 nodelay;
     proxy_pass $api_backend;
     include /etc/nginx/proxy_params;
+  }
+
+  # Matches the maintenance scheduler's curl --max-time; the API disables its idle timeout for cron drains.
+  location /api/cron/ {
+    proxy_pass $api_backend;
+    include /etc/nginx/proxy_params;
+    proxy_read_timeout 600s;
   }
 
   location /api/ {

@@ -37,7 +37,7 @@ import { handleMcpHttpRequest } from "./mcp/server.js";
 import { handleMcpProtectedResourceMetadata, mcpWorkosApiKey } from "./mcp/oauth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
 import { readinessStatus } from "./services/readiness.js";
-import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
+import { API_IDLE_TIMEOUT_SECONDS, resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
 import { cloudEntitlementMiddleware } from "./middleware/cloud-entitlements.js";
 
 validateSelfHostedConfig();
@@ -112,5 +112,6 @@ const port = resolvePort();
 if (import.meta.main) console.log(`Backend listening on port ${port}`);
 export default {
   port,
+  idleTimeout: API_IDLE_TIMEOUT_SECONDS,
   fetch: app.fetch,
 };
