@@ -29,3 +29,4 @@ for (const local of localUsers) {
 }
 
 console.log(JSON.stringify({ scanned: localUsers.length, linked, created }));
+process.exit(0);
