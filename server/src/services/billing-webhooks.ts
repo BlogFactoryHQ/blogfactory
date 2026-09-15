@@ -123,11 +123,11 @@ async function upsertSubscription(event: NormalizedPolarEvent) {
         currentPeriodEnd: event.currentPeriodEnd ? new Date(event.currentPeriodEnd) : null,
         cancelAtPeriodEnd: event.cancelAtPeriodEnd,
         pastDueAt: status === "past_due"
-          ? sql`CASE WHEN ${billingSubscriptions.status} = 'past_due' THEN ${billingSubscriptions.pastDueAt} ELSE ${new Date(event.timestamp)} END`
+          ? sql`CASE WHEN ${billingSubscriptions.status} = 'past_due' THEN ${billingSubscriptions.pastDueAt} ELSE ${new Date(event.timestamp).toISOString()}::timestamptz END`
           : null,
         providerModifiedAt, updatedAt: new Date(),
       },
-      setWhere: sql`${billingSubscriptions.providerModifiedAt} <= ${providerModifiedAt}`,
+      setWhere: sql`${billingSubscriptions.providerModifiedAt} <= ${providerModifiedAt.toISOString()}::timestamptz`,
     }).returning({ id: billingSubscriptions.id });
     if (!changed.length) return;
     await tx.insert(billingEntitlements).values({
