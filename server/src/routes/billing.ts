@@ -6,10 +6,10 @@ import { aiCreditAccounts, aiCreditGrants, aiCreditLedger, billingEntitlements, 
 import { ApiError, readJsonObject, requiredEnum } from "../http/error-contract.js";
 import { getUserId } from "../middleware/auth.js";
 import { ensureGlobalSettings, updateGlobalSettings } from "../services/user-settings.js";
-import { AI_CREDIT_PACK, BILLING_SKUS, PLAN_LIMITS, PAST_DUE_GRACE_MS, cloudCheckoutEnabled, isBillingSku, planForSku, productIdForSku, refundableCents, utcMonthStart, type AiPreference, type PlanLimits } from "../services/billing-config.js";
+import { AI_CREDIT_PACK, BILLING_SKUS, PLAN_LIMITS, PAST_DUE_GRACE_MS, checkoutReturnPath, cloudCheckoutEnabled, isBillingSku, managedAiEnabled, planForSku, productIdForSku, refundableCents, utcMonthStart, type AiPreference, type PlanLimits } from "../services/billing-config.js";
 import { appUrl, getPolarClient } from "../services/polar-client.js";
 import { enqueuePolarWebhook, reconcilePolarCustomer } from "../services/billing-webhooks.js";
-import { cloudEnforcementEnabled } from "../services/cloud-entitlements.js";
+import { cloudEnforcementEnabled, getCloudAccess } from "../services/cloud-entitlements.js";
 
 export const billingRoutes = new Hono();
 
@@ -17,7 +17,8 @@ function enabled() { return process.env.BLOGFACTORY_CLOUD === "true"; }
 
 billingRoutes.get("/state", async (c) => {
   const userId = getUserId(c);
-  const [entitlement, subscription, account, settings, nextGrant, eligibleRefunds, usageRows] = await Promise.all([
+  const [access, entitlement, subscription, account, settings, nextGrant, eligibleRefunds, usageRows] = await Promise.all([
+    getCloudAccess(userId),
     db.query.billingEntitlements.findFirst({ where: eq(billingEntitlements.userId, userId) }),
     db.query.billingSubscriptions.findFirst({ where: eq(billingSubscriptions.userId, userId), orderBy: desc(billingSubscriptions.providerModifiedAt) }),
     db.query.aiCreditAccounts.findFirst({ where: eq(aiCreditAccounts.userId, userId) }),
@@ -45,7 +46,8 @@ billingRoutes.get("/state", async (c) => {
     : usage.manual_completed + usage.manual_reserved + usage.automated_completed + usage.automated_reserved;
   const draftLimit = effectivePlan === "advanced" ? limits?.monthlyAutomatedDrafts : limits?.monthlyDrafts;
   return c.json({
-    cloud_enforcement: cloudEnforcementEnabled(), checkout_enabled: cloudCheckoutEnabled(), plan: effectivePlan, subscription_state: subscription?.status || null,
+    cloud: enabled(), cloud_enforcement: cloudEnforcementEnabled(), checkout_enabled: cloudCheckoutEnabled(),
+    managed_ai_enabled: managedAiEnabled(), access_allowed: access.allowed, access_reason: access.reason, plan: effectivePlan, subscription_state: subscription?.status || null,
     entitlement_source: entitlement?.source || null,
     period_start: subscription?.currentPeriodStart || null, period_end: subscription?.currentPeriodEnd || entitlement?.expiresAt || null,
     cancel_at_period_end: subscription?.cancelAtPeriodEnd || false, grace_ends_at: graceEndsAt,
@@ -61,6 +63,7 @@ billingRoutes.post("/checkout", async (c) => {
   if (!cloudCheckoutEnabled()) throw new ApiError(403, "forbidden", "Cloud checkout is not open yet");
   const body = await readJsonObject(c);
   if (!isBillingSku(body.sku)) throw new ApiError(400, "validation_error", `sku must be one of: ${BILLING_SKUS.join(", ")}`);
+  if (!planForSku(body.sku) && !managedAiEnabled()) throw new ApiError(403, "forbidden", "Managed AI Credits are not available yet");
   const productId = productIdForSku(body.sku);
   if (!productId) throw new ApiError(503, "service_unavailable", "This billing product is not configured");
   const userId = getUserId(c);
@@ -74,11 +77,12 @@ billingRoutes.post("/checkout", async (c) => {
     }
   }
   const base = appUrl();
+  const returnPath = checkoutReturnPath(body.return_path);
   const checkout = await getPolarClient().checkouts.create({
     products: [productId], externalCustomerId: userId,
     metadata: { sku: body.sku, blogfactory_user_id: userId },
-    successUrl: `${base}/billing?checkout=success&checkout_id={CHECKOUT_ID}`,
-    returnUrl: `${base}/billing`, allowDiscountCodes: false, allowTrial: false,
+    successUrl: `${base}${returnPath}?checkout=success&checkout_id={CHECKOUT_ID}`,
+    returnUrl: `${base}${returnPath}`, allowDiscountCodes: false, allowTrial: false,
   });
   return c.json({ url: checkout.url });
 });
@@ -98,6 +102,7 @@ billingRoutes.post("/reconcile", async (c) => {
 billingRoutes.patch("/ai-preference", async (c) => {
   const body = await readJsonObject(c);
   const preference = requiredEnum(body, "preference", ["auto", "byo", "managed"] as const);
+  if (preference === "managed" && !managedAiEnabled()) throw new ApiError(403, "forbidden", "Managed AI is not available yet");
   await updateGlobalSettings(getUserId(c), { aiPreference: preference });
   return c.json({ ai_preference: preference });
 });

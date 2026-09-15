@@ -5,30 +5,12 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-
-type BillingState = {
-  checkout_enabled: boolean;
-  plan: string;
-  subscription_state: string | null;
-  entitlement_source: string | null;
-  period_end: string | null;
-  grace_ends_at: string | null;
-  credits: { available: number; reserved: number; debt: number; next_expiry: string | null };
-  eligible_refunds: Array<{ grant_id: string; purchased_at: string; remaining_credits: number; maximum_refund_cents: number }>;
-  limits: { sites: number | null; storageBytes: number | null; concurrency: number | null; activeFeeds: number | null; monthlyDrafts: number | null; monthlyAutomatedDrafts: number | null };
-  usage: { sites: number; storage_bytes: number; concurrency: number; active_feeds: number; manual_completed: number; manual_reserved: number; automated_completed: number; automated_reserved: number };
-  warnings: { drafts_80_percent: boolean };
-};
-
-const plans = [
-  { name: "Cloud", monthly: "$5", yearly: "$49", monthlySku: "cloud_monthly", yearlySku: "cloud_yearly", detail: "3 sites · 1 GB · 3 RSS · 150 successful drafts/month" },
-  { name: "Advanced", monthly: "$15", yearly: "$149", monthlySku: "advanced_monthly", yearlySku: "advanced_yearly", detail: "10 sites · 10 GB · 20 RSS · unlimited manual + 600 automated drafts/month" },
-];
+import { CLOUD_PLANS, type BillingState } from "@/lib/billing";
 
 export default function Billing() {
   const { data, isLoading, refetch } = useQuery({ queryKey: ["billing-state"], queryFn: () => api.get<BillingState>("/billing/state") });
   const checkout = useMutation({
-    mutationFn: (sku: string) => api.post<{ url: string }>("/billing/checkout", { sku }),
+    mutationFn: (sku: string) => api.post<{ url: string }>("/billing/checkout", { sku, return_path: "/billing" }),
     onSuccess: ({ url }) => { window.location.href = url; },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -56,7 +38,7 @@ export default function Billing() {
         {data?.warnings.drafts_80_percent && <p className="px-6 pb-5 text-sm text-[hsl(var(--status-warning))]">You have used at least 80% of this month's draft allowance.</p>}
       </BywordCard>
       <div className="grid gap-4 md:grid-cols-2">
-        {plans.map((plan) => <BywordCard key={plan.name} className="p-6">
+        {CLOUD_PLANS.map((plan) => <BywordCard key={plan.name} className="p-6">
           <h2 className="text-xl font-semibold">{plan.name}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{plan.detail}</p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -67,8 +49,8 @@ export default function Billing() {
       </div>
       <BywordCard className="mt-6 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-byword-orange" /><h2 className="text-lg font-semibold">Managed AI Credits</h2></div><p className="mt-2 text-sm text-muted-foreground">14,000 prepaid credits, valid for 365 days. BYO OpenRouter remains available and does not consume these credits.</p></div>
-          <Button onClick={() => checkout.mutate("ai_credits_14000")} disabled={checkout.isPending || !data?.checkout_enabled}>Buy 14,000 · $20</Button>
+          <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-byword-orange" /><h2 className="text-lg font-semibold">Managed AI Credits</h2></div><p className="mt-2 text-sm text-muted-foreground">{data?.managed_ai_enabled ? "14,000 prepaid credits, valid for 365 days. BYO OpenRouter remains available and does not consume these credits." : "Managed AI is not available yet. Add your own OpenRouter key in Settings to generate drafts."}</p></div>
+          {data?.managed_ai_enabled ? <Button onClick={() => checkout.mutate("ai_credits_14000")} disabled={checkout.isPending || !data?.checkout_enabled}>Buy 14,000 · $20</Button> : <span className="rounded-full border border-byword-border px-3 py-1 text-xs text-muted-foreground">Coming soon</span>}
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div><p className="text-xs text-muted-foreground">Available</p><p className="text-2xl font-semibold">{data?.credits.available.toLocaleString() || 0}</p></div>
