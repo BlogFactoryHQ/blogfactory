@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { AI_CREDIT_PACK, PLAN_LIMITS, cloudCheckoutEnabled, creditsForProviderCost, planForSku, refundableCents, reservationCredits, skuForProductId, utcMonthStart } from "./billing-config.js";
+
+assert.equal(planForSku("cloud_monthly"), "cloud");
+assert.equal(planForSku("advanced_yearly"), "advanced");
+assert.equal(planForSku("ai_credits_14000"), null);
+assert.equal(PLAN_LIMITS.cloud.monthlyDrafts, 150);
+assert.equal(PLAN_LIMITS.advanced.monthlyAutomatedDrafts, 600);
+assert.equal(creditsForProviderCost(0.0141), 15);
+assert.equal(reservationCredits(1), 1_200);
+assert.equal(refundableCents(7_000), 1_000);
+assert.equal(refundableCents(AI_CREDIT_PACK.credits), 2_000);
+assert.equal(utcMonthStart(new Date("2026-12-31T23:59:59Z")), "2026-12-01");
+assert.equal(skuForProductId("prod_cloud", { POLAR_PRODUCT_CLOUD_MONTHLY: "prod_cloud" }), "cloud_monthly");
+assert.equal(cloudCheckoutEnabled({ BLOGFACTORY_CLOUD: "true", CLOUD_PUBLIC_SIGNUP: "false", CLOUD_PUBLIC_LAUNCH_AT: "2026-09-15T00:00:00Z" } as NodeJS.ProcessEnv, new Date("2026-09-16T00:00:00Z")), false);
+assert.equal(cloudCheckoutEnabled({ BLOGFACTORY_CLOUD: "true", CLOUD_PUBLIC_SIGNUP: "true", CLOUD_PUBLIC_LAUNCH_AT: "2026-09-15T00:00:00Z" } as NodeJS.ProcessEnv, new Date("2026-09-16T00:00:00Z")), true);

@@ -35,6 +35,7 @@ const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Sites = lazy(() => import("@/pages/Sites"));
 const McpOAuthLogin = lazy(() => import("@/pages/McpOAuthLogin"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
+const Billing = lazy(() => import("@/pages/Billing"));
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ const App = () => (
                   <Route element={<ProtectedRoute />}>
                     <Route path="/mcp/oauth" element={<McpOAuthLogin />} />
                     <Route path="/onboarding" element={<Onboarding />} />
+                    <Route element={<AppLayout />}><Route path="/billing" element={<Billing />} /></Route>
                     <Route element={<RequireSites />}>
                       <Route path="/library/posts/:id/preview" element={<PostPreviewPage />} />
                       <Route element={<AppLayout />}>

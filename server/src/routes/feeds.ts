@@ -5,6 +5,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { inspectFeedRouting, normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
+import { assertCanActivateFeed, withCloudLimitLock } from "../services/cloud-limits.js";
 
 export const feedsRoutes = new Hono();
 
@@ -118,10 +119,11 @@ feedsRoutes.post("/", async (c) => {
   values.editorialDefaults = route.editorialDefaults;
   values.routingVersion = 1;
   if (!route.valid) values.isActive = false;
-  const [feed] = await db
-    .insert(feeds)
-    .values({ ...values, userId, name: values.name })
-    .returning();
+  const feed = await withCloudLimitLock(userId, async (tx) => {
+    if (values.isActive !== false) await assertCanActivateFeed(userId, undefined, tx);
+    const [created] = await tx.insert(feeds).values({ ...values, userId, name: values.name }).returning();
+    return created;
+  });
   return c.json({ ...serializeFeed(feed, { ready: route.valid }), routing_errors: route.errors }, 201);
 });
 
@@ -152,12 +154,11 @@ feedsRoutes.put("/:id", async (c) => {
     routeErrors = route.errors;
     if (!route.valid) values.isActive = false;
   }
-
-  const [updated] = await db
-    .update(feeds)
-    .set(values)
-    .where(and(eq(feeds.id, id), eq(feeds.userId, userId)))
-    .returning();
+  const updated = await withCloudLimitLock(userId, async (tx) => {
+    if (values.isActive === true && !existing[0].isActive) await assertCanActivateFeed(userId, id, tx);
+    const [row] = await tx.update(feeds).set(values).where(and(eq(feeds.id, id), eq(feeds.userId, userId))).returning();
+    return row;
+  });
 
   if (!updated) return c.json({ error: "Feed not found" }, 404);
   return c.json({ ...serializeFeed(updated, { ready: routeErrors.length === 0 && Boolean(updated.siteId && updated.integrationId) }), routing_errors: routeErrors });

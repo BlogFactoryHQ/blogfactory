@@ -1,21 +1,22 @@
 # BlogFactory Cloud deployment
 
-This private repository owns the `app.blogfactory.io` Vercel deployment. The
+This private repository owns the `app.blogfactory.io` Hetzner deployment. The
 public [`BlogFactoryHQ/blogfactory`](https://github.com/BlogFactoryHQ/blogfactory)
 repository remains the canonical open-source core.
 
-- Shared product changes start in the public core and are merged here by
-  `.github/workflows/sync-upstream.yml`.
-- Cloud-only code, hosted configuration, billing, and entitlements stay here.
-- Changes are never copied from this repository back to the public core
-  automatically. A reusable change must be contributed to the public core
-  deliberately so private Cloud code cannot leak.
-- Runtime credentials belong in Vercel environment variables, never in Git.
-- Vercel Hobby cannot Git-link an organization-owned private repository, so
-  `.github/workflows/deploy-cloud.yml` performs the validated production deploy
-  with a repository-scoped GitHub secret. The public repository is not linked
-  to the Vercel project.
+- Shared changes merge here through the fail-closed upstream sync workflow.
+- Cloud-only Compose, backup, deployment, billing, and entitlement code stays
+  private and never syncs back automatically.
+- CI validates the merged core and publishes API, web, and backup images to
+  GHCR with commit-SHA tags and immutable digests.
+- Deployment to Hetzner is an explicit SSH/Dokploy operation. GitHub receives no
+  new server credential and no workflow auto-deploys production to Vercel.
+- PostgreSQL 18 is private to the Compose network and persists in a named host
+  volume. Cloudflare R2 stores images and encrypted six-hour database dumps.
+- Runtime credentials belong only in Dokploy/container secrets and offline
+  escrow, never in Git, workflow summaries, image layers, or logs.
 
-The sync workflow fails closed on merge conflicts and validates the merged
-core before updating `main`. Public scheduled drains and image-release
-workflows are intentionally absent here so production jobs do not run twice.
+The exact rehearsal, cutover, backup, acceptance, and rollback procedure lives
+in [`deploy/cloud/`](deploy/cloud/README.md). Vercel is not a stateful rollback
+target; Neon is retained disconnected for 14 days after cutover and requires
+separate approval to delete.

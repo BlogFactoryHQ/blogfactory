@@ -13,7 +13,7 @@ import {
   siteIntegrations,
   sites,
 } from "../db/schema.js";
-import { encryptedCredentialStatus, getOpenRouterKey, testedConnectionReady } from "../services/api-keys.js";
+import { encryptedCredentialStatus, testedConnectionReady } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
@@ -34,6 +34,10 @@ import {
   refreshSearchConsoleData,
 } from "../services/search-console.js";
 import { drainSeoMetadata, enqueueSeoMetadata, seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
+import { getCloudAccess } from "../services/cloud-entitlements.js";
+import { withDraftQuota } from "../services/plan-usage.js";
+import { randomUUID } from "node:crypto";
+import { MANAGED_TEXT_MODELS, resolveOpenRouterAccess } from "../services/managed-openrouter.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
 
@@ -672,14 +676,19 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
   )).limit(1);
   if (activeJob) throw new McpToolError("generation_busy", "A draft generation job is already running for this site.", `Call get_job with job_id ${activeJob.id}.`, true);
 
-  const openRouterKey = await getOpenRouterKey(principal.userId);
-  if (!openRouterKey) throw new McpToolError("configuration_missing", "OpenRouter is not configured.", "Add an OpenRouter API key in BlogFactory Settings.");
-
+  const access = await resolveOpenRouterAccess(principal.userId).catch(() => null);
+  if (!access) throw new McpToolError("configuration_missing", "AI access is not configured.", "Add an OpenRouter key or enable Managed AI Credits in BlogFactory Settings.");
   let modelId: string;
   try {
-    modelId = await resolveOpenRouterTextModel(openRouterKey, mcpDraftModelId(personaBaseModel));
+    const requestedModel = mcpDraftModelId(personaBaseModel);
+    if (access.mode === "managed") {
+      if (personaBaseModel && !MANAGED_TEXT_MODELS.includes(requestedModel as typeof MANAGED_TEXT_MODELS[number])) throw new Error("Managed model unavailable");
+      modelId = personaBaseModel ? requestedModel : MANAGED_TEXT_MODELS[0];
+    } else {
+      modelId = await resolveOpenRouterTextModel(access.apiKey, requestedModel);
+    }
   } catch {
-    throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Review the OpenRouter model configuration in BlogFactory Settings.");
+    throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Choose a model available for the selected AI mode in BlogFactory Settings.");
   }
 
   const [job] = await db.insert(jobs).values({
@@ -690,7 +699,7 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
     sourceValue: input.source_value,
     modelId,
     personaId: input.persona_id || null,
-    status: "running",
+    status: "pending",
     currentStep: "starting",
     generationPlan: { totalDrafts: input.variations, origin: "mcp" },
   }).returning({ id: jobs.id });
@@ -765,7 +774,7 @@ async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
     if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas to choose an active persona.");
   }
 
-  const [post] = await db.insert(posts).values({
+  const [post] = await withDraftQuota(principal.userId, "automated", `draft:mcp:${randomUUID()}`, (tx) => tx.insert(posts).values({
     userId: principal.userId,
     siteId: input.site_id,
     title,
@@ -777,7 +786,7 @@ async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
     sourceContentHash: mcpDraftContentHash(title, content),
     personaId: input.persona_id || null,
     modelId: "openai/codex",
-  }).returning();
+  }).returning());
   const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_create" });
   if (seoJob.queued) waitUntil(drainSeoMetadata(principal.userId, 1));
   return {
@@ -822,7 +831,7 @@ async function importDrafts(principal: McpPrincipal, input: { site_id: string; p
       items.push({ title, post_id: existing.id, status: "skipped_duplicate" });
       continue;
     }
-    const [post] = await db.insert(posts).values({
+    const [post] = await withDraftQuota(principal.userId, "automated", `draft:mcp-import:${randomUUID()}`, (tx) => tx.insert(posts).values({
       userId: principal.userId,
       siteId: input.site_id,
       title,
@@ -834,7 +843,7 @@ async function importDrafts(principal: McpPrincipal, input: { site_id: string; p
       sourceContentHash,
       personaId: input.persona_id || null,
       modelId: "openai/codex",
-    }).returning({ id: posts.id });
+    }).returning({ id: posts.id }));
     const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_batch_import" });
     hasQueuedSeoMetadata ||= seoJob.queued;
     items.push({ title, post_id: post.id, status: "created" });
@@ -1812,6 +1821,10 @@ function registerTool(server: McpServer, principal: McpPrincipal, definition: To
       ));
     }
     try {
+      if (!definition.annotations.readOnlyHint) {
+        const access = await getCloudAccess(principal.userId);
+        if (!access.allowed) throw new McpToolError("forbidden", "An active BlogFactory Cloud plan is required.", "Open BlogFactory Billing to restore write access.");
+      }
       const result = await definition.handler(principal, input);
       const nextAction = typeof result.next_action === "string" ? result.next_action : null;
       const resultSiteId = typeof result.site_id === "string" ? result.site_id : inputSiteId;

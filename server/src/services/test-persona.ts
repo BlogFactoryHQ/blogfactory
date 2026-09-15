@@ -1,7 +1,7 @@
 import { db } from "../db/index.js";
 import { personas } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 
 interface ToolDefinition {
@@ -38,8 +38,7 @@ export async function testPersona(opts: {
     trace.push({ timestamp: new Date().toISOString(), type, content, metadata });
   };
 
-  const openRouterKey = await getOpenRouterKey(opts.userId);
-  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before testing personas");
+  const openRouterKey = (await resolveOpenRouterAccess(opts.userId)).apiKey;
 
   const [persona] = await db
     .select()
@@ -98,7 +97,7 @@ export async function testPersona(opts: {
 
   if (plugins.length > 0) requestBody.plugins = plugins;
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await openRouterInferenceFetch(opts.userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${openRouterKey}`,

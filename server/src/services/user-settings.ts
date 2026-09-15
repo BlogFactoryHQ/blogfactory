@@ -67,6 +67,7 @@ function mergeAccountFields(settings: UserSettingsRow, global?: UserSettingsRow 
     monthlyBudget: global.monthlyBudget,
     budgetPaused: global.budgetPaused,
     budgetAlertThreshold: global.budgetAlertThreshold,
+    aiPreference: global.aiPreference,
   };
 }
 
@@ -161,6 +162,6 @@ export async function updateSiteSettings(userId: string, siteId: string, update:
 export function isAccountSettingsUpdate(update: Record<string, unknown>) {
   const keys = Object.keys(update).filter((key) => key !== "updatedAt");
   return keys.length > 0 && keys.every((key) =>
-    key === "monthlyBudget" || key === "budgetPaused" || key === "budgetAlertThreshold"
+    key === "monthlyBudget" || key === "budgetPaused" || key === "budgetAlertThreshold" || key === "aiPreference"
   );
 }

@@ -42,7 +42,7 @@ describe("authReturnTo", () => {
     expect(container).toHaveTextContent("Sign in");
     expect(container).not.toHaveTextContent("Sign up");
     expect(container).not.toHaveTextContent("Create account");
-    expect(container).not.toHaveTextContent("Forgot password");
+    expect(container).toHaveTextContent("Forgot password");
     await act(async () => root.unmount());
   });
 

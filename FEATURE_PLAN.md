@@ -6,7 +6,7 @@ This is the canonical forward plan for BlogFactory. It records intended work, no
 
 BlogFactory launches open source and self-hosted first. BlogFactory Cloud is a later managed service and must be described as **coming soon** until its release gates are complete.
 
-Cloud pricing, limits, checkout, subscriptions, and entitlements have not been decided or implemented.
+Cloud packaging is fixed at $5/$49 Cloud, $15/$149 Advanced, and a $20 prepaid 14,000-credit Managed AI top-up. The implementation is staged behind disabled launch flags; availability remains **coming soon** until the sandbox, provider-approval, legal, and production gates in [`docs/billing.md`](docs/billing.md) pass.
 
 ## Phase 0 — open-source release
 
@@ -47,12 +47,15 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 ## Phase 2 — BlogFactory Cloud
 
 - [ ] Replace process-local background continuation with PostgreSQL-backed jobs, leases, retries, and worker heartbeats.
-- [ ] Implement verified email, password recovery delivery, abuse controls, and production login acceptance.
+- [ ] Complete production acceptance for WorkOS AuthKit login, verification/reset mail, Turnstile, rate limits, existing-user migration, and logout/session revocation.
 - [ ] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation.
 - [ ] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority.
 - [ ] Choose a billing provider and implement idempotent webhooks outside MCP authority.
 - [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies.
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
+- [ ] Pass the Polar sandbox acceptance in `docs/billing.md`.
+- [ ] Obtain written Polar and OpenRouter acceptance plus human legal approval.
+- [ ] Verify a production purchase/refund and live checkout, portal, webhook, and entitlement readback before public signup or marketing availability.
 
 ## Release language
 

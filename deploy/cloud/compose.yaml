@@ -1,0 +1,250 @@
+name: blogfactory-cloud
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-runtime-env: &runtime-env
+  NODE_ENV: production
+  PORT: 3000
+  BLOGFACTORY_SELF_HOSTED: "true"
+  BLOGFACTORY_CLOUD: "true"
+  BLOGFACTORY_ALLOW_SIGNUP: ${BLOGFACTORY_ALLOW_SIGNUP:-false}
+  CLOUD_PUBLIC_SIGNUP: ${CLOUD_PUBLIC_SIGNUP:-false}
+  CLOUD_BILLING_ENFORCEMENT: ${CLOUD_BILLING_ENFORCEMENT:-false}
+  MANAGED_AI_ENABLED: ${MANAGED_AI_ENABLED:-false}
+  CLOUD_PUBLIC_LAUNCH_AT: ${CLOUD_PUBLIC_LAUNCH_AT:-}
+  DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-blogfactory_runtime}:${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD in the deployment secret store}@postgres:5432/${POSTGRES_DB:-blogfactory_prod_live}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the deployment secret store}
+  API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET in the deployment secret store}
+  AUTH_RATE_LIMIT_SECRET: ${AUTH_RATE_LIMIT_SECRET:?Set AUTH_RATE_LIMIT_SECRET in the deployment secret store}
+  CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in the deployment secret store}
+  WEB_APP_URL: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in the deployment secret store}
+  MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+  MCP_APP_URL: http://web/mcp-review.html
+  MCP_ALLOWED_ORIGINS: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in the deployment secret store}
+  WORKOS_AUTHKIT_ISSUER: ${WORKOS_AUTHKIT_ISSUER:-}
+  WORKOS_API_KEY: ${WORKOS_API_KEY:-}
+  WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}
+  WORKOS_COOKIE_PASSWORD: ${WORKOS_COOKIE_PASSWORD:-}
+  WORKOS_REDIRECT_URI: ${WORKOS_REDIRECT_URI:-}
+  S3_ENDPOINT: ${S3_ENDPOINT:?Set the EU-jurisdiction R2 endpoint in the deployment secret store}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set the bucket-scoped R2 access key in the deployment secret store}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set the bucket-scoped R2 secret in the deployment secret store}
+  S3_BUCKET: ${S3_BUCKET:?Set the isolated R2 bucket in the deployment secret store}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
+  POLAR_SERVER: ${POLAR_SERVER:-sandbox}
+  POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+  POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+  POLAR_PRODUCT_CLOUD_MONTHLY: ${POLAR_PRODUCT_CLOUD_MONTHLY:-}
+  POLAR_PRODUCT_CLOUD_YEARLY: ${POLAR_PRODUCT_CLOUD_YEARLY:-}
+  POLAR_PRODUCT_ADVANCED_MONTHLY: ${POLAR_PRODUCT_ADVANCED_MONTHLY:-}
+  POLAR_PRODUCT_ADVANCED_YEARLY: ${POLAR_PRODUCT_ADVANCED_YEARLY:-}
+  POLAR_PRODUCT_AI_CREDITS_14000: ${POLAR_PRODUCT_AI_CREDITS_14000:-}
+  TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+  TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+  OPENROUTER_MANAGED_API_KEY: ${OPENROUTER_MANAGED_API_KEY:-}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Pin postgres:18-alpine by sha256 digest}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blogfactory_prod_live}
+      POSTGRES_USER: ${POSTGRES_OWNER_USER:-blogfactory_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:?Set POSTGRES_OWNER_PASSWORD in the deployment secret store}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 60s
+    logging: *logging
+
+  db-init:
+    image: ${POSTGRES_IMAGE:?Pin postgres:18-alpine by sha256 digest}
+    command: ["/opt/blogfactory/init-runtime-role.sh"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-blogfactory_prod_live}
+      PGUSER: ${POSTGRES_OWNER_USER:-blogfactory_owner}
+      PGPASSWORD: ${POSTGRES_OWNER_PASSWORD:?Set POSTGRES_OWNER_PASSWORD in the deployment secret store}
+      POSTGRES_DB: ${POSTGRES_DB:-blogfactory_prod_live}
+      POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER:-blogfactory_owner}
+      POSTGRES_RUNTIME_USER: ${POSTGRES_RUNTIME_USER:-blogfactory_runtime}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD in the deployment secret store}
+    volumes:
+      - ./postgres/init-runtime-role.sh:/opt/blogfactory/init-runtime-role.sh:ro
+    logging: *logging
+
+  migrate:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/db/migrate.ts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_OWNER_USER:-blogfactory_owner}:${POSTGRES_OWNER_PASSWORD:?Set POSTGRES_OWNER_PASSWORD in the deployment secret store}@postgres:5432/${POSTGRES_DB:-blogfactory_prod_live}
+    restart: "no"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    logging: *logging
+
+  api:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/index.ts"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - 3000
+    environment:
+      <<: *runtime-env
+      BACKGROUND_EXECUTION_MODE: inline
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  worker:
+    image: ${BLOGFACTORY_API_IMAGE:?Pin the API image by sha256 digest}
+    command: ["bun", "run", "src/worker.ts"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *runtime-env
+      BACKGROUND_EXECUTION_MODE: worker
+      BACKGROUND_WORKER_POLL_MS: ${BACKGROUND_WORKER_POLL_MS:-60000}
+      BACKGROUND_WORKER_CAMPAIGN_ITEMS: ${BACKGROUND_WORKER_CAMPAIGN_ITEMS:-1}
+      BACKGROUND_WORKER_SEO_JOBS: ${BACKGROUND_WORKER_SEO_JOBS:-2}
+      BACKGROUND_WORKER_IMAGE_JOBS: ${BACKGROUND_WORKER_IMAGE_JOBS:-1}
+      BACKGROUND_WORKER_HEARTBEAT_FILE: /tmp/blogfactory-worker-heartbeat
+      BACKGROUND_WORKER_HEARTBEAT_URL: ${BACKGROUND_WORKER_HEARTBEAT_URL:-}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bun -e "const {statSync}=require('node:fs');const p=process.env.BACKGROUND_WORKER_HEARTBEAT_FILE;try{if(Date.now()-statSync(p).mtimeMs>600000)process.exit(1)}catch{process.exit(1)}"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging: *logging
+
+  rss-scheduler:
+    image: ${RSS_SCHEDULER_IMAGE:?Pin a curl image by sha256 digest}
+    entrypoint: ["/bin/sh", "-ec"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
+      RSS_SCHEDULER_INTERVAL_SECONDS: ${RSS_SCHEDULER_INTERVAL_SECONDS:-1800}
+    command:
+      - |
+        while true; do
+          if ! curl --fail --silent --show-error --max-time 300 \
+            --header "Authorization: Bearer $${CRON_SECRET}" \
+            "http://api:3000/api/cron/drain?task=feeds&maxFeeds=10&maxPostsPerFeed=5"; then
+            echo "rss_tick_failed"
+          fi
+          sleep "$${RSS_SCHEDULER_INTERVAL_SECONDS}"
+        done
+    logging: *logging
+
+  maintenance-scheduler:
+    image: ${RSS_SCHEDULER_IMAGE:?Pin a curl image by sha256 digest}
+    entrypoint: ["/bin/sh", "-ec"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
+      MAINTENANCE_SCHEDULER_INTERVAL_SECONDS: ${MAINTENANCE_SCHEDULER_INTERVAL_SECONDS:-21600}
+    command:
+      - |
+        while true; do
+          if ! curl --fail --silent --show-error --max-time 600 \
+            --header "Authorization: Bearer $${CRON_SECRET}" \
+            "http://api:3000/api/cron/drain"; then
+            echo "maintenance_tick_failed"
+          fi
+          sleep "$${MAINTENANCE_SCHEDULER_INTERVAL_SECONDS}"
+        done
+    logging: *logging
+
+  backup:
+    image: ${BLOGFACTORY_BACKUP_IMAGE:?Pin the backup image by sha256 digest}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-blogfactory_prod_live}
+      PGUSER: ${POSTGRES_OWNER_USER:-blogfactory_owner}
+      PGPASSWORD: ${POSTGRES_OWNER_PASSWORD:?Set POSTGRES_OWNER_PASSWORD in the deployment secret store}
+      S3_ENDPOINT: ${S3_ENDPOINT:?Set the EU-jurisdiction R2 endpoint in the deployment secret store}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set the existing R2 access key in the deployment secret store}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set the existing R2 secret in the deployment secret store}
+      S3_BUCKET: ${S3_BUCKET:?Set the existing EU R2 bucket in the deployment secret store}
+      S3_REGION: ${S3_REGION:-auto}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?Set the age public recipient in the deployment secret store}
+      BACKUP_AGE_IDENTITY_FILE: /run/secrets/backup_age_identity
+      BACKUP_R2_PREFIX: ${BACKUP_R2_PREFIX:-database-backups}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+    secrets:
+      - backup_age_identity
+    volumes:
+      - backup-state:/var/lib/blogfactory-backup
+    healthcheck:
+      test: ["CMD-SHELL", "test ! -f /var/lib/blogfactory-backup/restore-failed && test -f /var/lib/blogfactory-backup/last-success && test $$(($$(date +%s) - $$(stat -c %Y /var/lib/blogfactory-backup/last-success))) -lt 25200"]
+      interval: 5m
+      timeout: 10s
+      start_period: 15m
+      retries: 2
+    logging: *logging
+
+  web:
+    image: ${BLOGFACTORY_WEB_IMAGE:?Pin the web image by sha256 digest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${BLOGFACTORY_BIND_ADDRESS:-127.0.0.1}:${BLOGFACTORY_SHADOW_PORT:-8080}:80"
+    environment:
+      API_UPSTREAM: http://api:3000
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1 && wget -q -O /dev/null http://api:3000/api/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+volumes:
+  postgres-data:
+  backup-state:
+
+secrets:
+  backup_age_identity:
+    file: ${BACKUP_AGE_IDENTITY_FILE:?Set the root-only host path to the age identity file}

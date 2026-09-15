@@ -271,6 +271,13 @@ const unsupportedMethod = await handleMcpHttpRequest(new Request("http://localho
 assert.equal(unsupportedMethod.status, 405);
 assert.equal(unsupportedMethod.headers.get("allow"), "POST");
 
+const baselineIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
+const baselineResource = process.env.MCP_RESOURCE_URL;
+const baselineApiKey = process.env.WORKOS_API_KEY;
+delete process.env.WORKOS_AUTHKIT_ISSUER;
+delete process.env.MCP_RESOURCE_URL;
+delete process.env.WORKOS_API_KEY;
+
 const unauthorized = await handleMcpHttpRequest(new Request("http://localhost/mcp", {
   method: "POST",
 }), async () => null);
@@ -283,6 +290,13 @@ const unauthorizedGet = await handleMcpHttpRequest(
 );
 assert.equal(unauthorizedGet.status, 401);
 assert.equal(unauthorizedGet.headers.get("www-authenticate"), "Bearer");
+
+if (baselineIssuer === undefined) delete process.env.WORKOS_AUTHKIT_ISSUER;
+else process.env.WORKOS_AUTHKIT_ISSUER = baselineIssuer;
+if (baselineResource === undefined) delete process.env.MCP_RESOURCE_URL;
+else process.env.MCP_RESOURCE_URL = baselineResource;
+if (baselineApiKey === undefined) delete process.env.WORKOS_API_KEY;
+else process.env.WORKOS_API_KEY = baselineApiKey;
 
 const previousIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
 const previousResource = process.env.MCP_RESOURCE_URL;

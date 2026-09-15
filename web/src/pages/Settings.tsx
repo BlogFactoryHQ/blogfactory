@@ -355,6 +355,15 @@ export default function Settings() {
   const knowledgeFileInputRef = useRef<HTMLInputElement | null>(null);
   const { data: imageModels = [], isLoading: imageModelsLoading } = useImageModels();
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
+  const { data: billingState } = useQuery({
+    queryKey: ["billing-state"],
+    queryFn: () => api.get<{ ai_preference: "auto" | "byo" | "managed"; credits: { available: number } }>("/billing/state"),
+  });
+  const saveAiPreference = useMutation({
+    mutationFn: (preference: "auto" | "byo" | "managed") => api.patch("/billing/ai-preference", { preference }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["billing-state"] }); toast.success("AI mode saved"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -797,6 +806,7 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
+    { id: "ai-mode", title: "AI Mode", description: "Automatic, managed, BYO", icon: Brain },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
@@ -831,6 +841,21 @@ export default function Settings() {
         </nav>
 
         <div className="min-w-0 space-y-6">
+          {activeSection === "ai-mode" && (
+            <BywordCard>
+              <SectionHeader icon={Brain} title="AI provider mode" description="Choose how BlogFactory authenticates and bills AI calls." />
+              <div className="grid gap-3 p-6 md:grid-cols-3">
+                {[
+                  { value: "auto", title: "Automatic", detail: "Use your OpenRouter key when available; otherwise use Managed AI Credits." },
+                  { value: "managed", title: "Managed AI", detail: `Use BlogFactory's curated models. ${billingState?.credits.available.toLocaleString() || 0} credits available.` },
+                  { value: "byo", title: "Bring your own OpenRouter", detail: "Use your encrypted OpenRouter key. BlogFactory credits are not charged." },
+                ].map((option) => <button key={option.value} type="button" onClick={() => saveAiPreference.mutate(option.value as "auto" | "byo" | "managed")} className={cn("rounded-lg border p-5 text-left transition-calm", billingState?.ai_preference === option.value ? "border-byword-blue bg-byword-blue-soft" : "border-byword-border hover:border-byword-blue/40")}>
+                  <p className="font-semibold">{option.title}</p><p className="mt-2 text-sm text-muted-foreground">{option.detail}</p>
+                </button>)}
+              </div>
+              <div className="px-6 pb-6"><Link className="text-sm font-medium text-byword-blue" to="/billing">Buy credits or manage plan →</Link></div>
+            </BywordCard>
+          )}
           {activeSection === "basics" && (
             <BywordCard>
               <SectionHeader

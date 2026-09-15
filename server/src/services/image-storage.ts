@@ -1,8 +1,8 @@
-import { db } from "../db/index.js";
 import { imageAssets } from "../db/schema.js";
 import { randomUUID } from "crypto";
 import { putObject, deleteObject } from "./s3-client.js";
 import { compensateAfterLocalFailure } from "./atomic-state.js";
+import { assertStorageAvailable, withCloudLimitLock } from "./cloud-limits.js";
 
 export async function uploadFile(file: File, userId: string) {
   const ext = file.name.split(".").pop() || "webp";
@@ -11,20 +11,22 @@ export async function uploadFile(file: File, userId: string) {
   const storagePath = `${folder}/${filename}`;
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  await assertStorageAvailable(userId, buffer.length);
   await putObject(storagePath, buffer, file.type || "image/webp");
 
   let asset: typeof imageAssets.$inferSelect;
   try {
-    [asset] = await db
-      .insert(imageAssets)
-      .values({
+    asset = await withCloudLimitLock(userId, async (tx) => {
+      await assertStorageAvailable(userId, buffer.length, tx);
+      const [created] = await tx.insert(imageAssets).values({
         userId,
         storagePath,
         type: "cover",
         status: "unused",
         fileSizeBytes: buffer.length,
-      })
-      .returning();
+      }).returning();
+      return created;
+    });
   } catch (error) {
     await compensateStoredFile(storagePath, error);
   }
@@ -52,6 +54,7 @@ export interface ImageBufferOptions {
 }
 
 export async function storeImageBuffer(buffer: Buffer, userId: string, requestedPath?: string) {
+  await assertStorageAvailable(userId, buffer.length);
   const folder = `${userId}/${new Date().toISOString().slice(0, 7)}`;
   const storagePath = requestedPath || `${folder}/${randomUUID()}.webp`;
   await putObject(storagePath, buffer, "image/webp");
@@ -91,7 +94,11 @@ export async function saveImageBuffer(
   const storagePath = await storeImageBuffer(buffer, userId);
   let asset: typeof imageAssets.$inferSelect;
   try {
-    [asset] = await db.insert(imageAssets).values(imageAssetValues(buffer, userId, storagePath, opts)).returning();
+    asset = await withCloudLimitLock(userId, async (tx) => {
+      await assertStorageAvailable(userId, buffer.length, tx);
+      const [created] = await tx.insert(imageAssets).values(imageAssetValues(buffer, userId, storagePath, opts)).returning();
+      return created;
+    });
   } catch (error) {
     await compensateStoredFile(storagePath, error);
   }

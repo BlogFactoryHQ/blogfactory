@@ -66,7 +66,10 @@ The MCP surface is site-scoped and draft-only. `generate_draft` is asynchronous.
 CORS -> request logger -> normalized errors -> auth -> operation ledger -> routes
 ```
 
-`api/index.js` imports the compiled Hono app for Vercel. Route files own HTTP validation and response shape; business logic should live under `server/src/services/`.
+`server/src/index.ts` runs the Hono app as the long-lived Cloud API. `api/index.js`
+remains a serverless compatibility entrypoint, but it is not the stateful Cloud
+rollback target. Route files own HTTP validation and response shape; business
+logic should live under `server/src/services/`.
 
 ## Service ownership
 
@@ -76,6 +79,7 @@ CORS -> request logger -> normalized errors -> auth -> operation ledger -> route
 | Revisions and optimistic locking | `server/src/services/post-revisions.ts` | Post routes, review, MCP updates |
 | CMS preflight and draft delivery | `server/src/services/publishing.ts` | Web approval and MCP Review Card |
 | Content generation | `server/src/services/generate-content.ts` | Content routes, campaigns, MCP |
+| Cloud plans, quota, Polar inbox, AI wallet | `cloud-entitlements.ts`, `billing-webhooks.ts`, `plan-usage.ts`, `ai-credits.ts`, `managed-openrouter.ts` | Billing HTTP, shared generation/services, worker |
 | Generation contracts and output cleanup | `generation-contracts.ts`, `generation-output.ts`, `post-cleanup.ts` | Generation and repair flows |
 | Search Console | `server/src/services/search-console.ts` | Search Growth, digest, MCP |
 | SEO growth plans | `server/src/services/seo-growth-plan.ts` | Search Growth and campaigns |
@@ -107,12 +111,18 @@ Object storage holds generated/imported image assets. Database rows retain owner
 
 ## Background work
 
-Background work is split across bounded triggers that all call the protected `/api/cron/drain` endpoint:
+Background work is split across bounded triggers and one persistent worker. The
+worker polls PostgreSQL every 60 seconds for campaign, SEO metadata, and deferred
+image recovery. User-triggered work still starts inline in the API. Schedulers
+call the protected `/api/cron/drain` endpoint:
 
 | Trigger | Schedule | Work |
 | --- | --- | --- |
-| Cloudflare Worker | Every 6 hours | Campaign fallback, SEO metadata, deferred images |
-| GitHub `rss-cron.yml` | Every 6 hours | Due RSS feeds |
+| Hetzner worker container | Every 60 seconds | Campaign, SEO metadata, and deferred-image recovery |
+| Hetzner RSS scheduler | Every 30 minutes | Due RSS feeds |
+| Hetzner maintenance scheduler | Every 6 hours | Retention, stale reservations, credit expiry, and billing reconciliation |
+| Cloudflare Worker | Every 6 hours | External campaign, SEO metadata, and deferred-image fallback |
+| GitHub `rss-cron.yml` | Every 6 hours | External due-feed fallback |
 | GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
 | GitHub `campaign-cron.yml` | Manual | Bounded campaign drain |
 
@@ -122,11 +132,11 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 
 | Layer | Current responsibility |
 | --- | --- |
-| Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
-| Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay and Vercel deployment ownership |
-| Vercel project `editorial-flow-main` | Private-repository app/API build and serverless execution |
-| `vercel.json` | Migration/build command, API/MCP rewrites, redirects, headers, SPA fallbacks |
-| GitHub Actions | Validation plus protected background drains |
+| Cloudflare | Public front door, proxy/DNS, R2 object storage, and six-hour fallback Worker |
+| Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay, Compose, backup image, and Hetzner runbook |
+| Hetzner CX23 | Caddy, web/Nginx, API, worker, RSS and maintenance schedulers, PostgreSQL 18, and backup scheduler |
+| GHCR | Commit-SHA-tagged API, web, and backup images deployed by immutable digest |
+| GitHub Actions | Validation, image publication, and protected external fallback drains |
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 
@@ -134,19 +144,16 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Authentication and authority
 
-- Web sessions use application authentication and site membership.
+- Hosted Cloud web sessions use WorkOS AuthKit sealed HttpOnly cookies mapped to local PostgreSQL users; Community/self-hosted keeps application authentication.
 - MCP accepts WorkOS browser OAuth or hashed personal `bf_mcp_` tokens.
 - OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
 - MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
 - `publish:draft` means CMS draft delivery, never live publication.
-- Hosted public signup is disabled; self-hosted signup is an environment-gated administrator bootstrap path.
-- Password recovery UI is disabled until real email delivery is connected.
+- Hosted public signup remains flag-gated; WorkOS owns email verification, password recovery, and session lifecycle. Self-hosted signup remains an environment-gated administrator bootstrap path.
 
 ## Pricing boundary
 
-There is no BlogFactory customer billing system in this codebase today. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The approved open-source-first packaging and planned Cloud tiers live in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md).
-
-Do not add checkout until the plan's Cloud gates are complete. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
+Cloud billing is implemented behind disabled launch flags. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md); do not enable checkout/public signup or market availability until its acceptance gates pass.
 
 ## Where to make a change
 
@@ -161,7 +168,7 @@ Do not add checkout until the plan's Cloud gates are complete. Keep customer bil
 | MCP tool | `contracts.ts`, `tools.ts`, exact catalog assertions, `docs/mcp.md` |
 | Review/preflight behavior | `server/src/services/control-plane.ts` or `publishing.ts` |
 | Scheduled work | `server/src/routes/cron.ts`, existing drain service, current trigger config |
-| Production routing | `vercel.json`, hosting control plane, `docs/operations.md` |
+| Production routing | private Cloud Compose/Caddy, hosting control plane, `docs/operations.md` |
 
 ## Developer reading order
 

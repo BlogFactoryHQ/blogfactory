@@ -5,6 +5,8 @@ import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
 import { eq, and, inArray, desc, or, lt, ne, gte, ilike, sql, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile, imageAssetValues, storeImageBuffer } from "../services/image-storage.js";
+import { assertStorageAvailable, withCloudLimitLock } from "../services/cloud-limits.js";
+import { ApiError } from "../http/error-contract.js";
 import { attachImageRequestToPost, drainDeferredImages, kickDeferredImageWorker } from "../services/low-cost-images.js";
 import { canRestartImageRequest } from "./image-request-controls.js";
 import { createManualImagePromptRequestsForPost } from "../services/generate-content.js";
@@ -354,7 +356,8 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
   let storagePath: string | null = null;
   try {
     storagePath = await storeImageBuffer(buffer, userId, `${userId}/manual-imports/${id}.webp`);
-    const result = await db.transaction(async (tx) => {
+    const result = await withCloudLimitLock(userId, async (tx) => {
+      await assertStorageAvailable(userId, buffer.length, tx);
       const [asset] = await tx.insert(imageAssets).values(imageAssetValues(buffer, userId, storagePath!, assetOptions)).returning();
       await attachImageRequestToPost(claimedRequest, storagePath!, "auto", userId, tx);
       const [updated] = await tx
@@ -385,6 +388,7 @@ imagesRoutes.post("/requests/:id/import", async (c) => {
       eq(imageGenerationRequests.userId, userId),
       eq(imageGenerationRequests.status, "importing"),
     ));
+    if (error instanceof ApiError) return c.json({ error: message, code: error.code, message }, error.status);
     return c.json({ error: message }, 500);
   }
 });

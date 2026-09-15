@@ -32,11 +32,13 @@ import { mcpTokenRoutes } from "./routes/mcp-tokens.js";
 import { mcpOAuthRoutes } from "./routes/mcp-oauth.js";
 import { controlPlaneRoutes } from "./routes/control-plane.js";
 import { operationsRoutes } from "./routes/operations.js";
+import { billingRoutes, polarWebhookRoute } from "./routes/billing.js";
 import { handleMcpHttpRequest } from "./mcp/server.js";
 import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
 import { readinessStatus } from "./services/readiness.js";
 import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
+import { cloudEntitlementMiddleware } from "./middleware/cloud-entitlements.js";
 
 validateSelfHostedConfig();
 
@@ -46,6 +48,7 @@ app.use("/api/*", cors());
 app.use("*", logger());
 app.use("/api/*", normalizeApiErrors);
 app.use("/api/*", authMiddleware);
+app.use("/api/*", cloudEntitlementMiddleware);
 app.use("/api/*", operationLedgerMiddleware);
 
 app.route("/api/auth", authRoutes);
@@ -75,6 +78,8 @@ app.route("/api/mcp/tokens", mcpTokenRoutes);
 app.route("/api/mcp/oauth", mcpOAuthRoutes);
 app.route("/api/control-plane", controlPlaneRoutes);
 app.route("/api/operations", operationsRoutes);
+app.route("/api/billing", billingRoutes);
+app.route("/api/webhooks", polarWebhookRoute);
 app.get("/api/mcp/capabilities", (c) => c.json({
   protocol_version: MCP_PROTOCOL_VERSION,
   server_version: MCP_SERVER_VERSION,

@@ -18,7 +18,7 @@ interface AuthContextType {
   signOut: () => void;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   devLogin: () => Promise<void>;
-  signup: (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean) => Promise<void>;
+  signup: (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean, turnstileToken?: string) => Promise<"authenticated" | "verification_sent">;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,16 +29,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = api.getToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
     api
       .get<AuthUser>("/auth/me")
       .then((u) => setUser(u))
       .catch(() => {
-        api.setToken(null);
+        if (token) api.setToken(null);
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -53,16 +48,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   };
 
-  const signup = async (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean) => {
-    const { token, user: u } = await api.post<{ token: string; user: AuthUser }>("/auth/signup", {
+  const signup = async (email: string, password: string, displayName?: string, consent?: boolean, marketingOptIn?: boolean, turnstileToken?: string) => {
+    const result = await api.post<{ token?: string; user?: AuthUser; message?: string }>("/auth/signup", {
       email,
       password,
       displayName,
       consent,
       marketingOptIn,
+      turnstileToken,
     });
-    api.setToken(token);
-    setUser(u);
+    if (!result.token || !result.user) return "verification_sent";
+    api.setToken(result.token);
+    setUser(result.user);
+    return "authenticated";
   };
 
   const devLogin = async () => {
@@ -72,8 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = () => {
+    const localSession = Boolean(api.getToken());
     api.setToken(null);
     setUser(null);
+    if (localSession) {
+      window.location.href = "/auth";
+      return;
+    }
+    api.post<{ url: string }>("/auth/workos/logout")
+      .then(({ url }) => { window.location.href = url; })
+      .catch(() => { window.location.href = "/auth"; });
   };
 
   return (

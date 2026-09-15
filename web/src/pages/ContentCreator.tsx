@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError as ClientApiError } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
@@ -250,6 +250,7 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
       <p className="mt-2 text-xs text-muted-foreground">
         {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">Managed AI reserve ceiling: {Math.ceil(estimate.totalHigh * 1_000 * 1.2).toLocaleString()} credits. Actual provider cost is settled after each call.</p>
     </div>
   );
 }
@@ -535,6 +536,18 @@ export default function ContentCreator() {
     setModelId(nextModelId);
   };
 
+  const showGenerationError = (error: unknown, fallback: string) => {
+    if (error instanceof ClientApiError && error.code === "managed_ai_credits_required") {
+      toast.error("Managed AI credits are required. You can buy credits or switch to your own OpenRouter key.", { action: { label: "Buy credits", onClick: () => navigate("/billing") } });
+      return;
+    }
+    if (error instanceof ClientApiError && (error.code === "plan_quota_reached" || error.status === 403)) {
+      toast.error(error.message, { action: { label: "View billing", onClick: () => navigate("/billing") } });
+      return;
+    }
+    toast.error(error instanceof Error ? error.message : fallback);
+  };
+
   const handleCampaignPersonaChange = (nextPersonaId: string) => {
     if (nextPersonaId === "none") {
       setPersonaId("");
@@ -799,7 +812,8 @@ export default function ContentCreator() {
           Array.from({ length: variations }, (_, index) => startOneDraft(index + 1))
         );
         const failed = results.filter((result) => result.status === "rejected").length;
-        if (failed) throw new Error(`${failed}/${variations} drafts failed to start.`);
+        const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (failed) throw firstFailure?.reason || new Error(`${failed}/${variations} drafts failed to start.`);
         toast.info(`${variations} separate draft jobs started.`);
       } else {
         await startOneDraft();
@@ -807,8 +821,7 @@ export default function ContentCreator() {
       }
     } catch (err) {
       console.error("Generation error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate content";
-      toast.error(errorMessage);
+      showGenerationError(err, "Failed to generate content");
     }
   };
 
@@ -870,8 +883,7 @@ export default function ContentCreator() {
       setArticleOutline(plan.outline);
       toast.success("Title and outline ready.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to generate article plan";
-      toast.error(message);
+      showGenerationError(err, "Failed to generate article plan");
     } finally {
       setIsPlanningArticle(false);
     }
@@ -904,7 +916,7 @@ export default function ContentCreator() {
       toast.success(campaignStartNow ? "Campaign started" : "Campaign created");
       navigate(`/sources/campaigns/${campaign.id}`);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
+    onError: (error) => showGenerationError(error, "Could not create campaign"),
   });
 
   const handleCreateCampaign = () => {
