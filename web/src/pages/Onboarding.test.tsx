@@ -64,6 +64,16 @@ const digest: WorkspaceDigest = {
   activity: [],
 };
 
+const gatedBilling = {
+  cloud: true,
+  cloud_enforcement: true,
+  checkout_enabled: true,
+  managed_ai_enabled: false,
+  access_allowed: false,
+  access_reason: "subscription_required",
+  plan: "none",
+};
+
 const textModel = {
   id: "openai/gpt-4o-mini",
   name: "GPT-4o mini",
@@ -93,10 +103,12 @@ async function renderOnboarding() {
   await rerenderOnboarding();
 }
 
+let initialEntry = "/onboarding";
+
 async function rerenderOnboarding() {
   await act(async () => root?.render(
     <QueryClientProvider client={queryClient!}>
-      <TooltipProvider><MemoryRouter initialEntries={["/onboarding"]}><Onboarding /></MemoryRouter></TooltipProvider>
+      <TooltipProvider><MemoryRouter initialEntries={[initialEntry]}><Onboarding /></MemoryRouter></TooltipProvider>
     </QueryClientProvider>,
   ));
   await flush();
@@ -105,6 +117,7 @@ async function rerenderOnboarding() {
 }
 
 beforeEach(() => {
+  initialEntry = "/onboarding";
   state.activeSite = null;
   state.sites = [];
   state.createSite.mockReset();
@@ -291,17 +304,52 @@ describe("Onboarding", () => {
     expect(document.querySelector('a[href="/library/posts/post-1/preview"]')).toHaveTextContent("Review draft");
   });
 
-  it("asks for a Cloud plan before the first write instead of failing", async () => {
+  it("asks a Cloud user without a plan to choose one before connecting a site", async () => {
     state.get.mockImplementation(async (path: string) => {
-      if (path === "/auth/config") return { signup_enabled: true, auth_provider: "workos", cloud: true, managed_ai_enabled: false };
-      if (path === "/billing/state") return { cloud_enforcement: true, write_access: false, plan: "none" };
-      throw new Error(`Unexpected GET ${path}`);
+      if (path === "/billing/state") return gatedBilling;
+      throw new Error(`unexpected ${path}`);
     });
-
+    state.post.mockResolvedValue({ url: "#polar-checkout" });
     await renderOnboarding();
 
-    expect(document.body).toHaveTextContent("Choose a plan to set up your workspace");
-    expect(document.querySelector('a[href="/billing"]')).toHaveTextContent("See plans");
+    expect(document.body).toHaveTextContent("Choose a Cloud plan to start");
     expect(document.querySelector("#site-url")).not.toBeInTheDocument();
+    const monthly = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "$5/month");
+    await act(async () => monthly?.click());
+    await flush();
+    expect(state.post).toHaveBeenCalledWith("/billing/checkout", { sku: "cloud_monthly", return_path: "/onboarding" });
+  });
+
+  it("reconciles after checkout and continues to the site step once the plan is active", async () => {
+    initialEntry = "/onboarding?checkout=success&checkout_id=chk_1";
+    let billing = gatedBilling;
+    state.get.mockImplementation(async (path: string) => {
+      if (path === "/billing/state") return billing;
+      throw new Error(`unexpected ${path}`);
+    });
+    state.post.mockResolvedValue({});
+    await renderOnboarding();
+
+    expect(state.post).toHaveBeenCalledWith("/billing/reconcile");
+    expect(document.body).toHaveTextContent("Waiting for payment confirmation");
+
+    billing = { ...gatedBilling, access_allowed: true, access_reason: null, plan: "cloud" };
+    await act(async () => { await queryClient?.invalidateQueries({ queryKey: ["billing-state"] }); });
+    await flush();
+    await flush();
+
+    expect(document.querySelector("#site-url")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent("Step 2 · Your site");
+  });
+
+  it("keeps the self-hosted flow when Cloud billing is not enforced", async () => {
+    state.get.mockImplementation(async (path: string) => {
+      if (path === "/billing/state") return { ...gatedBilling, cloud: false, cloud_enforcement: false, access_allowed: true, access_reason: null, plan: "internal" };
+      throw new Error(`unexpected ${path}`);
+    });
+    await renderOnboarding();
+
+    expect(document.body).toHaveTextContent("Step 1 · Your site");
+    expect(document.body).not.toHaveTextContent("Choose a Cloud plan");
   });
 });

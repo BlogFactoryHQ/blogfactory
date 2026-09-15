@@ -75,14 +75,20 @@ export function isBillingSku(value: unknown): value is BillingSku {
   return typeof value === "string" && BILLING_SKUS.includes(value as BillingSku);
 }
 
-export function managedAiEnabled(env: NodeJS.ProcessEnv = process.env) {
-  return env.BLOGFACTORY_CLOUD === "true" && env.MANAGED_AI_ENABLED === "true";
-}
-
 export function cloudCheckoutEnabled(env: NodeJS.ProcessEnv = process.env, now = new Date()) {
   const launchAt = Date.parse(env.CLOUD_PUBLIC_LAUNCH_AT || "");
   return env.BLOGFACTORY_CLOUD === "true"
     && env.CLOUD_PUBLIC_SIGNUP === "true"
     && Number.isFinite(launchAt)
     && launchAt <= now.getTime();
+}
+
+export function managedAiEnabled(env: NodeJS.ProcessEnv = process.env) {
+  return env.BLOGFACTORY_CLOUD === "true" && env.MANAGED_AI_ENABLED === "true";
+}
+
+const CHECKOUT_RETURN_PATHS = ["/billing", "/onboarding"] as const;
+
+export function checkoutReturnPath(value: unknown) {
+  return CHECKOUT_RETURN_PATHS.find((path) => path === value) || "/billing";
 }

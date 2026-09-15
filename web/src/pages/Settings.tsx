@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { asArray, asStringArray } from "@/lib/api-shape";
+import type { BillingState } from "@/lib/billing";
 import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { useAuth } from "@/hooks/useAuth";
@@ -357,7 +358,7 @@ export default function Settings() {
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
   const { data: billingState } = useQuery({
     queryKey: ["billing-state"],
-    queryFn: () => api.get<{ ai_preference: "auto" | "byo" | "managed"; managed_ai_enabled?: boolean; credits: { available: number } }>("/billing/state"),
+    queryFn: () => api.get<BillingState>("/billing/state"),
   });
   const saveAiPreference = useMutation({
     mutationFn: (preference: "auto" | "byo" | "managed") => api.patch("/billing/ai-preference", { preference }),
@@ -369,10 +370,6 @@ export default function Settings() {
     const section = searchParams.get("section");
     if (section) setActiveSection(section);
   }, [searchParams]);
-
-  useEffect(() => {
-    if (activeSection === "ai-mode" && billingState && !billingState.managed_ai_enabled) setActiveSection("api-keys");
-  }, [activeSection, billingState]);
 
   const modelMatchesFilters = useCallback((model: LiveImageModel | LiveTextModel) => {
     const query = modelSearch.trim().toLowerCase();
@@ -810,8 +807,7 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
-    // AI Mode only matters when Managed AI can actually serve requests; otherwise BYO OpenRouter is the only path.
-    ...(billingState?.managed_ai_enabled ? [{ id: "ai-mode", title: "AI Mode", description: "Automatic, managed, BYO", icon: Brain }] : []),
+    ...(billingState?.cloud ? [{ id: "ai-mode", title: "AI Mode", description: billingState.managed_ai_enabled ? "Automatic, managed, BYO" : "BYO OpenRouter", icon: Brain }] : []),
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
@@ -846,19 +842,19 @@ export default function Settings() {
         </nav>
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "ai-mode" && billingState?.managed_ai_enabled && (
+          {activeSection === "ai-mode" && billingState?.cloud && (
             <BywordCard>
               <SectionHeader icon={Brain} title="AI provider mode" description="Choose how BlogFactory authenticates and bills AI calls." />
               <div className="grid gap-3 p-6 md:grid-cols-3">
                 {[
-                  { value: "auto", title: "Automatic", detail: "Use your OpenRouter key when available; otherwise use Managed AI Credits." },
-                  { value: "managed", title: "Managed AI", detail: `Use BlogFactory's curated models. ${billingState?.credits.available.toLocaleString() || 0} credits available.` },
-                  { value: "byo", title: "Bring your own OpenRouter", detail: "Use your encrypted OpenRouter key. BlogFactory credits are not charged." },
-                ].map((option) => <button key={option.value} type="button" onClick={() => saveAiPreference.mutate(option.value as "auto" | "byo" | "managed")} className={cn("rounded-lg border p-5 text-left transition-calm", billingState?.ai_preference === option.value ? "border-byword-blue bg-byword-blue-soft" : "border-byword-border hover:border-byword-blue/40")}>
+                  { value: "auto", title: "Automatic", detail: billingState.managed_ai_enabled ? "Use your OpenRouter key when available; otherwise use Managed AI Credits." : "Use your OpenRouter key. Managed AI Credits are not available yet.", disabled: false },
+                  { value: "managed", title: "Managed AI", detail: billingState.managed_ai_enabled ? `Use BlogFactory's curated models. ${billingState.credits.available.toLocaleString()} credits available.` : "Coming soon.", disabled: !billingState.managed_ai_enabled },
+                  { value: "byo", title: "Bring your own OpenRouter", detail: "Use your encrypted OpenRouter key. BlogFactory credits are not charged.", disabled: false },
+                ].map((option) => <button key={option.value} type="button" disabled={option.disabled || saveAiPreference.isPending} onClick={() => saveAiPreference.mutate(option.value as "auto" | "byo" | "managed")} className={cn("rounded-lg border p-5 text-left transition-calm disabled:cursor-not-allowed disabled:opacity-60", billingState.ai_preference === option.value ? "border-byword-blue bg-byword-blue-soft" : "border-byword-border hover:border-byword-blue/40")}>
                   <p className="font-semibold">{option.title}</p><p className="mt-2 text-sm text-muted-foreground">{option.detail}</p>
                 </button>)}
               </div>
-              <div className="px-6 pb-6"><Link className="text-sm font-medium text-byword-blue" to="/billing">Buy credits or manage plan →</Link></div>
+              <div className="px-6 pb-6"><Link className="text-sm font-medium text-byword-blue" to="/billing">{billingState.managed_ai_enabled ? "Buy credits or manage plan →" : "Manage plan →"}</Link></div>
             </BywordCard>
           )}
           {activeSection === "basics" && (

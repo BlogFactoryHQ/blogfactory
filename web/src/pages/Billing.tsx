@@ -7,13 +7,8 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { isCheckoutActivated, type BillingState } from "@/lib/billing";
+import { CLOUD_PLANS, isCheckoutActivated, type BillingState } from "@/lib/billing";
 import { cn } from "@/lib/utils";
-
-const plans = [
-  { code: "cloud", name: "Cloud", monthly: "$5", yearly: "$49", monthlySku: "cloud_monthly", yearlySku: "cloud_yearly", detail: "3 sites · 1 GB · 3 RSS · 150 successful drafts/month" },
-  { code: "advanced", name: "Advanced", monthly: "$15", yearly: "$149", monthlySku: "advanced_monthly", yearlySku: "advanced_yearly", detail: "10 sites · 10 GB · 20 RSS · unlimited manual + 600 automated drafts/month" },
-];
 
 const PLAN_LABELS: Record<string, string> = { none: "No plan", cloud: "Cloud", advanced: "Advanced", internal: "Internal" };
 const ACTIVATION_POLL_MS = 3_000;
@@ -69,7 +64,7 @@ export default function Billing() {
   }, [activated, searchParams, setSearchParams]);
 
   const checkout = useMutation({
-    mutationFn: (sku: string) => api.post<{ url: string }>("/billing/checkout", { sku }),
+    mutationFn: (sku: string) => api.post<{ url: string }>("/billing/checkout", { sku, return_path: "/billing" }),
     onSuccess: ({ url }) => { window.location.href = url; },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -81,7 +76,7 @@ export default function Billing() {
 
   if (isLoading) return <BywordPageShell><Loader2 className="h-6 w-6 animate-spin" /></BywordPageShell>;
   const planLabel = PLAN_LABELS[data?.plan || "none"] || data?.plan || "No plan";
-  const needsPlan = Boolean(data?.cloud_enforcement && data.write_access === false);
+  const needsPlan = Boolean(data?.cloud_enforcement && !data.access_allowed);
   const drafts = data ? draftUsage(data) : null;
   const refreshButton = (
     <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
@@ -107,7 +102,7 @@ export default function Billing() {
         </BywordCard>
       )}
 
-      {data?.write_access && data.plan !== "internal" && data.usage.sites === 0 && !returnedFromCheckout && (
+      {data?.access_allowed && data.plan !== "internal" && data.usage.sites === 0 && !returnedFromCheckout && (
         <BywordCard className="mb-6 border-byword-blue/40 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
             <div className="flex items-start gap-3">
@@ -153,8 +148,8 @@ export default function Billing() {
       </BywordCard>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {plans.map((plan) => {
-          const current = data?.plan === plan.code && data?.entitlement_source === "polar";
+        {CLOUD_PLANS.map((plan) => {
+          const current = data?.plan === plan.name.toLowerCase() && data?.entitlement_source === "polar";
           return <BywordCard key={plan.name} className={cn("p-6", current && "border-byword-blue")}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">{plan.name}</h2>
@@ -169,7 +164,7 @@ export default function Billing() {
         })}
       </div>
 
-      {data?.managed_ai_enabled && (
+      {data?.managed_ai_enabled ? (
         <BywordCard className="mt-6 p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-byword-orange" /><h2 className="text-lg font-semibold">Managed AI Credits</h2></div><p className="mt-2 text-sm text-muted-foreground">14,000 prepaid credits, valid for 365 days. BYO OpenRouter remains available and does not consume these credits.</p></div>
@@ -181,6 +176,13 @@ export default function Billing() {
             <div><p className="text-xs text-muted-foreground">Debt</p><p className="text-2xl font-semibold">{data.credits.debt.toLocaleString()}</p></div>
           </div>
           {data.eligible_refunds?.length ? <p className="mt-3 text-xs text-muted-foreground">Unused eligible top-ups can currently be refunded through support for up to {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(data.eligible_refunds.reduce((sum, grant) => sum + grant.maximum_refund_cents, 0) / 100)}.</p> : null}
+        </BywordCard>
+      ) : (
+        <BywordCard className="mt-6 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-byword-orange" /><h2 className="text-lg font-semibold">Managed AI Credits</h2></div><p className="mt-2 text-sm text-muted-foreground">Managed AI is not available yet. Add your own OpenRouter key in Settings to generate drafts.</p></div>
+            <span className="rounded-full border border-byword-border px-3 py-1 text-xs text-muted-foreground">Coming soon</span>
+          </div>
         </BywordCard>
       )}
 

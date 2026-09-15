@@ -50,6 +50,9 @@ function validDatabaseUrl(value: string | undefined) {
   }
 }
 
+// Bun.serve closes connections that send no bytes for idleTimeout seconds (default 10, max 255).
+export const API_IDLE_TIMEOUT_SECONDS = 255;
+
 export function resolvePort(value = process.env.PORT) {
   const port = Number(value || 3000);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : 3000;

@@ -17,6 +17,15 @@ Only the web port is published. PostgreSQL uses the private Compose network and
 a named volume mounted at `/var/lib/postgresql`, the required persistent mount
 for the official PostgreSQL 18 image.
 
+Cron drains are synchronous, so every hop must outlast them. The API disables
+Bun's idle timeout for authorized `/api/cron/drain` requests (other requests
+use 255 seconds), and Nginx allows 600 seconds on `/api/cron/`. The in-stack
+schedulers call `api:3000` directly and are bounded by their curl `--max-time`
+(RSS 300 seconds, maintenance 600 seconds). External callers of
+`https://app.blogfactory.io/api/cron/drain` also pass through the Cloudflare
+proxy, which returns 524 after 100 seconds on non-Enterprise plans; keep
+external drains below that, or run long ones from the in-stack schedulers.
+
 ## Manual gate: restore SSH access
 
 The existing key is not accepted for `root`, `deploy`, or `ubuntu`. Before any

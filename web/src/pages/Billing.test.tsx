@@ -12,10 +12,13 @@ const state = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api: { get: state.get, post: state.post } }));
 
 const baseState: BillingState = {
+  cloud: true,
   cloud_enforcement: true,
   checkout_enabled: true,
   managed_ai_enabled: false,
-  write_access: false,
+  access_allowed: false,
+  access_reason: "subscription_required",
+  ai_preference: "auto",
   plan: "none",
   subscription_state: null,
   entitlement_source: null,
@@ -54,8 +57,8 @@ afterEach(async () => {
 describe("Billing", () => {
   it("does not sell Managed AI credits while Managed AI is off", async () => {
     await renderBilling(baseState);
-    expect(document.body).not.toHaveTextContent("Managed AI Credits");
     expect(document.body).not.toHaveTextContent("Buy 14,000");
+    expect(document.body).toHaveTextContent("Managed AI is not available yet");
     expect(document.body).toHaveTextContent("Choose a plan to start creating");
     expect(document.body).toHaveTextContent("Current plan: No plan");
   });
@@ -74,7 +77,7 @@ describe("Billing", () => {
   it("guides a newly active plan into workspace setup and flags reached limits", async () => {
     await renderBilling({
       ...baseState,
-      write_access: true,
+      access_allowed: true,
       plan: "cloud",
       entitlement_source: "polar",
       subscription_state: "active",
@@ -93,8 +96,8 @@ describe("isCheckoutActivated", () => {
   it("waits for the Polar entitlement or new credits", () => {
     expect(isCheckoutActivated(undefined, null)).toBe(false);
     expect(isCheckoutActivated(baseState, 0)).toBe(false);
-    expect(isCheckoutActivated({ ...baseState, entitlement_source: "transition", write_access: true, plan: "advanced" }, 0)).toBe(false);
-    expect(isCheckoutActivated({ ...baseState, entitlement_source: "polar", write_access: true, plan: "cloud" }, 0)).toBe(true);
+    expect(isCheckoutActivated({ ...baseState, entitlement_source: "transition", access_allowed: true, plan: "advanced" }, 0)).toBe(false);
+    expect(isCheckoutActivated({ ...baseState, entitlement_source: "polar", access_allowed: true, plan: "cloud" }, 0)).toBe(true);
     expect(isCheckoutActivated({ ...baseState, credits: { ...baseState.credits, available: 14_000 } }, 0)).toBe(true);
   });
 });

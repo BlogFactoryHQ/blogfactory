@@ -19,6 +19,16 @@ export function isCronAuthorized(header: string | undefined, secret = process.en
   return Boolean(secret) && header === `Bearer ${secret}`;
 }
 
+type IdleTimeoutServer = { timeout?: (request: Request, seconds: number) => void };
+
+// Synchronous drains can outlast Bun's idleTimeout cap; the caller's --max-time and proxy timeouts bound them instead.
+export function disableRequestIdleTimeout(server: unknown, request: Request) {
+  const timeout = (server as IdleTimeoutServer | undefined)?.timeout;
+  if (typeof timeout !== "function") return false;
+  timeout.call(server, request, 0);
+  return true;
+}
+
 function positiveInt(value: unknown, fallback: number, max?: number) {
   const number = Number(value);
   const parsed = Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
@@ -66,6 +76,7 @@ cronRoutes.get("/drain", async (c) => {
   if (!isCronAuthorized(c.req.header("Authorization"))) {
     return c.json({ error: "Unauthorized" }, 401);
   }
+  disableRequestIdleTimeout(c.env, c.req.raw);
 
   const task = c.req.query("task") || "all";
   const workerUserId = c.req.query("userId");
