@@ -13,6 +13,7 @@ type WorkerDrains = {
   campaigns(maxCampaigns: number, maxItemsPerCampaign: number): Promise<unknown>;
   seo(userId: undefined, limit: number): Promise<unknown>;
   images(userId?: string): Promise<unknown>;
+  billing?(limit: number): Promise<unknown>;
 };
 
 function boundedInt(value: string | undefined, fallback: number, min: number, max: number) {
@@ -32,21 +33,23 @@ export function readBackgroundWorkerConfig(env: Record<string, string | undefine
 }
 
 async function loadDrains(): Promise<WorkerDrains> {
-  const [{ drainCampaignQueue }, { drainSeoMetadata }, { drainDeferredImages }] = await Promise.all([
+  const [{ drainCampaignQueue }, { drainSeoMetadata }, { drainDeferredImages }, { drainPolarWebhookEvents }] = await Promise.all([
     import("./campaign-runner.js"),
     import("./seo-metadata.js"),
     import("./low-cost-images.js"),
+    import("./billing-webhooks.js"),
   ]);
-  return { campaigns: drainCampaignQueue, seo: drainSeoMetadata, images: drainDeferredImages };
+  return { campaigns: drainCampaignQueue, seo: drainSeoMetadata, images: drainDeferredImages, billing: drainPolarWebhookEvents };
 }
 
 export async function runBackgroundWorkerCycle(config: BackgroundWorkerConfig, drains?: WorkerDrains) {
   const activeDrains = drains || await loadDrains();
-  const names = ["campaigns", "seo", "images"] as const;
+  const names = ["campaigns", "seo", "images", "billing"] as const;
   const results = await Promise.allSettled([
     activeDrains.campaigns(1, config.campaignItems),
     activeDrains.seo(undefined, config.seoJobs),
     Promise.all(Array.from({ length: config.imageJobs }, () => activeDrains.images())),
+    activeDrains.billing?.(20) || Promise.resolve(null),
   ]);
   return {
     ok: results.every((result) => result.status === "fulfilled"),

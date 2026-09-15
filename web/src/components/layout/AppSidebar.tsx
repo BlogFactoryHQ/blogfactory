@@ -17,6 +17,7 @@ import {
   Check,
   LayoutDashboard,
   Loader2,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -55,6 +56,7 @@ const monitorNavigation = [
   { name: "Sources", href: "/sources", icon: Rss },
   { name: "Content", href: "/library", icon: ImageIcon },
   { name: "Control", href: "/control", icon: Settings },
+  { name: "Billing", href: "/billing", icon: CreditCard },
 ];
 
 const searchNavigation = [...primaryNavigation, ...monitorNavigation];

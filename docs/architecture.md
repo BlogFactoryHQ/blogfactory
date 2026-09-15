@@ -79,6 +79,7 @@ logic should live under `server/src/services/`.
 | Revisions and optimistic locking | `server/src/services/post-revisions.ts` | Post routes, review, MCP updates |
 | CMS preflight and draft delivery | `server/src/services/publishing.ts` | Web approval and MCP Review Card |
 | Content generation | `server/src/services/generate-content.ts` | Content routes, campaigns, MCP |
+| Cloud plans, quota, Polar inbox, AI wallet | `cloud-entitlements.ts`, `billing-webhooks.ts`, `plan-usage.ts`, `ai-credits.ts`, `managed-openrouter.ts` | Billing HTTP, shared generation/services, worker |
 | Generation contracts and output cleanup | `generation-contracts.ts`, `generation-output.ts`, `post-cleanup.ts` | Generation and repair flows |
 | Search Console | `server/src/services/search-console.ts` | Search Growth, digest, MCP |
 | SEO growth plans | `server/src/services/seo-growth-plan.ts` | Search Growth and campaigns |
@@ -119,6 +120,7 @@ call the protected `/api/cron/drain` endpoint:
 | --- | --- | --- |
 | Hetzner worker container | Every 60 seconds | Campaign, SEO metadata, and deferred-image recovery |
 | Hetzner RSS scheduler | Every 30 minutes | Due RSS feeds |
+| Hetzner maintenance scheduler | Every 6 hours | Retention, stale reservations, credit expiry, and billing reconciliation |
 | Cloudflare Worker | Every 6 hours | External campaign, SEO metadata, and deferred-image fallback |
 | GitHub `rss-cron.yml` | Every 6 hours | External due-feed fallback |
 | GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
@@ -132,7 +134,7 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | --- | --- |
 | Cloudflare | Public front door, proxy/DNS, R2 object storage, and six-hour fallback Worker |
 | Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay, Compose, backup image, and Hetzner runbook |
-| Hetzner CX23 | Caddy, web/Nginx, API, worker, RSS scheduler, PostgreSQL 18, and backup scheduler |
+| Hetzner CX23 | Caddy, web/Nginx, API, worker, RSS and maintenance schedulers, PostgreSQL 18, and backup scheduler |
 | GHCR | Commit-SHA-tagged API, web, and backup images deployed by immutable digest |
 | GitHub Actions | Validation, image publication, and protected external fallback drains |
 
@@ -142,19 +144,16 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Authentication and authority
 
-- Web sessions use application authentication and site membership.
+- Hosted Cloud web sessions use WorkOS AuthKit sealed HttpOnly cookies mapped to local PostgreSQL users; Community/self-hosted keeps application authentication.
 - MCP accepts WorkOS browser OAuth or hashed personal `bf_mcp_` tokens.
 - OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
 - MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
 - `publish:draft` means CMS draft delivery, never live publication.
-- Hosted public signup is disabled; self-hosted signup is an environment-gated administrator bootstrap path.
-- Password recovery UI is disabled until real email delivery is connected.
+- Hosted public signup remains flag-gated; WorkOS owns email verification, password recovery, and session lifecycle. Self-hosted signup remains an environment-gated administrator bootstrap path.
 
 ## Pricing boundary
 
-There is no BlogFactory customer billing system in this codebase today. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The approved open-source-first packaging and planned Cloud tiers live in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md).
-
-Do not add checkout until the plan's Cloud gates are complete. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
+Cloud billing is implemented behind disabled launch flags. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md); do not enable checkout/public signup or market availability until its acceptance gates pass.
 
 ## Where to make a change
 

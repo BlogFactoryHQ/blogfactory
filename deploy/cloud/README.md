@@ -8,7 +8,7 @@ Neon is retained for 14 days after cutover as a disconnected rollback copy.
 Cloudflare -> Caddy -> web/Nginx -> API
                          |          |
                          |          +-> PostgreSQL 18
-                         +----------+-> worker, RSS scheduler, backup scheduler
+                         +----------+-> worker, RSS scheduler, maintenance, backup
                                               |
                                               +-> R2 EU
 ```
@@ -42,8 +42,10 @@ restrict SSH to the operator IP before continuing.
 ## Secrets and immutable images
 
 Generate URL-safe database passwords and a separate age identity. Put the
-values in Dokploy and the password manager; never put them in Git or shell
-history.
+values in a root-only host Compose env file (or Dokploy's secret UI if it is
+used to operate this Hetzner stack) and the password manager; never put them in
+Git or shell history. Dokploy is optional deployment tooling here, not a
+BlogFactory self-host requirement.
 
 ```bash
 openssl rand -hex 32
@@ -72,12 +74,14 @@ references from its summary:
 
 Also pin `POSTGRES_IMAGE` and `RSS_SCHEDULER_IMAGE` by digest. The VM needs only
 a read-only GHCR package credential for pulls. Populate `.env.example` in the
-host/Dokploy secret store. Keep the current EU R2 endpoint, bucket, access key,
+host secret store. Keep the current EU R2 endpoint, bucket, access key,
 and secret unchanged; do not print them during deployment.
 
 `DATABASE_URL` and `MIGRATION_DATABASE_URL` are deliberately absent from the
 host environment. Compose constructs an owner URL for one-shot migrations and
 a runtime URL for API/worker. Passwords therefore must remain URL-safe hex.
+
+Deploy billing first with `CLOUD_PUBLIC_SIGNUP`, `CLOUD_BILLING_ENFORCEMENT`, and `MANAGED_AI_ENABLED` false. Keep Polar, WorkOS, Turnstile, and the capped Managed OpenRouter key only in the host secret store. Configure the WorkOS callback as `https://app.blogfactory.io/api/auth/workos/callback`, migrate existing users, and follow [`docs/billing.md`](../../docs/billing.md) before enabling any launch flag.
 
 ## Rehearsal
 
@@ -107,7 +111,7 @@ Production stays on Neon throughout rehearsal.
      -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" < "$rehearsal_dir/neon.dump"
    docker compose run --rm db-init
    docker compose run --rm migrate
-   docker compose up -d api worker web rss-scheduler
+   docker compose up -d api worker web rss-scheduler maintenance-scheduler
    ```
 
 4. Compare every public-table row count and `schema_migrations` checksum with
@@ -170,7 +174,7 @@ Target maintenance window: at most 30 minutes.
 
 7. Complete public acceptance before leaving maintenance mode. The API is
    inline; the worker polls every 60 seconds with 1/2/1 bounds; RSS checks every
-   1,800 seconds; backup runs immediately and every six hours.
+   1,800 seconds; billing/retention maintenance and backup run every six hours.
 8. Remove runtime access to Neon and suspend its compute. Keep the project
    unchanged for 14 days. Deletion after the audit requires separate explicit
    approval.

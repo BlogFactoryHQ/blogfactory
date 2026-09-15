@@ -61,7 +61,8 @@ so image rollback remains possible.
 The Cloud API uses `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker uses
 `BACKGROUND_EXECUTION_MODE=worker` with a 60-second poll and the existing 1/2/1
 campaign/SEO/image bounds. A local scheduler checks due RSS feeds every 30
-minutes. Cloudflare and GitHub keep their existing six-hour protected drains as
+minutes. A local maintenance scheduler runs the full protected drain every six
+hours. Cloudflare and GitHub keep their existing six-hour protected drains as
 external fallbacks. PostgreSQL atomic claims, stale recovery, retries, and feed
 leases prevent duplicate ownership; see the [RSS scheduler guide](rss-scheduler.md).
 
@@ -69,6 +70,8 @@ Do not enable more than one persistent worker until the domain claim and
 stale-recovery checks have passed for that topology.
 
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
+
+The same worker/drain processes the Polar webhook inbox, releases stale plan reservations, expires AI grants, and reconciles Polar customer state. Billing flags, sandbox evidence, refunds, and production gates are in [billing.md](billing.md).
 
 Do not disable a failing scheduled workflow to make Actions appear clean. Confirm the affected task, timeout, and backend behavior before a narrow fix.
 

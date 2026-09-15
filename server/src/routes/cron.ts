@@ -7,6 +7,11 @@ import { drainDeferredImages } from "../services/low-cost-images.js";
 import { drainSeoMetadata, enqueueUntrackedDraftSeoMetadata } from "../services/seo-metadata.js";
 import { safeError } from "../http/error-contract.js";
 import { purgeExpiredOperationEvents } from "../services/operation-events.js";
+import { drainPolarWebhookEvents, reconcilePolarCustomers } from "../services/billing-webhooks.js";
+import { purgeStalePlanReservations } from "../services/plan-usage.js";
+import { expireAiCredits, purgeStaleAiCreditReservations } from "../services/ai-credits.js";
+import { reconcileManagedAiReservations } from "../services/managed-openrouter.js";
+import { purgeExpiredAuthRateLimits } from "../services/auth-security.js";
 
 export const cronRoutes = new Hono();
 
@@ -107,7 +112,7 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "images") return c.json({ ok: true, images: await runImages() });
   if (task === "seo") return c.json({ ok: true, seo: await runSeo() });
 
-  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations] = await Promise.all([
+  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation] = await Promise.all([
     drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
     drainQueuedGoogleIndexing(config.indexing.limit),
     drainSearchConsoleSync(config.searchConsole.limit),
@@ -115,7 +120,14 @@ cronRoutes.get("/drain", async (c) => {
     runImages(),
     runSeo(),
     purgeExpiredOperationEvents(),
+    drainPolarWebhookEvents(),
+    purgeStalePlanReservations(),
+    expireAiCredits(),
+    purgeStaleAiCreditReservations(),
+    purgeExpiredAuthRateLimits(),
+    reconcilePolarCustomers(),
+    reconcileManagedAiReservations(),
   ]);
 
-  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations });
+  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation });
 });

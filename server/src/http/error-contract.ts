@@ -11,6 +11,8 @@ export type ApiErrorCode =
   | "conflict"
   | "payload_too_large"
   | "rate_limited"
+  | "managed_ai_credits_required"
+  | "plan_quota_reached"
   | "upstream_failure"
   | "service_unavailable"
   | "internal_error";

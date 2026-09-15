@@ -14,13 +14,20 @@
     "test:mcp:pilot": "bun run src/run-mcp-pilot-smoke.ts",
     "credentials:check": "bun run src/credentials-check.ts",
     "db:migrate": "bun run src/db/migrate.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "billing:catalog": "bun run src/scripts/provision-polar-catalog.ts",
+    "billing:webhook": "bun run src/scripts/provision-polar-webhook.ts",
+    "billing:grant-transition": "bun run src/scripts/grant-transition-entitlements.ts",
+    "auth:migrate-workos": "bun run src/scripts/migrate-users-to-workos.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
     "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "@polar-sh/hono": "^0.5.6",
+    "@polar-sh/sdk": "^0.49.0",
     "@vercel/functions": "^3.7.3",
+    "@workos-inc/node": "^10.13.0",
     "bcryptjs": "^3.0.0",
     "drizzle-orm": "^0.45.2",
     "framer-api": "^0.1.17",

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaigns, feeds, generationLogs, jobs, posts, sites } from "../db/schema.js";
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { getEffectiveSettings } from "./user-settings.js";
 import { dispatchBackgroundDrain } from "./background-drain.js";
 
@@ -319,9 +319,9 @@ function combineUsage(...values: Record<string, unknown>[]) {
   };
 }
 
-async function requestCandidate(apiKey: string, modelId: string, prompt: string): Promise<CandidateResponse> {
+async function requestCandidate(userId: string, apiKey: string, modelId: string, prompt: string): Promise<CandidateResponse> {
   const startedAt = Date.now();
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(SEO_MODEL_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -369,6 +369,7 @@ async function requestCandidate(apiKey: string, modelId: string, prompt: string)
 }
 
 type SeoGenerationInput = {
+  userId?: string;
   apiKey: string;
   modelId: string;
   title: string;
@@ -430,12 +431,13 @@ Provided keywords: ${input.keywords.join(", ") || "None; infer one"}
 Provided search intent: ${input.requestedIntent || "None; infer it"}`;
 }
 
-export async function generateValidatedCandidate(input: SeoGenerationInput, requester: CandidateRequester = requestCandidate) {
+export async function generateValidatedCandidate(input: SeoGenerationInput, requester?: CandidateRequester) {
+  const activeRequester = requester || ((apiKey, modelId, prompt) => requestCandidate(input.userId || "", apiKey, modelId, prompt));
   let first: CandidateResponse | null = null;
   let firstError: SeoGenerationAttemptError | null = null;
   let errors: string[];
   try {
-    first = await requester(input.apiKey, input.modelId, generationPrompt(input));
+    first = await activeRequester(input.apiKey, input.modelId, generationPrompt(input));
     errors = generationErrors(input, first.candidate);
     if (!errors.length) return { ...first, attempts: 1 };
   } catch (error) {
@@ -450,7 +452,7 @@ export async function generateValidatedCandidate(input: SeoGenerationInput, requ
   const previousOutput = first ? JSON.stringify(first.candidate) : firstError?.rawOutput || "No parseable JSON";
   let repaired: CandidateResponse;
   try {
-    repaired = await requester(input.apiKey, input.modelId, repairPrompt(input, previousOutput, errors));
+    repaired = await activeRequester(input.apiKey, input.modelId, repairPrompt(input, previousOutput, errors));
   } catch (error) {
     const repairError = error instanceof SeoGenerationAttemptError
       ? error
@@ -635,8 +637,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
     return { processed: true, status: "superseded" };
   }
 
-  const apiKey = await getOpenRouterKey(job.userId);
-  if (!apiKey) throw new Error("Add your OpenRouter API key before generating SEO metadata");
+  const apiKey = (await resolveOpenRouterAccess(job.userId)).apiKey;
   const modelId = SEO_MODEL_ID;
   const [feed] = post.feedId ? await db.select({ keywords: feeds.keywords }).from(feeds).where(eq(feeds.id, post.feedId)).limit(1) : [];
   const [site] = post.siteId ? await db.select({ name: sites.name, language: sites.language, topics: sites.topics, editorialTopics: sites.editorialTopics }).from(sites).where(eq(sites.id, post.siteId)).limit(1) : [];
@@ -666,6 +667,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
     site?.editorialTopics?.length && `Editorial topics: ${site.editorialTopics.join(", ")}`,
   ].filter(Boolean).join("; ");
   const result = await generateValidatedCandidate({
+    userId: job.userId,
     apiKey, modelId, title: post.title, content: post.content, sourceRef,
     keywords: programmaticKeywords.length ? programmaticKeywords : post.sourceType === "article_keyword" && post.sourceRefId ? [post.sourceRefId] : feed?.keywords || [],
     siteName: site?.name || "",

@@ -33,6 +33,7 @@ import {
   updateGlobalSettings,
   updateSiteSettings,
 } from "../services/user-settings.js";
+import { openRouterInferenceFetch } from "../services/managed-openrouter.js";
 
 export const settingsRoutes = new Hono();
 const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay"]);
@@ -146,12 +147,10 @@ async function extractKnowledgePdf(file: File, userId: string) {
     }
   }
 
-  const openRouterKey = await getOpenRouterKey(userId);
-  if (openRouterKey) {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try {
+    const resp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openRouterKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -169,7 +168,7 @@ async function extractKnowledgePdf(file: File, userId: string) {
       const text = firstTextFromOpenRouter(await resp.json());
       if (text) return text;
     }
-  }
+  } catch { /* provider availability is reported below */ }
 
   throw new Error("Add a Google AI or OpenRouter API key before importing PDF knowledge");
 }

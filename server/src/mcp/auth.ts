@@ -107,7 +107,8 @@ export async function authenticateMcpBearer(
     };
   }
 
-  const oauthIdentity = await (dependencies.verifyOAuth || verifyMcpOAuthAccessToken)(secret);
+  if (!dependencies.verifyOAuth) return null;
+  const oauthIdentity = await dependencies.verifyOAuth(secret);
   if (!oauthIdentity) return null;
   const oauthUser = await (dependencies.findOAuthUserSites || findOAuthUserSites)(
     oauthIdentity.userId,
