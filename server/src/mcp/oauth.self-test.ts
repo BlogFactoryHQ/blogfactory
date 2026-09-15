@@ -14,6 +14,7 @@ import {
   handleMcpProtectedResourceMetadata,
   isInvalidMcpOAuthTokenError,
   mcpBearerChallenge,
+  mcpWorkosApiKey,
   mcpOAuthIdentityFromClaims,
   mcpProtectedResourceMetadata,
   verifyMcpOAuthAccessToken,
@@ -41,6 +42,14 @@ assert.equal(
   'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="openid profile email offline_access"',
 );
 assert.equal(getMcpOAuthConfig({}), null);
+assert.equal(mcpWorkosApiKey({ WORKOS_API_KEY: "sk_browser" }), "sk_browser");
+assert.equal(mcpWorkosApiKey({ WORKOS_API_KEY: "sk_browser", MCP_WORKOS_API_KEY: " sk_mcp " }), "sk_mcp");
+assert.equal(mcpWorkosApiKey({ MCP_WORKOS_API_KEY: "  " }), undefined);
+assert.ok(getMcpOAuthConfig({
+  WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
+  MCP_RESOURCE_URL: "https://blogfactory.io/mcp",
+  MCP_WORKOS_API_KEY: "sk_test_mcp_only",
+}));
 assert.throws(() => getMcpOAuthConfig({
   WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
 }), /requires WORKOS_AUTHKIT_ISSUER, MCP_RESOURCE_URL, and WORKOS_API_KEY/);
