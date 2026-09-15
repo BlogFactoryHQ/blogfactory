@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./runtime.js";
+import { API_IDLE_TIMEOUT_SECONDS, resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./runtime.js";
 
+assert.equal(API_IDLE_TIMEOUT_SECONDS, 255, "API idle timeout uses Bun's maximum instead of the 10s default");
 assert.equal(resolvePort("4173"), 4173);
 assert.equal(resolvePort("invalid"), 3000);
 assert.equal(resolveMcpEndpoint({ WEB_APP_URL: "https://content.example.com" }), "https://content.example.com/mcp");

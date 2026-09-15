@@ -1,4 +1,5 @@
-import { isCronAuthorized, readCronDrainConfig } from "./cron.js";
+import assert from "node:assert/strict";
+import { disableRequestIdleTimeout, isCronAuthorized, readCronDrainConfig } from "./cron.js";
 
 process.env.CRON_SECRET = "secret";
 
@@ -32,5 +33,16 @@ console.assert(queryConfig.campaigns.maxItemsPerCampaign === 1, "uses campaign i
 console.assert(queryConfig.indexing.limit === 25, "uses generic limit for indexing");
 console.assert(queryConfig.searchConsole.limit === 10, "caps generic limit for search console");
 console.assert(queryConfig.seo.limit === 10, "caps generic limit for SEO concurrency");
+
+const request = new Request("http://api:3000/api/cron/drain?task=feeds");
+const timeoutCalls: Array<[Request, number]> = [];
+const bunServer = { timeout(this: unknown, req: Request, seconds: number) {
+  assert.equal(this, bunServer, "calls timeout bound to the server");
+  timeoutCalls.push([req, seconds]);
+} };
+assert.equal(disableRequestIdleTimeout(bunServer, request), true, "disables idle timeout on Bun servers");
+assert.deepEqual(timeoutCalls, [[request, 0]], "sets per-request idle timeout to zero");
+assert.equal(disableRequestIdleTimeout(undefined, request), false, "ignores runtimes without a Bun server env");
+assert.equal(disableRequestIdleTimeout({}, request), false, "ignores env objects without timeout()");
 
 console.log("cron self-test ok");
