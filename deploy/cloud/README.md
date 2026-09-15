@@ -1,91 +1,217 @@
-# BlogFactory Cloud shadow
+# BlogFactory Cloud on Hetzner
 
-This stack is isolated from production Vercel, the existing Neon project, the
-production `blogfactory` R2 bucket, WorkOS, customer DNS, and current schedules.
-It runs migrations once, then starts the API, a persistent heavy-queue worker,
-and Nginx/web. PostgreSQL and R2 remain off-host.
+Production runs as one digest-pinned Compose stack on the existing Hetzner
+CX23. Cloudflare remains the front door and R2 remains object/backup storage.
+Neon is retained for 14 days after cutover as a disconnected rollback copy.
 
-## Manual provider gates
-
-Do not deploy until all gates are true:
-
-- Create a separate **BlogFactory Cloud** Neon organization and a Frankfurt
-  project. The connected account currently exposes no BlogFactory organization;
-  never create this project in the existing Ortak Alan organization.
-- Create Hetzner CPX22 in Nuremberg with IPv4 and backups. Restrict SSH to the
-  operator IP. Keep ports 80/443 closed in Phase A; in Phase B allow them only
-  from Cloudflare proxy ranges. Do not expose the Dokploy management port.
-- Create `blogfactory-cloud-phase-a-20260831` as an R2 **EU-jurisdiction** bucket.
-  A Western Europe location hint is not an equivalent guarantee. Create one
-  edit token restricted to this bucket and store its one-time secret directly
-  in Dokploy/password-manager escrow.
-- Create Better Stack uptime and heartbeat monitors only after Phase A passes.
-  Put the heartbeat URL in Dokploy; never commit it.
-
-Hetzner and Better Stack have no connected provider tools. The Cloudflare tool
-cannot set the required jurisdiction header, and Neon cannot create an
-organization. These account actions remain manual rather than falling back to
-browser automation.
-
-## Database roles
-
-Use the Neon direct endpoint as `MIGRATION_DATABASE_URL`. Create a login role
-named `blogfactory_runtime`, set its password interactively, then run the
-following as the Neon owner after migrations. Use its pooled endpoint as
-`DATABASE_URL` for API and worker.
-
-```sql
-GRANT CONNECT ON DATABASE neondb TO blogfactory_runtime;
-GRANT USAGE ON SCHEMA public TO blogfactory_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO blogfactory_runtime;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO blogfactory_runtime;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO blogfactory_runtime;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO blogfactory_runtime;
+```text
+Cloudflare -> Caddy -> web/Nginx -> API
+                         |          |
+                         |          +-> PostgreSQL 18
+                         +----------+-> worker, RSS scheduler, backup scheduler
+                                              |
+                                              +-> R2 EU
 ```
 
-## Build and deploy
+Only the web port is published. PostgreSQL uses the private Compose network and
+a named volume mounted at `/var/lib/postgresql`, the required persistent mount
+for the official PostgreSQL 18 image.
 
-1. Run **Build Cloud shadow images** for the approved private commit. Copy the
-   two `ghcr.io/...@sha256:...` values from its summary; tags alone are not an
-   accepted deployment input.
-2. Import `deploy/cloud/compose.yaml` into Dokploy and populate every value from
-   `.env.example` in Dokploy secrets. Use a read-only GHCR package credential.
-3. Keep `BLOGFACTORY_BIND_ADDRESS=127.0.0.1` and access port 8080 over SSH for
-   Phase A. Temporarily enable signup only while bootstrapping the isolated test
-   administrator, then disable it and redeploy.
-4. Phase B may set the bind address to `0.0.0.0` only after the firewall accepts
-   Cloudflare proxy ranges and `pilot-origin.blogfactory.io` is protected by
-   Cloudflare Access. Production hostnames and origins do not change.
+## Manual gate: restore SSH access
 
-## Phase A evidence
-
-Record the commit and image digests beside every result. Do not record URLs
-containing tokens, environment values, prompts, content, or provider responses.
+The existing key is not accepted for `root`, `deploy`, or `ubuntu`. Before any
+server change, open the Hetzner web console and add the contents of
+`~/.ssh/blogfactory_cloud.pub` to `/home/deploy/.ssh/authorized_keys`:
 
 ```bash
-docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}'
-docker inspect --format '{{.Name}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' blogfactory-cloud-shadow-api-1 blogfactory-cloud-shadow-worker-1
-psql "$DATABASE_URL" -X -c "select usename,state,count(*) from pg_stat_activity where datname=current_database() group by 1,2 order by 1,2"
-psql "$DATABASE_URL" -X -c "select pg_database_size(current_database()) as bytes,pg_size_pretty(pg_database_size(current_database())) as size"
-PILOT_BASE_URL=http://127.0.0.1:8080 bun run scripts/cloud-pilot-replay.ts
-docker restart blogfactory-cloud-shadow-api-1
-docker kill blogfactory-cloud-shadow-worker-1
-docker start blogfactory-cloud-shadow-worker-1
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+touch /home/deploy/.ssh/authorized_keys
+chown deploy:deploy /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Run the replay once on the VM and once from Istanbul. Export Neon compute and
-transfer plus R2 storage/Class A/Class B metrics before and after the fixed
-replay. For recovery, write timestamped markers, create a PITR branch at a known
-marker, and restore an encrypted custom-format `pg_dump` into a second empty
-disposable database. Verify migration ledger, row counts, login, site access,
-MCP's exact 22-tool catalog, an R2 upload/readback, and worker stale recovery.
+Paste the public key as one new line, then verify from the Mac:
 
-Promote only when API p95 is below 500 ms, VM CPU/memory and pooled connections
-remain below 70%, oldest runnable work drains below five minutes, full restore
-is below eight hours, no secret/isolation failure occurs, and measured Phase A
-spend is at most $35 pre-tax. Phase B remains isolated and must stay below $45
-pre-tax monthly.
+```bash
+ssh -i ~/.ssh/blogfactory_cloud deploy@188.245.220.143
+```
 
-On failure, save only redacted evidence, stop the stack, and revoke/delete the
-shadow DNS/Access entries, VM, Neon organization/project, R2 bucket/tokens,
-GHCR credential, and monitoring URLs. Production Vercel remains the rollback.
+Do not enable password authentication. Confirm Hetzner Backup is enabled and
+restrict SSH to the operator IP before continuing.
+
+## Secrets and immutable images
+
+Generate URL-safe database passwords and a separate age identity. Put the
+values in Dokploy and the password manager; never put them in Git or shell
+history.
+
+```bash
+openssl rand -hex 32
+openssl rand -hex 32
+umask 077
+mkdir -p /root/.config/blogfactory-backup
+docker run --rm --entrypoint age-keygen \
+  -v /root/.config/blogfactory-backup:/keys \
+  "$BLOGFACTORY_BACKUP_IMAGE" -o /keys/age.key
+docker run --rm --entrypoint age-keygen \
+  -v /root/.config/blogfactory-backup:/keys:ro \
+  "$BLOGFACTORY_BACKUP_IMAGE" -y /keys/age.key
+```
+
+Use the two random values as `POSTGRES_OWNER_PASSWORD` and
+`POSTGRES_RUNTIME_PASSWORD`. Use the printed `age1...` value as
+`BACKUP_AGE_RECIPIENT`; keep the private identity root-only at the path in
+`BACKUP_AGE_IDENTITY_FILE` and escrow it offline.
+
+Run **Publish Cloud images** for the approved commit. Copy all three immutable
+references from its summary:
+
+- `BLOGFACTORY_API_IMAGE=ghcr.io/...@sha256:...`
+- `BLOGFACTORY_WEB_IMAGE=ghcr.io/...@sha256:...`
+- `BLOGFACTORY_BACKUP_IMAGE=ghcr.io/...@sha256:...`
+
+Also pin `POSTGRES_IMAGE` and `RSS_SCHEDULER_IMAGE` by digest. The VM needs only
+a read-only GHCR package credential for pulls. Populate `.env.example` in the
+host/Dokploy secret store. Keep the current EU R2 endpoint, bucket, access key,
+and secret unchanged; do not print them during deployment.
+
+`DATABASE_URL` and `MIGRATION_DATABASE_URL` are deliberately absent from the
+host environment. Compose constructs an owner URL for one-shot migrations and
+a runtime URL for API/worker. Passwords therefore must remain URL-safe hex.
+
+## Rehearsal
+
+Production stays on Neon throughout rehearsal.
+
+1. Confirm at least 20 GB free and record the current image digests, queue
+   counts, 31-table list, row counts, migration count/checksums, and R2 object
+   baseline without logging secrets.
+2. Take a read-only custom-format dump from the Neon direct endpoint:
+
+   ```bash
+   umask 077
+   rehearsal_dir=$(mktemp -d)
+   pg_dump "$NEON_DIRECT_URL" --format=custom --no-owner --no-acl \
+     --file="$rehearsal_dir/neon.dump"
+   ```
+
+3. Use a separate Compose project and volume:
+
+   ```bash
+   export COMPOSE_PROJECT_NAME=blogfactory-rehearsal
+   export BLOGFACTORY_SHADOW_PORT=18080
+   export BACKUP_R2_PREFIX=database-backups/rehearsal
+   docker compose up -d postgres
+   docker compose run --rm db-init
+   docker compose exec -T postgres pg_restore --exit-on-error --no-owner --no-acl \
+     -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" < "$rehearsal_dir/neon.dump"
+   docker compose run --rm db-init
+   docker compose run --rm migrate
+   docker compose up -d api worker web rss-scheduler
+   ```
+
+4. Compare every public-table row count and `schema_migrations` checksum with
+   the Neon snapshot. Verify `/api/health`, `/api/ready`, OAuth metadata,
+   unauthenticated MCP 401/Bearer, authenticated 22-tool discovery, tenant/site
+   isolation, R2 image readback, and stored credential decryption with the
+   unchanged `API_KEY_ENCRYPTION_SECRET`.
+5. Run the real backup and restore drill:
+
+   ```bash
+   docker compose run --rm --entrypoint /usr/local/bin/backup.sh backup
+   docker compose run --rm --entrypoint /usr/local/bin/restore-check.sh backup
+   ```
+
+6. Recreate the PostgreSQL container and reboot the VM. The named volume must
+   retain the database. Kill one claimed job; the worker must recover it within
+   about one to two minutes. Trigger two RSS ticks and confirm the feed lease
+   prevents parallel ownership.
+7. Remove only the rehearsal project after all evidence is exported:
+
+   ```bash
+   docker compose down --volumes
+   ```
+
+Do not start cutover unless every rehearsal check passes.
+
+## Production cutover
+
+Target maintenance window: at most 30 minutes.
+
+1. Confirm disk, Hetzner Backup, immutable digests, root-only age identity, and
+   the latest successful rehearsal restore.
+2. Record active campaign/job counts. Put the current app in maintenance mode,
+   then stop API, worker, RSS, and every scheduler that can write.
+3. Take the final Neon custom dump, encrypt it with the backup age recipient,
+   upload it to the R2 backup prefix, and verify both HEAD and full SHA-256
+   readback before proceeding.
+4. Start local PostgreSQL and restore:
+
+   ```bash
+   export COMPOSE_PROJECT_NAME=blogfactory-cloud
+   docker compose up -d postgres
+   docker compose run --rm db-init
+   docker compose exec -T postgres pg_restore --exit-on-error --no-owner --no-acl \
+     -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" < "$cutover_dir/neon.dump"
+   docker compose run --rm db-init
+   docker compose run --rm migrate
+   ```
+
+5. Compare all public-table row counts and migration checksums with the frozen
+   Neon snapshot. Confirm `pgcrypto` exists. Confirm `blogfactory_runtime` is
+   login-only, cannot create a database/role/table, and has only connect, schema
+   usage, table DML, and sequence usage.
+6. Remove every Neon URL from runtime secrets, then start the stack:
+
+   ```bash
+   docker compose up -d
+   docker compose ps
+   ```
+
+7. Complete public acceptance before leaving maintenance mode. The API is
+   inline; the worker polls every 60 seconds with 1/2/1 bounds; RSS checks every
+   1,800 seconds; backup runs immediately and every six hours.
+8. Remove runtime access to Neon and suspend its compute. Keep the project
+   unchanged for 14 days. Deletion after the audit requires separate explicit
+   approval.
+
+## Backup behavior
+
+The backup container writes no persistent plaintext dump. It creates a custom
+dump in a temporary directory, encrypts it with age, records the dump size,
+encrypted SHA-256, migration fingerprint, and all public table row counts, then
+uploads and fully reads back the dump and manifest before touching its success
+heartbeat.
+
+One six-hour dump is copied, not regenerated, into these retention tiers:
+
+```text
+database-backups/six-hour/  28 copies
+database-backups/daily/      7 copies
+database-backups/weekly/     4 copies
+database-backups/monthly/    3 copies
+```
+
+On the first Sunday of each month it restores the latest encrypted dump into a
+temporary database and compares migration and row-count evidence. A failure is
+recorded in `restore-failed`; the container healthcheck remains unhealthy while
+scheduled backups continue.
+
+## Rollback and acceptance
+
+- Application failure: select the previous API/web/backup digests.
+- Failure before local writes resume: point the stopped stack back to the frozen
+  Neon snapshot.
+- Failure after local writes resume: take a fresh local encrypted dump before
+  restoring into any replacement target.
+- Lost VM/disk: rebuild from GHCR and restore the latest R2 dump. RPO is six
+  hours; host-loss recovery target is four hours.
+- Vercel is not a database rollback target.
+
+Acceptance requires public health/readiness, OAuth and MCP behavior, exact
+22-tool discovery, role separation, R2 image and encrypted backup readback,
+scratch restore with all row counts, job termination recovery, RSS lease
+behavior, container/VM restart persistence, no OOM/restart in the first 24
+hours, and disk below 70%. Add a second database server only at the thresholds
+in the approved plan; do not add Redis, PgBouncer, WAL/PITR, Kubernetes, or a
+new provider here.
