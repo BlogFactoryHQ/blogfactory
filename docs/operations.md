@@ -20,13 +20,22 @@ Never run PostgreSQL integration tests against shared production Neon. Use a dis
 
 ## Production delivery
 
-The Vercel project `editorial-flow-main` is deployed from the private `BlogFactoryHQ/blogfactory-cloud` repository. That repository merges this public core through a fail-closed sync workflow, validates it, and performs the production deployment through private CI. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
+The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core
+through a fail-closed sync workflow, validates it, and publishes API, web, and
+backup images to GHCR. Production runs those images by immutable digest on the
+Hetzner CX23 Compose stack. GitHub Actions does not SSH-deploy or automatically
+deploy production to Vercel.
+
+Caddy and Nginx route these backend surfaces to the private Hono container:
 
 - `/api/*`
 - `/mcp`
 - `/.well-known/oauth-protected-resource`
 
-The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare-fronted public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment on Vercel. The production host split is:
+The private `BlogFactoryHQ/blogfactory-marketing` repository owns the
+Cloudflare-fronted public apex. This repository owns the open-source core, while
+private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API
+deployment on Hetzner. The production host split is:
 
 - [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
 - [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.
@@ -38,24 +47,26 @@ Release flow:
 1. Preserve unrelated worktree changes and inspect the intended diff.
 2. Run checks proportional to the change.
 3. Commit and push `main` when shipping is authorized.
-4. Verify that the private Cloud repository contains the public commit, then wait for its `Deploy Cloud` run and Vercel deployment to become Ready.
-5. Confirm the production aliases are attached and `aliasError` is empty.
-6. Verify both the public one-pager marker and the exact app/API/MCP routes affected by the change.
+4. Verify that the private Cloud repository contains the public commit, then wait for its `Publish Cloud images` run.
+5. Copy all three `ghcr.io/...@sha256:...` values from the workflow summary and update the host only through the private manual runbook.
+6. Verify PostgreSQL migration/runtime role separation and the exact app/API/MCP routes affected by the change.
 
-Rollback is promotion of the last Ready Vercel deployment. Keep database changes additive so application rollback remains possible.
+Application rollback selects the previous API, web, and backup digests. Database
+rollback restores a verified encrypted R2 dump. Vercel is not a stateful
+rollback target because its database view may be stale. Keep migrations additive
+so image rollback remains possible.
 
 ## Background work
 
-The Cloudflare Worker runs bounded campaign, SEO, and deferred-image drains every six hours. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch. Search Console refresh is manual. Every trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
+The Cloud API uses `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker uses
+`BACKGROUND_EXECUTION_MODE=worker` with a 60-second poll and the existing 1/2/1
+campaign/SEO/image bounds. A local scheduler checks due RSS feeds every 30
+minutes. Cloudflare and GitHub keep their existing six-hour protected drains as
+external fallbacks. PostgreSQL atomic claims, stale recovery, retries, and feed
+leases prevent duplicate ownership; see the [RSS scheduler guide](rss-scheduler.md).
 
-The isolated Cloud pilot may run `npm run worker --workspace=server` with
-`BACKGROUND_EXECUTION_MODE=worker`. In that mode API requests only enqueue SEO
-and deferred-image work, campaign routes leave running items for the worker,
-and one persistent process drains campaigns, SEO, and deferred images. The
-default is `inline`, so current Vercel and community behavior is unchanged.
-Polling and bounded concurrency are configurable through the
-`BACKGROUND_WORKER_*` environment values; do not enable more than one worker
-until the domain claim and stale-recovery checks have passed for that topology.
+Do not enable more than one persistent worker until the domain claim and
+stale-recovery checks have passed for that topology.
 
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
@@ -87,6 +98,7 @@ Production boundary checks:
 
 ```bash
 curl -i https://app.blogfactory.io/api/health
+curl -i https://app.blogfactory.io/api/ready
 curl -i https://blogfactory.io/
 curl -i https://blogfactory.io/api/health
 curl -i https://blogfactory.io/mcp
@@ -96,7 +108,8 @@ curl -i https://blogfactory.io/.well-known/oauth-protected-resource
 Expected results:
 
 - Public root: HTTP 200 with the current marketing marker and working waitlist destination.
-- App and compatibility `/api/health`: HTTP 200.
+- App `/api/health` and `/api/ready`: HTTP 200.
+- Host port 5432 is not published or reachable externally.
 - Unauthenticated `/mcp`: HTTP 401 with `WWW-Authenticate: Bearer`, never the React shell.
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
 - Authenticated capability response: exactly 22 tools from the server catalog.
