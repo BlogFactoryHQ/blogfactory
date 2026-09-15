@@ -1,0 +1,7 @@
+pilot-origin.blogfactory.io {
+    reverse_proxy 127.0.0.1:18080
+}
+
+app.blogfactory.io {
+    reverse_proxy 127.0.0.1:18080
+}

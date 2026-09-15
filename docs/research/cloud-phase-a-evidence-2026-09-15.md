@@ -1,7 +1,9 @@
 # BlogFactory Cloud Phase A evidence — 2026-09-15
 
-Status: **in progress**. This is an isolated shadow deployment; it is not a
-production cutover or a Phase B promotion record.
+Status: **production cutover completed**. After the isolated checks, the user
+explicitly replaced the synthetic Phase A gate with an immediate migration of
+the existing production data. `app.blogfactory.io` now serves the Hetzner stack
+through Cloudflare; Vercel remains a ready DNS rollback target.
 
 ## Pinned inputs
 
@@ -17,7 +19,8 @@ production cutover or a Phase B promotion record.
 
 - Shadow web binds to `127.0.0.1:18080`; the public VM address cannot connect
   to port 18080.
-- Existing Caddy and port 8080 service were left unchanged.
+- The pre-existing Caddy site and port 8080 service were preserved. BlogFactory
+  uses a separate Caddy include and loopback port 18080.
 - API `/api/health`: 200
 - API `/api/ready`: 200
 - Unauthenticated `/mcp`: 401
@@ -37,6 +40,32 @@ production cutover or a Phase B promotion record.
 - R2 head/write/read/delete round-trip passed; the disposable check object was
   deleted.
 
+## Production cutover
+
+- Final source and target row counts matched after writes were briefly frozen:
+  15 users, 6 sites, 764 posts, 1,396 revisions, 1,803 jobs, 2,448 image
+  assets, 2,201 image generation requests, and 38 migrations.
+- The live database is `blogfactory_prod_live`. Migration traffic uses the
+  direct owner endpoint; API and worker traffic use the pooled
+  `blogfactory_runtime` role. That role has table DML but no elevated role or
+  database-creation privileges.
+- 2,372 production R2 objects totaling 454,581,351 bytes were copied to the EU
+  bucket. Source and destination counts/bytes matched, and five object SHA-256
+  comparisons passed.
+- The final 14,482,928-byte encrypted PostgreSQL backup was read back from the
+  EU bucket after upload.
+- Public checks passed at `https://app.blogfactory.io`: homepage 200, health
+  200, readiness 200, OAuth resource metadata 200, and unauthenticated MCP 401
+  with a Bearer challenge.
+- An authenticated public MCP smoke test passed the exact 22-tool catalog and
+  a one-site token returned only that site.
+- API, worker, and web run by immutable digest, stayed healthy with zero
+  restarts/OOMs, and used approximately 87 MiB, 62 MiB, and 3 MiB respectively
+  in the post-cutover sample.
+- Cloudflare record `app.blogfactory.io` is proxied to the Hetzner IPv4 origin.
+  Clean Vercel deployment `dpl_8K4ES5T71onaYLbN8kNXE73AahNp` was promoted as
+  the rollback deployment before the temporary cutover code was removed.
+
 ## Fixed-count latency
 
 | Source | Requests | Concurrency | Result | p50 | p95 | Max |
@@ -45,7 +74,8 @@ production cutover or a Phase B promotion record.
 | Istanbul over SSH tunnel | 2,000 | 10 | 2,000 HTTP 200 | 53.7 ms | 84.8 ms | 190.9 ms |
 
 The measured p95 values pass the Phase A `<500 ms` latency gate for the health
-replay. Application-shaped authenticated requests remain pending.
+replay. Authenticated MCP was verified during cutover; this table remains a
+health-only latency sample.
 
 ## Recovery checks completed
 
@@ -54,19 +84,13 @@ replay. Application-shaped authenticated requests remain pending.
   one-second poll.
 - API and worker remained free of OOM termination.
 
-## Pending before Phase A acceptance
+## Explicitly deferred
 
-- Confirm Hetzner VM backups are enabled.
 - Rotate the R2 credential disclosed during interactive setup and install the
-  replacement without placing it in chat or git.
-- Seed synthetic tenant/site/content/queue data and run authenticated workload
-  replay, isolation, claim/retry/stale-recovery, and MCP catalog checks.
-- Record Neon compute/transfer and R2 request/storage deltas.
-- Run encrypted portable dump, disposable restore, and application/row-count
-  verification.
-- Run PITR after temporarily enabling the required Neon plan.
-- Run the VM reboot check only after confirming the unrelated pre-existing
-  service on ports 80/443/8080 may be interrupted.
-- Record cumulative pre-tax spend and confirm it remains at or below $35.
-
-Phase B is not authorized by this evidence.
+  replacement without placing it in chat or git. The current credential is
+  restricted to the migrated EU bucket.
+- Better Stack was not configured because no account connection was available.
+- Neon Launch/PITR and synthetic replay were not run after the user explicitly
+  requested an immediate real-production cutover. Portable encrypted restore,
+  the pre-cutover Neon snapshot, live row-count verification, and Vercel/DNS
+  rollback remain available.
