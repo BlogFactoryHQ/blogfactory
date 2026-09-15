@@ -86,8 +86,10 @@ docker run --rm --network "$network" \
   -e MC_HOST_local=http://minioadmin:minioadmin123@minio:9000 \
   quay.io/minio/mc:latest mb local/blogfactory-backups >/dev/null
 
-docker run --rm --entrypoint age-keygen -v "$test_dir:/keys" "$backup_image" -o /keys/age.key >/dev/null
-recipient=$(docker run --rm --entrypoint age-keygen -v "$test_dir:/keys:ro" "$backup_image" -y /keys/age.key)
+docker run --rm --user "$(id -u):$(id -g)" --entrypoint age-keygen \
+  -v "$test_dir:/keys" "$backup_image" -o /keys/age.key >/dev/null
+recipient=$(docker run --rm --user "$(id -u):$(id -g)" --entrypoint age-keygen \
+  -v "$test_dir:/keys:ro" "$backup_image" -y /keys/age.key)
 chmod 600 "$test_dir/age.key"
 
 common_env="-e PGHOST=postgres -e PGDATABASE=blogfactory_prod_live -e PGUSER=blogfactory_owner -e PGPASSWORD=ownerpass -e S3_ENDPOINT=http://minio:9000 -e S3_ACCESS_KEY_ID=minioadmin -e S3_SECRET_ACCESS_KEY=minioadmin123 -e S3_BUCKET=blogfactory-backups -e S3_REGION=us-east-1 -e BACKUP_R2_PREFIX=database-backups"
