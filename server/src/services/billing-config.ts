@@ -75,6 +75,10 @@ export function isBillingSku(value: unknown): value is BillingSku {
   return typeof value === "string" && BILLING_SKUS.includes(value as BillingSku);
 }
 
+export function managedAiEnabled(env: NodeJS.ProcessEnv = process.env) {
+  return env.BLOGFACTORY_CLOUD === "true" && env.MANAGED_AI_ENABLED === "true";
+}
+
 export function cloudCheckoutEnabled(env: NodeJS.ProcessEnv = process.env, now = new Date()) {
   const launchAt = Date.parse(env.CLOUD_PUBLIC_LAUNCH_AT || "");
   return env.BLOGFACTORY_CLOUD === "true"

@@ -6,10 +6,10 @@ import { aiCreditAccounts, aiCreditGrants, aiCreditLedger, billingEntitlements, 
 import { ApiError, readJsonObject, requiredEnum } from "../http/error-contract.js";
 import { getUserId } from "../middleware/auth.js";
 import { ensureGlobalSettings, updateGlobalSettings } from "../services/user-settings.js";
-import { AI_CREDIT_PACK, BILLING_SKUS, PLAN_LIMITS, PAST_DUE_GRACE_MS, cloudCheckoutEnabled, isBillingSku, planForSku, productIdForSku, refundableCents, utcMonthStart, type AiPreference, type PlanLimits } from "../services/billing-config.js";
+import { AI_CREDIT_PACK, BILLING_SKUS, PLAN_LIMITS, PAST_DUE_GRACE_MS, cloudCheckoutEnabled, isBillingSku, managedAiEnabled, planForSku, productIdForSku, refundableCents, utcMonthStart, type AiPreference, type PlanLimits } from "../services/billing-config.js";
 import { appUrl, getPolarClient } from "../services/polar-client.js";
 import { enqueuePolarWebhook, reconcilePolarCustomer } from "../services/billing-webhooks.js";
-import { cloudEnforcementEnabled } from "../services/cloud-entitlements.js";
+import { cloudEnforcementEnabled, getCloudAccess } from "../services/cloud-entitlements.js";
 
 export const billingRoutes = new Hono();
 
@@ -17,7 +17,7 @@ function enabled() { return process.env.BLOGFACTORY_CLOUD === "true"; }
 
 billingRoutes.get("/state", async (c) => {
   const userId = getUserId(c);
-  const [entitlement, subscription, account, settings, nextGrant, eligibleRefunds, usageRows] = await Promise.all([
+  const [entitlement, subscription, account, settings, nextGrant, eligibleRefunds, usageRows, access] = await Promise.all([
     db.query.billingEntitlements.findFirst({ where: eq(billingEntitlements.userId, userId) }),
     db.query.billingSubscriptions.findFirst({ where: eq(billingSubscriptions.userId, userId), orderBy: desc(billingSubscriptions.providerModifiedAt) }),
     db.query.aiCreditAccounts.findFirst({ where: eq(aiCreditAccounts.userId, userId) }),
@@ -34,6 +34,7 @@ billingRoutes.get("/state", async (c) => {
       (SELECT COUNT(*) FROM feeds WHERE user_id = ${userId} AND is_active = TRUE) AS active_feeds,
       COALESCE((SELECT SUM(file_size_bytes) FROM image_assets WHERE user_id = ${userId}), 0) AS storage_bytes,
       (SELECT COUNT(*) FROM jobs WHERE user_id = ${userId} AND status = 'running') AS concurrency`),
+    getCloudAccess(userId),
   ]);
   const graceEndsAt = subscription?.status === "past_due" && subscription.pastDueAt
     ? new Date(subscription.pastDueAt.getTime() + PAST_DUE_GRACE_MS) : null;
@@ -45,12 +46,16 @@ billingRoutes.get("/state", async (c) => {
     : usage.manual_completed + usage.manual_reserved + usage.automated_completed + usage.automated_reserved;
   const draftLimit = effectivePlan === "advanced" ? limits?.monthlyAutomatedDrafts : limits?.monthlyDrafts;
   return c.json({
-    cloud_enforcement: cloudEnforcementEnabled(), checkout_enabled: cloudCheckoutEnabled(), plan: effectivePlan, subscription_state: subscription?.status || null,
+    cloud_enforcement: cloudEnforcementEnabled(), checkout_enabled: cloudCheckoutEnabled(), managed_ai_enabled: managedAiEnabled(),
+    write_access: access.allowed, access_reason: access.reason, plan: effectivePlan, subscription_state: subscription?.status || null,
     entitlement_source: entitlement?.source || null,
     period_start: subscription?.currentPeriodStart || null, period_end: subscription?.currentPeriodEnd || entitlement?.expiresAt || null,
     cancel_at_period_end: subscription?.cancelAtPeriodEnd || false, grace_ends_at: graceEndsAt,
     limits, usage,
-    warnings: { drafts_80_percent: typeof draftLimit === "number" && draftLimit > 0 && draftUsed / draftLimit >= 0.8 },
+    warnings: {
+      drafts_80_percent: typeof draftLimit === "number" && draftLimit > 0 && draftUsed / draftLimit >= 0.8,
+      drafts_limit_reached: typeof draftLimit === "number" && draftLimit > 0 && draftUsed >= draftLimit,
+    },
     ai_preference: settings.aiPreference as AiPreference,
     credits: { available: account?.availableCredits || 0, reserved: account?.reservedCredits || 0, debt: account?.debtCredits || 0, next_expiry: nextGrant?.expiresAt || null },
     eligible_refunds: eligibleRefunds.map((grant) => ({ grant_id: grant.id, purchased_at: grant.purchasedAt, remaining_credits: grant.remainingCredits, maximum_refund_cents: refundableCents(grant.remainingCredits) })),
@@ -61,6 +66,7 @@ billingRoutes.post("/checkout", async (c) => {
   if (!cloudCheckoutEnabled()) throw new ApiError(403, "forbidden", "Cloud checkout is not open yet");
   const body = await readJsonObject(c);
   if (!isBillingSku(body.sku)) throw new ApiError(400, "validation_error", `sku must be one of: ${BILLING_SKUS.join(", ")}`);
+  if (body.sku === AI_CREDIT_PACK.sku && !managedAiEnabled()) throw new ApiError(403, "forbidden", "Managed AI credits are not available yet");
   const productId = productIdForSku(body.sku);
   if (!productId) throw new ApiError(503, "service_unavailable", "This billing product is not configured");
   const userId = getUserId(c);
@@ -98,6 +104,7 @@ billingRoutes.post("/reconcile", async (c) => {
 billingRoutes.patch("/ai-preference", async (c) => {
   const body = await readJsonObject(c);
   const preference = requiredEnum(body, "preference", ["auto", "byo", "managed"] as const);
+  if (preference === "managed" && !managedAiEnabled()) throw new ApiError(400, "validation_error", "Managed AI is not available yet");
   await updateGlobalSettings(getUserId(c), { aiPreference: preference });
   return c.json({ ai_preference: preference });
 });

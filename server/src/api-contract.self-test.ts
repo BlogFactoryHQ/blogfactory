@@ -43,7 +43,7 @@ assert.deepEqual(await forbidden.json(), {
 const previousCloud = process.env.BLOGFACTORY_CLOUD;
 process.env.BLOGFACTORY_CLOUD = "true";
 const hostedConfig = await app.request("/api/auth/config");
-assert.deepEqual(await hostedConfig.json(), { signup_enabled: false, auth_provider: "workos" });
+assert.deepEqual(await hostedConfig.json(), { signup_enabled: false, auth_provider: "workos", cloud: true, managed_ai_enabled: false });
 const hostedLocalLogin = await app.request("/api/auth/login", { method: "POST" });
 assert.equal(hostedLocalLogin.status, 404);
 if (previousCloud === undefined) delete process.env.BLOGFACTORY_CLOUD;

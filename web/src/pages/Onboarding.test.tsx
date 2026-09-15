@@ -290,4 +290,18 @@ describe("Onboarding", () => {
     expect(document.body).toHaveTextContent("Draft only");
     expect(document.querySelector('a[href="/library/posts/post-1/preview"]')).toHaveTextContent("Review draft");
   });
+
+  it("asks for a Cloud plan before the first write instead of failing", async () => {
+    state.get.mockImplementation(async (path: string) => {
+      if (path === "/auth/config") return { signup_enabled: true, auth_provider: "workos", cloud: true, managed_ai_enabled: false };
+      if (path === "/billing/state") return { cloud_enforcement: true, write_access: false, plan: "none" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+
+    await renderOnboarding();
+
+    expect(document.body).toHaveTextContent("Choose a plan to set up your workspace");
+    expect(document.querySelector('a[href="/billing"]')).toHaveTextContent("See plans");
+    expect(document.querySelector("#site-url")).not.toBeInTheDocument();
+  });
 });

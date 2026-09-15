@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  CreditCard,
   ExternalLink,
   FileText,
   Globe2,
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
 import { BywordCard, FactoryDivider, FactoryMark, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import { preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import { useJobTracker, type JobTerminalResult, type TrackedJob } from "@/hooks/useJobTracker";
 import { useOpenRouterSetup } from "@/hooks/useOpenRouterSetup";
@@ -101,6 +103,13 @@ export default function Onboarding() {
   const [result, setResult] = useState<FirstDraftResult | null>(null);
 
   const site = createdSite || activeSite || sites[0] || null;
+  const { cloud } = useDeploymentConfig();
+  const billingQuery = useQuery({
+    queryKey: ["billing-state"],
+    queryFn: () => api.get<{ cloud_enforcement: boolean; write_access?: boolean; plan: string }>("/billing/state"),
+    enabled: cloud,
+    staleTime: 15_000,
+  });
   const digestQuery = useQuery({
     queryKey: ["control-plane-overview", site?.id],
     queryFn: () => api.get<WorkspaceDigest>(`/control-plane/overview?site_id=${encodeURIComponent(site!.id)}`),
@@ -240,6 +249,9 @@ export default function Onboarding() {
   };
 
   const currentIndex = activeStepIndex(step);
+  // Writes are paused without an active Cloud plan, so ask for a plan before a step fails.
+  const planRequired = Boolean(billingQuery.data?.cloud_enforcement && billingQuery.data.write_access === false)
+    && (step === "site" || step === "key" || step === "topic" || step === "review");
 
   return (
     <WorkspaceBackground className="min-h-screen px-4 py-6 sm:px-6 sm:py-10">
@@ -261,7 +273,17 @@ export default function Onboarding() {
           </ol>
         </header>
 
-        {step === "site" && (
+        {planRequired && (
+          <BywordCard className="mx-auto max-w-xl overflow-hidden p-6 text-center sm:p-8">
+            <IconTile icon={CreditCard} className="mx-auto h-12 w-12" />
+            <p className="type-kicker mt-5 text-byword-blue">Before you start</p>
+            <h1 className="mt-2 text-2xl font-semibold">{billingQuery.data?.plan === "none" ? "Choose a plan to set up your workspace" : "Your plan is no longer active"}</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">Adding your site, AI key, and first draft needs an active BlogFactory Cloud plan. Plans start at $5/month. Once your plan is active, you can continue setup from Billing.</p>
+            <Button asChild className="mt-6 h-12 w-full"><Link to="/billing">See plans <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+          </BywordCard>
+        )}
+
+        {!planRequired && step === "site" && (
           <BywordCard className="mx-auto max-w-xl overflow-hidden p-6 sm:p-8">
             <FactoryDivider className="-mx-8 -mt-8 mb-8 w-[calc(100%+4rem)]" />
             <div className="mb-8 text-center">
@@ -293,7 +315,7 @@ export default function Onboarding() {
           </BywordCard>
         )}
 
-        {step === "key" && site && (
+        {!planRequired && step === "key" && site && (
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
               <p className="type-kicker text-byword-blue">Step 2 · AI access</p>
@@ -319,7 +341,7 @@ export default function Onboarding() {
           </BywordCard>
         )}
 
-        {step === "topic" && site && (
+        {!planRequired && step === "topic" && site && (
           <BywordCard className="mx-auto max-w-3xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
               <p className="type-kicker text-byword-blue">Step 3 · First topic</p>
@@ -344,7 +366,7 @@ export default function Onboarding() {
           </BywordCard>
         )}
 
-        {step === "review" && site && (
+        {!planRequired && step === "review" && site && (
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
               <p className="type-kicker text-byword-blue">Step 4 · First draft</p>

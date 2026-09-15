@@ -10,7 +10,7 @@ import { updateGlobalSettings, updateSiteSettings } from "../services/user-setti
 import { readJsonObject, requiredString } from "../http/error-contract.js";
 import { consumeAuthRateLimit, hashAuthToken, newAuthToken, requestIp, sendResetEmail, sendVerificationEmail, verifyTurnstile } from "../services/auth-security.js";
 import { appUrl } from "../services/polar-client.js";
-import { cloudCheckoutEnabled } from "../services/billing-config.js";
+import { cloudCheckoutEnabled, managedAiEnabled } from "../services/billing-config.js";
 import { beginWorkosAuth, endWorkosSession, finishWorkosAuth, workosCloudEnabled } from "../services/workos-auth.js";
 
 export const authRoutes = new Hono();
@@ -31,6 +31,7 @@ export function publicSignupEnabled(
 authRoutes.get("/config", (c) => c.json({
   signup_enabled: publicSignupEnabled(),
   auth_provider: hostedCloud() ? "workos" : "local",
+  ...(hostedCloud() ? { cloud: true, managed_ai_enabled: managedAiEnabled() } : {}),
   ...(process.env.BLOGFACTORY_CLOUD === "true" && process.env.TURNSTILE_SITE_KEY ? { turnstile_site_key: process.env.TURNSTILE_SITE_KEY } : {}),
 }));
 

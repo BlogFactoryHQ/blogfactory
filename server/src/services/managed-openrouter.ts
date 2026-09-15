@@ -1,5 +1,5 @@
 import { getOpenRouterKey } from "./api-keys.js";
-import { creditsForProviderCost, reservationCredits } from "./billing-config.js";
+import { creditsForProviderCost, reservationCredits, managedAiEnabled } from "./billing-config.js";
 import { getCloudAccess } from "./cloud-entitlements.js";
 import { getGlobalSettings } from "./user-settings.js";
 import { getOpenRouterModels } from "./openrouter-models.js";
@@ -19,8 +19,7 @@ export async function resolveOpenRouterAccess(userId: string): Promise<OpenRoute
   const [settings, byoKey] = await Promise.all([getGlobalSettings(userId), getOpenRouterKey(userId)]);
   const preference = settings?.aiPreference || "auto";
   if ((preference === "auto" || preference === "byo") && byoKey) return { mode: "byo", apiKey: byoKey };
-  if (preference === "byo") throw new ApiError(400, "validation_error", "Add your OpenRouter API key before using BYO AI");
-  if (process.env.BLOGFACTORY_CLOUD !== "true" || process.env.MANAGED_AI_ENABLED !== "true") throw new ApiError(503, "service_unavailable", "Managed AI is not enabled");
+  if (preference === "byo" || !managedAiEnabled()) throw new ApiError(400, "ai_key_required", "Add your OpenRouter API key in Settings to generate content");
   const apiKey = process.env.OPENROUTER_MANAGED_API_KEY?.trim();
   if (!apiKey) throw new ApiError(503, "service_unavailable", "Managed AI is not configured");
   const access = await getCloudAccess(userId, new Date(), true);

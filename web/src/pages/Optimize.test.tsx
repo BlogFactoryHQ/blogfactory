@@ -9,7 +9,7 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: t
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-async function renderDialog(oauthEnabled: boolean) {
+async function renderDialog(oauthEnabled: boolean, cloud = false) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -17,6 +17,7 @@ async function renderDialog(oauthEnabled: boolean) {
     open
     integration={null}
     oauthEnabled={oauthEnabled}
+    cloud={cloud}
     activeSiteDomain="example.com"
     onClose={() => {}}
     onOAuth={async () => {}}
@@ -45,6 +46,15 @@ describe("Search Console connection options", () => {
     expect(document.body).toHaveTextContent("Alternative: service account JSON (no OAuth)");
     expect(document.body).toHaveTextContent("GOOGLE_SEARCH_CONSOLE_CLIENT_ID");
     expect(document.body).toHaveTextContent("A service account is a Google identity for this BlogFactory server");
+  });
+
+  it("keeps self-hosted admin steps out of BlogFactory Cloud", async () => {
+    await renderDialog(false, true);
+
+    expect(document.body).toHaveTextContent("Continue with Google is not available on BlogFactory Cloud yet");
+    expect(document.body).not.toHaveTextContent("GOOGLE_SEARCH_CONSOLE_CLIENT_ID");
+    expect(document.body).not.toHaveTextContent("docker compose");
+    expect(document.querySelector("details")?.hasAttribute("open")).toBe(true);
   });
 
   it("offers Google sign-in when instance OAuth is configured", async () => {

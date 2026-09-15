@@ -357,7 +357,7 @@ export default function Settings() {
   const { data: textModels = [], isLoading: textModelsLoading } = useTextModels();
   const { data: billingState } = useQuery({
     queryKey: ["billing-state"],
-    queryFn: () => api.get<{ ai_preference: "auto" | "byo" | "managed"; credits: { available: number } }>("/billing/state"),
+    queryFn: () => api.get<{ ai_preference: "auto" | "byo" | "managed"; managed_ai_enabled?: boolean; credits: { available: number } }>("/billing/state"),
   });
   const saveAiPreference = useMutation({
     mutationFn: (preference: "auto" | "byo" | "managed") => api.patch("/billing/ai-preference", { preference }),
@@ -369,6 +369,10 @@ export default function Settings() {
     const section = searchParams.get("section");
     if (section) setActiveSection(section);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (activeSection === "ai-mode" && billingState && !billingState.managed_ai_enabled) setActiveSection("api-keys");
+  }, [activeSection, billingState]);
 
   const modelMatchesFilters = useCallback((model: LiveImageModel | LiveTextModel) => {
     const query = modelSearch.trim().toLowerCase();
@@ -806,7 +810,8 @@ export default function Settings() {
 
   const settingsSections = [
     { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
-    { id: "ai-mode", title: "AI Mode", description: "Automatic, managed, BYO", icon: Brain },
+    // AI Mode only matters when Managed AI can actually serve requests; otherwise BYO OpenRouter is the only path.
+    ...(billingState?.managed_ai_enabled ? [{ id: "ai-mode", title: "AI Mode", description: "Automatic, managed, BYO", icon: Brain }] : []),
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
@@ -841,7 +846,7 @@ export default function Settings() {
         </nav>
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "ai-mode" && (
+          {activeSection === "ai-mode" && billingState?.managed_ai_enabled && (
             <BywordCard>
               <SectionHeader icon={Brain} title="AI provider mode" description="Choose how BlogFactory authenticates and bills AI calls." />
               <div className="grid gap-3 p-6 md:grid-cols-3">
