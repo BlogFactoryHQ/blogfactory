@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import { SourceType } from "@/components/content/GenerationProgress";
 import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import {
@@ -374,6 +375,14 @@ export default function ContentCreator() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  const { managedAiEnabled } = useDeploymentConfig();
+  const openRouterKeyStatus = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => api.get<{ hasOpenrouterKey: boolean; openrouterCredentialStatus?: string }>("/settings/api-keys"),
+    staleTime: 60_000,
+  });
+  const needsOpenRouterKey = !managedAiEnabled && Boolean(openRouterKeyStatus.data)
+    && (!openRouterKeyStatus.data!.hasOpenrouterKey || openRouterKeyStatus.data!.openrouterCredentialStatus === "undecryptable");
   const seoPlanParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
@@ -537,6 +546,12 @@ export default function ContentCreator() {
   };
 
   const showGenerationError = (error: unknown, fallback: string) => {
+    if (error instanceof ClientApiError && error.code === "ai_key_required") {
+      toast.error(error.message, { action: { label: "Add OpenRouter key", onClick: () => navigate("/control/article-settings?section=api-keys") } });
+      return;
+    }
+    // Plan-required responses already raise the app-wide "See plans" prompt.
+    if (error instanceof ClientApiError && error.billingUrl) return;
     if (error instanceof ClientApiError && error.code === "managed_ai_credits_required") {
       toast.error("Managed AI credits are required. You can buy credits or switch to your own OpenRouter key.", { action: { label: "Buy credits", onClick: () => navigate("/billing") } });
       return;
@@ -969,6 +984,13 @@ export default function ContentCreator() {
         title="Create Content"
         description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
       />
+
+      {needsOpenRouterKey && (
+        <div role="alert" className="mx-auto mb-8 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p><strong>Add your OpenRouter key to generate drafts.</strong> BlogFactory uses your own OpenRouter account for AI generation.</p>
+          <Button asChild size="sm" variant="outline"><Link to="/control/article-settings?section=api-keys">Add OpenRouter key</Link></Button>
+        </div>
+      )}
 
       <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
         <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">

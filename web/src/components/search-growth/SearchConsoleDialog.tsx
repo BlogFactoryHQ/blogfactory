@@ -35,6 +35,7 @@ export function SearchConsoleDialog({
   properties,
   onSelectProperty,
   isSelectingProperty,
+  cloud = false,
 }: {
   open: boolean;
   integration: SearchConsoleIntegration | null;
@@ -48,6 +49,7 @@ export function SearchConsoleDialog({
   properties: SearchConsoleProperty[];
   onSelectProperty: (propertyUrl: string) => Promise<void>;
   isSelectingProperty: boolean;
+  cloud?: boolean;
 }) {
   const [propertyUrl, setPropertyUrl] = useState("");
   const [serviceAccountJson, setServiceAccountJson] = useState("");
@@ -117,6 +119,10 @@ export function SearchConsoleDialog({
                   Continue with Google
                 </Button>
               </>
+            ) : cloud ? (
+              <div className="mt-4 rounded-md border border-byword-border bg-muted/40 p-4 text-sm leading-6">
+                <strong>Continue with Google is not available on BlogFactory Cloud yet.</strong> Connect with a service account below instead. It gives the same read-only access.
+              </div>
             ) : (
               <div className="mt-4 space-y-4">
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
@@ -138,10 +144,10 @@ export function SearchConsoleDialog({
               </div>
             )}
           </div>
-          <details className="rounded-lg border border-byword-border p-4">
+          <details className="rounded-lg border border-byword-border p-4" open={cloud && !oauthEnabled ? true : undefined}>
             <summary className="cursor-pointer font-semibold text-foreground">Alternative: service account JSON (no OAuth)</summary>
             <div className="mt-4 space-y-3">
-              <p className="text-sm leading-6 text-muted-foreground">A service account is a Google identity for this BlogFactory server, not a person. Its downloaded JSON file contains the identity and private key. Keep that file secret and paste it only into your own instance.</p>
+              <p className="text-sm leading-6 text-muted-foreground">A service account is a Google identity for {cloud ? "BlogFactory" : "this BlogFactory server"}, not a person. Its downloaded JSON file contains the identity and private key. Keep that file secret and paste it only into {cloud ? "BlogFactory" : "your own instance"}.</p>
               <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
                 {serviceAccountSteps.map((step) => <li key={step}>{step}</li>)}
               </ol>

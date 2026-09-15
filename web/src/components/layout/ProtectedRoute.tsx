@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Clock, Loader2, LogOut, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FactoryMark } from "@/components/layout/BywordSurface";
+import { PlanRequiredNotice } from "@/components/billing/PlanRequiredNotice";
 
 function AccountStatusScreen({
   type,
@@ -28,7 +29,7 @@ function AccountStatusScreen({
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {rejected
-            ? reason || "Your BlogFactory beta access request was not approved."
+            ? reason || "Your BlogFactory access request was not approved."
             : "Your account has been created. An admin needs to approve your access before you can use BlogFactory."}
         </p>
         <Button variant="outline" className="mt-8" onClick={onSignOut}>
@@ -73,5 +74,5 @@ export function ProtectedRoute() {
     return <AccountStatusScreen type="rejected" reason={user.rejectedReason} onSignOut={signOut} />;
   }
 
-  return <Outlet />;
+  return <><PlanRequiredNotice /><Outlet /></>;
 }

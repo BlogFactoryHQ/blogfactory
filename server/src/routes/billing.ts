@@ -52,7 +52,10 @@ billingRoutes.get("/state", async (c) => {
     period_start: subscription?.currentPeriodStart || null, period_end: subscription?.currentPeriodEnd || entitlement?.expiresAt || null,
     cancel_at_period_end: subscription?.cancelAtPeriodEnd || false, grace_ends_at: graceEndsAt,
     limits, usage,
-    warnings: { drafts_80_percent: typeof draftLimit === "number" && draftLimit > 0 && draftUsed / draftLimit >= 0.8 },
+    warnings: {
+      drafts_80_percent: typeof draftLimit === "number" && draftLimit > 0 && draftUsed / draftLimit >= 0.8,
+      drafts_limit_reached: typeof draftLimit === "number" && draftLimit > 0 && draftUsed >= draftLimit,
+    },
     ai_preference: settings.aiPreference as AiPreference,
     credits: { available: account?.availableCredits || 0, reserved: account?.reservedCredits || 0, debt: account?.debtCredits || 0, next_expiry: nextGrant?.expiresAt || null },
     eligible_refunds: eligibleRefunds.map((grant) => ({ grant_id: grant.id, purchased_at: grant.purchasedAt, remaining_credits: grant.remainingCredits, maximum_refund_cents: refundableCents(grant.remainingCredits) })),

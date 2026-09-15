@@ -15,7 +15,7 @@ export type BillingState = {
   eligible_refunds: Array<{ grant_id: string; purchased_at: string; remaining_credits: number; maximum_refund_cents: number }>;
   limits: { sites: number | null; storageBytes: number | null; concurrency: number | null; activeFeeds: number | null; monthlyDrafts: number | null; monthlyAutomatedDrafts: number | null };
   usage: { sites: number; storage_bytes: number; concurrency: number; active_feeds: number; manual_completed: number; manual_reserved: number; automated_completed: number; automated_reserved: number };
-  warnings: { drafts_80_percent: boolean };
+  warnings: { drafts_80_percent: boolean; drafts_limit_reached?: boolean };
 };
 
 export const CLOUD_PLANS = [
@@ -25,4 +25,11 @@ export const CLOUD_PLANS = [
 
 export function requiresCloudPlan(state: BillingState | undefined) {
   return Boolean(state?.cloud_enforcement && !state.access_allowed);
+}
+
+// Checkout success alone never grants access; activation is confirmed only once the Polar webhook lands.
+export function isCheckoutActivated(state: BillingState | undefined, baselineCredits: number | null) {
+  if (!state) return false;
+  if (state.entitlement_source === "polar" && state.access_allowed) return true;
+  return baselineCredits !== null && state.credits.available > baselineCredits;
 }

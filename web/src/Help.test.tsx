@@ -11,7 +11,8 @@ describe("help center", () => {
     expect(["Getting Started", "Self-hosting", "MCP & Connections", "Content & Review", "CMS Draft Delivery", "Search Growth & Troubleshooting"].every((category) => text.includes(category))).toBe(true);
     expect(document.querySelector('input[placeholder*="MCP"]')).not.toBeNull();
     expect(text).toContain("Agents never publish live.");
-    expect(text).toContain("BlogFactory Cloud is coming soon");
+    expect(text).toContain("BlogFactory Cloud is the hosted service");
+    expect(text).toContain("Choose a plan and activate access");
     expect(text).toContain("Choose a supported deployment target");
     expect(text).toContain("A generation was interrupted by an API restart");
     expect(document.querySelectorAll('a[href="/docs/self-hosting"]')).not.toHaveLength(0);

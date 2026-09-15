@@ -12,6 +12,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     public details: ApiFieldError[] = [],
+    public billingUrl: string | null = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -26,6 +27,8 @@ export function authRedirectHref(pathname: string, search: string) {
   if (pathname === "/auth") return `/auth${search}`;
   return `/auth?returnTo=${encodeURIComponent(`${pathname}${search}`)}`;
 }
+
+export const PLAN_REQUIRED_EVENT = "blogfactory:plan-required";
 
 export function shouldRedirectAfterUnauthorized(apiPath: string) {
   return !apiPath.startsWith("/auth/");
@@ -83,7 +86,11 @@ class ApiClient {
             item && typeof item === "object" && "field" in item && typeof item.field === "string" && "message" in item && typeof item.message === "string",
           ))
         : [];
-      const apiError = new ApiError(message, resp.status, code, details);
+      const billingUrl = typeof envelope.billing_url === "string" && envelope.billing_url.startsWith("/") ? envelope.billing_url : null;
+      const apiError = new ApiError(message, resp.status, code, details, billingUrl);
+      if (resp.status === 403 && billingUrl) {
+        window.dispatchEvent(new CustomEvent(PLAN_REQUIRED_EVENT, { detail: { billingUrl } }));
+      }
       if (resp.status === 401) {
         this.setToken(null);
         if (shouldRedirectAfterUnauthorized(path)) {

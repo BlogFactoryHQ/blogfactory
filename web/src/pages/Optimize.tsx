@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchConsoleDialog } from "@/components/search-growth/SearchConsoleDialog";
 import { useSearchConsole, useSearchConsoleToolkit } from "@/hooks/useSearchConsole";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import {
   ContentSnapshot,
   OptimizeAnalysis,
@@ -140,6 +141,7 @@ export function OptimizePanel() {
   const [params, setParams] = useSearchParams();
   const { activeSite } = useSites();
   const { integration, oauthEnabled, stats, isLoading, saveIntegration, testIntegration, deleteIntegration, sync, startOAuth, properties, selectProperty } = useSearchConsole();
+  const { cloud } = useDeploymentConfig();
   const { inspectBatch } = useSearchConsoleToolkit();
   const { pages, isLoading: isLoadingPages, analyze, markOptimized } = useOptimize("all");
   const { integrations: indexingIntegrations, submitUrls } = useIndexing();
@@ -529,6 +531,7 @@ export function OptimizePanel() {
         open={connectOpen}
         integration={integration}
         oauthEnabled={oauthEnabled}
+        cloud={cloud}
         activeSiteDomain={activeSite?.domain || ""}
         onClose={() => setConnectOpen(false)}
         onOAuth={async (propertyUrl) => {

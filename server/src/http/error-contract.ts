@@ -12,6 +12,7 @@ export type ApiErrorCode =
   | "payload_too_large"
   | "rate_limited"
   | "managed_ai_credits_required"
+  | "ai_key_required"
   | "plan_quota_reached"
   | "upstream_failure"
   | "service_unavailable"

@@ -72,7 +72,7 @@ export default function AdminUsers() {
     <div className="p-6">
       <PageHeader
         title="Admin Users"
-        description="Approve beta testers, manage admin access, and review API key setup status."
+        description="Approve accounts, manage admin access, and review API key setup status."
       />
 
       <Card className="mt-6">

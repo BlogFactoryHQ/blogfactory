@@ -41,7 +41,7 @@ async function settleWith(executor: QuotaExecutor, reservationId: string, comple
 export async function reserveDraftQuota(userId: string, origin: DraftOrigin, operationKey: string) {
   if (!cloudEnforcementEnabled()) return null;
   const access = await getCloudAccess(userId);
-  if (!access.allowed) throw new ApiError(403, "forbidden", "An active Cloud plan is required");
+  if (!access.allowed) throw new ApiError(403, "forbidden", "An active BlogFactory Cloud plan is required for this action");
   const limit = access.plan === "cloud" ? access.limits.monthlyDrafts : origin === "automated" ? access.limits.monthlyAutomatedDrafts : null;
   if (limit === null) return null;
   return db.transaction((tx) => reserveWith(tx, userId, origin, operationKey, limit, access.plan));
@@ -55,7 +55,7 @@ export async function settleDraftQuota(reservationId: string | null, completed: 
 export async function withDraftQuota<T>(userId: string, origin: DraftOrigin, operationKey: string, create: (executor: QuotaExecutor) => Promise<T>) {
   if (!cloudEnforcementEnabled()) return create(db);
   const access = await getCloudAccess(userId);
-  if (!access.allowed) throw new ApiError(403, "forbidden", "An active Cloud plan is required");
+  if (!access.allowed) throw new ApiError(403, "forbidden", "An active BlogFactory Cloud plan is required for this action");
   const limit = access.plan === "cloud" ? access.limits.monthlyDrafts : origin === "automated" ? access.limits.monthlyAutomatedDrafts : null;
   if (limit === null) return create(db);
   return db.transaction(async (tx) => {
