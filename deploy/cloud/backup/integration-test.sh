@@ -75,12 +75,16 @@ docker run -d --name "$minio_container" --network "$network" --network-alias min
   quay.io/minio/minio:latest server /data >/dev/null
 
 attempt=0
-until docker run --rm --network "$network" quay.io/minio/mc:latest alias set local http://minio:9000 minioadmin minioadmin123 >/dev/null 2>&1; do
+until docker run --rm --network "$network" \
+  -e MC_HOST_local=http://minioadmin:minioadmin123@minio:9000 \
+  quay.io/minio/mc:latest ready local >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   test "$attempt" -lt 30
   sleep 1
 done
-docker run --rm --network "$network" quay.io/minio/mc:latest mb local/blogfactory-backups >/dev/null
+docker run --rm --network "$network" \
+  -e MC_HOST_local=http://minioadmin:minioadmin123@minio:9000 \
+  quay.io/minio/mc:latest mb local/blogfactory-backups >/dev/null
 
 docker run --rm --entrypoint age-keygen -v "$test_dir:/keys" "$backup_image" -o /keys/age.key >/dev/null
 recipient=$(docker run --rm --entrypoint age-keygen -v "$test_dir:/keys:ro" "$backup_image" -y /keys/age.key)
