@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AI_CREDIT_PACK, PLAN_LIMITS, cloudCheckoutEnabled, creditsForProviderCost, planForSku, refundableCents, reservationCredits, skuForProductId, utcMonthStart } from "./billing-config.js";
+import { AI_CREDIT_PACK, PLAN_LIMITS, checkoutReturnPath, cloudCheckoutEnabled, creditsForProviderCost, planForSku, refundableCents, managedAiEnabled, reservationCredits, skuForProductId, utcMonthStart } from "./billing-config.js";
 
 assert.equal(planForSku("cloud_monthly"), "cloud");
 assert.equal(planForSku("advanced_yearly"), "advanced");
@@ -14,3 +14,9 @@ assert.equal(utcMonthStart(new Date("2026-12-31T23:59:59Z")), "2026-12-01");
 assert.equal(skuForProductId("prod_cloud", { POLAR_PRODUCT_CLOUD_MONTHLY: "prod_cloud" }), "cloud_monthly");
 assert.equal(cloudCheckoutEnabled({ BLOGFACTORY_CLOUD: "true", CLOUD_PUBLIC_SIGNUP: "false", CLOUD_PUBLIC_LAUNCH_AT: "2026-09-15T00:00:00Z" } as NodeJS.ProcessEnv, new Date("2026-09-16T00:00:00Z")), false);
 assert.equal(cloudCheckoutEnabled({ BLOGFACTORY_CLOUD: "true", CLOUD_PUBLIC_SIGNUP: "true", CLOUD_PUBLIC_LAUNCH_AT: "2026-09-15T00:00:00Z" } as NodeJS.ProcessEnv, new Date("2026-09-16T00:00:00Z")), true);
+assert.equal(managedAiEnabled({ BLOGFACTORY_CLOUD: "true", MANAGED_AI_ENABLED: "false" } as NodeJS.ProcessEnv), false);
+assert.equal(managedAiEnabled({ BLOGFACTORY_CLOUD: "false", MANAGED_AI_ENABLED: "true" } as NodeJS.ProcessEnv), false);
+assert.equal(managedAiEnabled({ BLOGFACTORY_CLOUD: "true", MANAGED_AI_ENABLED: "true" } as NodeJS.ProcessEnv), true);
+assert.equal(checkoutReturnPath("/onboarding"), "/onboarding");
+assert.equal(checkoutReturnPath("https://evil.example/onboarding"), "/billing");
+assert.equal(checkoutReturnPath(undefined), "/billing");

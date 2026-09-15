@@ -82,3 +82,13 @@ export function cloudCheckoutEnabled(env: NodeJS.ProcessEnv = process.env, now =
     && Number.isFinite(launchAt)
     && launchAt <= now.getTime();
 }
+
+export function managedAiEnabled(env: NodeJS.ProcessEnv = process.env) {
+  return env.BLOGFACTORY_CLOUD === "true" && env.MANAGED_AI_ENABLED === "true";
+}
+
+const CHECKOUT_RETURN_PATHS = ["/billing", "/onboarding"] as const;
+
+export function checkoutReturnPath(value: unknown) {
+  return CHECKOUT_RETURN_PATHS.find((path) => path === value) || "/billing";
+}

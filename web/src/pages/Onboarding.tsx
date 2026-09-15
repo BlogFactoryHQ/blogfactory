@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  CreditCard,
   ExternalLink,
   FileText,
   Globe2,
@@ -28,12 +29,13 @@ import { useOpenRouterSetup } from "@/hooks/useOpenRouterSetup";
 import { useSites, type Site } from "@/hooks/useSites";
 import type { LiveTextModel } from "@/hooks/useTextModels";
 import { api } from "@/lib/api";
+import { CLOUD_PLANS, requiresCloudPlan, type BillingState } from "@/lib/billing";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import { estimateGenerationCost } from "@/lib/cost-estimator";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { cn } from "@/lib/utils";
 
-type OnboardingStep = "site" | "loading" | "key" | "topic" | "review" | "generating" | "success";
+type OnboardingStep = "plan" | "site" | "loading" | "key" | "topic" | "review" | "generating" | "success";
 
 type FirstDraftPost = {
   id: string;
@@ -55,6 +57,7 @@ const ONBOARDING_IMAGE_CONFIG = {
   inline: { enabled: false, count: 0, resolution: "1K" as const },
 };
 
+const PLAN_STEP = { label: "Plan", icon: CreditCard };
 const STEP_META = [
   { label: "Site", icon: Globe2 },
   { label: "AI access", icon: KeyRound },
@@ -68,11 +71,13 @@ const errorMessage = (error: unknown, fallback: string) =>
 const formatCost = (value: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4 }).format(value);
 
-function activeStepIndex(step: OnboardingStep) {
-  if (step === "site" || step === "loading") return 0;
-  if (step === "key") return 1;
-  if (step === "topic") return 2;
-  return 3;
+function activeStepIndex(step: OnboardingStep, withPlan: boolean) {
+  const offset = withPlan ? 1 : 0;
+  if (step === "plan") return 0;
+  if (step === "site" || step === "loading") return offset;
+  if (step === "key") return offset + 1;
+  if (step === "topic") return offset + 2;
+  return offset + 3;
 }
 
 function elapsedSeconds(createdAt: string | null, completedAt: string | null) {
@@ -89,6 +94,8 @@ function firstDraftExcerpt(post: FirstDraftPost) {
 export default function Onboarding() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const returnedFromCheckout = searchParams.get("checkout") === "success";
   const { activeSite, sites, createSite, isCreating, isLoading: sitesLoading } = useSites();
   const [createdSite, setCreatedSite] = useState<Site | null>(null);
   const [step, setStep] = useState<OnboardingStep>("loading");
@@ -101,6 +108,20 @@ export default function Onboarding() {
   const [result, setResult] = useState<FirstDraftResult | null>(null);
 
   const site = createdSite || activeSite || sites[0] || null;
+  const billingQuery = useQuery({
+    queryKey: ["billing-state"],
+    queryFn: () => api.get<BillingState>("/billing/state"),
+    staleTime: 15_000,
+    refetchInterval: (query) => returnedFromCheckout && requiresCloudPlan(query.state.data) ? 3_000 : false,
+  });
+  const billingPending = billingQuery.isLoading;
+  const needsPlan = requiresCloudPlan(billingQuery.data);
+  const showPlanStep = Boolean(billingQuery.data?.cloud_enforcement);
+  const checkout = useMutation({
+    mutationFn: (sku: string) => api.post<{ url: string }>("/billing/checkout", { sku, return_path: "/onboarding" }),
+    onSuccess: ({ url }) => { window.location.href = url; },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const digestQuery = useQuery({
     queryKey: ["control-plane-overview", site?.id],
     queryFn: () => api.get<WorkspaceDigest>(`/control-plane/overview?site_id=${encodeURIComponent(site!.id)}`),
@@ -151,11 +172,28 @@ export default function Onboarding() {
   const activeJob = activeJobs[0] || null;
 
   useEffect(() => {
-    if (!sitesLoading && !site && step === "loading") setStep("site");
-  }, [site, sitesLoading, step]);
+    if (!returnedFromCheckout) return;
+    api.post("/billing/reconcile").catch(() => undefined).finally(() => {
+      queryClient.invalidateQueries({ queryKey: ["billing-state"] });
+    });
+  }, [queryClient, returnedFromCheckout]);
 
   useEffect(() => {
-    if (sitesLoading || !site || !digestQuery.data || result) return;
+    if (billingPending) return;
+    if (needsPlan) {
+      if (step !== "plan") setStep("plan");
+      return;
+    }
+    if (step === "plan") setStep("loading");
+  }, [billingPending, needsPlan, step]);
+
+  useEffect(() => {
+    if (billingPending || needsPlan) return;
+    if (!sitesLoading && !site && step === "loading") setStep("site");
+  }, [billingPending, needsPlan, site, sitesLoading, step]);
+
+  useEffect(() => {
+    if (billingPending || needsPlan || sitesLoading || !site || !digestQuery.data || result) return;
     if (digestQuery.data.outcomes.drafts > 0 || digestQuery.data.recent_outputs.length > 0) {
       navigate("/", { replace: true });
       return;
@@ -166,7 +204,7 @@ export default function Onboarding() {
       return;
     }
     if (openRouter.savedKeyCheck.isSuccess) setStep("topic");
-  }, [digestQuery.data, navigate, openRouter.savedKeyCheck.isError, openRouter.savedKeyCheck.isSuccess, result, site, sitesLoading, step]);
+  }, [billingPending, digestQuery.data, navigate, needsPlan, openRouter.savedKeyCheck.isError, openRouter.savedKeyCheck.isSuccess, result, site, sitesLoading, step]);
 
   const submitSite = async (event: FormEvent) => {
     event.preventDefault();
@@ -239,15 +277,16 @@ export default function Onboarding() {
     }
   };
 
-  const currentIndex = activeStepIndex(step);
+  const currentIndex = activeStepIndex(step, showPlanStep);
+  const stepMeta = showPlanStep ? [PLAN_STEP, ...STEP_META] : STEP_META;
 
   return (
     <WorkspaceBackground className="min-h-screen px-4 py-6 sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-4xl">
         <header className="mb-6 flex flex-col gap-5 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
           <FactoryMark />
-          <ol className="grid grid-cols-4 gap-1" aria-label="Onboarding progress">
-            {STEP_META.map((item, index) => {
+          <ol className={cn("grid gap-1", showPlanStep ? "grid-cols-5" : "grid-cols-4")} aria-label="Onboarding progress">
+            {stepMeta.map((item, index) => {
               const Icon = item.icon;
               const complete = index < currentIndex || step === "success";
               const active = index === currentIndex && step !== "success";
@@ -261,12 +300,42 @@ export default function Onboarding() {
           </ol>
         </header>
 
+        {step === "plan" && billingQuery.data && (
+          <BywordCard className="mx-auto max-w-3xl overflow-hidden">
+            <div className="border-b border-byword-border p-6 sm:p-8">
+              <p className="type-kicker text-byword-blue">Step 1 · Your plan</p>
+              <h1 className="mt-2 text-2xl font-semibold">{returnedFromCheckout ? "Confirming your payment" : "Choose a Cloud plan to start"}</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{returnedFromCheckout ? "Polar is confirming the payment. This page continues automatically once your plan is active." : "BlogFactory Cloud hosts your workspace, sites, and drafts. Pick a plan, then connect your first site."}</p>
+            </div>
+            <div className="space-y-5 p-6 sm:p-8">
+              {returnedFromCheckout && <div className="flex items-center gap-3 rounded-md border border-byword-border bg-muted/25 p-4 text-sm" role="status"><Loader2 className="h-4 w-4 shrink-0 animate-spin text-byword-blue" />Waiting for payment confirmation…</div>}
+              {billingQuery.data.access_reason === "past_due" && <p className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">Your last payment did not go through. <Link className="font-semibold underline" to="/billing">Update the payment method in Billing</Link> to continue.</p>}
+              {billingQuery.data.access_reason === "entitlement_expired" && <p className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">Your previous access has ended. Choose a plan to continue.</p>}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {CLOUD_PLANS.map((plan) => <div key={plan.name} className="rounded-md border border-byword-border bg-card p-5">
+                  <p className="text-lg font-semibold">{plan.name}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{plan.detail}</p>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <Button type="button" onClick={() => checkout.mutate(plan.monthlySku)} disabled={checkout.isPending || !billingQuery.data.checkout_enabled}>{plan.monthly}/month</Button>
+                    <Button type="button" variant="outline" onClick={() => checkout.mutate(plan.yearlySku)} disabled={checkout.isPending || !billingQuery.data.checkout_enabled}>{plan.yearly}/year</Button>
+                  </div>
+                </div>)}
+              </div>
+              {!billingQuery.data.checkout_enabled && <p className="text-sm text-muted-foreground">Cloud checkout is not open yet.</p>}
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>Taxes are calculated at checkout by Polar.{billingQuery.data.managed_ai_enabled ? "" : " AI usage is billed separately by your own OpenRouter key."}</span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => billingQuery.refetch()}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Refresh payment state</Button>
+              </div>
+            </div>
+          </BywordCard>
+        )}
+
         {step === "site" && (
           <BywordCard className="mx-auto max-w-xl overflow-hidden p-6 sm:p-8">
             <FactoryDivider className="-mx-8 -mt-8 mb-8 w-[calc(100%+4rem)]" />
             <div className="mb-8 text-center">
               <IconTile icon={Globe2} className="mx-auto h-12 w-12" />
-              <p className="type-kicker mt-5 text-byword-blue">Step 1 · Your site</p>
+              <p className="type-kicker mt-5 text-byword-blue">Step {showPlanStep ? 2 : 1} · Your site</p>
               <h1 className="mt-2 text-2xl font-semibold">What site are we writing for?</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">We only ask for information the product uses. BlogFactory reads the homepage and sitemap to find useful starting topics.</p>
             </div>
@@ -296,7 +365,7 @@ export default function Onboarding() {
         {step === "key" && site && (
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
-              <p className="type-kicker text-byword-blue">Step 2 · AI access</p>
+              <p className="type-kicker text-byword-blue">Step {showPlanStep ? 3 : 2} · AI access</p>
               <h1 className="mt-2 text-2xl font-semibold">Add OpenRouter to create your first draft</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">The key belongs to your account, is stored encrypted, and is tested here. You will not be sent to Settings.</p>
             </div>
@@ -322,7 +391,7 @@ export default function Onboarding() {
         {step === "topic" && site && (
           <BywordCard className="mx-auto max-w-3xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
-              <p className="type-kicker text-byword-blue">Step 3 · First topic</p>
+              <p className="type-kicker text-byword-blue">Step {showPlanStep ? 4 : 3} · First topic</p>
               <h1 className="mt-2 text-2xl font-semibold">Choose your first topic</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">These topics came from {site.domain}. Pick one or write your own—advanced controls can wait until after the first draft.</p>
             </div>
@@ -347,7 +416,7 @@ export default function Onboarding() {
         {step === "review" && site && (
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
-              <p className="type-kicker text-byword-blue">Step 4 · First draft</p>
+              <p className="type-kicker text-byword-blue">Step {showPlanStep ? 5 : 4} · First draft</p>
               <h1 className="mt-2 text-2xl font-semibold">One clear decision before we write</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">BlogFactory picked the writing defaults. You can change models, images, voice, and research after you have seen the first result.</p>
             </div>
