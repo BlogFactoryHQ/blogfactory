@@ -63,6 +63,8 @@ through Cloudflare; Vercel remains a ready DNS rollback target.
   restarts/OOMs, and used approximately 87 MiB, 62 MiB, and 3 MiB respectively
   in the post-cutover sample.
 - Cloudflare record `app.blogfactory.io` is proxied to the Hetzner IPv4 origin.
+  The temporary `pilot-origin.blogfactory.io` record and Caddy host were removed
+  after public verification to avoid an origin-bypass hostname.
   Clean Vercel deployment `dpl_8K4ES5T71onaYLbN8kNXE73AahNp` was promoted as
   the rollback deployment before the temporary cutover code was removed.
 
