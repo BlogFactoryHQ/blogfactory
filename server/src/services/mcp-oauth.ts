@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { sites, users } from "../db/schema.js";
 import { ApiError } from "../http/error-contract.js";
-import { MCP_OAUTH_SITE_IDS_CLAIM, getMcpOAuthConfig } from "../mcp/oauth.js";
+import { MCP_OAUTH_SITE_IDS_CLAIM, getMcpOAuthConfig, mcpWorkosApiKey } from "../mcp/oauth.js";
 
 type OAuthAccount = {
   id: string;
@@ -53,7 +53,7 @@ export async function completeMcpOAuthLogin(
   }
 
   const config = getMcpOAuthConfig(dependencies.env);
-  const apiKey = dependencies.env.WORKOS_API_KEY?.trim();
+  const apiKey = mcpWorkosApiKey(dependencies.env);
   if (!config || !apiKey) {
     throw new ApiError(503, "service_unavailable", "OAuth connection is not configured");
   }

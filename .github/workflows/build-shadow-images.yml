@@ -68,6 +68,7 @@ jobs:
           JWT_SECRET: ci-jwt-secret
           API_KEY_ENCRYPTION_SECRET: 01234567890123456789012345678901
           CRON_SECRET: ci-cron-secret
+          AUTH_RATE_LIMIT_SECRET: ci-auth-rate-limit-secret
           ADMIN_EMAILS: ci@example.com
           BLOGFACTORY_URL: http://127.0.0.1:8080
           S3_ENDPOINT: https://example.invalid

@@ -34,7 +34,7 @@ import { controlPlaneRoutes } from "./routes/control-plane.js";
 import { operationsRoutes } from "./routes/operations.js";
 import { billingRoutes, polarWebhookRoute } from "./routes/billing.js";
 import { handleMcpHttpRequest } from "./mcp/server.js";
-import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
+import { handleMcpProtectedResourceMetadata, mcpWorkosApiKey } from "./mcp/oauth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
 import { readinessStatus } from "./services/readiness.js";
 import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
@@ -87,7 +87,7 @@ app.get("/api/mcp/capabilities", (c) => c.json({
   tools: ACTIVE_MCP_TOOL_NAMES,
   tool_count: ACTIVE_MCP_TOOL_NAMES.length,
   endpoint: resolveMcpEndpoint(process.env, c.req.url),
-  oauth_enabled: Boolean(process.env.WORKOS_AUTHKIT_ISSUER && process.env.WORKOS_API_KEY && process.env.MCP_RESOURCE_URL),
+  oauth_enabled: Boolean(process.env.WORKOS_AUTHKIT_ISSUER && mcpWorkosApiKey() && process.env.MCP_RESOURCE_URL),
 }));
 
 app.get("/.well-known/oauth-protected-resource", () => handleMcpProtectedResourceMetadata());
