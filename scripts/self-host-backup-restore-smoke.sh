@@ -47,7 +47,7 @@ storage_path="$(jq -er '.storagePath // .storage_path' "$tmp_dir/upload.json")"
 "${source_compose[@]}" stop api scheduler
 "${source_compose[@]}" exec -T postgres pg_dump -U blogfactory -d blogfactory -Fc > "$tmp_dir/blogfactory.dump"
 mkdir "$tmp_dir/objects"
-docker run --rm --user "$(id -u):$(id -g)" --network "${source_project}_default" -e MC_CONFIG_DIR=/tmp/.mc -v "$tmp_dir/objects:/backup" --entrypoint /bin/sh minio/mc:latest -c \
+docker run --rm --user "$(id -u):$(id -g)" --network "${source_project}_default" -e MC_CONFIG_DIR=/tmp/.mc -v "$tmp_dir/objects:/backup" --entrypoint /bin/sh quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e -c \
   'mc alias set local http://minio:9000 blogfactory minio-backup-0123456789abcdef0123456789abcdef && mc mirror local/blogfactory /backup'
 "${source_compose[@]}" down --volumes --remove-orphans
 
@@ -55,7 +55,7 @@ docker run --rm --user "$(id -u):$(id -g)" --network "${source_project}_default"
 for _ in {1..90}; do curl --fail --silent "$base_url/api/ready" >/dev/null && break; sleep 2; done
 "${target_compose[@]}" stop api scheduler
 "${target_compose[@]}" exec -T postgres pg_restore -U blogfactory -d blogfactory --clean --if-exists < "$tmp_dir/blogfactory.dump"
-docker run --rm --network "${target_project}_default" -v "$tmp_dir/objects:/backup:ro" --entrypoint /bin/sh minio/mc:latest -c \
+docker run --rm --network "${target_project}_default" -v "$tmp_dir/objects:/backup:ro" --entrypoint /bin/sh quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e -c \
   'mc alias set local http://minio:9000 blogfactory minio-backup-0123456789abcdef0123456789abcdef && mc mirror /backup local/blogfactory'
 "${target_compose[@]}" start api scheduler
 for _ in {1..60}; do curl --fail --silent "$base_url/api/ready" >/dev/null && break; sleep 2; done
