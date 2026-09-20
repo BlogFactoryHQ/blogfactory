@@ -7,7 +7,7 @@ The public template maps the canonical Compose stack to five Railway services so
 | `web` | `ghcr.io/blogfactoryhq/blogfactory-web:v0.1.0` | yes | `PORT=80`; `API_UPSTREAM=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:3000` |
 | `api` | `ghcr.io/blogfactoryhq/blogfactory-api:v0.1.0` | no | pre-deploy `bun run src/init-s3-bucket.ts`; variables below; health path `/api/ready` |
 | `Postgres` | Railway managed PostgreSQL | no | managed service defaults |
-| `minio` | `minio/minio:latest` | no | command `/usr/bin/minio server /data --address :9000 --console-address :9001`; volume mounted at `/data` |
+| `minio` | `quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` | no | command `/usr/bin/minio server /data --address :9000 --console-address :9001`; volume mounted at `/data` |
 | `cron` | `ghcr.io/blogfactoryhq/blogfactory-api:v0.1.0` | no | command `bun run src/run-cron-once.ts`; cron `0 */6 * * *`; restart `NEVER` |
 
 The template asks only for `ADMIN_EMAILS`. It generates independent values for `JWT_SECRET`, `API_KEY_ENCRYPTION_SECRET`, `CRON_SECRET`, and `MINIO_ROOT_PASSWORD` with Railway template variable functions. Do not publish a template with literal defaults.

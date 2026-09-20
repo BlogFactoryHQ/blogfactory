@@ -17,7 +17,7 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:
@@ -33,31 +33,17 @@ services:
       timeout: 5s
       retries: 20
 
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
-        mc mb --ignore-existing local/blogfactory
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-blogfactory}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-    restart: "no"
-
   api:
     image: ghcr.io/blogfactoryhq/blogfactory-api:${BLOGFACTORY_VERSION:-v0.1.0}
     build:
       context: ./server
+    command: ["sh", "-c", "bun run src/init-s3-bucket.ts && bun run src/db/migrate.ts && exec bun run src/index.ts"]
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
