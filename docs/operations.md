@@ -20,13 +20,16 @@ Never run PostgreSQL integration tests against shared production Neon. Use a dis
 
 ## Production delivery
 
-The Vercel project `editorial-flow-main` is deployed from the private `BlogFactoryHQ/blogfactory-cloud` repository. That repository merges this public core through a fail-closed sync workflow, validates it, and performs the production deployment through private CI. `vercel.json` runs `npm run db:migrate` for production builds and then builds the server, authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Vercel serves `web/dist` and routes these backend surfaces through `api/index.js`:
+The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core through a fail-closed sync workflow, validates it, and builds API and web images in GHCR. Production pins those images by SHA-256 digest in a Docker Compose stack on the Hetzner Nuremberg host:
 
-- `/api/*`
-- `/mcp`
-- `/.well-known/oauth-protected-resource`
+- one-shot database migration using the direct Neon owner endpoint;
+- Bun/Hono API using the pooled least-privilege runtime role;
+- persistent Bun worker for campaigns, SEO metadata, and deferred images;
+- Nginx web container, the only Compose service bound to the host loopback interface.
 
-The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare-fronted public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment on Vercel. The production host split is:
+Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback web port. Cloudflare proxies the public hostname to Hetzner. Production data remains off-host in Neon PostgreSQL 18 in Frankfurt and a private EU Cloudflare R2 bucket. No local PostgreSQL, MinIO, Redis, or external queue runs in the managed Cloud stack.
+
+The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare Pages public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment. The production host split is:
 
 - [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
 - [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.
@@ -38,15 +41,15 @@ Release flow:
 1. Preserve unrelated worktree changes and inspect the intended diff.
 2. Run checks proportional to the change.
 3. Commit and push `main` when shipping is authorized.
-4. Verify that the private Cloud repository contains the public commit, then wait for its `Deploy Cloud` run and Vercel deployment to become Ready.
-5. Confirm the production aliases are attached and `aliasError` is empty.
-6. Verify both the public one-pager marker and the exact app/API/MCP routes affected by the change.
+4. Verify that the private Cloud repository contains the public commit and that its GHCR build completes.
+5. Resolve the image tags to immutable digests, update the private Compose deployment, and let the one-shot migration finish before API startup.
+6. Confirm all three long-running containers are healthy with zero unexpected restarts, then verify the public one-pager and exact app/API/MCP routes affected by the change.
 
-Rollback is promotion of the last Ready Vercel deployment. Keep database changes additive so application rollback remains possible.
+Application rollback is redeploying the previous approved image digests. Full-host rollback points Cloudflare DNS to the last clean Ready Vercel deployment, then stops the Hetzner worker after active claims settle. Keep database changes additive so either rollback remains possible.
 
 ## Background work
 
-The Cloudflare Worker runs bounded campaign, SEO, and deferred-image drains every six hours. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch. Search Console refresh is manual. Every trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
+The persistent worker runs bounded campaign, SEO, and deferred-image drains every five seconds. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch; the Cloudflare Worker remains a six-hour protected fallback trigger. Search Console refresh is manual. Every external trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
 
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
@@ -92,6 +95,6 @@ Expected results:
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
 - Authenticated capability response: exactly 22 tools from the server catalog.
 - No live-publish or delete tool in discovery.
-- Relevant production deployment SHA equals `origin/main`.
+- Running API and web image digests resolve to the intended private Cloud commit.
 
 Full product acceptance also requires OAuth and tool discovery in Codex and ChatGPT plus the authenticated `generate_draft → get_job → review_post → push_to_cms_draft` workflow. A green build alone is not proof of that client flow.

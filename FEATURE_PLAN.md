@@ -4,9 +4,9 @@ This is the canonical forward plan for BlogFactory. It records intended work, no
 
 ## Product decision
 
-BlogFactory launches open source and self-hosted first. BlogFactory Cloud is a later managed service and must be described as **coming soon** until its release gates are complete.
+BlogFactory launched open source and self-hosted first. BlogFactory Cloud is the managed service built on this core.
 
-Cloud pricing, limits, checkout, subscriptions, and entitlements have not been decided or implemented.
+Cloud pricing, limits, checkout, subscriptions, and entitlements are decided and implemented in the private `BlogFactoryHQ/blogfactory-cloud` repository. They are deliberately absent from this open-source core, and its remaining launch, legal, and marketing gates are tracked privately.
 
 ## Phase 0 — open-source release
 
@@ -46,23 +46,26 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 
 ## Phase 2 — BlogFactory Cloud
 
-- [ ] Replace process-local background continuation with PostgreSQL-backed jobs, leases, retries, and worker heartbeats.
-- [ ] Implement verified email, password recovery delivery, abuse controls, and production login acceptance.
-- [ ] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation.
-- [ ] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority.
-- [ ] Choose a billing provider and implement idempotent webhooks outside MCP authority.
-- [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies.
+- [x] Run private Cloud heavy jobs in a persistent worker using the existing PostgreSQL-backed claims, retries, stale recovery, terminal states, and heartbeat health.
+- [x] Deploy the private Cloud stack to Hetzner Nuremberg with immutable GHCR image digests, Neon PostgreSQL 18 in Frankfurt, private EU R2 storage, Cloudflare routing, and a clean Vercel rollback deployment.
+- [x] Migrate the existing production database and objects, verify row/object counts, encrypted backup readback, the 22-tool MCP catalog, and tenant/site isolation.
+- [ ] Merge the validated worker-mode core changes into the public `main` branch.
+- [x] Implement verified email, password recovery delivery, abuse controls, and production login acceptance (hosted auth is WorkOS AuthKit in the private Cloud repository; lifecycle email beyond authentication is still open there).
+- [x] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation (private Cloud repository).
+- [x] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority (private Cloud repository).
+- [x] Choose a billing provider and implement idempotent webhooks outside MCP authority (private Cloud repository).
+- [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies (cancellation, backup/restore, and credit spend caps exist privately; export, retention, and support policy remain open).
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
 
 ## Release language
 
-Until Phase 0 is complete:
+Historical pre-release language, before Phase 0 was completed:
 
 - Say: “Open-source release candidate. BlogFactory Cloud is coming soon.”
 - Do not say: “Open source available now,” “one-click deploy,” or “hosted for $5” on a live public surface.
 
-After Phase 0 is complete:
+Current release language:
 
-- Say: “Self-host BlogFactory for free. BlogFactory Cloud is coming soon.”
+- Say: “Self-host BlogFactory for free.” Describe BlogFactory Cloud only as far as the published marketing, pricing, and legal pages already go.
 - Link the primary CTA to the public source repository.
-- Keep Cloud pricing informational until checkout and entitlements are actually live.
+- Do not state Cloud prices, limits, or launch status in this repository; the private Cloud and marketing repositories own that copy.
