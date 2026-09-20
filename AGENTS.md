@@ -4,6 +4,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 
 ## Read First
 
+- `docs/handoff-2026-09-20.md` is the current session handoff: open PRs, the launch-review issues (tracking issue #27), and what is still unverified about production. Start there.
 - `README.md` describes the current product, architecture, setup, and acceptance checks.
 - `FEATURE_PLAN.md` is the canonical open-source-first and Cloud-coming-soon roadmap. Unchecked items are not shipped.
 - `docs/architecture.md` maps runtime surfaces, shared services, hosting, data boundaries, and change ownership.
