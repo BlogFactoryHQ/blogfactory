@@ -1214,7 +1214,7 @@ async function googleAccessToken(credentials: GoogleCredentials) {
     return refreshOAuthAccessToken(credentials);
   }
 
-  const tokenUri = credentials.token_uri || GOOGLE_TOKEN_URI;
+  const tokenUri = GOOGLE_TOKEN_URI;
   const assertion = await new SignJWT({ scope: SEARCH_CONSOLE_SCOPE })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(credentials.client_email)
@@ -1239,7 +1239,7 @@ async function googleAccessToken(credentials: GoogleCredentials) {
 }
 
 async function refreshOAuthAccessToken(credentials: OAuthCredentials) {
-  const response = await fetch(credentials.token_uri || GOOGLE_TOKEN_URI, {
+  const response = await fetch(GOOGLE_TOKEN_URI, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
