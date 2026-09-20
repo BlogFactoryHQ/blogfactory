@@ -8,7 +8,7 @@ The Docker Compose self-host contract is documented separately in [self-hosting.
 
 Self-hosted production sets `BLOGFACTORY_SELF_HOSTED=true`, which rejects missing and placeholder database, JWT, encryption, cron, administrator, origin, and S3 configuration before serving. `/api/health` remains liveness; `/api/ready` checks PostgreSQL plus S3 bucket access and redacts failure details.
 
-OAuth is fail-closed: configure `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together or leave all three unset. `MCP_RESOURCE_URL` must be an HTTPS URL ending in `/mcp`.
+OAuth is fail-closed: configure `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together or leave all three unset. `MCP_RESOURCE_URL` must be an HTTPS URL ending in `/mcp`. `MCP_LEGACY_RESOURCE_URLS` is an optional, comma-separated transition-only allowlist of prior `/mcp` token audiences; it never changes advertised metadata and should be removed after clients reconnect and old tokens expire.
 
 ## Database migrations
 
