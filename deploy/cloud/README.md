@@ -37,6 +37,8 @@ contains both URLs required by the current topology:
 
 It also pins the PostgreSQL and backup images and supplies the owner/runtime
 role passwords, age recipient, R2 prefix, and root-only age identity path.
+Set `MCP_ALLOWED_ORIGINS` to every browser origin allowed to call MCP; production
+uses both `https://app.blogfactory.io` and canonical `https://blogfactory.io`.
 
 Run **Publish Cloud images** for the approved Cloud commit. Copy the immutable
 API and web references from its summary:
