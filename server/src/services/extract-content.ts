@@ -1,4 +1,5 @@
 import { getObject } from "./s3-client.js";
+import { safeFetch } from "./safe-fetch.js";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GOOGLE_AI_KEY = process.env.GOOGLE_AI_KEY;
@@ -151,8 +152,8 @@ async function extractPdf(storagePath: string): Promise<{ content: string; title
 async function extractUrl(url: string, model?: string): Promise<{ content: string; title?: string; metadata?: any }> {
   let resp: Response;
   try {
-    resp = await fetch(url, {
-      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
+    resp = await safeFetch(url, {
+      timeoutMs: URL_FETCH_TIMEOUT_MS,
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
         Accept: "text/html,application/xhtml+xml",

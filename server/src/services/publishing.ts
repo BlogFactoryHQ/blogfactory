@@ -14,6 +14,7 @@ import { slugify } from "./slugify.js";
 export { slugify } from "./slugify.js";
 import { readySeoMetadataForArticle, type SeoMetadataV1 } from "./seo-metadata.js";
 import { currentPostRevision, updatePostWithRevision } from "./post-revisions.js";
+import { safeFetch } from "./safe-fetch.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -1216,7 +1217,7 @@ function basicAuth(username: string, password: string) {
 }
 
 async function testWordPress(credentials: WordPressCredentials) {
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/users/me?context=edit`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/users/me?context=edit`, {
     headers: { Authorization: basicAuth(credentials.username, credentials.applicationPassword) },
   });
   if (!response.ok) throw new Error(`WordPress test failed: ${response.status}`);
@@ -1240,7 +1241,7 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
   );
   const postType = options.postType === "page" ? "pages" : "posts";
 
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/${postType}`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/${postType}`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -1275,7 +1276,7 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
 async function resolveWordPressTerms(credentials: WordPressCredentials, taxonomy: "tags" | "categories", labels: string[]) {
   const ids: number[] = [];
   for (const label of labels.slice(0, 10)) {
-    const found = await fetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(label)}&per_page=20`, {
+    const found = await safeFetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(label)}&per_page=20`, {
       headers: { Authorization: basicAuth(credentials.username, credentials.applicationPassword) },
     });
     if (found.ok) {
@@ -1286,7 +1287,7 @@ async function resolveWordPressTerms(credentials: WordPressCredentials, taxonomy
         continue;
       }
     }
-    const created = await fetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}`, {
+    const created = await safeFetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}`, {
       method: "POST",
       headers: {
         Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1306,7 +1307,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
   const image = await fetchImage(pathOrUrl);
   if (!image) return null;
   const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/media`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/media`, {
     method: "POST",
     headers: {
       Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1318,7 +1319,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
   if (!response.ok) return null;
   const data = await response.json() as { id?: number; source_url?: string };
   if (data.id && altText) {
-    await fetch(`${credentials.url}/wp-json/wp/v2/media/${data.id}`, {
+    await safeFetch(`${credentials.url}/wp-json/wp/v2/media/${data.id}`, {
       method: "POST",
       headers: {
         Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1331,7 +1332,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
 }
 
 async function testGhost(credentials: GhostCredentials) {
-  const response = await fetch(`${credentials.url}/ghost/api/admin/site/`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/site/`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost test"));
@@ -1345,7 +1346,7 @@ export async function getGhostAuthors(row: IntegrationRow) {
 }
 
 async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAuthor[]> {
-  const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost authors could not be loaded"));
@@ -1369,7 +1370,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     }))
   );
   const html = replaceImageUrls(article.html, uploadedInlineImages);
-  const response = await fetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
     method: "POST",
     headers: {
       Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`,
@@ -1416,7 +1417,7 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
   const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
   const formData = new FormData();
   formData.append("file", new Blob([image.buffer as BlobPart], { type: image.mimeType }), filename);
-  const response = await fetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
     method: "POST",
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
     body: formData,
@@ -2133,7 +2134,7 @@ async function getFramerCollection(framer: Awaited<ReturnType<typeof connect>>, 
 
 async function fetchImage(pathOrUrl: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
   if (pathOrUrl.startsWith("http")) {
-    const response = await fetch(pathOrUrl);
+    const response = await safeFetch(pathOrUrl, { maxResponseBytes: 20 * 1024 * 1024 });
     if (!response.ok) return null;
     const mimeType = response.headers.get("content-type") || mimeForPath(pathOrUrl);
     return { buffer: Buffer.from(await response.arrayBuffer()), mimeType };
