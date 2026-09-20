@@ -16,18 +16,25 @@ Run `npm run db:migrate` against the target database before using code that requ
 
 For an existing database that predates the migration ledger, first confirm its schema contains every checked-in migration. Then use `MIGRATION_BASELINE_EXISTING=true` once to record the baseline without replaying historical SQL.
 
-Never run PostgreSQL integration tests against shared production Neon. Use a disposable database.
+Never run PostgreSQL integration tests against the shared production database.
+Use a disposable database.
 
 ## Production delivery
 
 The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core through a fail-closed sync workflow, validates it, and builds API and web images in GHCR. Production pins those images by SHA-256 digest in a Docker Compose stack on the Hetzner Nuremberg host:
 
-- one-shot database migration using the direct Neon owner endpoint;
-- Bun/Hono API using the pooled least-privilege runtime role;
+- PostgreSQL 18 on a named host volume, private to the Compose network;
+- one-shot role initialization and migration using the local owner role;
+- Bun/Hono API using the local least-privilege runtime role;
 - persistent Bun worker for campaigns, SEO metadata, and deferred images;
+- six-hour age-encrypted backup scheduler writing to private EU R2;
 - Nginx web container, the only Compose service bound to the host loopback interface.
 
-Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback web port. Cloudflare proxies the public hostname to Hetzner. Production data remains off-host in Neon PostgreSQL 18 in Frankfurt and a private EU Cloudflare R2 bucket. No local PostgreSQL, MinIO, Redis, or external queue runs in the managed Cloud stack.
+Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback
+web port. Cloudflare proxies the public hostname to Hetzner. Production data is
+stored in the private PostgreSQL service; images and encrypted database backups
+are stored in a private EU Cloudflare R2 bucket. No MinIO, Redis, or external
+queue runs in the managed Cloud stack.
 
 The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare Pages public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment. The production host split is:
 
@@ -43,9 +50,14 @@ Release flow:
 3. Commit and push `main` when shipping is authorized.
 4. Verify that the private Cloud repository contains the public commit and that its GHCR build completes.
 5. Resolve the image tags to immutable digests, update the private Compose deployment, and let the one-shot migration finish before API startup.
-6. Confirm all three long-running containers are healthy with zero unexpected restarts, then verify the public one-pager and exact app/API/MCP routes affected by the change.
+6. Confirm PostgreSQL, API, worker, backup, and web are healthy with zero
+   unexpected restarts, then verify the public one-pager and exact app/API/MCP
+   routes affected by the change.
 
-Application rollback is redeploying the previous approved image digests. Full-host rollback points Cloudflare DNS to the last clean Ready Vercel deployment, then stops the Hetzner worker after active claims settle. Keep database changes additive so either rollback remains possible.
+Application rollback is redeploying the previous approved image digests.
+Full-host recovery points Cloudflare DNS to the last clean Ready Vercel
+deployment and restores a verified encrypted R2 backup into a clean database
+target. Keep database changes additive so either rollback remains possible.
 
 ## Background work
 
