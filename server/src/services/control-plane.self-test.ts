@@ -43,6 +43,7 @@ const base = {
 };
 
 assert.equal(classifyDraftAction(base), null);
+assert.equal(classifyDraftAction({ ...base, content: "changed", seoStatus: "ready" }), null);
 assert.equal(classifyDraftAction({ ...base, revision: null })?.kind, "missing_revision");
 assert.equal(classifyDraftAction({ ...base, seoMetadata: null })?.kind, "seo_not_ready");
 assert.equal(classifyDraftAction({ ...base, preferredIntegrationId: null, integrationSiteId: null, integrationReady: false, usableDestinationCount: 0 })?.kind, "destination_not_ready");

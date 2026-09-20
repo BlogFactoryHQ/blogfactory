@@ -11,7 +11,7 @@ import {
   siteIntegrations,
   sites,
 } from "../db/schema.js";
-import { readySeoMetadataForArticle, seoStatusForArticle } from "./seo-metadata.js";
+import { readySeoMetadataForArticle, seoMetadata, seoStatusForArticle } from "./seo-metadata.js";
 import { getSearchConsoleInsights } from "./search-console.js";
 import { listOperationEvents } from "./operation-events.js";
 import { postRevisionSnapshot, type PostRevisionSnapshot } from "./post-revisions.js";
@@ -70,7 +70,8 @@ type DraftActionInput = {
   id: string;
   siteId: string;
   title: string;
-  content: string;
+  content?: string;
+  seoStatus?: string;
   summary: string | null;
   sourceType: string;
   seoMetadata: unknown;
@@ -102,7 +103,10 @@ export function classifyDraftAction(input: DraftActionInput): ActionItem | null 
   );
   const destinationReady = preferredRoutingReady || Boolean(input.usableDestinationCount);
   if (!input.revision) reasons.push({ kind: "missing_revision", severity: "blocker", label: "Saved revision", message: "No saved revision exists." });
-  if (!readySeoMetadataForArticle(input.seoMetadata, input.title, input.content)) {
+  const seoReady = input.seoStatus
+    ? input.seoStatus === "ready"
+    : readySeoMetadataForArticle(input.seoMetadata, input.title, input.content || "");
+  if (!seoReady) {
     reasons.push({ kind: "seo_not_ready", severity: "blocker", label: "SEO", message: "SEO metadata is missing, stale, or invalid." });
   }
   if (!destinationReady) reasons.push({ kind: "destination_not_ready", severity: "blocker", label: "CMS destination", message: "Connect a CMS destination for this site." });
@@ -153,7 +157,6 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     id: posts.id,
     siteId: posts.siteId,
     title: posts.title,
-    content: posts.content,
     summary: posts.summary,
     sourceType: posts.sourceType,
     seoMetadata: posts.seoMetadata,
@@ -196,6 +199,7 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     const item = classifyDraftAction({
       ...row,
       siteId: row.siteId,
+      seoStatus: seoMetadata(row.seoMetadata)?.status || "missing",
       integrationReady: testedConnectionReady({
         status: row.integrationStatus,
         lastTestedAt: row.integrationLastTestedAt,

@@ -25,7 +25,7 @@ export default function Overview() {
     queryKey: ["control-plane-overview", activeSite?.id],
     queryFn: () => api.get<WorkspaceDigest>(`/control-plane/overview?site_id=${encodeURIComponent(activeSite!.id)}`),
     enabled: Boolean(activeSite?.id),
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
   const hasFirstDraft = Boolean(data && (data.outcomes.drafts > 0 || data.recent_outputs.length > 0));
 
@@ -45,7 +45,7 @@ export default function Overview() {
 
   return <BywordPageShell className="max-w-7xl">
     <PageHeader title="Overview" description={activeSite ? `${activeSite.domain} · agent and editorial operations` : "Agent and editorial operations"}>
-      <div className="flex flex-wrap items-center justify-end gap-3"><span className="type-meta inline-flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${isFetching ? "animate-pulse bg-amber-500" : "bg-green-600"}`} />{isFetching ? "Refreshing" : "Live · 15s"}</span>{hasFirstDraft && <Button type="button" variant="outline" onClick={() => openSetup(data?.connections.generation.ready ? "cms" : "generation")}><ListChecks className="mr-1.5 h-4 w-4" />Connections &amp; setup</Button>}<Button asChild><Link to={hasFirstDraft ? "/create" : "/onboarding"}>{hasFirstDraft ? "Create content" : "Create first draft"}</Link></Button></div>
+      <div className="flex flex-wrap items-center justify-end gap-3"><span className="type-meta inline-flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${isFetching ? "animate-pulse bg-amber-500" : "bg-green-600"}`} />{isFetching ? "Refreshing" : "Live · 60s"}</span>{hasFirstDraft && <Button type="button" variant="outline" onClick={() => openSetup(data?.connections.generation.ready ? "cms" : "generation")}><ListChecks className="mr-1.5 h-4 w-4" />Connections &amp; setup</Button>}<Button asChild><Link to={hasFirstDraft ? "/create" : "/onboarding"}>{hasFirstDraft ? "Create content" : "Create first draft"}</Link></Button></div>
     </PageHeader>
     {isLoading && <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
     {error && <BywordCard><p className="p-6 text-sm text-destructive">{error instanceof Error ? error.message : "Overview could not be loaded."}</p></BywordCard>}

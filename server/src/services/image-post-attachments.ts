@@ -3,19 +3,28 @@ import { db, type Database } from "../db/index.js";
 import { imageAssets, imageGenerationRequests, posts } from "../db/schema.js";
 import { normalizeImagePlacement, reflowInlineImages, removeInlineImagePath } from "./image-placement.js";
 import { imageSlotFromRequest, type ImageSlot } from "./image-slots.js";
+import { pendingSeoMetadataForContentChange } from "./post-revisions.js";
 
 type AttachmentDatabase = Pick<Database, "select" | "update">;
+
+// Image edits rewrite the article body, so stored SEO metadata must requeue like any other content change.
+export function seoPatchForContentChange(previousContent: string, nextContent: string, seoMetadata: unknown) {
+  if (previousContent === nextContent) return {};
+  return { seoMetadata: pendingSeoMetadataForContentChange(seoMetadata) };
+}
 
 async function attachInlineImage(postId: string, path: string, placement: unknown, altText?: string | null, position?: number | null, userId?: string, executor: AttachmentDatabase = db) {
   const conditions = [eq(posts.id, postId)];
   if (userId) conditions.push(eq(posts.userId, userId));
-  const [post] = await executor.select({ content: posts.content, coverImageUrl: posts.coverImageUrl, inlineImages: posts.inlineImages }).from(posts).where(and(...conditions)).limit(1);
+  const [post] = await executor.select({ content: posts.content, coverImageUrl: posts.coverImageUrl, inlineImages: posts.inlineImages, seoMetadata: posts.seoMetadata }).from(posts).where(and(...conditions)).limit(1);
   if (!post) return;
   const inlineImages = [...(post.inlineImages || [])];
   if (path === post.coverImageUrl) {
+    const dedupedContent = removeInlineImagePath(post.content || "", path);
     await executor.update(posts).set({
       inlineImages: inlineImages.filter((image) => image !== path),
-      content: removeInlineImagePath(post.content || "", path),
+      content: dedupedContent,
+      ...seoPatchForContentChange(post.content || "", dedupedContent, post.seoMetadata),
     }).where(and(...conditions));
     return;
   }
@@ -39,6 +48,7 @@ async function attachInlineImage(postId: string, path: string, placement: unknow
   await executor.update(posts).set({
     inlineImages: uniqueInlineImages,
     content,
+    ...seoPatchForContentChange(previousContent, content, post.seoMetadata),
   }).where(and(...conditions));
 }
 
@@ -46,7 +56,7 @@ export async function attachPostImage(postId: string, slot: ImageSlot, path: str
   const conditions = [eq(posts.id, postId)];
   if (userId) conditions.push(eq(posts.userId, userId));
   if (slot.type === "cover") {
-    const [post] = await executor.select({ content: posts.content, inlineImages: posts.inlineImages, publishingMetadata: posts.publishingMetadata }).from(posts).where(and(...conditions)).limit(1);
+    const [post] = await executor.select({ content: posts.content, inlineImages: posts.inlineImages, publishingMetadata: posts.publishingMetadata, seoMetadata: posts.seoMetadata }).from(posts).where(and(...conditions)).limit(1);
     const [asset] = await executor.select().from(imageAssets).where(eq(imageAssets.storagePath, path)).limit(1);
     const metadata = post?.publishingMetadata && typeof post.publishingMetadata === "object" ? post.publishingMetadata as Record<string, unknown> : null;
     const image = metadata?.image && typeof metadata.image === "object" ? metadata.image as Record<string, unknown> : {};
@@ -66,11 +76,13 @@ export async function attachPostImage(postId: string, slot: ImageSlot, path: str
           routingWarnings,
         }
       : metadata;
+    const coverContent = removeInlineImagePath(post?.content || "", path);
     await executor.update(posts).set({
       coverImageUrl: path,
       inlineImages: (post?.inlineImages || []).filter((image) => image !== path),
-      content: removeInlineImagePath(post?.content || "", path),
+      content: coverContent,
       ...(nextMetadata ? { publishingMetadata: nextMetadata } : {}),
+      ...seoPatchForContentChange(post?.content || "", coverContent, post?.seoMetadata),
     }).where(and(...conditions));
   } else {
     await attachInlineImage(postId, path, placement, slot.altText, slot.position, userId, executor);
