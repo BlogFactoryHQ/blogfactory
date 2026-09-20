@@ -91,6 +91,11 @@ type RevisionChanges = Partial<Pick<typeof posts.$inferInsert,
   "title" | "content" | "summary" | "coverImageUrl" | "inlineImages" | "publishingMetadata"
 >>;
 
+export function pendingSeoMetadataForContentChange(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return { ...value as Record<string, unknown>, status: "pending", sourceHash: "", generatedAt: null, validationErrors: [], error: null };
+}
+
 export async function updatePostWithRevision(input: {
   userId: string;
   postId: string;
@@ -119,7 +124,12 @@ export async function updatePostWithRevision(input: {
 
     await tx.execute(sql`select set_config('blogfactory.revision_source', ${input.source}, true)`);
     const updatedAt = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
-    const [updated] = await tx.update(posts).set({ ...input.changes, updatedAt }).where(and(
+    const contentChanged = input.changes.title !== undefined || input.changes.content !== undefined;
+    const [updated] = await tx.update(posts).set({
+      ...input.changes,
+      ...(contentChanged ? { seoMetadata: pendingSeoMetadataForContentChange(current.seoMetadata) } : {}),
+      updatedAt,
+    }).where(and(
       eq(posts.id, input.postId),
       eq(posts.userId, input.userId),
     )).returning();
