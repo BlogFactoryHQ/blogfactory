@@ -178,10 +178,12 @@ const previousIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
 const previousResource = process.env.MCP_RESOURCE_URL;
 const previousLegacyResources = process.env.MCP_LEGACY_RESOURCE_URLS;
 const previousApiKey = process.env.WORKOS_API_KEY;
+const previousMcpApiKey = process.env.MCP_WORKOS_API_KEY;
 delete process.env.WORKOS_AUTHKIT_ISSUER;
 delete process.env.MCP_RESOURCE_URL;
 delete process.env.MCP_LEGACY_RESOURCE_URLS;
 delete process.env.WORKOS_API_KEY;
+delete process.env.MCP_WORKOS_API_KEY;
 assert.equal((await handleMcpProtectedResourceMetadata()).status, 404);
 process.env.WORKOS_AUTHKIT_ISSUER = "https://blogfactory-test.authkit.app";
 process.env.MCP_RESOURCE_URL = "https://blogfactory.io/mcp";
@@ -199,5 +201,7 @@ if (previousLegacyResources === undefined) delete process.env.MCP_LEGACY_RESOURC
 else process.env.MCP_LEGACY_RESOURCE_URLS = previousLegacyResources;
 if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY;
 else process.env.WORKOS_API_KEY = previousApiKey;
+if (previousMcpApiKey === undefined) delete process.env.MCP_WORKOS_API_KEY;
+else process.env.MCP_WORKOS_API_KEY = previousMcpApiKey;
 
 console.log("MCP OAuth resource-server self-check passed");
