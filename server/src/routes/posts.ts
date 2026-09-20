@@ -6,7 +6,7 @@ import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "d
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
-import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
+import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
@@ -57,7 +57,6 @@ postsRoutes.get("/", async (c) => {
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
-      seo_source_content: posts.content,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -136,9 +135,10 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_content, ...post }) => {
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => {
     const storedSeo = seoMetadata(post.seo_metadata);
-    const seoStatus = storedSeo?.status === "ready" && !seoSourceHashMatches(storedSeo.sourceHash, post.title, seo_source_content || "") ? "needs_review" : storedSeo?.status || "missing";
+    // Content edits always requeue SEO metadata; list reads must not transfer every article body.
+    const seoStatus = storedSeo?.status || "missing";
     return {
       ...post,
       seo_status: seoStatus,
