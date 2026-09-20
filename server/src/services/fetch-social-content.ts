@@ -1,4 +1,4 @@
-import { URL } from "url";
+import { safeFetch } from "./safe-fetch.js";
 
 interface FeedItem {
   title: string;
@@ -24,29 +24,6 @@ export interface FetchOpts {
   includeComments?: number;
   keywords?: string[];
   limit?: number;
-}
-
-// SSRF protection
-function isPrivateIP(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
-  if (hostname.startsWith("10.") || hostname.startsWith("192.168.")) return true;
-  if (hostname.startsWith("172.")) {
-    const second = parseInt(hostname.split(".")[1]);
-    if (second >= 16 && second <= 31) return true;
-  }
-  if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return true;
-  return false;
-}
-
-function validateUrl(urlStr: string): URL {
-  const url = new URL(urlStr);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Only HTTP/HTTPS URLs allowed");
-  }
-  if (isPrivateIP(url.hostname)) {
-    throw new Error("Access to private/internal URLs is not allowed");
-  }
-  return url;
 }
 
 export async function fetchSocialContent(opts: FetchOpts): Promise<{ items: FeedItem[]; source: string; platform: string }> {
@@ -102,8 +79,7 @@ export async function fetchSocialContent(opts: FetchOpts): Promise<{ items: Feed
 }
 
 async function fetchRss(url: string, limit: number): Promise<FeedItem[]> {
-  validateUrl(url);
-  const resp = await fetch(url);
+  const resp = await safeFetch(url);
   if (!resp.ok) throw new Error(`Failed to fetch RSS: ${resp.status}`);
   const text = await resp.text();
 
@@ -154,7 +130,7 @@ async function fetchReddit(subredditUrl: string, config: any, limit: number): Pr
   if (!url.endsWith(".json")) url += `${sort}.json?limit=${limit}`;
 
   try {
-    const resp = await fetch(url, { headers: { "User-Agent": "BlogFactory/1.0" } });
+    const resp = await safeFetch(url, { headers: { "User-Agent": "BlogFactory/1.0" } });
     if (!resp.ok) throw new Error("Reddit fetch failed");
     const data = await resp.json() as any;
 

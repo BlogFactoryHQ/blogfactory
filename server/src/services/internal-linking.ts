@@ -1,3 +1,5 @@
+import { safeFetch, validatePublicUrl } from "./safe-fetch.js";
+
 interface IndexedPage {
   url: string;
   title: string;
@@ -79,16 +81,6 @@ export function nextInternalLinkRefreshAt(lastSyncedAt: string | Date | null | u
   return new Date(new Date(lastSyncedAt).getTime() + INTERNAL_LINK_REFRESH_COOLDOWN_MS);
 }
 
-function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
-  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
-  if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return true;
-  if (host.includes("metadata.google") || host.includes("instance-data")) return true;
-  return false;
-}
-
 function comparableHost(hostname: string) {
   return hostname.toLowerCase().replace(/^www\./, "");
 }
@@ -102,16 +94,7 @@ function normalizeInputUrl(input: string): URL {
   if (!trimmed) throw new Error("Sitemap URL is required");
 
   const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  const parsed = new URL(withProtocol);
-
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Only HTTP and HTTPS sitemap URLs are allowed");
-  }
-  if (isPrivateHost(parsed.hostname)) {
-    throw new Error("Private or internal sitemap URLs are not allowed");
-  }
-
-  return parsed;
+  return validatePublicUrl(withProtocol);
 }
 
 function looksLikeSitemapPath(pathname: string) {
@@ -145,25 +128,19 @@ function alternateWwwUrl(url: URL) {
 }
 
 async function fetchText(url: string, timeoutMs = 10000): Promise<FetchedText> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
+  const response = await safeFetch(url, {
       headers: {
         "User-Agent": "BlogFactoryBot/1.0 (+https://blogfactory.io)",
         Accept: "application/xml,text/xml,text/html,*/*",
       },
-      signal: controller.signal,
+      timeoutMs,
     });
-    if (!response.ok) throw new Error(`Fetch failed with ${response.status}`);
-    return {
-      text: await response.text(),
-      finalUrl: response.url || url,
-      contentType: response.headers.get("content-type") || "",
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+  if (!response.ok) throw new Error(`Fetch failed with ${response.status}`);
+  return {
+    text: await response.text(),
+    finalUrl: response.url || url,
+    contentType: response.headers.get("content-type") || "",
+  };
 }
 
 function decodeXml(value: string) {
@@ -210,9 +187,7 @@ async function buildSitemapCandidates(inputUrl: URL, rootHost: string): Promise<
   const candidates: SitemapCandidate[] = [];
   const addCandidate = (url: string, source: SitemapCandidate["source"]) => {
     try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) return;
-      if (isPrivateHost(parsed.hostname)) return;
+      const parsed = validatePublicUrl(url);
       if (!isSameSiteHost(parsed.hostname, rootHost)) return;
       if (!candidates.some((candidate) => candidate.url === parsed.toString())) {
         candidates.push({ url: parsed.toString(), source });
@@ -358,8 +333,7 @@ function extractTitle(html: string) {
 async function indexPage(url: string): Promise<CrawledPage | null> {
   let parsed: URL;
   try {
-    parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol) || isPrivateHost(parsed.hostname)) return null;
+    parsed = validatePublicUrl(url);
   } catch {
     return null;
   }

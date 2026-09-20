@@ -21,6 +21,7 @@ import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
 import { completeSentenceWithinLimit, isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 import { enqueueSeoMetadata, kickSeoMetadataWorker } from "./seo-metadata.js";
+import { safeFetch } from "./safe-fetch.js";
 import type { GenerateOpts, GenerationSettings, SourceArticle } from "./generation-types.js";
 export type { GenerateOpts } from "./generation-types.js";
 import {
@@ -1840,7 +1841,7 @@ async function generateSingleImage(
   if (base64Image) {
     imageBuffer = Buffer.from(base64Image, "base64");
   } else if (imageUrl) {
-    const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
+    const imgResp = await safeFetch(imageUrl, { timeoutMs: IMAGE_REQUEST_TIMEOUT_MS, maxResponseBytes: 20 * 1024 * 1024 });
     if (imgResp.ok) {
       imageBuffer = Buffer.from(await imgResp.arrayBuffer());
     }

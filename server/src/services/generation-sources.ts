@@ -1,4 +1,5 @@
 import type { GenerateOpts, SourceArticle } from "./generation-types.js";
+import { safeFetch } from "./safe-fetch.js";
 
 const FEED_SOURCE_TYPES = new Set(["rss_feed", "reddit", "hackernews", "github"]);
 export const BLOG_DRAFT_SOURCE_TYPES = ["article_keyword", "article_title", "url", "raw_text", "youtube", "pdf", "rss_feed", "reddit", "hackernews", "github", "campaign"] as const;
@@ -180,7 +181,7 @@ export async function fetchRssArticles(
   limit: number,
   filterOldDays?: number,
   keywords: string[] = [],
-  fetcher: typeof fetch = fetch,
+  fetcher: typeof fetch = safeFetch as typeof fetch,
 ) {
   try {
     const response = await fetcher(feedUrl, { signal: AbortSignal.timeout(RSS_FETCH_TIMEOUT_MS) });

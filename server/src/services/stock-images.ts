@@ -1,6 +1,7 @@
 import { getPexelsKey, getPixabayKey } from "./api-keys.js";
 import { saveImageBuffer } from "./image-storage.js";
 import type { ImageSlot, ImageTargetType } from "./image-slots.js";
+import { safeFetch } from "./safe-fetch.js";
 
 type SavedImage = { storagePath: string; assetId?: string; sourceUrl?: string; sourceKey?: string };
 
@@ -108,7 +109,7 @@ export function stockQueries(opts: { title: string; content?: string; type?: Ima
 }
 
 async function downloadImage(url: string) {
-  const resp = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  const resp = await safeFetch(url, { timeoutMs: 20_000, maxResponseBytes: 20 * 1024 * 1024 });
   if (!resp.ok) return null;
   const contentType = resp.headers.get("content-type") || "";
   if (!contentType.startsWith("image/")) return null;

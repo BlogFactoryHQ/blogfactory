@@ -4,6 +4,7 @@ import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConso
 import { extractContent } from "./extract-content.js";
 import { getOpenRouterKey } from "./api-keys.js";
 import { getEffectiveSettings } from "./user-settings.js";
+import { safeFetch } from "./safe-fetch.js";
 
 export type OptimizeStatus = "needs_attention" | "tracking" | "improved";
 
@@ -745,7 +746,7 @@ async function snapshotPage(url: string): Promise<ContentSnapshot> {
 }
 
 async function fetchHtml(url: string) {
-  const response = await fetch(url, {
+  const response = await safeFetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
       Accept: "text/html,application/xhtml+xml",
