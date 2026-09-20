@@ -24,6 +24,7 @@ x-runtime-env: &runtime-env
   ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in the deployment secret store}
   WEB_APP_URL: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in the deployment secret store}
   MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+  MCP_LEGACY_RESOURCE_URLS: ${MCP_LEGACY_RESOURCE_URLS:-}
   MCP_APP_URL: http://web/mcp-review.html
   MCP_ALLOWED_ORIGINS: ${BLOGFACTORY_URL:?Set BLOGFACTORY_URL in the deployment secret store}
   WORKOS_AUTHKIT_ISSUER: ${WORKOS_AUTHKIT_ISSUER:-}
