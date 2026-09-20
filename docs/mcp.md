@@ -87,7 +87,7 @@ Use `http://localhost:8080/mcp` for local development.
 
 ## OAuth
 
-OAuth fails closed unless `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` are configured together. Production uses `https://blogfactory.io/mcp` as the resource indicator and `https://app.blogfactory.io/mcp/oauth` as the login URI.
+OAuth fails closed unless `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` are configured together. Production uses `https://blogfactory.io/mcp` as the resource indicator and `https://app.blogfactory.io/mcp/oauth` as the login URI. During a resource URL migration, `MCP_LEGACY_RESOURCE_URLS` may list comma-separated prior `/mcp` audiences accepted for token verification; metadata still advertises only `MCP_RESOURCE_URL`. Remove legacy audiences after clients reconnect and old tokens expire.
 
 Consent lists only the authenticated user's active sites and binds the selected IDs to `urn:blogfactory:site_ids`. AuthKit currently supports one `enum` value per consent option, so BlogFactory serializes the selected UUID array into that value; token verification also accepts a native array claim. Existing grants using `urn:blogfactory:site_id` remain valid. Both forms are normalized to one allowed-site set, and the server verifies signature, issuer, `/mcp` audience, approval, current ownership, the original persisted grant, and revocation before granting scopes. Reconnect the client to authorize additional sites; an existing grant never expands automatically.
 
