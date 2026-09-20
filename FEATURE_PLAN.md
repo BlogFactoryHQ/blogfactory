@@ -6,7 +6,9 @@ This is the canonical forward plan for BlogFactory. It records intended work, no
 
 BlogFactory launches open source and self-hosted first. BlogFactory Cloud is a later managed service and must be described as **coming soon** until its release gates are complete.
 
-Cloud pricing, limits, checkout, subscriptions, and entitlements have not been decided or implemented.
+Cloud packaging is fixed for launch: Cloud is $5 monthly or $49 yearly with 3 sites, 1 GB storage, 1 concurrent generation, 3 active RSS feeds, and 150 successful drafts per UTC month. Advanced is $15 monthly or $149 yearly with 10 sites, 10 GB, 3 concurrent generations, 20 active RSS feeds, unlimited manual creation, and up to 600 automated drafts per UTC month. A separate $20 top-up grants 14,000 Managed AI Credits for 365 days; plans include no AI credits and BYO OpenRouter remains available.
+
+Polar is the payment layer. The private Cloud PostgreSQL database remains authoritative for entitlements, quotas, and spendable credits. Public signup and these prices remain **coming soon** until the unchecked launch gates below pass.
 
 ## Phase 0 — open-source release
 
@@ -47,12 +49,16 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 ## Phase 2 — BlogFactory Cloud
 
 - [ ] Replace process-local background continuation with PostgreSQL-backed jobs, leases, retries, and worker heartbeats.
-- [ ] Implement verified email, password recovery delivery, abuse controls, and production login acceptance.
+- [ ] Complete production acceptance for WorkOS AuthKit login, verification/reset mail, Turnstile, rate limits, existing-user migration, and logout/session revocation.
 - [ ] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation.
 - [ ] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority.
 - [ ] Choose a billing provider and implement idempotent webhooks outside MCP authority.
 - [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies.
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
+- [ ] Pass real Polar sandbox checkout, webhook idempotency/order, portal, cancellation, grace, refund, chargeback-debt, and reconciliation acceptance for all five SKUs.
+- [ ] Obtain written Polar acceptance for the AI-content use case and written OpenRouter confirmation for BlogFactory Managed AI; complete human legal review.
+- [ ] Verify production purchase/refund, live webhook readback, tenant-scoped entitlement enforcement, email delivery, Turnstile, and rate-limit acceptance before enabling public signup.
+- [ ] Keep marketing Cloud availability disabled until the live app checkout, portal, entitlements, and read-only fallback are independently verified.
 
 ## Release language
 
