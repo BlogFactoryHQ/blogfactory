@@ -4,6 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { waitUntil } from "@vercel/functions";
 import { db } from "../db/index.js";
+import { ApiError } from "../http/error-contract.js";
 import {
   imageAssets,
   jobs,
@@ -127,6 +128,7 @@ type ToolErrorCode =
   | "destination_not_ready"
   | "provider_error"
   | "rate_limited"
+  | "quota_exceeded"
   | "internal_error";
 
 export class McpToolError extends Error {
@@ -1736,17 +1738,33 @@ export function assertMcpToolRegistry() {
   }
 }
 
+function asMcpToolError(error: unknown) {
+  if (error instanceof McpToolError) return error;
+  if (error instanceof ApiError && error.code === "plan_quota_reached") {
+    if (/monthly draft/i.test(error.message)) {
+      const now = new Date();
+      const resetDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+      return new McpToolError("quota_exceeded", `${error.message}. Quota resets on ${resetDate}.`, `Upgrade at /billing or wait until ${resetDate}.`);
+    }
+    return new McpToolError("quota_exceeded", error.message, "Upgrade at /billing or reduce usage to the plan limit.");
+  }
+  if (error instanceof ApiError && error.status === 403 && /plan/i.test(error.message)) {
+    return new McpToolError("forbidden", error.message, "Open BlogFactory Billing at /billing to restore write access.");
+  }
+  return null;
+}
+
 function toolError(error: unknown) {
-  const known = error instanceof McpToolError;
-  const code = known ? error.code : "internal_error";
-  const message = known ? error.message : "BlogFactory could not complete this request.";
-  const nextAction = known ? error.nextAction : "Try again. If the problem continues, open BlogFactory.";
+  const mapped = asMcpToolError(error);
+  const code = mapped?.code || "internal_error";
+  const message = mapped?.message || "BlogFactory could not complete this request.";
+  const nextAction = mapped?.nextAction || "Try again. If the problem continues, open BlogFactory.";
   return {
     isError: true as const,
     content: [{ type: "text" as const, text: message }],
     structuredContent: {
       ok: false,
-      error: errorSchema.parse({ code, message, retryable: known ? error.retryable : false }),
+      error: errorSchema.parse({ code, message, retryable: mapped?.retryable ?? false }),
       next_action: nextAction,
     },
   };
@@ -1835,13 +1853,14 @@ function registerTool(server: McpServer, principal: McpPrincipal, definition: To
         structuredContent: { ok: true, data: result, next_action: nextAction },
       };
     } catch (error) {
-      const code = error instanceof McpToolError ? error.code : "internal_error";
-      if (!(error instanceof McpToolError)) {
+      const mapped = asMcpToolError(error);
+      const code = mapped?.code || "internal_error";
+      if (!mapped) {
         console.error("[mcp] Tool failed:", error instanceof Error ? error.name : "UnknownError");
       }
       logMcpTool(principal, definition, extra.requestId, startedAt, code, inputSiteId);
       await finish("failed", code, inputSiteId);
-      return toolError(error);
+      return toolError(mapped || error);
     }
   };
   if (definition.uiResourceUri) registerAppTool(server, definition.name, {
