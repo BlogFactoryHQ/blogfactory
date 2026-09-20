@@ -17,6 +17,7 @@ export const MCP_OAUTH_SCOPES = ["openid", "profile", "email", "offline_access"]
 export interface McpOAuthConfig {
   issuer: string;
   resource: string;
+  acceptedResources: string[];
   jwksUrl: string;
   protectedResourceMetadataUrl: string;
 }
@@ -47,33 +48,46 @@ function canonicalUrl(value: string, label: string) {
   return url;
 }
 
+function mcpResourceUrl(value: string, label: string) {
+  const url = canonicalUrl(value, label);
+  const loopback = url.protocol === "http:"
+    && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  if ((url.protocol !== "https:" && !loopback) || url.pathname !== "/mcp") {
+    throw new Error(`${label} must contain HTTPS /mcp URLs, or HTTP on loopback`);
+  }
+  return url.toString();
+}
+
 export function getMcpOAuthConfig(
   env: Record<string, string | undefined> = process.env,
 ): McpOAuthConfig | null {
   const issuerValue = env.WORKOS_AUTHKIT_ISSUER?.trim();
   const resourceValue = env.MCP_RESOURCE_URL?.trim();
+  const legacyResourceValue = env.MCP_LEGACY_RESOURCE_URLS?.trim();
   const apiKey = env.WORKOS_API_KEY?.trim();
-  if (!issuerValue && !resourceValue && !apiKey) return null;
+  if (!issuerValue && !resourceValue && !legacyResourceValue && !apiKey) return null;
   if (!issuerValue || !resourceValue || !apiKey) {
     throw new Error("MCP OAuth requires WORKOS_AUTHKIT_ISSUER, MCP_RESOURCE_URL, and WORKOS_API_KEY");
   }
 
   const issuerUrl = canonicalUrl(issuerValue, "WORKOS_AUTHKIT_ISSUER");
-  const resourceUrl = canonicalUrl(resourceValue, "MCP_RESOURCE_URL");
+  const resourceUrl = new URL(mcpResourceUrl(resourceValue, "MCP_RESOURCE_URL"));
   if (issuerUrl.protocol !== "https:" || issuerUrl.pathname !== "/") {
     throw new Error("WORKOS_AUTHKIT_ISSUER must be an HTTPS origin");
-  }
-  const loopbackResource = resourceUrl.protocol === "http:"
-    && (resourceUrl.hostname === "localhost" || resourceUrl.hostname === "127.0.0.1");
-  if ((resourceUrl.protocol !== "https:" && !loopbackResource) || resourceUrl.pathname !== "/mcp") {
-    throw new Error("MCP_RESOURCE_URL must be an HTTPS /mcp URL, or HTTP on loopback");
   }
 
   const issuer = issuerUrl.origin;
   const resource = resourceUrl.toString();
+  const acceptedResources = [...new Set([
+    resource,
+    ...(legacyResourceValue || "").split(",").map((value) => value.trim()).filter(Boolean).map((value) => (
+      mcpResourceUrl(value, "MCP_LEGACY_RESOURCE_URLS")
+    )),
+  ])];
   return {
     issuer,
     resource,
+    acceptedResources,
     jwksUrl: `${issuer}/oauth2/jwks`,
     protectedResourceMetadataUrl: `${resourceUrl.origin}/.well-known/oauth-protected-resource`,
   };
@@ -144,7 +158,7 @@ export async function verifyMcpOAuthAccessToken(
   try {
     const { payload } = await jwtVerify(token, resolver, {
       issuer: config.issuer,
-      audience: config.resource,
+      audience: config.acceptedResources,
       algorithms: ["RS256"],
     });
     return mcpOAuthIdentityFromClaims(payload);
