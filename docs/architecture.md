@@ -107,7 +107,7 @@ Object storage holds generated/imported image assets. Database rows retain owner
 
 ## Background work
 
-Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The validated worker-mode core changes remain pending merge into this public repository's `main` branch. No Redis or external queue is involved.
+Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The worker runs `server/src/worker.ts` with `BACKGROUND_EXECUTION_MODE=worker`; the API runs `inline`. No Redis or external queue is involved.
 
 Thin scheduled triggers remain for feed processing, daily fallback work, and manual recovery:
 

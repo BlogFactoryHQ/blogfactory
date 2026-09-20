@@ -51,6 +51,8 @@ Application rollback is redeploying the previous approved image digests. Full-ho
 
 The persistent worker runs bounded campaign, SEO, and deferred-image drains every five seconds. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch; the Cloudflare Worker remains a six-hour protected fallback trigger. Search Console refresh is manual. Every external trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
 
+The API runs `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker runs `BACKGROUND_EXECUTION_MODE=worker` (`server/src/worker.ts`). `BACKGROUND_WORKER_POLL_MS` and the `BACKGROUND_WORKER_CAMPAIGN_ITEMS`/`SEO_JOBS`/`IMAGE_JOBS` bounds default to the 5-second 1/2/1 cycle above. PostgreSQL atomic claims, stale recovery, retries, and feed leases prevent duplicate ownership. Do not run more than one persistent worker until claim and stale-recovery checks pass for that topology.
+
 The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
 Do not disable a failing scheduled workflow to make Actions appear clean. Confirm the affected task, timeout, and backend behavior before a narrow fix.
@@ -81,6 +83,7 @@ Production boundary checks:
 
 ```bash
 curl -i https://app.blogfactory.io/api/health
+curl -i https://app.blogfactory.io/api/ready
 curl -i https://blogfactory.io/
 curl -i https://blogfactory.io/api/health
 curl -i https://blogfactory.io/mcp
@@ -90,7 +93,8 @@ curl -i https://blogfactory.io/.well-known/oauth-protected-resource
 Expected results:
 
 - Public root: HTTP 200 with the current marketing marker and working waitlist destination.
-- App and compatibility `/api/health`: HTTP 200.
+- App `/api/health` and `/api/ready`: HTTP 200.
+- Host port 5432 is not published or reachable externally.
 - Unauthenticated `/mcp`: HTTP 401 with `WWW-Authenticate: Bearer`, never the React shell.
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
 - Authenticated capability response: exactly 22 tools from the server catalog.
