@@ -21,7 +21,7 @@ React control app                                      MCP auth + tools
                               |
                    shared tenant-scoped services
                               |
-             PostgreSQL + S3-compatible object storage
+          Neon PostgreSQL + Cloudflare R2 object storage
                               |
        CMS drafts / Search Console / configured AI providers
 ```
@@ -66,7 +66,7 @@ The MCP surface is site-scoped and draft-only. `generate_draft` is asynchronous.
 CORS -> request logger -> normalized errors -> auth -> operation ledger -> routes
 ```
 
-`api/index.js` imports the compiled Hono app for Vercel. Route files own HTTP validation and response shape; business logic should live under `server/src/services/`.
+Production runs the Hono app with Bun in the API container. `api/index.js` remains the compatible Vercel serverless entrypoint used by the ready rollback deployment. Route files own HTTP validation and response shape; business logic should live under `server/src/services/`.
 
 ## Service ownership
 
@@ -107,11 +107,14 @@ Object storage holds generated/imported image assets. Database rows retain owner
 
 ## Background work
 
-Background work is split across bounded triggers that all call the protected `/api/cron/drain` endpoint:
+Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The validated worker-mode core changes remain pending merge into this public repository's `main` branch. No Redis or external queue is involved.
+
+Thin scheduled triggers remain for feed processing, daily fallback work, and manual recovery:
 
 | Trigger | Schedule | Work |
 | --- | --- | --- |
-| Cloudflare Worker | Every 6 hours | Campaign fallback, SEO metadata, deferred images |
+| Persistent worker | Every 5 seconds | Campaigns, SEO metadata, deferred images |
+| Cloudflare Worker | Every 6 hours | Protected bounded fallback drain |
 | GitHub `rss-cron.yml` | Every 6 hours | Due RSS feeds |
 | GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
 | GitHub `campaign-cron.yml` | Manual | Bounded campaign drain |
@@ -123,14 +126,16 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | Layer | Current responsibility |
 | --- | --- |
 | Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
-| Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay and Vercel deployment ownership |
-| Vercel project `editorial-flow-main` | Private-repository app/API build and serverless execution |
-| `vercel.json` | Migration/build command, API/MCP rewrites, redirects, headers, SPA fallbacks |
-| GitHub Actions | Validation plus protected background drains |
+| Private `BlogFactoryHQ/blogfactory-cloud` | Cloud-only Compose, Caddy, image-build, and deployment ownership |
+| Hetzner Nuremberg | Current API, worker, and web container runtime |
+| Neon Frankfurt | Managed PostgreSQL 18; direct migration role and pooled least-privilege runtime role |
+| Cloudflare R2 EU | Private production image/object storage and encrypted portable backup |
+| GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA |
+| Vercel project `editorial-flow-main` | Last clean serverless deployment retained as the DNS rollback target |
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 
-This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
+This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Cloudflare proxies `app.blogfactory.io` to Caddy on Hetzner; Caddy forwards to the loopback-bound Nginx web container, which proxies API and MCP traffic to the private Hono container. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual DNS, image digests, and proxy behavior during every release; do not infer live routing from configuration alone.
 
 ## Authentication and authority
 
@@ -161,7 +166,7 @@ Do not add checkout until the plan's Cloud gates are complete. Keep customer bil
 | MCP tool | `contracts.ts`, `tools.ts`, exact catalog assertions, `docs/mcp.md` |
 | Review/preflight behavior | `server/src/services/control-plane.ts` or `publishing.ts` |
 | Scheduled work | `server/src/routes/cron.ts`, existing drain service, current trigger config |
-| Production routing | `vercel.json`, hosting control plane, `docs/operations.md` |
+| Production routing | private Cloud Compose/Caddy, Cloudflare, `docs/operations.md` |
 
 ## Developer reading order
 

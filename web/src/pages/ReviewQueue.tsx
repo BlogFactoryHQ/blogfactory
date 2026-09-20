@@ -27,7 +27,7 @@ export default function ReviewQueue() {
     queryKey: ["action-items", activeSite?.id, severity],
     queryFn: () => api.get<QueueResponse>(`/control-plane/action-items?site_id=${encodeURIComponent(activeSite!.id)}&limit=50${severity === "all" ? "" : `&severity=${severity}`}`),
     enabled: Boolean(activeSite?.id),
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {

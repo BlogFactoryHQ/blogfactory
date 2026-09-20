@@ -5,7 +5,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 ## Read First
 
 - `README.md` describes the current product, architecture, setup, and acceptance checks.
-- `FEATURE_PLAN.md` is the canonical open-source-first and Cloud-coming-soon roadmap. Unchecked items are not shipped.
+- `FEATURE_PLAN.md` is the canonical open-source-first, private-Cloud, and public-launch roadmap. Unchecked items are not shipped.
 - `docs/architecture.md` maps runtime surfaces, shared services, hosting, data boundaries, and change ownership.
 - `docs/mcp.md` is the current MCP catalog, OAuth, Review Card, and safety boundary.
 - `docs/operations.md` covers migrations, deployment, background work, and production verification.
@@ -26,9 +26,9 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 
 ## Launch Boundary
 
-- The product is preparing an open-source, self-hosted release first. BlogFactory Cloud is coming soon.
-- The repository is public and licensed AGPL-3.0-only. Keep release language at “open-source release candidate” until the remaining Phase 0 gates in `FEATURE_PLAN.md` are completed.
-- Customer pricing, subscriptions, checkout, entitlements, and billing webhooks do not exist yet. AI provider model costs are not BlogFactory plan prices.
+- The open-source, self-hosted v0.1.0 release is public. BlogFactory Cloud is the managed service; its runtime, pricing, and billing live in the private `BlogFactoryHQ/blogfactory-cloud` repository.
+- The repository is public and licensed AGPL-3.0-only. Do not regress shipped release status, and do not publish Cloud commercial detail here before the marketing and legal surfaces carry it.
+- Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not part of this core and must not be added here. AI provider model costs are not BlogFactory plan prices.
 - Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
 - Password recovery UI stays absent until real email delivery is connected. Self-hosted signup is an explicit environment-gated bootstrap path, not a hosted signup launch.
 - Public marketing is owned by the private `BlogFactoryHQ/blogfactory-marketing` Astro repository and Cloudflare Pages project, not this application build.
@@ -59,7 +59,7 @@ Grouped surfaces:
 - Backend: Hono TypeScript app; Bun for local backend development and self-tests.
 - Database: PostgreSQL with Drizzle ORM and additive SQL migrations.
 - Storage: S3-compatible storage, commonly Cloudflare R2.
-- Deploy: the private marketing repository owns the Cloudflare-fronted apex; the private Cloud repository validates this shared core and deploys the app/API to Vercel through CI. Vercel serves `/api/*`, `/mcp`, and OAuth routes through `api/index.js`.
+- Deploy: the private marketing repository owns the Cloudflare-fronted apex. The private Cloud repository validates this shared core, builds immutable GHCR images, and deploys API, worker, and web containers to Hetzner. Neon and R2 remain managed off-host services; Vercel is the ready rollback target.
 
 ## Project Map
 
@@ -105,7 +105,7 @@ Shared concepts are `WorkspaceDigest`, `ActionItem`, `ReviewPacket`, and `Operat
 
 The action queue contains only real work: editorial review states, requested changes, stale approvals, missing revision/SEO/destination blockers, image/metadata warnings, and untouched drafts older than 14 days. Priority is blocker → changes requested → in review → stale approval → warning → last update.
 
-## MCP Status — 2026-08-22
+## MCP Status — 2026-09-15
 
 - Production endpoint: `https://blogfactory.io/mcp`.
 - Transport: Streamable HTTP; protocol `2025-11-25`; server `0.4.3`.
@@ -151,6 +151,6 @@ npm run db:generate
 - Database integration writes must use a disposable PostgreSQL database, never shared production Neon.
 - Run the full web lint; do not hide changed-file failures behind warning filters.
 - A local missing backend or environment may return `/api/*` 500; do not misattribute that to UI-only work.
-- Before release: `git diff --check`, clean intended diff, commit, push, then verify the private Cloud sync/deploy run and wait for the Vercel deployment to become Ready.
-- Production acceptance: `/api/health` 200; unauthenticated `/mcp` 401 with Bearer challenge; OAuth metadata 200; commit SHA matches deployment; `blogfactory.io` alias is attached; relevant live asset/API markers are present.
-- Rollback uses the last Ready Vercel deployment. Keep schema changes additive so rollback stays possible.
+- Before release: `git diff --check`, clean intended diff, commit, push, then verify the private Cloud sync, immutable GHCR builds, migration completion, and Hetzner container health.
+- Production acceptance: `/api/health` 200; `/api/ready` 200; unauthenticated `/mcp` 401 with Bearer challenge; OAuth metadata 200; running image digests match the intended commit; relevant live asset/API markers are present.
+- Roll back the application with the previous approved image digests or the full host through the last Ready Vercel deployment. Keep schema changes additive so rollback stays possible.
