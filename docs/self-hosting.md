@@ -110,7 +110,7 @@ backup="backups/$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$backup/minio"
 docker compose stop api scheduler
 docker compose exec -T postgres pg_dump -U blogfactory -d blogfactory -Fc > "$backup/postgres.dump"
-docker compose run --rm --entrypoint /bin/sh -v "$PWD/$backup/minio:/backup" minio-init -c \
+docker compose run --rm --entrypoint /bin/sh -v "$PWD/$backup/minio:/backup" minio -c \
   'mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc mirror local/blogfactory /backup'
 docker compose start api scheduler
 ```
@@ -120,7 +120,7 @@ Restore into a clean or deliberately replaced stack, then verify `/api/ready`, l
 ```bash
 docker compose stop api scheduler
 docker compose exec -T postgres pg_restore -U blogfactory -d blogfactory --clean --if-exists < "$backup/postgres.dump"
-docker compose run --rm --entrypoint /bin/sh -v "$PWD/$backup/minio:/backup:ro" minio-init -c \
+docker compose run --rm --entrypoint /bin/sh -v "$PWD/$backup/minio:/backup:ro" minio -c \
   'mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc mirror /backup local/blogfactory'
 docker compose start api scheduler
 curl --fail http://localhost:8080/api/ready
