@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CheckCircle2, ExternalLink, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { Archive, ExternalLink, FileText, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -20,6 +20,7 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { connectionReady } from "@/lib/credential-status";
+import { BatchProgressRail } from "@/components/content/BatchProgressRail";
 import { safeLocaleString } from "@/lib/date-format";
 import type { ListPagination } from "@/lib/list-query";
 
@@ -167,17 +168,19 @@ export default function BatchImport() {
     }
   };
 
-  const runImport = async () => {
+  const runImport = async (scope: "all" | "failed" = "all") => {
     stopRequestedRef.current = false;
     setIsRunning(true);
     try {
-      for (const item of items) {
+      // A retry re-runs only the items that failed, so items already imported are not re-uploaded.
+      const queue = scope === "failed" ? items.filter((item) => item.status === "failed") : items;
+      for (const item of queue) {
         if (stopRequestedRef.current) {
           updateItem(item.id, { message: "Stopped" });
           continue;
         }
         if (item.status === "done") continue;
-        updateItem(item.id, { status: "importing", message: "Creating BlogFactory draft" });
+        updateItem(item.id, { status: "importing", message: "Creating BlogFactory draft", postId: undefined });
 
         try {
           const controller = new AbortController();
@@ -307,24 +310,6 @@ export default function BatchImport() {
                 </RadioGroup>
               </div>
 
-              {isRunning ? (
-                <Button
-                  className="w-full"
-                  variant="destructive"
-                  onClick={() => {
-                    stopRequestedRef.current = true;
-                    currentAbortRef.current?.abort();
-                    toast.info("Stopping batch");
-                  }}
-                >
-                  Stop batch
-                </Button>
-              ) : (
-                <Button className="w-full" disabled={items.length === 0} onClick={runImport}>
-                  <UploadCloud className="mr-2 h-4 w-4" />
-                  Run batch
-                </Button>
-              )}
               {integrationId !== "none" && (
                 <p className="text-xs text-muted-foreground">
                   Images upload one at a time to avoid upload-size failures, then the post is sent to the selected platform.
@@ -332,6 +317,18 @@ export default function BatchImport() {
               )}
             </div>
           </div>
+
+          <BatchProgressRail
+            items={items}
+            isRunning={isRunning}
+            onRun={() => void runImport("all")}
+            onRetryFailed={() => void runImport("failed")}
+            onStop={() => {
+              stopRequestedRef.current = true;
+              currentAbortRef.current?.abort();
+              toast.info("Stopping batch");
+            }}
+          />
 
           <div className="overflow-hidden rounded-lg border border-byword-border">
             <table className="w-full text-sm">
@@ -371,10 +368,13 @@ export default function BatchImport() {
                       </td>
                       <td className="px-4 py-3">{item.images.length}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          {item.status === "failed" ? <XCircle className="h-4 w-4 text-destructive" /> : item.status === "done" ? <CheckCircle2 className="h-4 w-4 text-status-success" /> : item.status === "importing" || item.status === "publishing" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                          <span>{item.message || item.status}</span>
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge
+                            status={item.status === "failed" ? "error" : item.status === "done" ? "success" : item.status === "ready" ? "pending" : "running"}
+                            label={item.status === "ready" ? "queued" : item.status}
+                          />
+                          {item.message && <span className="type-meta">{item.message}</span>}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {item.postId ? (

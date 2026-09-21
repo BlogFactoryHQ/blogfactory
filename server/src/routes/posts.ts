@@ -27,6 +27,8 @@ import {
   type EditorialState,
 } from "../services/post-revisions.js";
 import { getReviewPacket } from "../services/control-plane.js";
+import { scoreRevisions } from "../services/post-scorecard.js";
+import { getEffectiveSettings } from "../services/user-settings.js";
 
 export const postsRoutes = new Hono();
 
@@ -199,6 +201,36 @@ postsRoutes.get("/:id/revisions", async (c) => {
   try {
     const rows = await listPostRevisions(userId, c.req.param("id"), Number(c.req.query("limit") || 50));
     return c.json({ revisions: rows.map(serializePostRevision) });
+  } catch (error) {
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.get("/:id/revisions/scorecard", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
+  if (!post) return c.json({ error: "Post not found" }, 404);
+  try {
+    const rows = await listPostRevisions(userId, id, Number(c.req.query("limit") || 20));
+    const settings = await getEffectiveSettings(userId, post.siteId);
+    // The originating job carries the keyword the draft was written for; without it the
+    // keyword check reports "not applicable" rather than guessing one from the title.
+    const [job] = post.jobId
+      ? await db.select({ sourceValue: jobs.sourceValue }).from(jobs).where(and(eq(jobs.id, post.jobId), eq(jobs.userId, userId))).limit(1)
+      : [];
+    const keyword = job?.sourceValue || "";
+    const revisions = scoreRevisions(
+      rows.map((row) => ({
+        id: row.id,
+        revisionNumber: row.revisionNumber,
+        createdAt: row.createdAt,
+        content: serializePostRevision(row).snapshot.content || "",
+      })),
+      { keyword, settings },
+    );
+    return c.json({ keyword, revisions });
   } catch (error) {
     if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
     throw error;

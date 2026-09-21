@@ -287,6 +287,12 @@ function serializeSettings(settings: typeof userSettings.$inferSelect | undefine
     budgetPaused: settings.budgetPaused,
     budget_alert_threshold: settings.budgetAlertThreshold,
     budgetAlertThreshold: settings.budgetAlertThreshold,
+    daily_cost_limit: settings.dailyCostLimit,
+    dailyCostLimit: settings.dailyCostLimit,
+    daily_request_limit: settings.dailyRequestLimit,
+    dailyRequestLimit: settings.dailyRequestLimit,
+    daily_failure_limit: settings.dailyFailureLimit,
+    dailyFailureLimit: settings.dailyFailureLimit,
     created_at: settings.createdAt,
     createdAt: settings.createdAt,
     updated_at: settings.updatedAt,
@@ -425,6 +431,9 @@ function buildSettingsUpdate(body: Record<string, unknown>): SettingsUpdate {
   setNumber("monthlyBudget", "monthly_budget");
   setBool("budgetPaused", "budget_paused");
   setNumber("budgetAlertThreshold", "budget_alert_threshold");
+  setNumber("dailyCostLimit", "daily_cost_limit");
+  setNumber("dailyRequestLimit", "daily_request_limit");
+  setNumber("dailyFailureLimit", "daily_failure_limit");
 
   update.updatedAt = new Date();
   return update;

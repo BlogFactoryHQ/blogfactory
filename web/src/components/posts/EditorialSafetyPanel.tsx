@@ -4,7 +4,9 @@ import { CheckCircle2, Eye, History, Loader2, RotateCcw, ShieldAlert } from "luc
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { lineRevisionDiff } from "@/lib/revision-diff";
+import { groupRevisionDiffHunks, lineRevisionDiff, summarizeRevisionDiff } from "@/lib/revision-diff";
+import { RevisionTimeline } from "@/components/posts/RevisionTimeline";
+import { RevisionScorecard, type RevisionScore } from "@/components/posts/RevisionScorecard";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -77,6 +79,16 @@ function RevisionHistoryDialog({
     enabled: open,
   });
   const revisions = data?.revisions || [];
+  const { data: scorecard } = useQuery({
+    queryKey: ["post-revision-scorecard", postId],
+    queryFn: () => api.get<{ keyword: string; revisions: RevisionScore[] }>(`/posts/${postId}/revisions/scorecard`),
+    enabled: open,
+  });
+  const scoreEntries = useMemo(() => scorecard?.revisions || [], [scorecard]);
+  const scoreById = useMemo(
+    () => Object.fromEntries(scoreEntries.map((entry) => [entry.revision_id, entry.score])),
+    [scoreEntries],
+  );
 
   useEffect(() => {
     if (!revisions.length) return;
@@ -86,7 +98,16 @@ function RevisionHistoryDialog({
 
   const before = revisions.find((item) => item.id === beforeId);
   const after = revisions.find((item) => item.id === afterId);
+  // Revisions arrive newest first, so the next index is the older neighbour to compare against.
+  const selectCandidate = (revisionId: string) => {
+    const index = revisions.findIndex((item) => item.id === revisionId);
+    if (index < 0) return;
+    setAfterId(revisionId);
+    setBeforeId((revisions[index + 1] || revisions[index]).id);
+  };
   const diff = useMemo(() => lineRevisionDiff(before?.snapshot.content || "", after?.snapshot.content || ""), [after, before]);
+  const hunks = useMemo(() => groupRevisionDiffHunks(diff), [diff]);
+  const summary = useMemo(() => summarizeRevisionDiff(diff), [diff]);
   const restoreMutation = useMutation({
     mutationFn: () => api.post<{ post: { title: string; content: string; summary: string | null; coverImageUrl: string | null; inlineImages: string[] | null } }>(`/posts/${postId}/revisions/${beforeId}/restore`, { expected_updated_at: updatedAt }),
     onSuccess: (result) => {
@@ -112,41 +133,58 @@ function RevisionHistoryDialog({
           <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : revisions.length ? (
           <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <RevisionTimeline revisions={revisions} baseId={beforeId} candidateId={afterId} onSelectCandidate={selectCandidate} scores={scoreById} />
+
+            {scoreEntries.length > 0 && <RevisionScorecard entries={scoreEntries} baseId={beforeId} candidateId={afterId} />}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="space-y-1.5">
-                <label className="section-label" htmlFor="revision-before">Before</label>
+                <label className="section-label" htmlFor="revision-before">Compare against</label>
                 <Select value={beforeId} onValueChange={setBeforeId}>
-                  <SelectTrigger id="revision-before"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="revision-before" className="w-full sm:w-72"><SelectValue /></SelectTrigger>
                   <SelectContent>{revisions.map((revision) => <SelectItem key={revision.id} value={revision.id}>Revision {revision.revision_number} · {new Date(revision.created_at).toLocaleString()}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <label className="section-label" htmlFor="revision-after">After</label>
-                <Select value={afterId} onValueChange={setAfterId}>
-                  <SelectTrigger id="revision-after"><SelectValue /></SelectTrigger>
-                  <SelectContent>{revisions.map((revision) => <SelectItem key={revision.id} value={revision.id}>Revision {revision.revision_number} · {new Date(revision.created_at).toLocaleString()}</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted-foreground">
+                <span><span className="font-semibold text-status-success">+{summary.added}</span> / <span className="font-semibold text-status-error">−{summary.removed}</span> lines</span>
+                <span>{hunks.length} {hunks.length === 1 ? "hunk" : "hunks"}</span>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-sm border border-byword-border bg-muted/20 p-3"><p className="section-label">Before title</p><p className="mt-2 break-words text-sm font-semibold">{before?.snapshot.title || "—"}</p></div>
-              <div className="rounded-sm border border-byword-border bg-muted/20 p-3"><p className="section-label">After title</p><p className="mt-2 break-words text-sm font-semibold">{after?.snapshot.title || "—"}</p></div>
-            </div>
+
+            {before?.snapshot.title !== after?.snapshot.title && (
+              <div className="rounded-sm border border-byword-border bg-muted/20 p-3">
+                <p className="section-label">Title changed</p>
+                <p className="mt-2 break-words font-mono text-xs text-status-error line-through">{before?.snapshot.title || "—"}</p>
+                <p className="mt-1 break-words font-mono text-xs font-semibold text-status-success">{after?.snapshot.title || "—"}</p>
+              </div>
+            )}
+
             <div className="min-h-0 flex-1 overflow-auto rounded-sm border border-byword-border bg-background font-mono text-xs leading-5" aria-label="Line by line revision comparison">
-              {diff.map((line, index) => (
-                <div key={`${index}-${line.type}`} className={cn(
-                  "grid grid-cols-[2rem_minmax(0,1fr)] border-b border-border/50 px-2",
-                  line.type === "added" && "bg-status-success/10 text-status-success",
-                  line.type === "removed" && "bg-status-error/10 text-status-error",
-                )}>
-                  <span className="select-none text-center text-muted-foreground">{line.type === "added" ? "+" : line.type === "removed" ? "−" : ""}</span>
-                  <span className="whitespace-pre-wrap break-words py-0.5">{line.text || " "}</span>
+              {hunks.length ? hunks.map((hunk, hunkIndex) => (
+                <div key={`${hunk.beforeStart}-${hunk.afterStart}-${hunkIndex}`}>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-byword-border bg-muted px-2 py-1 text-[10px] text-muted-foreground">
+                    <span>@@ -{hunk.beforeStart},{hunk.beforeCount} +{hunk.afterStart},{hunk.afterCount} @@</span>
+                    <span className="uppercase">hunk {hunkIndex + 1} / {hunks.length}</span>
+                  </div>
+                  {hunk.lines.map((line, index) => (
+                    <div key={`${hunkIndex}-${index}-${line.type}`} className={cn(
+                      "grid grid-cols-[2.25rem_2.25rem_1rem_minmax(0,1fr)] border-b border-border/50 pr-2",
+                      line.type === "added" && "bg-status-success/10 text-status-success",
+                      line.type === "removed" && "bg-status-error/10 text-status-error",
+                    )}>
+                      <span className="select-none border-r border-border/50 px-1 text-right text-[10px] text-muted-foreground">{line.beforeLine ?? ""}</span>
+                      <span className="select-none border-r border-border/50 px-1 text-right text-[10px] text-muted-foreground">{line.afterLine ?? ""}</span>
+                      <span className="select-none text-center text-muted-foreground">{line.type === "added" ? "+" : line.type === "removed" ? "−" : ""}</span>
+                      <span className="whitespace-pre-wrap break-words py-0.5 pl-1">{line.text || " "}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )) : <EmptyState size="row" tone="empty" title="No text changes" description="These two revisions have identical body text." />}
             </div>
+
             <div className="flex justify-end">
               <AlertDialog>
-                <AlertDialogTrigger asChild><Button variant="outline" disabled={!before || before.id === revisions[0]?.id || restoreMutation.isPending}><RotateCcw className="mr-1.5 h-4 w-4" />Restore “Before”</Button></AlertDialogTrigger>
+                <AlertDialogTrigger asChild><Button variant="outline" disabled={!before || before.id === revisions[0]?.id || restoreMutation.isPending}><RotateCcw className="mr-1.5 h-4 w-4" />Restore revision {before?.revision_number}</Button></AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader><AlertDialogTitle>Restore revision {before?.revision_number}?</AlertDialogTitle><AlertDialogDescription>This creates a new draft revision. Existing history remains available.</AlertDialogDescription></AlertDialogHeader>
                   <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => restoreMutation.mutate()}>Restore revision</AlertDialogAction></AlertDialogFooter>
