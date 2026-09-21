@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { utcMonthStart } from "../services/billing-config.js";
+import { type AdminActionResult, grantCredits, grantPlan, parseCreditGrant, parsePlanGrant, revokePlan, transferSite } from "../services/admin-actions.js";
 
 // Admin-only customer console. Mounted under /api/admin, which the auth
 // middleware restricts to role=admin; never exposed through MCP.
@@ -31,7 +32,7 @@ export function parseCustomerFilter(value: string | undefined): CustomerFilter {
   return CUSTOMER_FILTERS.includes(value as CustomerFilter) ? value as CustomerFilter : "all";
 }
 
-export function suspensionReason(value: unknown) {
+export function adminReason(value: unknown) {
   if (typeof value !== "string") return null;
   const reason = value.trim();
   return reason.length >= 3 && reason.length <= 500 ? reason : null;
@@ -143,6 +144,7 @@ cloudAdminRoutes.get("/:id", async (c) => {
       id: adminAuditEvents.id,
       action: adminAuditEvents.action,
       reason: adminAuditEvents.reason,
+      details: adminAuditEvents.details,
       createdAt: adminAuditEvents.createdAt,
       adminEmail: users.email,
     }).from(adminAuditEvents).leftJoin(users, eq(users.id, adminAuditEvents.adminUserId))
@@ -178,7 +180,7 @@ cloudAdminRoutes.post("/:id/suspend", async (c) => {
   const adminId = getUserId(c);
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({})) as { reason?: unknown };
-  const reason = suspensionReason(body.reason);
+  const reason = adminReason(body.reason);
   if (!reason) return c.json({ error: "A reason of 3–500 characters is required" }, 400);
   if (id === adminId) return c.json({ error: "You cannot suspend your own account" }, 400);
 
@@ -206,7 +208,7 @@ cloudAdminRoutes.post("/:id/unsuspend", async (c) => {
   const adminId = getUserId(c);
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({})) as { reason?: unknown };
-  const reason = suspensionReason(body.reason);
+  const reason = adminReason(body.reason);
   if (!reason) return c.json({ error: "A reason of 3–500 characters is required" }, 400);
 
   const result = await db.transaction(async (tx) => {
@@ -219,4 +221,46 @@ cloudAdminRoutes.post("/:id/unsuspend", async (c) => {
   });
   if (result) return c.json({ error: result.error }, result.status);
   return c.json({ success: true });
+});
+
+async function readAdminBody(c: Context) {
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+  return { body, reason: adminReason(body.reason) };
+}
+
+function actionResponse(c: Context, result: AdminActionResult) {
+  return result.ok ? c.json({ success: true, details: result.details }) : c.json({ error: result.error }, result.status);
+}
+
+const REASON_REQUIRED = { error: "A reason of 3–500 characters is required" };
+
+cloudAdminRoutes.post("/:id/plan", async (c) => {
+  const { body, reason } = await readAdminBody(c);
+  if (!reason) return c.json(REASON_REQUIRED, 400);
+  const grant = parsePlanGrant(body);
+  if ("error" in grant) return c.json({ error: grant.error }, 400);
+  return actionResponse(c, await grantPlan(getUserId(c), c.req.param("id"), grant, reason));
+});
+
+cloudAdminRoutes.post("/:id/plan/revoke", async (c) => {
+  const { reason } = await readAdminBody(c);
+  if (!reason) return c.json(REASON_REQUIRED, 400);
+  return actionResponse(c, await revokePlan(getUserId(c), c.req.param("id"), reason));
+});
+
+cloudAdminRoutes.post("/:id/credits", async (c) => {
+  const { body, reason } = await readAdminBody(c);
+  if (!reason) return c.json(REASON_REQUIRED, 400);
+  const grant = parseCreditGrant(body);
+  if ("error" in grant) return c.json({ error: grant.error }, 400);
+  return actionResponse(c, await grantCredits(getUserId(c), c.req.param("id"), grant, reason));
+});
+
+cloudAdminRoutes.post("/:id/sites/:siteId/transfer", async (c) => {
+  const { body, reason } = await readAdminBody(c);
+  if (!reason) return c.json(REASON_REQUIRED, 400);
+  if (typeof body.targetEmail !== "string" || !body.targetEmail.includes("@")) return c.json({ error: "Target account email is required" }, 400);
+  const [site] = await db.select({ userId: sites.userId }).from(sites).where(eq(sites.id, c.req.param("siteId"))).limit(1);
+  if (!site || site.userId !== c.req.param("id")) return c.json({ error: "Site not found for this customer" }, 404);
+  return actionResponse(c, await transferSite(getUserId(c), c.req.param("siteId"), body.targetEmail, reason));
 });

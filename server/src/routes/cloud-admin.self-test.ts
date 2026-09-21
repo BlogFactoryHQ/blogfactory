@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { matchesCustomerFilter, parseCustomerFilter, suspensionReason } from "./cloud-admin.js";
+import { matchesCustomerFilter, parseCustomerFilter, adminReason } from "./cloud-admin.js";
 import { SUSPENDED_ALLOWED_PATHS, isSuspended, publicUser } from "../services/access-control.js";
 
 assert.equal(parseCustomerFilter("transition"), "transition");
@@ -16,10 +16,10 @@ assert.equal(matchesCustomerFilter({ ...base, entitlementStatus: "revoked" }, "n
 assert.equal(matchesCustomerFilter(base, "no_plan"), false);
 assert.equal(matchesCustomerFilter({ ...base, suspendedAt: new Date() }, "suspended"), true);
 
-assert.equal(suspensionReason("  spam  "), "spam");
-assert.equal(suspensionReason("no"), null);
-assert.equal(suspensionReason("x".repeat(501)), null);
-assert.equal(suspensionReason(42), null);
+assert.equal(adminReason("  spam  "), "spam");
+assert.equal(adminReason("no"), null);
+assert.equal(adminReason("x".repeat(501)), null);
+assert.equal(adminReason(42), null);
 
 assert.equal(isSuspended({ role: "user", suspendedAt: new Date() }), true);
 assert.equal(isSuspended({ role: "user", suspendedAt: null }), false);

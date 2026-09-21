@@ -1,20 +1,22 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Ban, CalendarClock, Coins, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import { accessStatus, formatDate, formatDateTime, planLabel, type CustomerDetail } from "@/lib/admin-customers";
+import { ACTION_LABELS, accessStatus, dateInputValue, endOfDayIso, formatDate, formatDateTime, planLabel, type AdminAction, type CustomerDetail } from "@/lib/admin-customers";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -36,21 +38,46 @@ export default function AdminCustomerDetail() {
   const { id = "" } = useParams();
   const { user: me } = useAuth();
   const queryClient = useQueryClient();
-  const [dialog, setDialog] = useState<"suspend" | "unsuspend" | null>(null);
+  const [dialog, setDialog] = useState<AdminAction | null>(null);
   const [reason, setReason] = useState("");
+  const [plan, setPlan] = useState("advanced");
+  const [endDate, setEndDate] = useState("");
+  const [credits, setCredits] = useState("");
+  const [targetEmail, setTargetEmail] = useState("");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin-customer", id],
     queryFn: () => api.get<CustomerDetail>(`/admin/customers/${id}`),
   });
 
+  // Extensions count from the current end date while the plan is still running.
+  const extensionBase = () => {
+    const current = data?.entitlement?.status !== "revoked" && data?.entitlement?.expiresAt ? new Date(data.entitlement.expiresAt) : null;
+    return current && current.getTime() > Date.now() ? current : new Date();
+  };
+  const closeDialog = () => { setDialog(null); setReason(""); setCredits(""); setTargetEmail(""); };
+  const openDialog = (next: AdminAction) => {
+    if (next.kind === "plan") {
+      setPlan(data?.entitlement?.plan && data.entitlement.plan !== "none" ? data.entitlement.plan : "advanced");
+      setEndDate(dateInputValue(new Date(extensionBase().getTime() + 30 * 86_400_000)));
+    }
+    if (next.kind === "credits") setEndDate(dateInputValue(new Date(Date.now() + 365 * 86_400_000)));
+    setDialog(next);
+  };
+
   const action = useMutation({
-    mutationFn: (kind: "suspend" | "unsuspend") => api.post(`/admin/customers/${id}/${kind}`, { reason: reason.trim() }),
+    mutationFn: (kind: AdminAction) => {
+      const body: Record<string, unknown> = { reason: reason.trim() };
+      if (kind.kind === "plan") Object.assign(body, { plan, expiresAt: plan === "internal" && !endDate ? null : endOfDayIso(endDate) });
+      if (kind.kind === "credits") Object.assign(body, { credits: Number(credits), expiresAt: endOfDayIso(endDate) });
+      if (kind.kind === "transfer") Object.assign(body, { targetEmail: targetEmail.trim() });
+      const path = kind.kind === "revoke_plan" ? "plan/revoke" : kind.kind === "transfer" ? `sites/${kind.site.id}/transfer` : kind.kind;
+      return api.post(`/admin/customers/${id}/${path}`, body);
+    },
     onSuccess: (_result, kind) => {
-      toast.success(kind === "suspend" ? "Account suspended" : "Account restored");
-      setDialog(null);
-      setReason("");
-      queryClient.invalidateQueries({ queryKey: ["admin-customer", id] });
+      toast.success(ACTION_LABELS[kind.kind].done);
+      closeDialog();
+      queryClient.invalidateQueries({ queryKey: ["admin-customer"] });
       queryClient.invalidateQueries({ queryKey: ["admin-customers"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -76,6 +103,13 @@ export default function AdminCustomerDetail() {
   });
   const canSuspend = customer.role !== "admin" && customer.id !== me?.id;
   const totalPosts = data.sites.reduce((sum, site) => sum + site.posts, 0);
+  const polarOwned = Boolean(entitlement && entitlement.source === "polar" && entitlement.status !== "revoked"
+    && (!entitlement.expiresAt || new Date(entitlement.expiresAt).getTime() > Date.now()));
+  const labels = dialog ? ACTION_LABELS[dialog.kind] : null;
+  const formValid = reason.trim().length >= 3
+    && (dialog?.kind !== "plan" || (plan === "internal" || Boolean(endDate)))
+    && (dialog?.kind !== "credits" || (Number.isInteger(Number(credits)) && Number(credits) > 0 && Boolean(endDate)))
+    && (dialog?.kind !== "transfer" || targetEmail.includes("@"));
 
   return (
     <div className="p-6">
@@ -86,9 +120,9 @@ export default function AdminCustomerDetail() {
         <StatusBadge status={access.status} label={access.label} />
         {customer.role === "admin" && <Badge variant="outline">admin</Badge>}
         {suspended ? (
-          <Button size="sm" onClick={() => setDialog("unsuspend")}><ShieldCheck className="mr-1.5 h-3.5 w-3.5" />Unsuspend</Button>
+          <Button size="sm" onClick={() => openDialog({ kind: "unsuspend" })}><ShieldCheck className="mr-1.5 h-3.5 w-3.5" />Unsuspend</Button>
         ) : (
-          <Button size="sm" variant="destructive" disabled={!canSuspend} title={canSuspend ? undefined : "Admins cannot be suspended"} onClick={() => setDialog("suspend")}>
+          <Button size="sm" variant="destructive" disabled={!canSuspend} title={canSuspend ? undefined : "Admins cannot be suspended"} onClick={() => openDialog({ kind: "suspend" })}>
             <Ban className="mr-1.5 h-3.5 w-3.5" />Suspend
           </Button>
         )}
@@ -132,6 +166,14 @@ export default function AdminCustomerDetail() {
                   : "—"}
               </Field>
             </dl>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" disabled={polarOwned} title={polarOwned ? "Paid Polar plans are changed in Polar" : undefined} onClick={() => openDialog({ kind: "plan" })}>
+                <CalendarClock className="mr-1.5 h-3.5 w-3.5" />{entitlement && entitlement.status !== "revoked" ? "Change or extend" : "Grant plan"}
+              </Button>
+              {entitlement && entitlement.status !== "revoked" && !polarOwned && entitlement.source !== "polar" && (
+                <Button size="sm" variant="outline" onClick={() => openDialog({ kind: "revoke_plan" })}>Revoke</Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -146,6 +188,9 @@ export default function AdminCustomerDetail() {
               <Field label="Jobs (all time)">{data.jobs.total}</Field>
               <Field label="Failed jobs, 7 days"><span className={data.jobs.failed7d ? "text-destructive" : undefined}>{data.jobs.failed7d}</span></Field>
             </dl>
+            <div className="mt-4">
+              <Button size="sm" variant="outline" onClick={() => openDialog({ kind: "credits" })}><Coins className="mr-1.5 h-3.5 w-3.5" />Give AI credits</Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -155,11 +200,11 @@ export default function AdminCustomerDetail() {
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow><TableHead>Site</TableHead><TableHead>Domain</TableHead><TableHead className="text-right">Posts</TableHead><TableHead>Last post</TableHead><TableHead>Created</TableHead></TableRow>
+              <TableRow><TableHead>Site</TableHead><TableHead>Domain</TableHead><TableHead className="text-right">Posts</TableHead><TableHead>Last post</TableHead><TableHead>Created</TableHead><TableHead className="w-24" /></TableRow>
             </TableHeader>
             <TableBody>
               {data.sites.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-16 text-center text-muted-foreground">No sites.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-16 text-center text-muted-foreground">No sites.</TableCell></TableRow>
               ) : data.sites.map((site) => (
                 <TableRow key={site.id}>
                   <TableCell className="font-medium">{site.name}</TableCell>
@@ -167,6 +212,11 @@ export default function AdminCustomerDetail() {
                   <TableCell className="text-right tabular-nums">{site.posts}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(site.lastPostAt)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(site.createdAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="ghost" onClick={() => openDialog({ kind: "transfer", site })}>
+                      <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />Move
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -206,7 +256,7 @@ export default function AdminCustomerDetail() {
                   <TableRow><TableCell className="h-16 text-center text-muted-foreground">No admin actions recorded.</TableCell></TableRow>
                 ) : data.audit.map((event) => (
                   <TableRow key={event.id}>
-                    <TableCell className="w-28"><Badge variant={event.action === "suspend" ? "destructive" : "secondary"}>{event.action}</Badge></TableCell>
+                    <TableCell className="w-28"><Badge variant={event.action === "suspend" || event.action === "revoke_plan" ? "destructive" : "secondary"}>{event.action.replace(/_/g, " ")}</Badge></TableCell>
                     <TableCell>
                       <div className="text-sm">{event.reason || "—"}</div>
                       <div className="text-xs text-muted-foreground">by {event.adminEmail || "deleted admin"}</div>
@@ -220,38 +270,80 @@ export default function AdminCustomerDetail() {
         </Card>
       </div>
 
-      <Dialog open={dialog !== null} onOpenChange={(open) => { if (!open && !action.isPending) { setDialog(null); setReason(""); } }}>
+      <Dialog open={dialog !== null} onOpenChange={(open) => { if (!open && !action.isPending) closeDialog(); }}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{dialog === "suspend" ? `Suspend ${customer.email}?` : `Unsuspend ${customer.email}?`}</DialogTitle>
-            <DialogDescription>
-              {dialog === "suspend"
-                ? "They will be signed out of the web app, their MCP connections will stop working, and background generation will pause. Nothing is deleted, and you can undo this."
-                : "Their web sign-in, MCP connections and background generation will work again."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="admin-reason">Reason (kept in the admin history)</Label>
-            <Textarea
-              id="admin-reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              maxLength={500}
-              rows={3}
-              placeholder={dialog === "suspend" ? "e.g. Spam generation on 3 sites, ticket #12" : "e.g. Issue resolved with customer"}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialog(null); setReason(""); }} disabled={action.isPending}>Cancel</Button>
-            <Button
-              variant={dialog === "suspend" ? "destructive" : "default"}
-              disabled={reason.trim().length < 3 || action.isPending}
-              onClick={() => dialog && action.mutate(dialog)}
-            >
-              {action.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              {dialog === "suspend" ? "Suspend account" : "Unsuspend account"}
-            </Button>
-          </DialogFooter>
+          {dialog && labels && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{dialog.kind === "transfer" ? `Move “${dialog.site.name}” to another account?` : `${labels.title} · ${customer.email}`}</DialogTitle>
+                <DialogDescription>
+                  {dialog.kind === "transfer"
+                    ? `All ${dialog.site.posts} posts, jobs, feeds, campaigns, integrations and Search Console data for this site move to the account you enter. Brand voices it uses are copied. ${customer.email} loses access to it, including through MCP.`
+                    : labels.description}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {dialog.kind === "plan" && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>Plan</Label>
+                      <Select value={plan} onValueChange={setPlan}>
+                        <SelectTrigger aria-label="Plan"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cloud">Cloud</SelectItem>
+                          <SelectItem value="advanced">Advanced</SelectItem>
+                          <SelectItem value="internal">Internal (unlimited)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="admin-end">{plan === "internal" ? "Ends (optional)" : "Ends"}</Label>
+                      <Input id="admin-end" type="date" value={endDate} min={dateInputValue(new Date(Date.now() + 86_400_000))} onChange={(event) => setEndDate(event.target.value)} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:col-span-2">
+                      <span className="text-xs text-muted-foreground">
+                        {extensionBase().getTime() > Date.now() + 60_000 ? `From current end, ${formatDate(extensionBase().toISOString())}:` : "From today:"}
+                      </span>
+                      {[30, 60, 90, 365].map((days) => (
+                        <Button key={days} type="button" size="sm" variant="outline" onClick={() => setEndDate(dateInputValue(new Date(extensionBase().getTime() + days * 86_400_000)))}>
+                          {days === 365 ? "+1 year" : `+${days} days`}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {dialog.kind === "credits" && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="admin-credits">Credits</Label>
+                      <Input id="admin-credits" type="number" min={1} step={1} inputMode="numeric" value={credits} onChange={(event) => setCredits(event.target.value)} placeholder="14000" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="admin-end">Expire on</Label>
+                      <Input id="admin-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                    </div>
+                  </div>
+                )}
+                {dialog.kind === "transfer" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="admin-target">Move to account (email)</Label>
+                    <Input id="admin-target" type="email" value={targetEmail} onChange={(event) => setTargetEmail(event.target.value)} placeholder="name@example.com" autoComplete="off" />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="admin-reason">Reason (kept in the admin history)</Label>
+                  <Textarea id="admin-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} placeholder={labels.placeholder} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={closeDialog} disabled={action.isPending}>Cancel</Button>
+                <Button variant={labels.destructive ? "destructive" : "default"} disabled={!formValid || action.isPending} onClick={() => action.mutate(dialog)}>
+                  {action.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  {labels.confirm}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

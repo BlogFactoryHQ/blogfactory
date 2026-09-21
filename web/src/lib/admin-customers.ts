@@ -52,7 +52,7 @@ export interface CustomerDetail {
     failed7d: number;
   };
   mcpTokensActive: number;
-  audit: Array<{ id: string; action: string; reason: string | null; createdAt: string; adminEmail: string | null }>;
+  audit: Array<{ id: string; action: string; reason: string | null; details: Record<string, unknown> | null; createdAt: string; adminEmail: string | null }>;
 }
 
 const PLAN_LABELS: Record<string, string> = { none: "No plan", cloud: "Cloud", advanced: "Advanced", internal: "Internal" };
@@ -77,4 +77,53 @@ export function formatDate(value: string | null | undefined, empty = "—") {
 
 export function formatDateTime(value: string | null | undefined, empty = "Never") {
   return value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : empty;
+}
+
+export type AdminAction =
+  | { kind: "suspend" }
+  | { kind: "unsuspend" }
+  | { kind: "plan" }
+  | { kind: "revoke_plan" }
+  | { kind: "credits" }
+  | { kind: "transfer"; site: CustomerDetail["sites"][number] };
+
+export const ACTION_LABELS: Record<AdminAction["kind"], { title: string; description: string; confirm: string; done: string; placeholder: string; destructive?: boolean }> = {
+  suspend: {
+    title: "Suspend account",
+    description: "They will be signed out of the web app, their MCP connections will stop working, and background generation will pause. Nothing is deleted, and you can undo this.",
+    confirm: "Suspend account", done: "Account suspended", placeholder: "e.g. Spam generation on 3 sites, ticket #12", destructive: true,
+  },
+  unsuspend: {
+    title: "Unsuspend account",
+    description: "Their web sign-in, MCP connections and background generation will work again.",
+    confirm: "Unsuspend account", done: "Account restored", placeholder: "e.g. Issue resolved with customer",
+  },
+  plan: {
+    title: "Grant or extend plan",
+    description: "Replaces the current trial, transition or admin plan. It does not touch Polar; the customer is not charged. If they later subscribe in Polar, the paid plan takes over.",
+    confirm: "Save plan", done: "Plan updated", placeholder: "e.g. Extended transition access for early customer",
+  },
+  revoke_plan: {
+    title: "Revoke plan",
+    description: "Ends the admin or transition plan now. The customer keeps their data but can no longer create or change content until they subscribe.",
+    confirm: "Revoke plan", done: "Plan revoked", placeholder: "e.g. Trial ended", destructive: true,
+  },
+  credits: {
+    title: "Give AI credits",
+    description: "Adds Managed AI credits that expire on the date you choose. They are only used while Managed AI is enabled.",
+    confirm: "Give credits", done: "Credits added", placeholder: "e.g. Compensation for failed runs on 21 Sep",
+  },
+  transfer: {
+    title: "Move site",
+    description: "",
+    confirm: "Move site", done: "Site moved", placeholder: "e.g. Customer asked to move the site to their team account", destructive: true,
+  },
+};
+
+export function dateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function endOfDayIso(date: string) {
+  return `${date}T23:59:59.000Z`;
 }
