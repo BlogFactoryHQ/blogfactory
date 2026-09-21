@@ -58,7 +58,7 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 - [x] Run private Cloud heavy jobs in a persistent worker using the existing PostgreSQL-backed claims, retries, stale recovery, terminal states, and heartbeat health.
 - [x] Deploy the private Cloud stack to Hetzner Nuremberg with immutable GHCR image digests, Neon PostgreSQL 18 in Frankfurt, private EU R2 storage, Cloudflare routing, and a clean Vercel rollback deployment.
 - [x] Migrate the existing production database and objects, verify row/object counts, encrypted backup readback, the 22-tool MCP catalog, and tenant/site isolation.
-- [ ] Merge the validated worker-mode core changes into the public `main` branch.
+- [x] Merge the validated worker-mode core changes into the public `main` branch.
 - [x] Implement verified email, password recovery delivery, abuse controls, and production login acceptance (hosted auth is WorkOS AuthKit in the private Cloud repository; lifecycle email beyond authentication is still open there).
 - [x] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation (private Cloud repository).
 - [x] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority (private Cloud repository).
@@ -66,8 +66,9 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 - [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies (cancellation, backup/restore, and credit spend caps exist privately; export, retention, and support policy remain open).
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
 - [ ] Run a real production purchase, refund, and chargeback-debt test with live webhook readback for every plan SKU.
-- [ ] Obtain written Polar acceptance for the AI-content use case and written OpenRouter confirmation before selling Managed AI Credits; complete human legal review of the terms and privacy policy.
-- [ ] Publish marketing pricing, terms, and privacy pages that match the live packaging above.
+- [x] Complete human legal review of the terms and privacy policy (signed off by counsel, 2026-09-21).
+- [ ] Obtain written Polar acceptance for the AI-content use case and written OpenRouter confirmation before selling Managed AI Credits.
+- [x] Publish marketing pricing, terms, and privacy pages that match the live packaging above (Managed AI Credits intentionally not offered until the Polar and OpenRouter confirmations above).
 
 ## Release language
 
