@@ -18,7 +18,7 @@ export function GalleryStatsBar({ total, cover, inline, orphaned, unused, totalC
         {total} total
       </Badge>
       <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
-        <Star className="h-3.5 w-3.5 text-amber-500" />
+        <Star className="h-3.5 w-3.5 text-status-warning" />
         {cover} cover
       </Badge>
       <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
@@ -39,7 +39,7 @@ export function GalleryStatsBar({ total, cover, inline, orphaned, unused, totalC
       )}
       {totalCost > 0 && (
         <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
-          <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+          <DollarSign className="h-3.5 w-3.5 text-status-success" />
           ${totalCost.toFixed(2)} total cost
         </Badge>
       )}

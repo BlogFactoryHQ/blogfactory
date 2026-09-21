@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -113,10 +114,10 @@ const opportunityMeta: Record<string, { label: string; action: string; tone: str
   weak_focus: {
     label: "Weak focus",
     action: "Tighten intent",
-    tone: "border-slate-300 bg-slate-100 text-slate-700",
-    dot: "bg-slate-500",
-    rail: "bg-slate-500",
-    row: "bg-slate-50",
+    tone: "border-border bg-muted text-muted-foreground",
+    dot: "bg-status-pending",
+    rail: "bg-status-pending",
+    row: "bg-muted",
   },
   growing: {
     label: "Growing",
@@ -378,7 +379,7 @@ export function OptimizePanel() {
             action={<Button size="sm" onClick={() => openAnalyze()}><Plus className="mr-1.5 h-4 w-4" />Add Page</Button>}
           />
           <div>
-            <div className="sticky top-0 z-20 space-y-4 border-b border-byword-border bg-background/95 p-4 shadow-[0_12px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:p-5 lg:p-6">
+            <div className="sticky top-0 z-20 space-y-4 border-b border-byword-border bg-background/95 p-4 shadow-[0_12px_24px_var(--panel-lift)] backdrop-blur sm:p-5 lg:p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <Tabs value={showOpportunities ? "opportunities" : status} onValueChange={(value) => {
                   if (value === "opportunities") setOptimizeFilter({ opportunity });
@@ -435,20 +436,25 @@ export function OptimizePanel() {
             <div className="p-4 sm:p-5 lg:p-6">
 
             {hasNoSearchConsole ? (
-              <div className="p-12 text-center text-muted-foreground">
-                Connect Search Console to sync tracked pages, or add a page manually.
-              </div>
+              <EmptyState
+                title="No tracked pages yet"
+                description="Connect Search Console to sync real page performance, or add a page manually to start tracking it."
+              />
             ) : isLoadingPages || isLoadingPageInsights ? (
               <div className="flex items-center justify-center p-12 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading pages
               </div>
             ) : pageInsights.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
-                {!insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !showOpportunities
-                  ? "No declining pages. Showing tracked pages instead."
-                  : `No pages in ${showOpportunities ? "this opportunity" : statuses.find((item) => item.value === status)?.label.toLowerCase()}.`}
-              </div>
+              <EmptyState
+                tone="filtered"
+                title={
+                  !insightStatusCounts.needs_attention && insightStatusCounts.tracking > 0 && !showOpportunities
+                    ? "No declining pages"
+                    : `No pages in ${showOpportunities ? "this opportunity" : statuses.find((item) => item.value === status)?.label.toLowerCase()}`
+                }
+                description="Change the status or opportunity filter to see the rest of the tracked pages."
+              />
             ) : (
               <div className="overflow-x-auto rounded-md border border-byword-border">
               <Table>
@@ -838,7 +844,7 @@ function PageDetailSheet({
                   }} disabled={inspect.isPending}>{inspect.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <SearchCheck className="mr-1.5 h-4 w-4" />}{inspection ? "Refresh" : "Inspect URL"}</Button>
                 </div>
               </div>
-              {inspection && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><MiniMetric label="Verdict" value={inspection.result.verdict} /><MiniMetric label="Coverage" value={inspection.result.coverageState || "Unknown"} /><MiniMetric label="Indexing" value={inspection.result.indexingState || "Unknown"} /><MiniMetric label="Robots.txt" value={inspection.result.robotsTxtState || "Unknown"} /><MiniMetric label="Page fetch" value={inspection.result.pageFetchState || "Unknown"} /><MiniMetric label="Last crawl" value={inspection.result.lastCrawlTime ? formatDateTime(inspection.result.lastCrawlTime) : "Unknown"} /><MiniMetric label="Google canonical" value={inspection.result.googleCanonical || "Unknown"} /><MiniMetric label="Declared canonical" value={inspection.result.userCanonical || "Unknown"} /><MiniMetric label="Rich results" value={inspection.result.richResultsVerdict || "Unknown"} />{inspection.stale && <p className="col-span-full text-xs text-amber-700">Showing stale cached data: {inspection.warning}</p>}</div>}
+              {inspection && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><MiniMetric label="Verdict" value={inspection.result.verdict} /><MiniMetric label="Coverage" value={inspection.result.coverageState || "Unknown"} /><MiniMetric label="Indexing" value={inspection.result.indexingState || "Unknown"} /><MiniMetric label="Robots.txt" value={inspection.result.robotsTxtState || "Unknown"} /><MiniMetric label="Page fetch" value={inspection.result.pageFetchState || "Unknown"} /><MiniMetric label="Last crawl" value={inspection.result.lastCrawlTime ? formatDateTime(inspection.result.lastCrawlTime) : "Unknown"} /><MiniMetric label="Google canonical" value={inspection.result.googleCanonical || "Unknown"} /><MiniMetric label="Declared canonical" value={inspection.result.userCanonical || "Unknown"} /><MiniMetric label="Rich results" value={inspection.result.richResultsVerdict || "Unknown"} />{inspection.stale && <p className="col-span-full text-xs text-status-warning">Showing stale cached data: {inspection.warning}</p>}</div>}
             </div>
 
             <div>

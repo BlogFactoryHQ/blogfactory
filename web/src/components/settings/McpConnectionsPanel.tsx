@@ -9,6 +9,7 @@ import { useSites } from "@/hooks/useSites";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -393,11 +394,12 @@ export function McpConnectionsPanel() {
               </Button>
             </div>
           ) : tokens.length === 0 ? (
-            <div className="rounded-md border border-dashed border-byword-border p-8 text-center">
-              <KeyRound className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
-              <p className="mt-3 text-sm font-medium">No personal MCP connections yet.</p>
-              <p className="mt-1 text-sm text-muted-foreground">Create a token for Codex or another MCP-compatible client.</p>
-            </div>
+            <EmptyState
+              icon={KeyRound}
+              title="No personal MCP connections yet"
+              description="Create a token for Claude Code, Codex, or another MCP-compatible client to give an agent site-scoped access."
+              className="rounded-md border border-dashed border-byword-border"
+            />
           ) : (
             <Table>
               <TableHeader>

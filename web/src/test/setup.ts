@@ -13,3 +13,18 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// cmdk (command palette) observes its list container and scrolls the active
+// item into view. jsdom implements neither, so provide inert stand-ins.
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (globalThis as typeof globalThis & { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+}
+
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

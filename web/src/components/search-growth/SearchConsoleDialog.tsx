@@ -119,7 +119,7 @@ export function SearchConsoleDialog({
               </>
             ) : (
               <div className="mt-4 space-y-4">
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                <div className="rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm leading-6 text-status-warning">
                   <strong>Google OAuth is not configured on this server.</strong> If you run this instance, complete the one-time setup below. If someone else runs it, send them this guide.
                 </div>
                 <ol className="space-y-3 text-sm leading-6">

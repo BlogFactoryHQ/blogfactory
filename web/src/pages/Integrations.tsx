@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   CircleDashed,
   ExternalLink,
   Globe2,
   Loader2,
+  MessageSquarePlus,
   Plug,
+  PlusCircle,
   RefreshCw,
   ShieldCheck,
   Settings2,
@@ -21,6 +24,7 @@ import {
   IconTile,
   SectionHeader,
 } from "@/components/layout/BywordSurface";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +48,7 @@ import { Separator } from "@/components/ui/separator";
 import { useGhostAuthors, useIntegrations, IntegrationProvider, SiteIntegration } from "@/hooks/useIntegrations";
 import { useSites } from "@/hooks/useSites";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
+import { DOCS_URL, FEEDBACK_URL, openExternal } from "@/lib/external-links";
 import { cn } from "@/lib/utils";
 
 const providerDetails: Record<IntegrationProvider, {
@@ -127,6 +132,7 @@ const providerDetails: Record<IntegrationProvider, {
 
 const providers: IntegrationProvider[] = ["wordpress", "ghost", "wix", "framer"];
 
+
 export const shouldReloadGhostAuthors = (existing: boolean, provider: IntegrationProvider | null, profile: string, credentialsChanged: boolean, hasDefaultAuthor: boolean) =>
   existing && provider === "ghost" && profile === "ortak_alan_news" && credentialsChanged && !hasDefaultAuthor;
 
@@ -171,13 +177,18 @@ export default function Integrations() {
       <PageHeader
         title="Integrations"
         description="Connect the CMS draft destinations BlogFactory will use for the active site."
+        menu={[
+          { label: "Documentation", icon: BookOpen, onSelect: () => openExternal(DOCS_URL) },
+          { label: "Request an integration", icon: PlusCircle, onSelect: () => openExternal(FEEDBACK_URL) },
+          { label: "Send feedback", icon: MessageSquarePlus, onSelect: () => openExternal(FEEDBACK_URL) },
+        ]}
       />
 
       <div className="space-y-8">
         {fromFirstDraft && <BywordCard className="relative overflow-hidden border-primary/30">
           <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
           <div className="flex items-start gap-4 p-5 pl-6 sm:p-6 sm:pl-7">
-            <IconTile icon={ShieldCheck} className="h-10 w-10 border-emerald-200 bg-emerald-50 text-emerald-700" />
+            <IconTile icon={ShieldCheck} className="h-10 w-10 border-status-success/30 bg-status-success/10 text-status-success" />
             <div>
               <p className="type-kicker text-byword-blue">First draft complete</p>
               <h2 className="mt-1 text-lg font-semibold">Choose where approved drafts should go</h2>
@@ -206,17 +217,7 @@ export default function Integrations() {
             description="CMS draft destinations connected to the selected site."
           />
           {isLoading ? (
-            <div className="flex items-center justify-center p-12 text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading integrations
-            </div>
-          ) : integrations.length === 0 ? (
-            <div className="p-12 text-center">
-              <IconTile icon={Plug} className="mx-auto" />
-              <h3 className="mt-5 font-semibold text-foreground">No integrations yet</h3>
-              <p className="mt-2 text-sm text-muted-foreground">Connect WordPress, Ghost, Wix, or Framer before CMS draft delivery.</p>
-              <p className="mt-4 text-xs text-muted-foreground">Choose your CMS from the connection cards below.</p>
-            </div>
+            <ListSkeleton rows={2} />
           ) : (
             <div className="divide-y divide-byword-border">
               {integrations.map((integration) => {

@@ -7,6 +7,7 @@ import { useSites } from "@/hooks/useSites";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -681,9 +682,13 @@ export default function Personas() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : filteredPersonas.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                {searchQuery ? "No profiles found" : "No profiles yet. Create one."}
-              </div>
+              <EmptyState
+                size="row"
+                tone={searchQuery ? "filtered" : "empty"}
+                title={searchQuery ? "No profiles match that search" : "No writer profiles yet"}
+                description={searchQuery ? "Clear the search to see every profile." : "A profile pins the prompt, model, and tone used for a set of articles."}
+                primaryAction={searchQuery ? { label: "Clear search", onClick: () => setSearchQuery("") } : undefined}
+              />
             ) : (
               filteredPersonas.map((persona) => (
                 <button
@@ -1130,13 +1135,12 @@ export default function Personas() {
                   <div className="rounded-lg border border-dashed border-border p-8 text-center">
                     {isLoading ? <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /> : (
                       <>
-                        <Bot className="mx-auto h-8 w-8 text-muted-foreground" />
-                        <p className="mt-3 font-medium">No writer profiles yet</p>
-                        <p className="mt-1 text-sm text-muted-foreground">Create one when you need a specific prompt or model.</p>
-                        <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Create Profile
-                        </Button>
+                        <EmptyState
+                          icon={Bot}
+                          title="No writer profiles yet"
+                          description="Create one when a set of articles needs its own prompt, model, or tone."
+                          primaryAction={{ label: "Create profile", onClick: () => setIsCreateOpen(true) }}
+                        />
                       </>
                     )}
                   </div>

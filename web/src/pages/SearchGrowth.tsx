@@ -24,6 +24,7 @@ import { safeFormatIsoDate } from "@/lib/date-format";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -769,7 +770,7 @@ function OptimizationQueue({
             </div>
           );
         }) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">No actionable search signal in this window.</div>
+          <EmptyState size="row" title="No actionable search signal" description="Nothing in this date window crosses the action threshold. Widen the range or sync Search Console again." />
         )}
       </div>
     </BywordCard>
@@ -840,7 +841,7 @@ function RankedBars({ title, icon, rows, color }: { title: string; icon: LucideI
             </div>
           </div>
         )) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">No rows in this window.</p>
+          <EmptyState size="row" title="No rows in this window" description="Choose a wider date range to see query and page performance." />
         )}
       </div>
     </BywordCard>

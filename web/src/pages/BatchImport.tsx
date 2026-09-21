@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CheckCircle2, ExternalLink, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -347,8 +348,8 @@ export default function BatchImport() {
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                      No zip loaded yet.
+                    <td colSpan={6} className="p-0">
+                      <EmptyState size="row" title="No archive loaded" description="Drop a .zip of Markdown or HTML articles to preview what will be imported." />
                     </td>
                   </tr>
                 ) : (
@@ -371,7 +372,7 @@ export default function BatchImport() {
                       <td className="px-4 py-3">{item.images.length}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-2">
-                          {item.status === "failed" ? <XCircle className="h-4 w-4 text-destructive" /> : item.status === "done" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : item.status === "importing" || item.status === "publishing" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          {item.status === "failed" ? <XCircle className="h-4 w-4 text-destructive" /> : item.status === "done" ? <CheckCircle2 className="h-4 w-4 text-status-success" /> : item.status === "importing" || item.status === "publishing" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                           <span>{item.message || item.status}</span>
                         </span>
                       </td>
@@ -422,8 +423,8 @@ export default function BatchImport() {
                   </tr>
                 ) : batchImports.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                      No previous batch imports yet.
+                    <td colSpan={6} className="p-0">
+                      <EmptyState size="row" title="No previous imports" description="Completed batch imports are listed here with their source archive." />
                     </td>
                   </tr>
                 ) : (

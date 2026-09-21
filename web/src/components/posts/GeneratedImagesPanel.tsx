@@ -135,7 +135,7 @@ export function GeneratedImagesPanel({
             {coverImageUrl && signedCoverUrl && (
               <div className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Star className="h-3.5 w-3.5 text-amber-500" />
+                  <Star className="h-3.5 w-3.5 text-status-warning" />
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Cover Image
                   </span>
@@ -372,7 +372,7 @@ function ImageCard({
 
       {/* Cover badge */}
       {isCover && (
-        <div className="absolute top-2 left-2 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
+        <div className="absolute top-2 left-2 bg-status-warning text-status-warning-foreground text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
           <Star className="h-2.5 w-2.5" />
           Cover
         </div>

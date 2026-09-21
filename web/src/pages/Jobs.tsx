@@ -6,11 +6,13 @@ import { asArray, asRecord, asStringArray } from "@/lib/api-shape";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { TablePagination } from "@/components/patterns/TablePagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatDistanceToNow } from "@/lib/date-format";
@@ -456,7 +458,7 @@ export default function Jobs() {
     },
   });
 
-  const { data: jobList, isLoading, error: jobsError } = useQuery({
+  const { data: jobList, isLoading, error: jobsError, refetch: refetchJobs } = useQuery({
     queryKey: ["jobs", currentPage, jobsPerPage, deferredSearchQuery, filter],
     queryFn: async () => {
       return api.get<JobListResponse>(jobListPath({ page: currentPage, limit: jobsPerPage, search: deferredSearchQuery, status: filter }));
@@ -553,6 +555,14 @@ export default function Jobs() {
 
   const updateFilter = (value: StatusFilter) => {
     setFilter(value);
+    setCurrentPage(1);
+  };
+
+  const hasJobFilters = filter !== "all" || Boolean(searchQuery.trim());
+
+  const clearJobFilters = () => {
+    setSearchQuery("");
+    setFilter("all");
     setCurrentPage(1);
   };
 
@@ -696,21 +706,31 @@ export default function Jobs() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                </TableCell>
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={7} className="p-0"><TableSkeleton rows={6} columns={6} /></TableCell>
               </TableRow>
             ) : jobsError ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-12 text-center text-destructive">
-                  {jobsError instanceof Error ? jobsError.message : "Jobs could not be loaded."}
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={7} className="p-0">
+                  <EmptyState
+                    size="row"
+                    tone="error"
+                    title="Runs could not be loaded"
+                    description={jobsError instanceof Error ? jobsError.message : "The request failed."}
+                    primaryAction={{ label: "Try again", onClick: () => refetchJobs() }}
+                  />
                 </TableCell>
               </TableRow>
             ) : filteredJobs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                  No jobs found. Generate content to see jobs here.
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={7} className="p-0">
+                  <EmptyState
+                    size="row"
+                    tone={hasJobFilters ? "filtered" : "empty"}
+                    title={hasJobFilters ? "No runs match these filters" : "No runs yet"}
+                    description={hasJobFilters ? "Widen the status or search filter to see more runs." : "Every generation job and its cost, progress, and recovery controls appear here."}
+                    primaryAction={hasJobFilters ? { label: "Clear filters", onClick: clearJobFilters } : { label: "Create content", href: "/create" }}
+                  />
                 </TableCell>
               </TableRow>
             ) : (
@@ -765,27 +785,19 @@ export default function Jobs() {
             )}
           </TableBody>
         </Table>
-        {(jobPagination?.total || 0) > 0 && (
-          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {(currentPage - 1) * jobsPerPage + 1} to {(currentPage - 1) * jobsPerPage + jobs.length} of {jobPagination?.total || 0} jobs
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={String(jobsPerPage)} onValueChange={(value) => { setJobsPerPage(Number(value)); setCurrentPage(1); }}>
-                <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map((count) => <SelectItem key={count} value={String(count)}>{count} / page</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
-                <ChevronLeft className="mr-1 h-4 w-4" /> Previous
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.min(jobPagination?.pages || 1, page + 1))} disabled={currentPage >= (jobPagination?.pages || 1)}>
-                Next <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <TablePagination
+          page={currentPage}
+          pages={jobPagination?.pages || 1}
+          total={jobPagination?.total || 0}
+          rendered={jobs.length}
+          pageSize={jobsPerPage}
+          noun="runs"
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setJobsPerPage(size);
+            setCurrentPage(1);
+          }}
+        />
       </BywordCard>
 
       {/* Job Detail Sheet */}
@@ -945,7 +957,7 @@ export default function Jobs() {
                                   {image.status === "failed" ? (
                                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-error" />
                                   ) : image.status === "queued" ? (
-                                    <RefreshCw className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+                                    <RefreshCw className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-warning" />
                                   ) : (
                                     <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-status-success" />
                                   )}

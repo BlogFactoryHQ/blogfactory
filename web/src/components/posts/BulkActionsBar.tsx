@@ -58,7 +58,7 @@ export function BulkActionsBar({
   const isLoading = isDeleting || isPublishing || isPushingIntegration || isPreparingSeo || isPreparingImagePrompts;
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mb-4 flex flex-col gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_var(--panel-highlight)] animate-in fade-in slide-in-from-top-2 duration-200 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={onPrepareSeo} disabled={isLoading}>
           {isPreparingSeo ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}

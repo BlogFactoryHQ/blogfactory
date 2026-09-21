@@ -32,6 +32,7 @@ import {
 import { useSignedUrls } from "@/hooks/useSignedUrl";
 import { GalleryStatsBar } from "@/components/gallery/GalleryStatsBar";
 import { GalleryFilters } from "@/components/gallery/GalleryFilters";
+import { EmptyState, type EmptyStateTone } from "@/components/patterns/EmptyState";
 import { GalleryCard } from "@/components/gallery/GalleryCard";
 import { GalleryBulkActions } from "@/components/gallery/GalleryBulkActions";
 import { ImageDetailDrawer } from "@/components/gallery/ImageDetailDrawer";
@@ -77,13 +78,25 @@ function statusBadgeClass(status: string) {
   return "";
 }
 
-function galleryEmptyState(filters: GalleryFiltersType, counts: { queued: number; processing: number; failed: number }, stockUnavailable: boolean) {
-  if (filters.status === "orphaned") return { title: "No images yet", detail: "No orphaned images. Your gallery is clean." };
-  if (filters.status === "unused") return { title: "No images yet", detail: "No unused images found." };
-  if (stockUnavailable) return { title: "Stock provider unavailable", detail: "Stock could not return an image. Check provider keys or switch inline images to AI." };
-  if (counts.processing > 0 || counts.queued > 0) return { title: "Waiting for AI", detail: "Images are queued or processing. They will appear here when generation finishes." };
-  if (counts.failed > 0) return { title: "No images yet", detail: "Image generation failed. Review the failed request above and retry or change model." };
-  return { title: "No images yet", detail: "Generate content with images enabled to see them here." };
+type GalleryEmptyState = { title: string; detail: string; tone: EmptyStateTone; filtered: boolean };
+
+export function galleryEmptyState(
+  filters: GalleryFiltersType,
+  counts: { queued: number; processing: number; failed: number },
+  stockUnavailable: boolean,
+): GalleryEmptyState {
+  const filtered =
+    filters.type !== defaultFilters.type ||
+    filters.status !== defaultFilters.status ||
+    filters.postStatus !== defaultFilters.postStatus ||
+    filters.dateRange !== defaultFilters.dateRange;
+  if (filters.status === "orphaned") return { title: "No orphaned images", detail: "Every image is still attached to a post. Your gallery is clean.", tone: "filtered", filtered };
+  if (filters.status === "unused") return { title: "No unused images", detail: "Every generated image is in use.", tone: "filtered", filtered };
+  if (stockUnavailable) return { title: "Stock provider unavailable", detail: "Stock could not return an image. Check the provider key, or switch inline images to AI generation.", tone: "error", filtered };
+  if (counts.processing > 0 || counts.queued > 0) return { title: "Waiting for AI", detail: "Images are queued or processing. They appear here as soon as generation finishes.", tone: "empty", filtered };
+  if (counts.failed > 0) return { title: "Image generation failed", detail: "Review the failed request above, then retry it or choose a different model.", tone: "error", filtered };
+  if (filtered) return { title: "No images match these filters", detail: "Widen the filters to see the rest of the gallery.", tone: "filtered", filtered };
+  return { title: "No images yet", detail: "Generate content with images enabled and they collect here.", tone: "empty", filtered };
 }
 
 function requestMatchesStatus(request: ImageGenerationRequest, status: RequestStatusFilter) {
@@ -929,11 +942,20 @@ export default function ImageGallery() {
           ))}
         </div>
       ) : !images || images.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <ImageIcon className="h-12 w-12 mb-4" />
-          <p className="text-lg font-medium">{emptyState.title}</p>
-          <p className="text-sm">{emptyState.detail}</p>
-        </div>
+        <EmptyState
+          size="page"
+          tone={emptyState.tone}
+          icon={emptyState.tone === "empty" ? ImageIcon : undefined}
+          title={emptyState.title}
+          description={emptyState.detail}
+          primaryAction={
+            emptyState.filtered
+              ? { label: "Clear filters", onClick: () => setFilters(defaultFilters) }
+              : emptyState.tone === "empty"
+                ? { label: "Create content", href: "/create" }
+                : undefined
+          }
+        />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {images.map((img, idx) => (

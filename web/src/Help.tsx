@@ -259,7 +259,7 @@ export function Help() {
             <h2 id="topics-title" className="mt-3 text-3xl font-semibold sm:text-4xl">Find the right part of the operation.</h2>
             <div className="mt-9 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {helpCategories.map(({ title, description, icon: Icon }) => (
-                <a key={title} href={`#${categoryId(title)}`} className="group rounded-md border border-byword-border bg-card p-5 transition-calm hover:-translate-y-0.5 hover:border-byword-blue/60 hover:shadow-[0_12px_28px_hsl(210_5%_20%/0.07)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <a key={title} href={`#${categoryId(title)}`} className="group rounded-md border border-byword-border bg-card p-5 transition-calm hover:-translate-y-0.5 hover:border-byword-blue/60 hover:shadow-[0_12px_28px_var(--panel-lift)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
                   <h3 className="mt-6 text-lg font-semibold group-hover:text-byword-blue">{title}</h3>
                   <p className="type-body mt-2">{description}</p>

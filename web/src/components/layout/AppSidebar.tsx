@@ -16,7 +16,10 @@ import {
   Plus,
   Check,
   LayoutDashboard,
+  LifeBuoy,
   Loader2,
+  MessageSquarePlus,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,13 +38,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { FactoryMark } from "@/components/layout/BywordSurface";
+import { CommandPalette } from "@/components/layout/CommandPalette";
+import { ChecklistCard } from "@/components/patterns/ChecklistCard";
+import { useWorkspaceReadiness } from "@/hooks/useWorkspaceReadiness";
+import { useTheme } from "next-themes";
+import { DOCS_URL, FEEDBACK_URL, HELP_URL, openExternal } from "@/lib/external-links";
 import { toast } from "sonner";
+
+const setupChecklistKey = (siteId: string | null | undefined) => `blogfactory:setup-checklist:${siteId || "none"}`;
 
 const primaryNavigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
@@ -57,18 +68,26 @@ const monitorNavigation = [
   { name: "Control", href: "/control", icon: Settings },
 ];
 
-const searchNavigation = [...primaryNavigation, ...monitorNavigation];
-
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { sites, activeSite, activeSiteId, activateSite, isActivating } = useSites();
   const { isCollapsed, toggle } = useSidebar();
+  const { theme, setTheme } = useTheme();
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [switchingSite, setSwitchingSite] = useState<Site | null>(null);
+  const [setupDismissed, setSetupDismissed] = useState<string | null>(null);
+  const readiness = useWorkspaceReadiness();
+
+  useEffect(() => {
+    try {
+      setSetupDismissed(localStorage.getItem(setupChecklistKey(activeSiteId)));
+    } catch {
+      setSetupDismissed(null);
+    }
+  }, [activeSiteId]);
   const effectiveCollapsed = isCollapsed || isCompactViewport;
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
@@ -77,10 +96,6 @@ export function AppSidebar() {
   const workspaceInitial = (activeSite?.name || activeSite?.domain || "B").charAt(0).toUpperCase();
   const switchingLabel = switchingSite?.name || switchingSite?.domain || "selected site";
   const switchingInitial = (switchingSite?.name || switchingSite?.domain || "S").charAt(0).toUpperCase();
-  const filteredNavigation = searchNavigation.filter((item) =>
-    item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-  );
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -100,15 +115,21 @@ export function AppSidebar() {
     return () => media.removeEventListener("change", update);
   }, []);
 
-  const openSearch = () => {
-    setSearchQuery("");
-    setIsSearchOpen(true);
+  const openSearch = () => setIsSearchOpen(true);
+
+  const openSetupStep = (step: string) => navigate(`/?setup=${step}`);
+
+  const dismissSetup = () => {
+    try {
+      localStorage.setItem(setupChecklistKey(activeSiteId), readiness.fingerprint);
+    } catch {
+      // Storage can be unavailable; the card simply reappears next session.
+    }
+    setSetupDismissed(readiness.fingerprint);
   };
 
-  const goTo = (href: string) => {
-    setIsSearchOpen(false);
-    navigate(href);
-  };
+  const showSetupChecklist =
+    Boolean(activeSite) && !readiness.isLoading && !readiness.complete && setupDismissed !== readiness.fingerprint;
 
   const switchSite = async (site: Site) => {
     if (isActivating || site.id === activeSiteId) return;
@@ -137,7 +158,7 @@ export function AppSidebar() {
             <button
               type="button"
               onClick={toggle}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_var(--panel-highlight)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
               aria-label={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
@@ -147,7 +168,7 @@ export function AppSidebar() {
           {!effectiveCollapsed && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild disabled={effectiveCollapsed}>
-                <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
+                <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_var(--panel-highlight)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
                     <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
                   </div>
@@ -227,7 +248,7 @@ export function AppSidebar() {
                 <button
                   type="button"
                   onClick={openSearch}
-                  className="flex h-10 w-10 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+                  className="flex h-10 w-10 items-center justify-center rounded-sm border border-sidebar-border bg-card text-sidebar-muted shadow-[inset_0_1px_0_var(--panel-highlight)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
                   aria-label="Search pages"
                 >
                   <Search className="h-4 w-4" />
@@ -239,7 +260,7 @@ export function AppSidebar() {
             <button
               type="button"
               onClick={openSearch}
-              className="flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
+              className="flex h-8 w-full items-center gap-2 rounded-sm border border-sidebar-border bg-card px-2.5 text-left text-[13px] text-muted-foreground shadow-[inset_0_1px_0_var(--panel-highlight)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1"
             >
               <Search className="h-4 w-4" />
               <span className="flex-1">Search</span>
@@ -252,6 +273,26 @@ export function AppSidebar() {
           <SidebarSection title="Operate" items={primaryNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
           <SidebarSection title="Manage" items={monitorNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
         </nav>
+
+        {showSetupChecklist && (
+          <div className={cn("shrink-0 border-t border-sidebar-border p-2.5", effectiveCollapsed && "flex justify-center")}>
+            <ChecklistCard
+              title="Getting started"
+              percent={readiness.percent}
+              compact={effectiveCollapsed}
+              onCompactClick={() => openSetupStep(readiness.nextStep?.step || "generation")}
+              onDismiss={dismissSetup}
+              items={readiness.steps.map((item) => ({
+                id: item.step,
+                label: item.label,
+                description: item.description,
+                done: item.done,
+                attention: item.broken,
+                onSelect: () => openSetupStep(item.step),
+              }))}
+            />
+          </div>
+        )}
 
         <div className="border-t border-sidebar-border px-2.5 py-2.5 overflow-hidden">
           <DropdownMenu>
@@ -276,56 +317,50 @@ export function AppSidebar() {
                 <span className="block truncate text-xs font-normal text-muted-foreground">{email}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/runs")}>
-                <Bell className="h-4 w-4" />
-                Notifications
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/control/article-settings")}>
+                <Settings />
+                Article settings
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/runs")}>
+                <Bell />
+                Runs &amp; activity
               </DropdownMenuItem>
               {user?.role === "admin" && (
-                <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/admin/users")}>
-                  <Shield className="h-4 w-4" />
-                  Admin Users
+                <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/users")}>
+                  <Shield />
+                  Manage users
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem data-signout className="cursor-pointer gap-2" onClick={signOut}>
-                <LogOut className="h-4 w-4" />
+              <DropdownMenuLabel className="type-kicker px-2 py-1.5">Appearance</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={theme || "system"} onValueChange={setTheme}>
+                <DropdownMenuRadioItem value="light" className="cursor-pointer">Light</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark" className="cursor-pointer">Dark</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system" className="cursor-pointer">System</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer" onClick={() => openExternal(DOCS_URL)}>
+                <BookOpen />
+                Documentation
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => openExternal(HELP_URL)}>
+                <LifeBuoy />
+                Help center
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => openExternal(FEEDBACK_URL)}>
+                <MessageSquarePlus />
+                Send feedback
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-signout variant="destructive" className="cursor-pointer" onClick={signOut}>
+                <LogOut />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-          <DialogContent className="top-[20%] max-w-md gap-3 p-4">
-            <DialogTitle className="sr-only">Search navigation</DialogTitle>
-            <div className="flex items-center gap-2 rounded-sm border border-input bg-card px-3">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                autoFocus
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search pages..."
-                className="h-10 border-0 px-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
-            <div className="max-h-72 space-y-1 overflow-y-auto">
-              {filteredNavigation.map((item) => (
-                <button
-                  key={item.href}
-                  type="button"
-                  onClick={() => goTo(item.href)}
-                  className="flex h-9 w-full items-center gap-3 rounded-sm px-2 text-left text-sm transition-calm hover:bg-byword-blue-soft hover:text-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-                >
-                  <item.icon className="h-4 w-4 text-sidebar-muted" />
-                  <span>{item.name}</span>
-                </button>
-              ))}
-              {filteredNavigation.length === 0 && (
-                <p className="px-2 py-6 text-center text-sm text-muted-foreground">No pages found.</p>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+        <CommandPalette open={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
         <Dialog open={Boolean(switchingSite || isActivating)}>
           <DialogContent
@@ -424,7 +459,7 @@ function SidebarSection({
                 "flex items-center overflow-hidden rounded-sm transition-calm",
                 isCollapsed ? "h-10 justify-center border" : "h-8 border-l-2",
                 isActive
-                  ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
+                  ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_var(--panel-highlight)]"
                   : "border-transparent text-sidebar-foreground hover:border-sidebar-border hover:bg-card/85 hover:text-sidebar-accent-foreground"
               )}
             >

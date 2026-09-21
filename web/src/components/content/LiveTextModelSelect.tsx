@@ -20,9 +20,9 @@ const PREFERRED_TEXT_MODEL_IDS = [
 
 function priceBadge(model: LiveTextModel) {
   if (model.pricing === "free") return { text: "FREE", className: "text-primary" };
-  if (model.pricing === "low") return { text: "$", className: "text-green-600" };
-  if (model.pricing === "medium") return { text: "$$", className: "text-amber-600" };
-  return { text: "$$$", className: "text-red-500" };
+  if (model.pricing === "low") return { text: "$", className: "text-status-success" };
+  if (model.pricing === "medium") return { text: "$$", className: "text-status-warning" };
+  return { text: "$$$", className: "text-status-error" };
 }
 
 function formatContext(length: number | null) {

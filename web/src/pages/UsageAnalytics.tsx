@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import {
@@ -348,7 +349,7 @@ export default function UsageAnalytics() {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="py-8 text-center text-sm text-muted-foreground">No provider calls in this range.</p>
+                <EmptyState size="row" title="No provider calls in this range" description="Generation and image calls appear here with their real model cost." />
               )}
             </div>
           </BywordCard>

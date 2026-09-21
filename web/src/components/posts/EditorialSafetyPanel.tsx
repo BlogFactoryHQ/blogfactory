@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { lineRevisionDiff } from "@/lib/revision-diff";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -135,8 +136,8 @@ function RevisionHistoryDialog({
               {diff.map((line, index) => (
                 <div key={`${index}-${line.type}`} className={cn(
                   "grid grid-cols-[2rem_minmax(0,1fr)] border-b border-border/50 px-2",
-                  line.type === "added" && "bg-emerald-50 text-emerald-950",
-                  line.type === "removed" && "bg-red-50 text-red-950",
+                  line.type === "added" && "bg-status-success/10 text-status-success",
+                  line.type === "removed" && "bg-status-error/10 text-status-error",
                 )}>
                   <span className="select-none text-center text-muted-foreground">{line.type === "added" ? "+" : line.type === "removed" ? "−" : ""}</span>
                   <span className="whitespace-pre-wrap break-words py-0.5">{line.text || " "}</span>
@@ -153,7 +154,7 @@ function RevisionHistoryDialog({
               </AlertDialog>
             </div>
           </div>
-        ) : <p className="py-10 text-center text-sm text-muted-foreground">No saved revisions found.</p>}
+        ) : <EmptyState size="row" title="No saved revisions" description="Revisions are recorded each time the draft is edited or regenerated." />}
       </DialogContent>
     </Dialog>
   );
@@ -214,11 +215,11 @@ export function EditorialSafetyPanel({
               <span className="font-mono text-xs text-foreground">{currentRevision ? `R${currentRevision.revision_number}` : "—"}</span>
               {currentRevision && <span className="text-xs text-muted-foreground">{new Date(currentRevision.created_at).toLocaleString()}</span>}
             </div>
-            {hasUnsavedChanges && <p className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Preview and review actions use the last saved revision. Save your changes first.</p>}
+            {hasUnsavedChanges && <p className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">Preview and review actions use the last saved revision. Save your changes first.</p>}
             <div className="grid gap-2 sm:grid-cols-2">
               {preflightLoading ? <div className="col-span-full flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Running preflight…</div> : preflight?.checks.map((check) => (
                 <div key={check.id} className="flex gap-2 rounded-sm border border-byword-border bg-muted/15 p-3">
-                  {check.status === "pass" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <ShieldAlert className={cn("mt-0.5 h-4 w-4 shrink-0", check.status === "blocker" ? "text-destructive" : "text-amber-600")} />}
+                  {check.status === "pass" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-success" /> : <ShieldAlert className={cn("mt-0.5 h-4 w-4 shrink-0", check.status === "blocker" ? "text-destructive" : "text-status-warning")} />}
                   <div className="min-w-0"><p className="text-xs font-semibold">{check.label}</p><p className="mt-0.5 break-words text-xs text-muted-foreground">{check.message}</p></div>
                 </div>
               ))}
