@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { asArray, asRecord, asStringArray } from "@/lib/api-shape";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { RunWaterfall } from "@/components/runs/RunWaterfall";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { TableSkeleton } from "@/components/patterns/PageSkeleton";
@@ -22,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3 } from "lucide-react";
+import { Search, Rss, FileText, Youtube, Link as LinkIcon, Copy, CheckCircle, AlertCircle, X, Loader2, StopCircle, RefreshCw, DollarSign, Timer, BarChart3, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatDistanceToNow } from "@/lib/date-format";
@@ -685,6 +686,17 @@ export default function Jobs() {
           </div>
         </div>
       </BywordCard>
+
+      {filteredJobs.length > 1 && (
+        <BywordCard className="mb-6">
+          <SectionHeader
+            icon={Activity}
+            title="Run timeline"
+            description="Every run on this page placed on one clock. Select a bar to open it in the queue table below."
+          />
+          <RunWaterfall jobs={filteredJobs} selectedJobId={selectedJobId} onSelect={selectJob} />
+        </BywordCard>
+      )}
 
       <BywordCard>
         <SectionHeader

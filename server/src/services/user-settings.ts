@@ -67,6 +67,9 @@ function mergeAccountFields(settings: UserSettingsRow, global?: UserSettingsRow 
     monthlyBudget: global.monthlyBudget,
     budgetPaused: global.budgetPaused,
     budgetAlertThreshold: global.budgetAlertThreshold,
+    dailyCostLimit: global.dailyCostLimit,
+    dailyRequestLimit: global.dailyRequestLimit,
+    dailyFailureLimit: global.dailyFailureLimit,
   };
 }
 
@@ -162,5 +165,6 @@ export function isAccountSettingsUpdate(update: Record<string, unknown>) {
   const keys = Object.keys(update).filter((key) => key !== "updatedAt");
   return keys.length > 0 && keys.every((key) =>
     key === "monthlyBudget" || key === "budgetPaused" || key === "budgetAlertThreshold"
+    || key === "dailyCostLimit" || key === "dailyRequestLimit" || key === "dailyFailureLimit"
   );
 }
