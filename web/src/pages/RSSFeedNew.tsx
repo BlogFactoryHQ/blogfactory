@@ -474,7 +474,7 @@ export default function RSSFeedNew() {
                     onClick={() => setPlatform(p.id as Platform)}
                     className={`rounded-md border p-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40 ${
                       platform === p.id
-                        ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]"
+                        ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_var(--panel-highlight)]"
                         : "border-byword-border bg-background hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
                     }`}
                   >
@@ -777,7 +777,7 @@ export default function RSSFeedNew() {
                   <p className="text-xs text-muted-foreground">Defaulted from selected persona.</p>
                 )}
                 {personaId && !selectedModelUnavailable && personas.find((persona) => persona.id === personaId)?.base_model !== modelId && (
-                  <p className="text-xs text-amber-600">Custom model selected; this overrides the persona default for this feed.</p>
+                  <p className="text-xs text-status-warning">Custom model selected; this overrides the persona default for this feed.</p>
                 )}
               </div>
             </div>
@@ -906,7 +906,7 @@ export default function RSSFeedNew() {
         </BywordCard>
 
         {/* Actions */}
-        <BywordCard className="sticky bottom-4 z-20 mt-6 p-3 shadow-[0_-10px_24px_hsl(210_5%_20%/0.06)]">
+        <BywordCard className="sticky bottom-4 z-20 mt-6 p-3 shadow-[0_-10px_24px_var(--panel-lift)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <FeedPreview
               platform={platform}

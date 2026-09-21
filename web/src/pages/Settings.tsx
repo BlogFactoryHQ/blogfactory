@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
@@ -1241,7 +1242,7 @@ export default function Settings() {
                   {imageModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
                   ) : filteredImageModels.length === 0 ? (
-                    <div className="py-4 text-center text-muted-foreground">No image model matches these filters.</div>
+                    <EmptyState size="row" tone="filtered" title="No image model matches these filters" description="Clear the provider or price filter to see the full catalog." />
                   ) : (
                     <div className="grid grid-cols-1 gap-3">
                       {filteredImageModels.map((model) => (
@@ -1279,7 +1280,7 @@ export default function Settings() {
                   {textModelsLoading ? (
                     <div className="py-4 text-center text-muted-foreground">Loading models...</div>
                   ) : filteredTextModels.length === 0 ? (
-                    <div className="py-4 text-center text-muted-foreground">No text models match these filters.</div>
+                    <EmptyState size="row" tone="filtered" title="No text model matches these filters" description="Clear the provider or price filter to see the full catalog." />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {filteredTextModels.map((model) => (
@@ -2183,11 +2184,12 @@ export default function Settings() {
                     />
                   </div>
                   {knowledgeDocuments.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
-                      <IconTile icon={FileText} className="mx-auto" />
-                      <p className="mt-4 font-semibold">No documents yet</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Add your first document to give BlogFactory context about your brand and products.</p>
-                    </div>
+                    <EmptyState
+                      icon={FileText}
+                      title="No knowledge documents yet"
+                      description="Add a document to give BlogFactory real context about the brand, products, and positioning."
+                      className="rounded-md border border-dashed border-byword-border"
+                    />
                   ) : (
                     <div className="grid gap-3">
                       {knowledgeDocuments.map((document) => (
@@ -2252,11 +2254,12 @@ export default function Settings() {
                     <Input value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" />
                   </div>
                   {brandCtas.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-byword-border p-10 text-center">
-                      <IconTile icon={Target} className="mx-auto" />
-                      <p className="mt-4 font-semibold">No CTAs yet</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Articles will not include promotional content until you add a CTA.</p>
-                    </div>
+                    <EmptyState
+                      icon={Target}
+                      title="No calls to action yet"
+                      description="Articles stay free of promotional content until a CTA is defined here."
+                      className="rounded-md border border-dashed border-byword-border"
+                    />
                   ) : (
                     <div className="grid gap-3">
                       {brandCtas.map((cta) => (

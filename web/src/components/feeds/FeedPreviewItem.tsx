@@ -60,8 +60,8 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
   const statusBadge = () => {
     if (!item.status) return null;
     const config = {
-      new: { label: "New", variant: "default" as const, className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30" },
-      duplicate: { label: "Duplicate", variant: "outline" as const, className: "bg-amber-500/15 text-amber-700 border-amber-500/30" },
+      new: { label: "New", variant: "default" as const, className: "bg-status-success/15 text-status-success border-status-success/30" },
+      duplicate: { label: "Duplicate", variant: "outline" as const, className: "bg-status-warning/15 text-status-warning border-status-warning/30" },
       filtered: { label: "Filtered", variant: "outline" as const, className: "bg-muted text-muted-foreground border-border" },
     };
     const c = config[item.status];
@@ -202,7 +202,7 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
               className="h-5 w-5"
               onClick={handleCopyUrl}
             >
-              {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+              {copied ? <Check className="h-3 w-3 text-status-success" /> : <Copy className="h-3 w-3" />}
             </Button>
             {plainContent.length > 150 && (
               <Button

@@ -14,7 +14,7 @@ const buttonVariants = cva(
         destructive:
           "border-destructive bg-destructive text-destructive-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.28),inset_0_-2px_0_hsl(210_5%_13%/0.18),0_1px_0_hsl(210_5%_13%/0.22)] hover:bg-destructive/90",
         outline:
-          "border-input bg-card text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%),0_1px_0_hsl(210_5%_20%/0.10)] hover:border-byword-blue/55 hover:bg-byword-blue-soft/45",
+          "border-input bg-card text-foreground shadow-[inset_0_1px_0_var(--panel-highlight),0_1px_0_var(--panel-edge)] hover:border-byword-blue/55 hover:bg-byword-blue-soft/45",
         secondary:
           "border-secondary bg-secondary text-secondary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.12),inset_0_-2px_0_hsl(0_0%_0%/0.35),0_1px_0_hsl(210_5%_13%/0.28)] hover:bg-secondary/90",
         ghost: "border-transparent text-muted-foreground hover:bg-byword-blue-soft/80 hover:text-byword-blue",

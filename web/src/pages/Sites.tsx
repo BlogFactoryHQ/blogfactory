@@ -3,6 +3,7 @@ import { Check, Globe2, Loader2, Plus, RefreshCw, Tags, Trash2 } from "lucide-re
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { InputAffordance } from "@/components/ui/input-affordance";
 import { Badge } from "@/components/ui/badge";
@@ -103,7 +104,11 @@ export default function Sites() {
             <SectionHeader icon={Globe2} title="Your Domains" description={`${sites.length} total`} />
             <div className="divide-y divide-byword-border">
               {sites.length === 0 ? (
-                <div className="p-10 text-center text-muted-foreground">No sites connected yet.</div>
+                <EmptyState
+                  icon={Globe2}
+                  title="No sites connected"
+                  description="Connect the first domain so generation, review, and CMS delivery have a destination."
+                />
               ) : (
                 sites.map((site) => {
                   const active = site.id === activeSiteId;

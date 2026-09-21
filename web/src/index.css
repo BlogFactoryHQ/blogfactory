@@ -55,42 +55,100 @@
     --status-pending-foreground: 0 0% 100%;
     --status-running: 207 72% 53%;
     --status-running-foreground: 0 0% 100%;
+
+    /* Brand/device aliases consumed by byword-* and factory-* utilities. */
+    --byword-blue: 207 70% 52%;
+    --byword-blue-soft: 211 100% 95%;
+    --byword-blue-muted: 209 10% 45%;
+    --byword-border: 75 5% 83%;
+    --byword-ink: 210 6% 20%;
+    --factory-coal: 210 6% 13%;
+    --factory-paper: 60 17% 95%;
+    --factory-amber: 43 100% 48%;
+    --factory-purple: 259 91% 66%;
+
+    /* Device-panel lighting. Dark mode dims the top highlight instead of
+       painting a bright white hairline on a dark plate. */
+    --panel-highlight: hsl(0 0% 100%);
+    --panel-shade: hsl(210 5% 20% / 0.08);
+    --panel-edge: hsl(210 5% 20% / 0.12);
+    --panel-drop: hsl(210 5% 20% / 0.045);
+    --grid-line: hsl(210 5% 20% / 0.026);
+    --grid-glow: hsl(0 0% 100% / 0.9);
+    --field-inset: hsl(210 5% 20% / 0.07);
+    --panel-lift: hsl(210 5% 20% / 0.07);
   }
 
   .dark {
-    --background: 60 14% 96%;
-    --foreground: 210 5% 20%;
-    --card: 0 0% 100%;
-    --card-foreground: 210 5% 20%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 210 5% 20%;
-    --primary: 13 100% 55%;
+    /* Graphite console. Same geometry and the same accents, lit from a dark
+       plate: surfaces go down, text goes up, hue stays. */
+    --background: 210 7% 9%;
+    --foreground: 60 9% 91%;
+
+    --card: 210 7% 12%;
+    --card-foreground: 60 9% 91%;
+
+    --popover: 210 7% 13%;
+    --popover-foreground: 60 9% 91%;
+
+    --primary: 13 100% 57%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 5% 13%;
-    --secondary-foreground: 48 20% 96%;
-    --muted: 60 9% 91%;
-    --muted-foreground: 210 4% 42%;
-    --accent: 207 72% 53%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 5 75% 49%;
+
+    --secondary: 210 6% 22%;
+    --secondary-foreground: 60 9% 93%;
+
+    --muted: 210 7% 16%;
+    --muted-foreground: 210 6% 62%;
+
+    --accent: 207 72% 62%;
+    --accent-foreground: 210 7% 9%;
+
+    --destructive: 5 72% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 80 5% 84%;
-    --input: 75 4% 72%;
-    --ring: 13 100% 55%;
-    --sidebar-background: 60 12% 94%;
-    --sidebar-foreground: 210 5% 26%;
-    --sidebar-primary: 207 72% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 100%;
-    --sidebar-accent-foreground: 210 5% 18%;
-    --sidebar-border: 80 5% 80%;
-    --sidebar-ring: 13 100% 55%;
-    --sidebar-muted: 210 4% 46%;
-    --status-success: 163 100% 26%;
-    --status-warning: 37 100% 42%;
-    --status-error: 5 75% 49%;
-    --status-pending: 210 4% 54%;
-    --status-running: 207 72% 53%;
+
+    --border: 210 7% 21%;
+    --input: 210 7% 28%;
+    --ring: 13 100% 57%;
+
+    --sidebar-background: 210 7% 11%;
+    --sidebar-foreground: 60 6% 82%;
+    --sidebar-primary: 207 72% 62%;
+    --sidebar-primary-foreground: 210 7% 9%;
+    --sidebar-accent: 210 7% 16%;
+    --sidebar-accent-foreground: 60 9% 93%;
+    --sidebar-border: 210 7% 20%;
+    --sidebar-ring: 13 100% 57%;
+    --sidebar-muted: 210 6% 58%;
+
+    --status-success: 163 55% 48%;
+    --status-success-foreground: 210 7% 9%;
+    --status-warning: 37 92% 57%;
+    --status-warning-foreground: 210 7% 9%;
+    --status-error: 5 78% 60%;
+    --status-error-foreground: 210 7% 9%;
+    --status-pending: 210 6% 55%;
+    --status-pending-foreground: 210 7% 9%;
+    --status-running: 207 72% 62%;
+    --status-running-foreground: 210 7% 9%;
+
+    --byword-blue: 207 72% 64%;
+    --byword-blue-soft: 207 45% 20%;
+    --byword-blue-muted: 209 10% 62%;
+    --byword-border: 210 7% 21%;
+    --byword-ink: 60 9% 91%;
+    --factory-coal: 210 7% 7%;
+    --factory-paper: 210 7% 14%;
+    --factory-amber: 43 95% 58%;
+    --factory-purple: 259 85% 74%;
+
+    --panel-highlight: hsl(0 0% 100% / 0.05);
+    --panel-shade: hsl(0 0% 0% / 0.35);
+    --panel-edge: hsl(0 0% 0% / 0.45);
+    --panel-drop: hsl(0 0% 0% / 0.4);
+    --grid-line: hsl(0 0% 100% / 0.03);
+    --grid-glow: hsl(0 0% 100% / 0.05);
+    --field-inset: hsl(0 0% 0% / 0.32);
+    --panel-lift: hsl(0 0% 0% / 0.5);
   }
 }
 
@@ -168,28 +226,28 @@
   .factory-grid-bg {
     background-color: hsl(var(--background));
     background-image:
-      linear-gradient(hsl(210 5% 20% / 0.026) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(210 5% 20% / 0.026) 1px, transparent 1px),
-      radial-gradient(circle at 50% 0, hsl(0 0% 100% / 0.9), transparent 32rem);
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+      radial-gradient(circle at 50% 0, var(--grid-glow), transparent 32rem);
     background-size: 40px 40px, 40px 40px, auto;
   }
 
   .factory-scanlines {
-    background-image: radial-gradient(hsl(210 5% 20% / 0.12) 1px, transparent 1.2px);
+    background-image: radial-gradient(hsl(var(--foreground) / 0.12) 1px, transparent 1.2px);
     background-size: 9px 9px;
   }
 
   .factory-panel {
     box-shadow:
-      inset 0 1px 0 hsl(0 0% 100%),
-      inset 0 -1px 0 hsl(210 5% 20% / 0.08),
-      0 1px 0 hsl(210 5% 20% / 0.12),
-      0 10px 28px hsl(210 5% 20% / 0.045);
+      inset 0 1px 0 var(--panel-highlight),
+      inset 0 -1px 0 var(--panel-shade),
+      0 1px 0 var(--panel-edge),
+      0 10px 28px var(--panel-drop);
   }
 
   .factory-paper {
     background:
-      linear-gradient(135deg, hsl(60 9% 91% / 0.68), transparent 44%),
+      linear-gradient(135deg, hsl(var(--muted) / 0.68), transparent 44%),
       hsl(var(--card));
   }
 

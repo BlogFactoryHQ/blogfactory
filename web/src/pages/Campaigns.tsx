@@ -7,6 +7,8 @@ import { api, pushCmsDrafts } from "@/lib/api";
 import { asArray } from "@/lib/api-shape";
 import { connectionReady } from "@/lib/credential-status";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -245,22 +247,23 @@ function CampaignList() {
           </TableHeader>
           <TableBody>
             {isLoading && (
-              <TableRow><TableCell colSpan={7} className="text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><TableSkeleton rows={4} columns={5} /></TableCell></TableRow>
             )}
             {!isLoading && campaigns.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  <p className="font-semibold">No campaigns yet</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Start with a keyword batch or import an SEO content brief spreadsheet.</p>
-                  <div className="mt-4 flex justify-center gap-2">
-                    <Button variant="outline" asChild><Link to="/create?mode=programmatic">Import Briefs</Link></Button>
-                    <Button asChild><Link to="/create?mode=campaign">New Campaign</Link></Button>
-                  </div>
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={7} className="p-0">
+                  <EmptyState
+                    size="row"
+                    title="No campaigns yet"
+                    description="Start with a keyword batch, or import an SEO content brief spreadsheet."
+                    primaryAction={{ label: "New campaign", href: "/create?mode=campaign" }}
+                    secondaryAction={{ label: "Import briefs", href: "/create?mode=programmatic" }}
+                  />
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && campaigns.length > 0 && filteredCampaigns.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No campaigns match these filters.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone="filtered" title="No campaigns match these filters" description="Widen the search or status filter to see the rest." /></TableCell></TableRow>
             )}
             {filteredCampaigns.map((campaign) => (
               <TableRow
@@ -525,8 +528,8 @@ function CampaignDetail({ id }: { id: string }) {
                 {seoReadyCount} ready · {seoPendingCount} preparing · {seoReviewCount} review · {seoFailedCount} failed or missing
               </p>
               {!allSeoReady && <p className="mt-1 text-xs text-muted-foreground">CMS push unlocks when every generated draft is SEO ready.</p>}
-              {cmsBatchTooLarge && <p className="mt-1 text-xs text-amber-700">CMS batches support 500 posts. Use <Link to={`/library/content?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
-              {seoReviewCount > 0 && <p className="mt-1 text-xs text-amber-700">Open review items and confirm preserved manual fields before publishing.</p>}
+              {cmsBatchTooLarge && <p className="mt-1 text-xs text-status-warning">CMS batches support 500 posts. Use <Link to={`/library/content?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
+              {seoReviewCount > 0 && <p className="mt-1 text-xs text-status-warning">Open review items and confirm preserved manual fields before publishing.</p>}
             </div>
             <div className="flex flex-wrap items-end gap-3">
               {!allSeoReady && (
@@ -574,7 +577,7 @@ function CampaignDetail({ id }: { id: string }) {
           </TableHeader>
           <TableBody>
             {history.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No job history yet.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="p-0"><EmptyState size="row" title="No job history yet" description="Runs for this campaign appear here once generation starts." /></TableCell></TableRow>
             )}
             {history.map((job) => (
               <TableRow key={job.id}>
@@ -641,7 +644,7 @@ function CampaignDetail({ id }: { id: string }) {
           </TableHeader>
           <TableBody>
             {filteredItems.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No items match these filters.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone="filtered" title="No items match these filters" description="Widen the filters to see the rest of this campaign." /></TableCell></TableRow>
             )}
             {filteredItems.map((item) => (
               <TableRow key={item.id}>

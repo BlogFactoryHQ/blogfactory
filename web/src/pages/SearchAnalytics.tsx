@@ -96,7 +96,7 @@ export function SearchAnalyticsPanel() {
         <BywordCard>
           <div className="flex flex-wrap items-center justify-between gap-3 p-5">
             <div><h3 className="font-semibold">Daily performance</h3><p className="text-sm text-muted-foreground">{data.range.startDate} — {data.range.endDate}</p></div>
-            <div className="flex gap-2">{data.cached && <Badge variant="outline">Cached</Badge>}{data.provenance.data_status === "preliminary" && <Badge variant="outline" className="border-amber-300 text-amber-700"><TriangleAlert className="mr-1 h-3 w-3" />Provisional from {data.provenance.first_incomplete_date || "latest date"}</Badge>}</div>
+            <div className="flex gap-2">{data.cached && <Badge variant="outline">Cached</Badge>}{data.provenance.data_status === "preliminary" && <Badge variant="outline" className="border-status-warning/30 text-status-warning"><TriangleAlert className="mr-1 h-3 w-3" />Provisional from {data.provenance.first_incomplete_date || "latest date"}</Badge>}</div>
           </div>
           <div className="h-72 border-t border-byword-border p-4">
             <ResponsiveContainer width="100%" height="100%"><LineChart data={data.daily}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={24} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="clicks" stroke="hsl(var(--byword-blue))" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>

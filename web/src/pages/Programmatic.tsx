@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -919,7 +920,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     <div className="max-w-xl text-sm text-muted-foreground">
                       <p className="font-medium text-foreground">{dimensionMath.label}</p>
                       <p className="mt-1">Each finished draft receives its own validated slug, meta title, and meta description.</p>
-                      {dimensionMath.nearLimit && <p className="mt-1 text-amber-600">Close to the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
+                      {dimensionMath.nearLimit && <p className="mt-1 text-status-warning">Close to the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
                       {dimensionMath.overLimit && <p className="mt-1 text-destructive">Over the {MAX_PROGRAMMATIC_ROWS.toLocaleString()} article limit.</p>}
                     </div>
                   </BywordCard>
@@ -1041,7 +1042,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <div className="px-6 py-10">
             <div className="mx-auto max-w-3xl">
               <div className="mx-auto mb-10 flex h-9 w-24 items-center justify-center gap-2 rounded-md border border-byword-border bg-card text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />Start
+                <span className="h-2 w-2 rounded-full bg-status-success" />Start
               </div>
               <div className="space-y-6">
                 {draftTemplate.sections.map((section, index) => (
@@ -1267,7 +1268,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                 <Button variant="secondary" onClick={() => selectTemplate(template, "campaign")}>Use <ChevronRight className="ml-2 h-4 w-4" /></Button>
               </div>
             )) : (
-              <div className="px-6 py-8 text-sm text-muted-foreground">No custom templates yet.</div>
+              <EmptyState size="row" title="No custom templates yet" description="Save a template from the builder to reuse its section plan." />
             )}
           </div>
         </BywordCard>
@@ -1284,7 +1285,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </button>
             )) : (
-              <div className="px-6 py-8 text-sm text-muted-foreground">No saved datasets yet.</div>
+              <EmptyState size="row" title="No saved datasets yet" description="Upload a CSV of variables to generate a page set from one template." />
             )}
           </div>
         </BywordCard>

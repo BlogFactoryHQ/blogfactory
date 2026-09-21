@@ -627,7 +627,7 @@ export function FeedEditorDialog({
                     const selectedPersona = personas.find((p) => p.id === editedFeed.persona_id);
                     if (selectedPersona && editedFeed.model_id !== selectedPersona.base_model) {
                       return (
-                        <p className="text-xs text-amber-600">
+                        <p className="text-xs text-status-warning">
                           Custom model selected (overrides persona default)
                         </p>
                       );
@@ -852,7 +852,7 @@ export function FeedEditorDialog({
 
                     <div className="rounded-md border border-border bg-muted/50 p-4">
                       <p className="text-sm text-muted-foreground">Next Run</p>
-                      <p className={`font-medium mt-1 ${isPast ? "text-amber-600" : ""}`}>
+                      <p className={`font-medium mt-1 ${isPast ? "text-status-warning" : ""}`}>
                         {!editedFeed.is_active
                           ? "Paused"
                           : nextRun

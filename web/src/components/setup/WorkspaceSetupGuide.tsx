@@ -133,7 +133,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                     step === item && "bg-byword-blue-soft text-byword-blue",
                   )}
                 >
-                  <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-background", ready[item] && "border-emerald-200 bg-emerald-50 text-emerald-700")}>
+                  <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-background", ready[item] && "border-status-success/30 bg-status-success/10 text-status-success")}>
                     {ready[item] ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
                   </span>
                   <span className="truncate"><span className="hidden text-muted-foreground lg:inline">{String(index + 1).padStart(2, "0")} · </span>{stepMeta[item].label}</span>
@@ -198,7 +198,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                     </>
                   ) : (
                     <div className="space-y-5">
-                      <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                      <div className="rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm leading-6 text-status-warning">
                         <strong>OAuth is not configured on this server.</strong> If you operate this instance, complete this one-time admin setup. Regular workspace users cannot do it from their account.
                       </div>
                       <InstructionList items={[
@@ -240,10 +240,10 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
               {step === "create" && (
                 <SetupSection icon={Sparkles} title={generationReady ? "Create more content" : "Repair AI access"} description={generationReady ? "Your site is connected and its OpenRouter credential is readable. Use the full creator when you want advanced controls." : "BlogFactory needs a connected site and verified OpenRouter key before it can generate content."}>
                   {generationReady ? (
-                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-5">
-                      <CheckCircle2 className="h-6 w-6 text-emerald-700" />
-                      <h3 className="mt-3 font-semibold text-emerald-950">Core access configured</h3>
-                      <p className="mt-1 text-sm leading-6 text-emerald-900">Open the full creator for model, research, image, and variation controls. Every CMS delivery remains draft-only.</p>
+                    <div className="rounded-md border border-status-success/30 bg-status-success/10 p-5">
+                      <CheckCircle2 className="h-6 w-6 text-status-success" />
+                      <h3 className="mt-3 font-semibold text-status-success">Core access configured</h3>
+                      <p className="mt-1 text-sm leading-6 text-status-success">Open the full creator for model, research, image, and variation controls. Every CMS delivery remains draft-only.</p>
                       <Button asChild className="mt-5" onClick={() => onOpenChange(false)}><Link to="/create">Create content <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>
                     </div>
                   ) : <Button type="button" onClick={() => setStep("generation")}>Add OpenRouter key</Button>}
@@ -284,8 +284,8 @@ function SetupSection({ icon: Icon, title, description, children }: { icon: type
 
 function StatusPanel({ ready, title, detail }: { ready: boolean; title: string; detail: string }) {
   return (
-    <div className={cn("flex items-start gap-3 rounded-md border p-4", ready ? "border-emerald-200 bg-emerald-50" : "border-byword-border bg-muted/30")}>
-      <CheckCircle2 className={cn("mt-0.5 h-5 w-5 shrink-0", ready ? "text-emerald-700" : "text-muted-foreground")} />
+    <div className={cn("flex items-start gap-3 rounded-md border p-4", ready ? "border-status-success/30 bg-status-success/10" : "border-byword-border bg-muted/30")}>
+      <CheckCircle2 className={cn("mt-0.5 h-5 w-5 shrink-0", ready ? "text-status-success" : "text-muted-foreground")} />
       <div><p className="font-semibold">{title}</p><p className="mt-1 text-sm text-muted-foreground">{detail}</p></div>
     </div>
   );

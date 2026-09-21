@@ -252,7 +252,7 @@ export default function Onboarding() {
               const complete = index < currentIndex || step === "success";
               const active = index === currentIndex && step !== "success";
               return <li key={item.label} className="min-w-0">
-                <div aria-current={active ? "step" : undefined} aria-label={`${item.label}${complete ? ", complete" : active ? ", current step" : ""}`} className={cn("flex min-w-9 items-center justify-center gap-2 rounded-sm border px-2 py-2 text-xs sm:min-w-0 sm:justify-start", complete ? "border-emerald-200 bg-emerald-50 text-emerald-800" : active ? "border-byword-blue/30 bg-byword-blue-soft text-byword-blue" : "border-byword-border bg-card text-muted-foreground")}>
+                <div aria-current={active ? "step" : undefined} aria-label={`${item.label}${complete ? ", complete" : active ? ", current step" : ""}`} className={cn("flex min-w-9 items-center justify-center gap-2 rounded-sm border px-2 py-2 text-xs sm:min-w-0 sm:justify-start", complete ? "border-status-success/30 bg-status-success/10 text-status-success" : active ? "border-byword-blue/30 bg-byword-blue-soft text-byword-blue" : "border-byword-border bg-card text-muted-foreground")}>
                   {complete ? <Check className="h-3.5 w-3.5 shrink-0" /> : <Icon className="h-3.5 w-3.5 shrink-0" />}
                   <span className="hidden truncate sm:inline">{item.label}</span>
                 </div>
@@ -328,7 +328,7 @@ export default function Onboarding() {
             </div>
             <div className="space-y-6 p-6 sm:p-8">
               <SiteProof site={site} />
-              {!topicOptions.length && <div className={cn("rounded-md border p-4 text-sm leading-6", site.indexingError ? "border-amber-200 bg-amber-50 text-amber-950" : "border-byword-border bg-muted/25 text-foreground")} role="status">
+              {!topicOptions.length && <div className={cn("rounded-md border p-4 text-sm leading-6", site.indexingError ? "border-status-warning/30 bg-status-warning/10 text-status-warning" : "border-byword-border bg-muted/25 text-foreground")} role="status">
                 <p className="font-semibold">{site.indexingError ? "The site is connected, but its sitemap could not be read." : "No reliable site topics were found yet."}</p>
                 <p className="mt-1 text-muted-foreground">Write the first topic below. You can refresh the site index later from Control → Sites.</p>
               </div>}
@@ -388,8 +388,8 @@ export default function Onboarding() {
             <FactoryDivider />
             <div className="p-6 sm:p-8">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-4"><IconTile icon={CheckCircle2} className="h-12 w-12 border-emerald-200 bg-emerald-50 text-emerald-700" /><div><p className="type-kicker text-emerald-700">First value reached</p><h1 className="mt-1 text-2xl font-semibold">Your first draft is ready</h1><p className="mt-2 text-sm text-muted-foreground">You can review and edit it before anything leaves BlogFactory.</p></div></div>
-                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-[10px] font-semibold uppercase text-emerald-800"><ShieldCheck className="h-3.5 w-3.5" />Draft only</span>
+                <div className="flex items-start gap-4"><IconTile icon={CheckCircle2} className="h-12 w-12 border-status-success/30 bg-status-success/10 text-status-success" /><div><p className="type-kicker text-status-success">First value reached</p><h1 className="mt-1 text-2xl font-semibold">Your first draft is ready</h1><p className="mt-2 text-sm text-muted-foreground">You can review and edit it before anything leaves BlogFactory.</p></div></div>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-status-success/30 bg-status-success/10 px-3 py-1 font-mono text-[10px] font-semibold uppercase text-status-success"><ShieldCheck className="h-3.5 w-3.5" />Draft only</span>
               </div>
               <div className="mt-7 rounded-md border border-byword-border bg-muted/20 p-5 sm:p-6">
                 <p className="type-kicker text-muted-foreground">Saved for {site.domain}</p>
@@ -425,8 +425,8 @@ function onboardingPhase(job: TrackedJob | null) {
 function FirstDraftProgress({ job, failed }: { job: TrackedJob | null; failed: boolean }) {
   const current = onboardingPhase(job);
   const phases = ["Planning from your topic and site", "Writing the article", "Checking structure and output", "Saving the draft"];
-  return <div className="space-y-3" aria-label="First draft progress">{phases.map((label, index) => { const complete = !failed && (job?.step === "complete" || index < current); const active = !failed && job?.step !== "complete" && index === current; return <div key={label} className={cn("flex items-center gap-3 rounded-md border px-4 py-3 text-sm", complete ? "border-emerald-200 bg-emerald-50 text-emerald-900" : active ? "border-byword-blue/30 bg-byword-blue-soft" : "border-byword-border text-muted-foreground")}>
-    {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" /> : active ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-byword-blue" /> : <span className="h-4 w-4 shrink-0 rounded-full border border-byword-border" />}
+  return <div className="space-y-3" aria-label="First draft progress">{phases.map((label, index) => { const complete = !failed && (job?.step === "complete" || index < current); const active = !failed && job?.step !== "complete" && index === current; return <div key={label} className={cn("flex items-center gap-3 rounded-md border px-4 py-3 text-sm", complete ? "border-status-success/30 bg-status-success/10 text-status-success" : active ? "border-byword-blue/30 bg-byword-blue-soft" : "border-byword-border text-muted-foreground")}>
+    {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-status-success" /> : active ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-byword-blue" /> : <span className="h-4 w-4 shrink-0 rounded-full border border-byword-border" />}
     <span>{label}</span>
   </div>; })}</div>;
 }

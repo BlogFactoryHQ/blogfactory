@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -286,7 +287,7 @@ export function IndexingPanel() {
 
         <BywordCard>
           <SectionHeader icon={Search} title="Sitemap Health" description="Read-only processing status from the selected Search Console property." action={<Button variant="outline" size="sm" onClick={() => sitemaps.refetch()} disabled={sitemaps.isFetching || !searchConsoleIntegration}>{sitemaps.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh</Button>} />
-          {!searchConsoleIntegration ? <div className="p-8 text-center text-sm text-muted-foreground">Connect Search Console in Optimize to load sitemap health.</div> : sitemaps.isLoading ? <div className="flex items-center justify-center p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading sitemaps</div> : sitemaps.isError ? <div className="p-8 text-center text-sm text-destructive">{sitemaps.error.message}</div> : !sitemaps.data?.items.length ? <div className="p-8 text-center text-sm text-muted-foreground">No submitted sitemaps found for this property.</div> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Sitemap</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Last submitted</TableHead><TableHead>Last downloaded</TableHead><TableHead className="text-right">Errors</TableHead><TableHead className="text-right">Warnings</TableHead><TableHead className="text-right">Discovered</TableHead></TableRow></TableHeader><TableBody>{sitemaps.data.items.map((item) => <TableRow key={item.path}><TableCell className="max-w-[360px] truncate font-medium" title={item.path}>{item.path}</TableCell><TableCell>{item.type}</TableCell><TableCell><Badge variant={item.isPending ? "secondary" : "outline"}>{item.isPending ? "Pending" : "Processed"}</Badge></TableCell><TableCell>{item.lastSubmitted ? new Date(item.lastSubmitted).toLocaleString() : "—"}</TableCell><TableCell>{item.lastDownloaded ? new Date(item.lastDownloaded).toLocaleString() : "—"}</TableCell><TableCell className="text-right text-destructive">{item.errors}</TableCell><TableCell className="text-right text-amber-700">{item.warnings}</TableCell><TableCell className="text-right">{item.contents.reduce((sum, content) => sum + Number(content.submitted || 0), 0)}</TableCell></TableRow>)}</TableBody></Table></div>}
+          {!searchConsoleIntegration ? <EmptyState size="row" title="Search Console not connected" description="Connect the property in Optimize to load sitemap health." primaryAction={{ label: "Open Optimize", href: "/overview/growth?tab=optimize" }} /> : sitemaps.isLoading ? <div className="flex items-center justify-center p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading sitemaps</div> : sitemaps.isError ? <div className="p-8 text-center text-sm text-destructive">{sitemaps.error.message}</div> : !sitemaps.data?.items.length ? <EmptyState size="row" title="No submitted sitemaps" description="Submit a sitemap in Search Console and its health appears here." /> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Sitemap</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Last submitted</TableHead><TableHead>Last downloaded</TableHead><TableHead className="text-right">Errors</TableHead><TableHead className="text-right">Warnings</TableHead><TableHead className="text-right">Discovered</TableHead></TableRow></TableHeader><TableBody>{sitemaps.data.items.map((item) => <TableRow key={item.path}><TableCell className="max-w-[360px] truncate font-medium" title={item.path}>{item.path}</TableCell><TableCell>{item.type}</TableCell><TableCell><Badge variant={item.isPending ? "secondary" : "outline"}>{item.isPending ? "Pending" : "Processed"}</Badge></TableCell><TableCell>{item.lastSubmitted ? new Date(item.lastSubmitted).toLocaleString() : "—"}</TableCell><TableCell>{item.lastDownloaded ? new Date(item.lastDownloaded).toLocaleString() : "—"}</TableCell><TableCell className="text-right text-destructive">{item.errors}</TableCell><TableCell className="text-right text-status-warning">{item.warnings}</TableCell><TableCell className="text-right">{item.contents.reduce((sum, content) => sum + Number(content.submitted || 0), 0)}</TableCell></TableRow>)}</TableBody></Table></div>}
         </BywordCard>
 
         <BywordCard>
@@ -297,10 +298,10 @@ export function IndexingPanel() {
               Loading submissions
             </div>
           ) : articleSubmissions.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">
-              <p>No indexing submissions yet.</p>
-              <p className="mt-2 text-sm">Connect Bing Webmaster or IndexNow before publishing large batches.</p>
-            </div>
+            <EmptyState
+              title="No indexing submissions yet"
+              description="Connect Bing Webmaster or IndexNow before publishing large batches, then submissions are tracked here."
+            />
           ) : (
             <Table>
               <TableHeader>

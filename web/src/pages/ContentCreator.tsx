@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -1440,9 +1441,13 @@ export default function ContentCreator() {
           />
           <div className="p-6">
             {recentPosts.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-byword-border p-8 text-center text-sm text-muted-foreground">
-                No posts generated yet. Create your first one.
-              </div>
+              <EmptyState
+                size="panel"
+                icon={FileText}
+                title="No drafts generated yet"
+                description="Pick a source above and the first draft appears here."
+                className="rounded-md border border-dashed border-byword-border"
+              />
             ) : (
               <div className="grid gap-3">
                 {recentPosts.map((post) => (

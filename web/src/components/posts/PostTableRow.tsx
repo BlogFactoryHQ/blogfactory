@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Megaphone, ImageIcon, Loader2 } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Megaphone, ImageIcon, Loader2, Eye, Pencil } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import {
   TableCell,
   TableRow,
 } from "@/components/ui/table";
+import { RowActions } from "@/components/patterns/RowActions";
 import { cn } from "@/lib/utils";
 import { safeFormatDate } from "@/lib/date-format";
 import { seoStatusPresentation } from "@/lib/seo-metadata";
@@ -51,7 +52,8 @@ interface PostTableRowProps {
   isSelected: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
-  onQuickDelete: (e: React.MouseEvent) => void;
+  onQuickDelete: () => void;
+  onPreview?: () => void;
   onOpenImagePrompts: (e: React.MouseEvent) => void;
   isImagePromptActionPending?: boolean;
   formatModelName: (modelId: string) => string;
@@ -66,6 +68,7 @@ export function PostTableRow({
   onSelect,
   onClick,
   onQuickDelete,
+  onPreview,
   onOpenImagePrompts,
   isImagePromptActionPending = false,
   formatModelName,
@@ -167,16 +170,15 @@ export function PostTableRow({
           >
             {isImagePromptActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={onQuickDelete}
-            title="Quick delete"
-            aria-label={`Delete ${post.title}`}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <RowActions
+            triggerLabel={`Actions for ${displayTitle || post.title}`}
+            label={displayTitle || post.title}
+            actions={[
+              { label: "Open editor", icon: Pencil, onSelect: onClick },
+              ...(onPreview ? [{ label: "Open preview", icon: Eye, onSelect: onPreview }] : []),
+              { label: "Delete draft", icon: Trash2, onSelect: onQuickDelete, destructive: true, separatorBefore: true },
+            ]}
+          />
         </div>
       </TableCell>
     </TableRow>
