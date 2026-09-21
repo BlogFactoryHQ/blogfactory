@@ -6,7 +6,16 @@ This is the canonical forward plan for BlogFactory. It records intended work, no
 
 BlogFactory launched open source and self-hosted first. BlogFactory Cloud is the managed service built on this core.
 
-Cloud pricing, limits, checkout, subscriptions, and entitlements are decided and implemented in the private `BlogFactoryHQ/blogfactory-cloud` repository. They are deliberately absent from this open-source core, and its remaining launch, legal, and marketing gates are tracked privately.
+BlogFactory Cloud has been live since 2026-09-15 with public signup and Polar checkout. Its packaging:
+
+| Plan | Price | Sites | Storage | Concurrent generations | Active RSS feeds | Drafts per UTC month |
+|---|---|---|---|---|---|---|
+| Cloud | $5 monthly or $49 yearly | 3 | 1 GB | 1 | 3 | 150 successful drafts |
+| Advanced | $15 monthly or $149 yearly | 10 | 10 GB | 3 | 20 | unlimited manual, up to 600 automated |
+
+Plans include no AI credits; generation uses the customer's own OpenRouter key. A $20 Managed AI Credits pack (14,000 credits, valid 365 days) is defined but not on sale until Managed AI is enabled.
+
+Polar is the payment layer. The private Cloud PostgreSQL database is authoritative for entitlements, quotas, and spendable credits. Checkout, subscriptions, entitlement enforcement, and billing webhooks live in the private `BlogFactoryHQ/blogfactory-cloud` repository, not in this open-source core, and never gate self-hosted instances.
 
 ## Phase 0 — open-source release
 
@@ -56,6 +65,9 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 - [x] Choose a billing provider and implement idempotent webhooks outside MCP authority (private Cloud repository).
 - [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies (cancellation, backup/restore, and credit spend caps exist privately; export, retention, and support policy remain open).
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
+- [ ] Run a real production purchase, refund, and chargeback-debt test with live webhook readback for every plan SKU.
+- [ ] Obtain written Polar acceptance for the AI-content use case and written OpenRouter confirmation before selling Managed AI Credits; complete human legal review of the terms and privacy policy.
+- [ ] Publish marketing pricing, terms, and privacy pages that match the live packaging above.
 
 ## Release language
 

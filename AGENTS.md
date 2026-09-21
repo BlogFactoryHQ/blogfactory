@@ -27,13 +27,13 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 ## Launch Boundary
 
 - The open-source, self-hosted v0.1.0 release is public. BlogFactory Cloud is the managed service; its runtime, pricing, and billing live in the private `BlogFactoryHQ/blogfactory-cloud` repository.
-- The repository is public and licensed AGPL-3.0-only. Do not regress shipped release status, and do not publish Cloud commercial detail here before the marketing and legal surfaces carry it.
-- Customer pricing, subscriptions, checkout, entitlements, and billing webhooks are not part of this core and must not be added here. AI provider model costs are not BlogFactory plan prices.
+- The repository is public and licensed AGPL-3.0-only. Do not regress shipped release status. The live Cloud packaging summary in `FEATURE_PLAN.md` is the only Cloud commercial detail kept here; keep it in sync with the private billing config and Polar products.
+- Subscriptions, checkout, entitlement enforcement, and billing webhooks are not part of this core and must not be added here. AI provider model costs are not BlogFactory plan prices.
 - Pricing and billing require an explicit product and security decision. Keep billing authority outside MCP and make provider webhooks idempotent.
 - Password recovery UI stays absent until real email delivery is connected. Self-hosted signup is an explicit environment-gated bootstrap path, not a hosted signup launch.
 - Public marketing is owned by the private `BlogFactoryHQ/blogfactory-marketing` Astro repository and Cloudflare Pages project, not this application build.
 - The hosted app deployment is owned by the private `BlogFactoryHQ/blogfactory-cloud` repository. This public repository is the canonical shared core; Cloud syncs merge from here and never copy private code back automatically.
-- Marketing claims must match shipped behavior. Keep product composites labelled; pricing remains absent until the product and security decisions are complete.
+- Marketing claims must match shipped behavior. Keep product composites labelled.
 
 ## Current Information Architecture
 
