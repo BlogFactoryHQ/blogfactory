@@ -5,6 +5,7 @@ import { api, ApiError as ClientApiError } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -986,7 +987,7 @@ export default function ContentCreator() {
       />
 
       {needsOpenRouterKey && (
-        <div role="alert" className="mx-auto mb-8 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <div role="alert" className="mx-auto mb-8 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm text-foreground">
           <p><strong>Add your OpenRouter key to generate drafts.</strong> BlogFactory uses your own OpenRouter account for AI generation.</p>
           <Button asChild size="sm" variant="outline"><Link to="/control/article-settings?section=api-keys">Add OpenRouter key</Link></Button>
         </div>
@@ -1474,9 +1475,13 @@ export default function ContentCreator() {
           />
           <div className="p-6">
             {recentPosts.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-byword-border p-8 text-center text-sm text-muted-foreground">
-                No posts generated yet. Create your first one.
-              </div>
+              <EmptyState
+                size="panel"
+                icon={FileText}
+                title="No drafts generated yet"
+                description="Pick a source above and the first draft appears here."
+                className="rounded-md border border-dashed border-byword-border"
+              />
             ) : (
               <div className="grid gap-3">
                 {recentPosts.map((post) => (

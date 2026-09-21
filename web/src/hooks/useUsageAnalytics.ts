@@ -32,6 +32,7 @@ export interface DailyUsage {
   cost: number;
   text_cost?: number;
   image_cost?: number;
+  failed?: number;
 }
 
 export interface CostAnalytics {

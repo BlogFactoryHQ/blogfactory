@@ -18,16 +18,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, FileText, Loader2, Send } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { TablePagination } from "@/components/patterns/TablePagination";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
@@ -213,7 +209,7 @@ export default function Posts() {
     [integrations],
   );
 
-  const { data: postList, isLoading: isLoadingPosts, error: postsError } = useQuery({
+  const { data: postList, isLoading: isLoadingPosts, error: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ["posts", currentPage, postsPerPage, deferredSearchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection],
     queryFn: async () => {
       return api.get<PostListResponse>(postListPath({
@@ -434,6 +430,14 @@ export default function Posts() {
     clearSelection();
   };
 
+  const hasActiveQuery = activeFiltersCount > 0 || statusFilter !== "all" || Boolean(searchQuery.trim());
+
+  const handleClearAllFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+    handleClearFilters();
+  };
+
   const handleSortChange = (field: SortField, direction: SortDirection) => {
     setSortField(field);
     setSortDirection(direction);
@@ -561,10 +565,8 @@ export default function Posts() {
             isSelected={selectedIds.has(post.id)}
             onSelect={(checked) => handleRowSelect(post.id, checked)}
             onClick={() => openPostInNewTab(post.id)}
-            onQuickDelete={(e) => {
-              e.stopPropagation();
-              setQuickDeletePost(post);
-            }}
+            onQuickDelete={() => setQuickDeletePost(post)}
+            onPreview={() => window.open(`/library/posts/${post.id}/preview`, "_blank", "noopener,noreferrer")}
             onOpenImagePrompts={(e) => handleImagePromptAction(post, e)}
             isImagePromptActionPending={creatingImagePromptPostId === post.id}
             formatModelName={formatModelName}
@@ -654,7 +656,7 @@ export default function Posts() {
         </div>
       )}
 
-      <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:mx-0">
+      <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_var(--panel-lift)] backdrop-blur sm:mx-0">
         <PostFilters
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
@@ -752,21 +754,43 @@ export default function Posts() {
           </TableHeader>
           <TableBody>
             {isLoadingPosts ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  <TableSkeleton rows={6} columns={6} />
                 </TableCell>
               </TableRow>
             ) : postsError ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-destructive">
-                  {postsError instanceof Error ? postsError.message : "Posts could not be loaded."}
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    size="row"
+                    tone="error"
+                    title="Content could not be loaded"
+                    description={postsError instanceof Error ? postsError.message : "The request failed."}
+                    primaryAction={{ label: "Try again", onClick: () => refetchPosts() }}
+                  />
                 </TableCell>
               </TableRow>
             ) : paginatedRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  No posts yet. Generate one from Content Creator or add an RSS feed.
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  {hasActiveQuery ? (
+                    <EmptyState
+                      size="row"
+                      tone="filtered"
+                      title="No content matches these filters"
+                      description="Widen the search or clear the filters to see the full inventory."
+                      primaryAction={{ label: "Clear filters", onClick: handleClearAllFilters }}
+                    />
+                  ) : (
+                    <EmptyState
+                      size="row"
+                      title="No content yet"
+                      description="Generate an article from Create Content, or connect an RSS source to produce drafts automatically."
+                      primaryAction={{ label: "Create content", href: "/create" }}
+                      secondaryAction={{ label: "Add a source", href: "/sources/rss" }}
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -777,10 +801,8 @@ export default function Posts() {
                   isSelected={selectedIds.has(row.post.id)}
                   onSelect={(checked) => handleRowSelect(row.post.id, checked)}
                   onClick={() => openPostInNewTab(row.post.id)}
-                  onQuickDelete={(e) => {
-                    e.stopPropagation();
-                    setQuickDeletePost(row.post);
-                  }}
+                  onQuickDelete={() => setQuickDeletePost(row.post)}
+                  onPreview={() => window.open(`/library/posts/${row.post.id}/preview`, "_blank", "noopener,noreferrer")}
                   onOpenImagePrompts={(e) => handleImagePromptAction(row.post, e)}
                   isImagePromptActionPending={creatingImagePromptPostId === row.post.id}
                   formatModelName={formatModelName}
@@ -790,54 +812,19 @@ export default function Posts() {
           </TableBody>
         </Table>
 
-        {/* Pagination */}
-        {(postPagination?.total || 0) > 0 && (
-          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
-              {(currentPage - 1) * postsPerPage + enrichedPosts.length} of{" "}
-              {postPagination?.total || 0} posts
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={String(postsPerPage)}
-                onValueChange={(value) => {
-                  setPostsPerPage(Number(value));
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="h-9 w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map((count) => (
-                    <SelectItem key={count} value={String(count)}>
-                      {count} / page
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <TablePagination
+          page={currentPage}
+          pages={totalPages}
+          total={postPagination?.total || 0}
+          rendered={enrichedPosts.length}
+          pageSize={postsPerPage}
+          noun="posts"
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPostsPerPage(size);
+            setCurrentPage(1);
+          }}
+        />
       </BywordCard>
 
       {/* Quick Delete Confirmation */}

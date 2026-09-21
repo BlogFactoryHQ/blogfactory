@@ -581,6 +581,9 @@ export const userSettings = pgTable("user_settings", {
   aiPreference: text("ai_preference").default("auto").notNull(),
   budgetPaused: boolean("budget_paused"),
   budgetAlertThreshold: real("budget_alert_threshold"),
+  dailyCostLimit: real("daily_cost_limit"),
+  dailyRequestLimit: integer("daily_request_limit"),
+  dailyFailureLimit: integer("daily_failure_limit"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

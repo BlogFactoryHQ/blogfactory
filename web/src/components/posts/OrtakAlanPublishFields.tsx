@@ -48,7 +48,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         <div className="space-y-2">
           <Label htmlFor="ortak-alan-topic-tags">Konu etiketleri</Label>
           <TagInput id="ortak-alan-topic-tags" value={metadata.topicTags} onChange={(tags) => update("topicTags", tags)} placeholder="Teknoloji, Yapay Zeka, OpenAI" maxItems={topicTagLimit} describedBy={topicTagHelpId} />
-          <p id={topicTagHelpId} className={metadata.topicTags.length >= topicTagLimit ? "text-xs font-medium text-amber-700" : "text-xs text-muted-foreground"} aria-live="polite">
+          <p id={topicTagHelpId} className={metadata.topicTags.length >= topicTagLimit ? "text-xs font-medium text-status-warning" : "text-xs text-muted-foreground"} aria-live="polite">
             {metadata.topicTags.length}/{topicTagLimit} konu etiketi{metadata.topicTags.length >= topicTagLimit ? " · Limit doldu; yeni etiket için birini kaldırın." : " · Enter veya virgülle ekleyin."}
           </p>
         </div>
@@ -72,7 +72,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
               <div className="space-y-2"><Label>Orijinal yayın tarihi</Label><Input type="date" value={source.publishedAt} onChange={(event) => updateSource(index, { publishedAt: event.target.value })} /></div>
               <div className="space-y-2"><Label>Kaynak notu</Label><Input value={source.note} onChange={(event) => updateSource(index, { note: event.target.value })} placeholder="Kısa bağlam notu" /></div>
             </div>
-            {(!source.type || !source.publishedAt || !source.note) && <p className="text-xs text-amber-700">Tür, tarih ve kaynak notu önerilir; eksikleri canlı yayını engellemez.</p>}
+            {(!source.type || !source.publishedAt || !source.note) && <p className="text-xs text-status-warning">Tür, tarih ve kaynak notu önerilir; eksikleri canlı yayını engellemez.</p>}
           </div>
         ))}
         <Button type="button" variant="outline" size="sm" onClick={() => update("sources", [...metadata.sources, emptyOrtakAlanSource()])}><Plus className="mr-1.5 h-4 w-4" />İkincil kaynak ekle</Button>

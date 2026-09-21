@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Progress } from "@/components/ui/progress";
+import { BudgetBurnChart } from "@/components/usage/BudgetBurnChart";
 import { Shield, Loader2, Save, AlertTriangle, CheckCircle } from "lucide-react";
+import type { DailyUsage } from "@/hooks/useUsageAnalytics";
 import { toast } from "sonner";
 
 interface BudgetSettings {
@@ -20,9 +21,10 @@ interface BudgetSettings {
 
 interface BudgetCardProps {
   currentMonthSpend: number;
+  daily: DailyUsage[];
 }
 
-export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
+export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [budgetEnabled, setBudgetEnabled] = useState(false);
@@ -38,15 +40,19 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
     enabled: !!user?.id,
   });
 
+  // The settings query refetches on window focus; re-seeding after the operator has started
+  // editing would discard a budget they typed but had not saved yet.
+  const [touched, setTouched] = useState(false);
+
   useEffect(() => {
-    if (settings) {
+    if (settings && !touched) {
       setBudgetEnabled(settings.monthly_budget != null);
       if (settings.monthly_budget != null) {
         setMonthlyBudget(settings.monthly_budget.toString());
       }
       setAlertThreshold(Math.round((settings.budget_alert_threshold ?? 0.8) * 100));
     }
-  }, [settings]);
+  }, [settings, touched]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -62,6 +68,7 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
       });
     },
     onSuccess: () => {
+      setTouched(false);
       queryClient.invalidateQueries({ queryKey: ["budget-settings"] });
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
       toast.success("Budget settings saved!");
@@ -131,13 +138,20 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
           </div>
         )}
 
+        {/* Burn to date, with a projection at the current daily rate. */}
+        <BudgetBurnChart
+          daily={daily}
+          monthlyBudget={budgetEnabled && budgetNum > 0 ? budgetNum : null}
+          monthToDateSpend={currentMonthSpend}
+        />
+
         {/* Enable toggle */}
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-sm font-medium">Enable Monthly Budget</Label>
             <p className="text-xs text-muted-foreground mt-0.5">Auto-pause generation when limit is reached</p>
           </div>
-          <Switch checked={budgetEnabled} onCheckedChange={setBudgetEnabled} />
+          <Switch checked={budgetEnabled} onCheckedChange={(checked) => { setTouched(true); setBudgetEnabled(checked); }} />
         </div>
 
         {budgetEnabled && (
@@ -152,26 +166,11 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
                   step="0.01"
                   min="0.01"
                   value={monthlyBudget}
-                  onChange={(e) => setMonthlyBudget(e.target.value)}
+                  onChange={(e) => { setTouched(true); setMonthlyBudget(e.target.value); }}
                   className="pl-7"
                   placeholder="10.00"
                 />
               </div>
-            </div>
-
-            {/* Progress bar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Current month spend</span>
-                <span className={`font-medium ${isOverBudget ? "text-destructive" : isNearBudget ? "text-[hsl(var(--status-warning))]" : ""}`}>
-                  ${currentMonthSpend.toFixed(4)} / ${budgetNum.toFixed(2)}
-                </span>
-              </div>
-              <Progress
-                value={spendPercent}
-                className={`h-2 ${isOverBudget ? "[&>div]:bg-destructive" : isNearBudget ? "[&>div]:bg-[hsl(var(--status-warning))]" : ""}`}
-              />
-              <p className="text-xs text-muted-foreground">{spendPercent.toFixed(1)}% used</p>
             </div>
 
             {/* Alert threshold */}
@@ -182,7 +181,7 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
               </div>
               <Slider
                 value={[alertThreshold]}
-                onValueChange={([v]) => setAlertThreshold(v)}
+                onValueChange={([v]) => { setTouched(true); setAlertThreshold(v); }}
                 min={50}
                 max={100}
                 step={5}
@@ -194,8 +193,15 @@ export function BudgetCard({ currentMonthSpend }: BudgetCardProps) {
           </>
         )}
 
+        {budgetEnabled && isNearBudget && !isOverBudget && !isPaused && (
+          <div className="flex items-center gap-2 text-sm text-[hsl(var(--status-warning))]">
+            <AlertTriangle className="h-4 w-4" />
+            Spend has passed {alertThreshold}% of the monthly budget.
+          </div>
+        )}
+
         {/* Status indicator */}
-        {budgetEnabled && !isPaused && !isOverBudget && (
+        {budgetEnabled && !isPaused && !isOverBudget && !isNearBudget && (
           <div className="flex items-center gap-2 text-sm text-[hsl(var(--status-success))]">
             <CheckCircle className="h-4 w-4" />
             Generation active — within budget

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -452,11 +453,11 @@ export default function RSSFeeds() {
   const getPlatformIcon = (platform?: string) => {
     switch (platform) {
       case "youtube":
-        return <PlayCircle className="h-4 w-4 text-red-500" />;
+        return <PlayCircle className="h-4 w-4 text-muted-foreground" />;
       case "reddit":
-        return <MessageSquare className="h-4 w-4 text-orange-500" />;
+        return <MessageSquare className="h-4 w-4 text-muted-foreground" />;
       case "hackernews":
-        return <span className="text-orange-500 font-bold text-xs">Y</span>;
+        return <span className="font-mono text-xs font-bold text-muted-foreground">Y</span>;
       case "github":
         return <Github className="h-4 w-4" />;
       case "rss":
@@ -518,7 +519,7 @@ export default function RSSFeeds() {
 
       {/* Scheduler Status */}
       {lastSchedulerRun && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-byword-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%)]">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-byword-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_1px_0_var(--panel-highlight)]">
           <Clock className="h-4 w-4" />
           <span>Last scheduler check:</span>
           <span className="font-medium text-foreground">
@@ -553,7 +554,7 @@ export default function RSSFeeds() {
         running={Boolean(runningFeedId)}
       />
 
-      <div className="sticky top-0 z-20 mb-6 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur">
+      <div className="sticky top-0 z-20 mb-6 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_var(--panel-lift)] backdrop-blur">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
             <TabsList className="h-auto flex-wrap justify-start">
@@ -601,7 +602,7 @@ export default function RSSFeeds() {
         </div>
 
         {selectedFeeds.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%)]">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/35 px-4 py-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
             <p className="font-mono text-[12px] font-semibold uppercase text-foreground">
               {selectedFeeds.length} feed{selectedFeeds.length === 1 ? "" : "s"} selected
             </p>
@@ -670,9 +671,14 @@ export default function RSSFeeds() {
                 </TableRow>
               ))
             ) : paginatedFeeds.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                  No sources configured yet. Add your first content source to get started.
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={9} className="p-0">
+                  <EmptyState
+                    size="row"
+                    title="No sources configured"
+                    description="Add an RSS or news source and BlogFactory turns new items into drafts on a schedule."
+                    primaryAction={{ label: "Add a source", href: "/sources/rss/new" }}
+                  />
                 </TableCell>
               </TableRow>
             ) : (
@@ -777,7 +783,7 @@ export default function RSSFeeds() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {feed.routing_status === "needs_routing" ? <Badge variant="outline" className="border-amber-300 text-amber-800">Needs routing</Badge> : <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />}
+                    {feed.routing_status === "needs_routing" ? <Badge variant="outline" className="border-status-warning/30 text-status-warning">Needs routing</Badge> : <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />}
                   </TableCell>
                   <TableCell>
                     <Tooltip>

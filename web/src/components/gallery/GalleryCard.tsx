@@ -115,7 +115,7 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
       {/* Type + status badges */}
       <div className="absolute top-2 left-2 flex items-center gap-1">
         {image.type === "cover" ? (
-          <div className="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
+          <div className="bg-status-warning text-status-warning-foreground text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
             <Star className="h-2.5 w-2.5" /> Cover
           </div>
         ) : (

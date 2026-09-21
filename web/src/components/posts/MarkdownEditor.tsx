@@ -351,7 +351,7 @@ export function MarkdownEditor({
       ref={editorRef}
       className={cn(
         "flex flex-col overflow-hidden rounded-md border border-border bg-background factory-panel",
-        isFullscreen && "fixed inset-4 z-50 shadow-[0_24px_60px_hsl(210_5%_20%/0.18)]",
+        isFullscreen && "fixed inset-4 z-50 shadow-[0_24px_60px_var(--panel-lift)]",
         className
       )}
     >

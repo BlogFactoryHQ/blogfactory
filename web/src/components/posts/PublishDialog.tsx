@@ -445,7 +445,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
             </div>
 
             {seoReview && (
-              <div id={seoReviewId} className="flex gap-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-3 text-amber-950" role="status" aria-live="polite">
+              <div id={seoReviewId} className="flex gap-3 rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-3 text-status-warning" role="status" aria-live="polite">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{seoReview.title}</p>
@@ -572,16 +572,16 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                   coverImageUrl={coverImageUrl}
                 />
                 {authorsError && <p className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">Ghost yazarları yüklenemedi. Entegrasyon bağlantısını test edip tekrar deneyin.</p>}
-                {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+                {inheritedWarnings.length > 0 && <div className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
                 <div className="grid gap-2 rounded-sm border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-2">
                   {ortakAlanChecks.map((check) => (
-                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" && check.blocking !== false ? "text-destructive" : "text-amber-700"}>
+                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" && check.blocking !== false ? "text-destructive" : "text-status-warning"}>
                       <span className="font-medium">{check.label}</span><span className="ml-2">{check.value}</span>
                     </div>
                   ))}
                 </div>
                 {mode === "draft" && ortakAlanChecks.some((check) => !check.ok) && (
-                  <p className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Eksik metadata ve yazar eşleşmesi uyarı olarak kaydedilecek; taslak yine Ghost’a gönderilebilir.</p>
+                  <p className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">Eksik metadata ve yazar eşleşmesi uyarı olarak kaydedilecek; taslak yine Ghost’a gönderilebilir.</p>
                 )}
               </>
             ) : (
@@ -602,7 +602,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               <div className="space-y-2">
                 <Label htmlFor={`publish-tags-${postId}`}>Etiketler</Label>
                 <TagInput id={`publish-tags-${postId}`} value={publishTags} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" maxItems={TAG_LIMIT} describedBy={publishTagHelpId} />
-                <p id={publishTagHelpId} className={publishTags.length === TAG_LIMIT ? "text-xs font-medium text-amber-700" : hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
+                <p id={publishTagHelpId} className={publishTags.length === TAG_LIMIT ? "text-xs font-medium text-status-warning" : hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
                   {publishTags.length}/{TAG_LIMIT} etiket{publishTags.length === TAG_LIMIT ? " · Limit doldu; yeni etiket için birini kaldırın." : " · Enter veya virgülle ekleyin."}
                 </p>
               </div>
@@ -612,7 +612,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               </div>
             </div>
 
-            {inheritedWarnings.length > 0 && <div className="rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+            {inheritedWarnings.length > 0 && <div className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
               </>
             )}
           </div>

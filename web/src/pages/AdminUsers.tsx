@@ -3,6 +3,8 @@ import { Shield, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -90,15 +92,13 @@ export default function AdminUsers() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    Loading users...
-                  </TableCell>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={6} className="p-0"><TableSkeleton rows={4} columns={5} /></TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    No users found.
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState size="row" title="No users yet" description="Accounts appear here once someone signs up or is bootstrapped by an administrator." />
                   </TableCell>
                 </TableRow>
               ) : (

@@ -129,8 +129,8 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
       <div className="border border-border rounded-lg p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-orange-500" />
+            <div className="h-10 w-10 rounded-lg border border-byword-border bg-byword-blue-soft flex items-center justify-center">
+              <FileText className="h-5 w-5 text-byword-blue" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -160,8 +160,8 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
       <div className="border border-border rounded-lg p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Wand2 className="h-5 w-5 text-green-500" />
+            <div className="h-10 w-10 rounded-lg border border-byword-border bg-byword-blue-soft flex items-center justify-center">
+              <Wand2 className="h-5 w-5 text-byword-blue" />
             </div>
             <div>
               <div className="flex items-center gap-2">

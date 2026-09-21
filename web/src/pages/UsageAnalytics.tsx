@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import {
@@ -29,11 +30,13 @@ import {
   TrendingUp,
   Image,
   AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
 import { UsageTokenChart } from "@/components/usage/UsageTokenChart";
 import { ModelBreakdownTable } from "@/components/usage/ModelBreakdownTable";
 import { BudgetCard } from "@/components/usage/BudgetCard";
+import { GuardrailRules } from "@/components/usage/GuardrailRules";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatIsoDate } from "@/lib/date-format";
@@ -313,9 +316,19 @@ export default function UsageAnalytics() {
           </Tabs>
 
           {/* Budget Controls */}
-          <div className="mb-8">
-            <BudgetCard currentMonthSpend={currentMonthSpend} />
+          <div className="mb-6">
+            <BudgetCard currentMonthSpend={currentMonthSpend} daily={dailyUsage} />
           </div>
+
+          {/* Daily ceilings, enforced by the generation worker. */}
+          <BywordCard className="mb-8">
+            <SectionHeader
+              icon={ShieldCheck}
+              title="Daily guardrails"
+              description="Ceilings the generation worker checks before every run. They reset at UTC midnight."
+            />
+            <GuardrailRules daily={dailyUsage} />
+          </BywordCard>
 
           {/* Model Breakdown */}
           <BywordCard>
@@ -359,7 +372,7 @@ export default function UsageAnalytics() {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="py-8 text-center text-sm text-muted-foreground">No provider calls in this range.</p>
+                <EmptyState size="row" title="No provider calls in this range" description="Generation and image calls appear here with their real model cost." />
               )}
             </div>
           </BywordCard>
