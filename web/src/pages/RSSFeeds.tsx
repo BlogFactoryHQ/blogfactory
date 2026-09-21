@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { SourceSyncHealth } from "@/components/feeds/SourceSyncHealth";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -626,6 +627,17 @@ export default function RSSFeeds() {
           </div>
         )}
       </div>
+
+      {feeds.length > 0 && (
+        <BywordCard className="mb-6">
+          <SectionHeader
+            icon={CalendarClock}
+            title="Source health"
+            description="Whether each source is keeping to the schedule the scheduler can actually deliver."
+          />
+          <SourceSyncHealth />
+        </BywordCard>
+      )}
 
       {/* Table */}
       <BywordCard>
