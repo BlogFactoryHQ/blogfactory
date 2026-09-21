@@ -149,9 +149,9 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Pricing boundary
 
-There is no BlogFactory customer billing system in this codebase today. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The approved open-source-first packaging and planned Cloud tiers live in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md).
+There is no BlogFactory customer billing system in this codebase. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The live Cloud packaging is summarized in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md); checkout, subscriptions, and entitlements are implemented in the private Cloud repository.
 
-Do not add checkout until the plan's Cloud gates are complete. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
+Do not add checkout to this core. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
 
 ## Where to make a change
 
