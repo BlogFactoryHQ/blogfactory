@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { feeds, siteIntegrations, sites } from "../db/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { feeds, jobs, siteIntegrations, sites } from "../db/schema.js";
+import { eq, and, desc, gte, isNotNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { inspectFeedRouting, normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
+import { feedSyncHealth, schedulerTickMs, summarizeFeedHealth } from "../services/feed-sync-health.js";
 
 export const feedsRoutes = new Hono();
 
@@ -105,6 +106,32 @@ feedsRoutes.get("/", async (c) => {
     const ready = Boolean(row.feed.siteId && row.feed.integrationId && row.integrationSiteId === row.feed.siteId && row.integrationStatus === "connected" && (!ortakAlan || (defaults.contentType && author.id && config.editorialOwner)));
     return serializeFeed(row.feed, { ...row, ready });
   }));
+});
+
+// Sync health for every feed, judged against what the scheduler tick can actually deliver.
+feedsRoutes.get("/health", async (c) => {
+  const userId = getUserId(c);
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const [rows, outcomes] = await Promise.all([
+    db.select({
+      id: feeds.id,
+      name: feeds.name,
+      platform: feeds.platform,
+      frequency: feeds.frequency,
+      isActive: feeds.isActive,
+      lastRunAt: feeds.lastRunAt,
+      runActiveCount: feeds.runActiveCount,
+      runLeaseUntil: feeds.runLeaseUntil,
+      totalArticles: feeds.totalArticles,
+    }).from(feeds).where(eq(feeds.userId, userId)).orderBy(desc(feeds.createdAt)),
+    db.select({ feedId: jobs.feedId, status: jobs.status, errorMessage: jobs.errorMessage, createdAt: jobs.createdAt })
+      .from(jobs)
+      .where(and(eq(jobs.userId, userId), isNotNull(jobs.feedId), gte(jobs.createdAt, weekAgo))),
+  ]);
+  const tickMs = schedulerTickMs();
+  const entries = rows.map((row) => feedSyncHealth(row, outcomes, now, tickMs));
+  return c.json({ summary: summarizeFeedHealth(entries, tickMs), feeds: entries });
 });
 
 feedsRoutes.post("/", async (c) => {
