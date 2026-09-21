@@ -152,7 +152,7 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Pricing boundary
 
-Cloud billing is implemented behind disabled launch flags. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md); do not enable checkout/public signup or market availability until its acceptance gates pass.
+Cloud billing is live: public signup, Polar checkout, and entitlement enforcement have been on since 2026-09-15, while Managed AI credits stay disabled. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md) for the remaining acceptance gates.
 
 ## Where to make a change
 
