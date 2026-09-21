@@ -64,7 +64,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
   ) : image.status === "unused" ? (
     <Badge variant="secondary" className="gap-1"><ImageOff className="h-3 w-3" /> Unused</Badge>
   ) : (
-    <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600">Used</Badge>
+    <Badge variant="outline" className="gap-1 border-status-success/30 text-status-success">Used</Badge>
   );
   const sourceUrl = image.attribution_url || image.source_url;
   const sourceName = imageProviderName(image.provider);
@@ -77,7 +77,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {image.type === "cover" ? (
-              <Star className="h-4 w-4 text-amber-500" />
+              <Star className="h-4 w-4 text-status-warning" />
             ) : (
               <ImagePlus className="h-4 w-4 text-primary" />
             )}

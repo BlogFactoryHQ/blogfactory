@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, Bot, CircleDollarSign, FileCheck2, FileText, ListChecks, Loader2, PlayCircle, SearchCheck, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleDollarSign, FileCheck2, FileText, ListChecks, PlayCircle, SearchCheck, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton, StatRowSkeleton } from "@/components/patterns/PageSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -21,7 +23,7 @@ export default function Overview() {
   const [params, setParams] = useSearchParams();
   const [setupOpen, setSetupOpen] = useState(Boolean(params.get("setup")));
   const [activeSetupStep, setActiveSetupStep] = useState<WorkspaceSetupStep>(() => setupStep(params.get("setup")));
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["control-plane-overview", activeSite?.id],
     queryFn: () => api.get<WorkspaceDigest>(`/control-plane/overview?site_id=${encodeURIComponent(activeSite!.id)}`),
     enabled: Boolean(activeSite?.id),
@@ -45,10 +47,10 @@ export default function Overview() {
 
   return <BywordPageShell className="max-w-7xl">
     <PageHeader title="Overview" description={activeSite ? `${activeSite.domain} · agent and editorial operations` : "Agent and editorial operations"}>
-      <div className="flex flex-wrap items-center justify-end gap-3"><span className="type-meta inline-flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${isFetching ? "animate-pulse bg-amber-500" : "bg-green-600"}`} />{isFetching ? "Refreshing" : "Live · 60s"}</span>{hasFirstDraft && <Button type="button" variant="outline" onClick={() => openSetup(data?.connections.generation.ready ? "cms" : "generation")}><ListChecks className="mr-1.5 h-4 w-4" />Connections &amp; setup</Button>}<Button asChild><Link to={hasFirstDraft ? "/create" : "/onboarding"}>{hasFirstDraft ? "Create content" : "Create first draft"}</Link></Button></div>
+      <div className="flex flex-wrap items-center justify-end gap-3"><span className="type-meta inline-flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${isFetching ? "animate-pulse bg-status-warning" : "bg-status-success"}`} />{isFetching ? "Refreshing" : "Live · 60s"}</span>{hasFirstDraft && <Button type="button" variant="outline" onClick={() => openSetup(data?.connections.generation.ready ? "cms" : "generation")}><ListChecks className="mr-1.5 h-4 w-4" />Connections &amp; setup</Button>}<Button asChild><Link to={hasFirstDraft ? "/create" : "/onboarding"}>{hasFirstDraft ? "Create content" : "Create first draft"}</Link></Button></div>
     </PageHeader>
-    {isLoading && <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
-    {error && <BywordCard><p className="p-6 text-sm text-destructive">{error instanceof Error ? error.message : "Overview could not be loaded."}</p></BywordCard>}
+    {isLoading && <div className="space-y-5"><StatRowSkeleton /><BywordCard><ListSkeleton rows={3} /></BywordCard><div className="grid gap-6 xl:grid-cols-2"><BywordCard><ListSkeleton rows={3} /></BywordCard><BywordCard><ListSkeleton rows={3} /></BywordCard></div></div>}
+    {error && <BywordCard><EmptyState tone="error" title="Overview could not be loaded" description={error instanceof Error ? error.message : "The workspace digest request failed."} primaryAction={{ label: "Try again", onClick: () => refetch() }} /></BywordCard>}
     {data && <div className="space-y-5">
       <SetupReadinessCard key={data.site.id} digest={data} onOpenSetup={openSetup} />
       {hasFirstDraft && <>
@@ -65,14 +67,14 @@ export default function Overview() {
             <div className="min-w-0"><p className="truncate text-sm font-semibold group-hover:text-byword-blue">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.suggested_action}</p><p className="type-meta mt-1.5">{item.source_type.replace(/_/g, " ")} · revision {item.revision_number || "—"}</p></div>
             <div className="flex items-center gap-2"><Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>{item.severity}</Badge><ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div>
           </Link>)}
-          {!data.action_items.length && <p className="p-6 text-sm text-muted-foreground">No drafts need attention.</p>}
+          {!data.action_items.length && <EmptyState size="row" icon={CheckCircle2} title="Queue clear" description="No draft is waiting on an editorial or delivery decision." />}
         </div>
       </BywordCard>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <BywordCard>
           <SectionHeader icon={PlayCircle} title="Runs" description={`${data.runs.running} active · ${data.runs.failed} failed`} action={<Button asChild variant="outline" size="sm"><Link to="/runs">View runs</Link></Button>} />
-          <div className="divide-y divide-byword-border">{data.runs.recent.map((run) => <Link to="/runs" key={run.id} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><div><p className="text-sm font-medium">{run.source_type.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{run.current_step} · {safeFormatDistanceToNow(run.created_at)}</p></div><Badge variant={run.status === "failed" ? "destructive" : "secondary"}>{run.status}</Badge></Link>)}{!data.runs.recent.length && <p className="p-5 text-sm text-muted-foreground">No recent runs.</p>}</div>
+          <div className="divide-y divide-byword-border">{data.runs.recent.map((run) => <Link to="/runs" key={run.id} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><div><p className="text-sm font-medium">{run.source_type.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{run.current_step} · {safeFormatDistanceToNow(run.created_at)}</p></div><Badge variant={run.status === "failed" ? "destructive" : "secondary"}>{run.status}</Badge></Link>)}{!data.runs.recent.length && <EmptyState size="row" title="No runs yet" description="Generation jobs appear here while they work." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
         </BywordCard>
         <BywordCard>
           <SectionHeader icon={FileCheck2} title="30-day outcomes" description="Draft and CMS delivery volume." />
@@ -82,7 +84,7 @@ export default function Overview() {
 
       <BywordCard>
         <SectionHeader icon={FileText} title="Recent outputs" description="Latest content created or updated for this site." action={<Button asChild variant="outline" size="sm"><Link to="/library">Open content</Link></Button>} />
-        <div className="divide-y divide-byword-border">{data.recent_outputs.map((post) => <Link key={post.id} to={`/library/posts/${post.id}/preview`} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{post.title}</p><p className="text-xs text-muted-foreground">{post.source_type.replace(/_/g, " ")} · {safeFormatDistanceToNow(post.updated_at)}</p></div><Badge variant="secondary">{post.editorial_state.replace(/_/g, " ")}</Badge></Link>)}{!data.recent_outputs.length && <p className="p-5 text-sm text-muted-foreground">No recent outputs.</p>}</div>
+        <div className="divide-y divide-byword-border">{data.recent_outputs.map((post) => <Link key={post.id} to={`/library/posts/${post.id}/preview`} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{post.title}</p><p className="text-xs text-muted-foreground">{post.source_type.replace(/_/g, " ")} · {safeFormatDistanceToNow(post.updated_at)}</p></div><Badge variant="secondary">{post.editorial_state.replace(/_/g, " ")}</Badge></Link>)}{!data.recent_outputs.length && <EmptyState size="row" title="No content yet" description="Drafts created for this site collect here." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
       </BywordCard>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -97,7 +99,7 @@ export default function Overview() {
       </div>
       <BywordCard>
         <SectionHeader icon={Bot} title="Agent activity" description="Recent MCP and important web operations." />
-        <div className="divide-y divide-byword-border">{data.activity.map((event) => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{event.action.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{event.client_name || event.origin} · {safeFormatDistanceToNow(event.created_at)}</p></div><div className="flex items-center gap-2"><Badge variant="outline">{event.origin}</Badge><Badge variant={event.status === "failed" ? "destructive" : "secondary"}>{event.status}</Badge></div></div>)}{!data.activity.length && <p className="p-5 text-sm text-muted-foreground">No recorded operations yet.</p>}</div>
+        <div className="divide-y divide-byword-border">{data.activity.map((event) => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{event.action.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{event.client_name || event.origin} · {safeFormatDistanceToNow(event.created_at)}</p></div><div className="flex items-center gap-2"><Badge variant="outline">{event.origin}</Badge><Badge variant={event.status === "failed" ? "destructive" : "secondary"}>{event.status}</Badge></div></div>)}{!data.activity.length && <EmptyState size="row" title="No agent operations yet" description="MCP and web operations are recorded here for 30 days." />}</div>
       </BywordCard>
       </>}
     </div>}
@@ -144,7 +146,7 @@ function SetupReadinessCard({ digest, onOpenSetup }: { digest: WorkspaceDigest; 
     setDismissedFingerprint(fingerprint);
   };
 
-  return <section className={`relative rounded-md border bg-card ${generation.ready ? "border-byword-border" : "border-amber-300"}`} aria-labelledby="connections-setup-title">
+  return <section className={`relative rounded-md border bg-card ${generation.ready ? "border-byword-border" : "border-status-warning/30"}`} aria-labelledby="connections-setup-title">
     <div className="flex flex-col gap-4 p-4 pr-12 sm:flex-row sm:items-center sm:justify-between sm:p-5 sm:pr-14">
       <div className="min-w-0">
         <p className="type-kicker text-muted-foreground">{generation.ready ? "Optional" : "Action needed"}</p>
@@ -159,11 +161,11 @@ function SetupReadinessCard({ digest, onOpenSetup }: { digest: WorkspaceDigest; 
 }
 
 function ConnectionPill({ label, ready }: { label: string; ready: boolean }) {
-  return <span className={`rounded-full border px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${ready ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-byword-border bg-muted/40 text-muted-foreground"}`}>{label} · {ready ? "set" : "off"}</span>;
+  return <span className={`rounded-full border px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${ready ? "border-status-success/30 bg-status-success/10 text-status-success" : "border-byword-border bg-muted/40 text-muted-foreground"}`}>{label} · {ready ? "set" : "off"}</span>;
 }
 
 function Metric({ label, value, tone, href }: { label: string; value: number; tone: "red" | "amber" | "slate"; href: string }) {
-  return <Link to={href} className="group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"><BywordCard className={`h-full transition-calm group-hover:-translate-y-0.5 group-hover:border-byword-blue/50 ${tone === "red" ? "border-red-200" : tone === "amber" ? "border-amber-200" : ""}`}><div className="flex items-end justify-between gap-3 p-5"><div><p className="type-kicker text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{value}</p></div><span className={`mb-1 h-2 w-2 rounded-full ${tone === "red" ? "bg-red-500" : tone === "amber" ? "bg-amber-500" : "bg-slate-400"}`} /></div></BywordCard></Link>;
+  return <Link to={href} className="group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"><BywordCard className={`h-full transition-calm group-hover:-translate-y-0.5 group-hover:border-byword-blue/50 ${tone === "red" ? "border-status-error/30" : tone === "amber" ? "border-status-warning/30" : ""}`}><div className="flex items-end justify-between gap-3 p-5"><div><p className="type-kicker text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{value}</p></div><span className={`mb-1 h-2 w-2 rounded-full ${tone === "red" ? "bg-status-error" : tone === "amber" ? "bg-status-warning" : "bg-status-pending"}`} /></div></BywordCard></Link>;
 }
 
 function Outcome({ icon: Icon, label, value }: { icon: typeof FileText; label: string; value: string | number }) {

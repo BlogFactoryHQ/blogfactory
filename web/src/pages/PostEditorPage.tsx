@@ -431,7 +431,7 @@ export default function PostEditorPage() {
               <StatusBadge status={seoPresentation.status} label={seoPresentation.label} />
             </div>
             {hasChanges && (
-              <p className="mt-4 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+              <p className="mt-4 rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs leading-relaxed text-status-warning">
                 Save article changes first. SEO will then be checked against the new saved version and regenerated when needed.
               </p>
             )}

@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ const PageFallback = () => <div className="min-h-screen bg-background" />;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange storageKey="blogfactory-theme">
     <AuthProvider>
       <SiteProvider>
         <TooltipProvider>
@@ -107,6 +109,7 @@ const App = () => (
         </TooltipProvider>
       </SiteProvider>
     </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

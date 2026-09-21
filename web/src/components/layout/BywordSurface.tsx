@@ -43,7 +43,7 @@ export function FactoryMark({
     <div className={cn("inline-flex items-center gap-3 text-foreground", className)}>
       <div className="relative flex h-9 w-9 items-end justify-center overflow-hidden rounded-sm border border-byword-border bg-card p-1.5 factory-panel">
         <div className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-        <div className="grid h-5 w-6 grid-cols-3 items-end gap-0.5 text-secondary">
+        <div className="grid h-5 w-6 grid-cols-3 items-end gap-0.5 text-foreground/85">
           <span className="h-3 bg-current" />
           <span className="h-5 bg-current" />
           <span className="h-4 bg-current" />
@@ -116,7 +116,7 @@ export function OptionCard({
       disabled={disabled}
       className={cn(
         "group relative flex min-h-[150px] flex-col items-start overflow-hidden rounded-md border bg-card p-6 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
-        selected ? "border-byword-blue bg-byword-blue-soft text-byword-blue factory-panel" : "border-byword-border hover:-translate-y-0.5 hover:border-byword-blue/60 hover:bg-byword-blue-soft/50 hover:shadow-[0_12px_28px_hsl(210_5%_20%/0.07)]",
+        selected ? "border-byword-blue bg-byword-blue-soft text-byword-blue factory-panel" : "border-byword-border hover:-translate-y-0.5 hover:border-byword-blue/60 hover:bg-byword-blue-soft/50 hover:shadow-[0_12px_28px_var(--panel-lift)]",
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
@@ -155,7 +155,7 @@ export function SettingNavItem({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-4 border-l-2 px-5 py-4 text-left transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1",
-        active ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_hsl(0_0%_100%)]" : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground"
+        active ? "border-byword-blue bg-byword-blue-soft text-byword-blue shadow-[inset_0_1px_0_var(--panel-highlight)]" : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground"
       )}
     >
       <Icon className="h-5 w-5 shrink-0" strokeWidth={1.8} />

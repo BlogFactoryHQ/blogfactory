@@ -4,6 +4,7 @@ import { CalendarDays, FilePlus2, List, Loader2, Plus, RefreshCw, Target } from 
 import { toast } from "sonner";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,12 +22,12 @@ const actionLabels: Record<SeoActionType, string> = {
 };
 
 const stageTone: Record<SeoPlanItem["stage"], string> = {
-  planned: "border-slate-300 text-slate-700",
-  drafting: "border-blue-300 bg-blue-50 text-blue-700",
-  review: "border-amber-300 bg-amber-50 text-amber-700",
-  delivered: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  blocked: "border-red-300 bg-red-50 text-red-700",
-  measuring: "border-violet-300 bg-violet-50 text-violet-700",
+  planned: "border-border text-muted-foreground",
+  drafting: "border-byword-blue/30 bg-byword-blue-soft text-byword-blue",
+  review: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  delivered: "border-status-success/30 bg-status-success/10 text-status-success",
+  blocked: "border-status-error/30 bg-status-error/10 text-status-error",
+  measuring: "border-factory-purple/35 bg-factory-purple/10 text-factory-purple",
 };
 
 export function SeoGrowthPlanPanel() {
@@ -99,7 +100,7 @@ export function SeoGrowthPlanPanel() {
           <div><h3 className="font-semibold">Planned work</h3><p className="text-sm text-muted-foreground">Evidence, blockers, dates, and handoff state.</p></div>
           <div className="flex rounded-md border border-byword-border p-1"><Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")}><List className="mr-1.5 h-4 w-4" />List</Button><Button variant={view === "calendar" ? "secondary" : "ghost"} size="sm" onClick={() => setView("calendar")}><CalendarDays className="mr-1.5 h-4 w-4" />Calendar</Button></div>
         </div>
-        {!items.length ? <div className="border-t border-byword-border p-10 text-center"><Target className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">No planned work yet</p><p className="mt-1 text-sm text-muted-foreground">Sync Search Console, then generate an evidence-backed plan.</p></div> : view === "list" ? (
+        {!items.length ? <EmptyState icon={Target} title="No planned work yet" description="Sync Search Console, then generate an evidence-backed 30-day plan." className="border-t border-byword-border" /> : view === "list" ? (
           <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Work</TableHead><TableHead>Evidence</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <PlanRow key={item.id} item={item} siteId={activeSiteId} campaignId={plan.data!.campaign!.id} onUpdate={(input) => updateItem.mutate({ id: item.id, ...input })} />)}</TableBody></Table></div>
         ) : (
           <div className="grid gap-px border-t border-byword-border bg-byword-border sm:grid-cols-2 lg:grid-cols-4">{grouped.map(([date, dateItems]) => <div key={date} className="min-h-40 bg-card p-3"><p className="font-mono text-[11px] font-semibold uppercase">{date}</p><div className="mt-3 space-y-2">{dateItems.map((item) => <div key={item.id} className="rounded-md border border-byword-border p-3"><Badge variant="outline" className={stageTone[item.stage]}>{item.stage}</Badge><p className="mt-2 text-sm font-medium">{item.keyword}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}</p></div>)}</div></div>)}</div>

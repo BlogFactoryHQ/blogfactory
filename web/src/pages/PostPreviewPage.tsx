@@ -41,7 +41,7 @@ export default function PostPreviewPage() {
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:py-10">
-        <div className="mb-5 flex gap-3 rounded-sm border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950" role="note">
+        <div className="mb-5 flex gap-3 rounded-sm border border-byword-blue/30 bg-byword-blue-soft px-4 py-3 text-sm text-byword-blue" role="note">
           <Eye className="mt-0.5 h-4 w-4 shrink-0" />
           <p>This is BlogFactory’s editorial rendering of the last saved revision. Use the CMS preview for the destination site’s exact theme and layout.</p>
         </div>
