@@ -2,7 +2,7 @@ import type { Context, Next } from "hono";
 import { getUserId } from "./auth.js";
 import { getCloudAccess } from "../services/cloud-entitlements.js";
 
-const ALLOWED_MUTATION_PREFIXES = ["/api/billing/", "/api/auth/", "/api/webhooks/", "/api/cron/"];
+const ALLOWED_MUTATION_PREFIXES = ["/api/billing/", "/api/auth/", "/api/webhooks/", "/api/cron/", "/api/admin/"];
 
 export async function cloudEntitlementMiddleware(c: Context, next: Next) {
   if (["GET", "HEAD", "OPTIONS"].includes(c.req.method) || ALLOWED_MUTATION_PREFIXES.some((path) => c.req.path.startsWith(path))) return next();

@@ -9,6 +9,7 @@ interface AuthUser {
   role: "admin" | "user";
   approvalStatus: "pending" | "approved" | "rejected";
   rejectedReason?: string | null;
+  suspendedAt?: string | null;
   createdAt?: string;
 }
 

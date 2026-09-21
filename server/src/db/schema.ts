@@ -36,6 +36,9 @@ export const users = pgTable("users", {
   resetTokenHash: text("reset_token_hash"),
   verifyTokenHash: text("verify_token_hash"),
   verifyTokenExpiresAt: timestamp("verify_token_expires_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspendedReason: text("suspended_reason"),
+  suspendedBy: uuid("suspended_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -736,4 +739,14 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   attempts: integer("attempts").default(0).notNull(),
   windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const adminAuditEvents = pgTable("admin_audit_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+  targetUserId: uuid("target_user_id").references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  reason: text("reason"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

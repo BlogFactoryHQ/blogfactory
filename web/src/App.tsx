@@ -31,6 +31,8 @@ const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
 const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
+const AdminCustomers = lazy(() => import("@/pages/AdminCustomers"));
+const AdminCustomerDetail = lazy(() => import("@/pages/AdminCustomerDetail"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Sites = lazy(() => import("@/pages/Sites"));
 const McpOAuthLogin = lazy(() => import("@/pages/McpOAuthLogin"));
@@ -92,6 +94,8 @@ const App = () => (
                           <Route path="usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                         </Route>
                         <Route path="/admin/users" element={<AdminUsers />} />
+                        <Route path="/admin/customers" element={<AdminCustomers />} />
+                        <Route path="/admin/customers/:id" element={<AdminCustomerDetail />} />
                       </Route>
                     </Route>
                   </Route>

@@ -304,6 +304,7 @@ authRoutes.get("/me", async (c) => {
       role: users.role,
       approvalStatus: users.approvalStatus,
       rejectedReason: users.rejectedReason,
+      suspendedAt: users.suspendedAt,
       createdAt: users.createdAt,
     })
     .from(users)

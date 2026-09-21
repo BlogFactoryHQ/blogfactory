@@ -48,6 +48,10 @@ assert.equal(await authenticateMcpBearer(`Bearer ${token.secret}`, {
   ...dependencies,
   touch: async () => false,
 }, now), null, "token revoked between lookup and usage update authenticated");
+assert.equal(await authenticateMcpBearer(`Bearer ${token.secret}`, {
+  ...dependencies,
+  find: async () => ({ ...base, suspendedAt: now }),
+}, now), null, "suspended account authenticated with a personal token");
 
 const oauthIdentity = {
   connectionId: "app_consent_01K0BLOGFACTORY",
@@ -82,6 +86,10 @@ assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
   ...oauthDependencies,
   authorizeOAuth: async () => undefined,
 }, now), null, "revoked OAuth connection authenticated");
+assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
+  ...oauthDependencies,
+  findOAuthUserSites: async () => ({ ...base, siteIds: oauthIdentity.siteIds, suspendedAt: now }),
+}, now), null, "suspended account authenticated over OAuth");
 
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp")), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://blogfactory.io" } })), true);

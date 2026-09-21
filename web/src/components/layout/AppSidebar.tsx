@@ -283,9 +283,9 @@ export function AppSidebar() {
                 Notifications
               </DropdownMenuItem>
               {user?.role === "admin" && (
-                <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/admin/users")}>
+                <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => navigate("/admin/customers")}>
                   <Shield className="h-4 w-4" />
-                  Admin Users
+                  Admin Console
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
