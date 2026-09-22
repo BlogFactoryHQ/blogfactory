@@ -85,6 +85,24 @@ describe("Overview setup readiness", () => {
     expect(document.body).not.toHaveTextContent("Required foundation");
   });
 
+  it("keeps the overview usable when Search Console data cannot be refreshed", async () => {
+    await renderOverview({
+      ...digest,
+      outcomes: { ...digest.outcomes, drafts: 1 },
+      connections: {
+        ...digest.connections,
+        generation: { ready: true, credential_status: "usable" },
+        search_console: { connected: true, status: "unavailable" },
+      },
+      search_growth: { connected: true, status: "unavailable", segments: { needsAttention: 2 } },
+    });
+
+    expect(document.body).toHaveTextContent("Search Console could not be refreshed");
+    expect(document.body).toHaveTextContent("Reconnect the property in Connections");
+    expect(document.body).toHaveTextContent("Attention");
+    expect(document.body).toHaveTextContent("Search · off");
+  });
+
   it("dismisses the compact setup until readiness regresses", async () => {
     const completed = {
       ...digest,

@@ -56,7 +56,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
 
   const generationReady = digest.connections.generation.ready || openRouter.verified;
   const cmsReady = digest.connections.cms.connected > 0;
-  const searchReady = digest.connections.search_console.connected;
+  const searchReady = digest.connections.search_console.connected && digest.connections.search_console.status !== "unavailable";
   const mcpConfigured = digest.connections.active > 0;
   const ready = useMemo<Record<WorkspaceSetupStep, boolean>>(() => ({
     site: true,
