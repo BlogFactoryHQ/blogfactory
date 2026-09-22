@@ -11,6 +11,7 @@
 - [Railway deployment contract](../deploy/railway/README.md): five-service Hobby-compatible mapping, generated variables, private networking, health, and cron settings.
 - [v0.1.0 public-release audit](security-audit-v0.1.0.md): current secret, history, asset, Actions-log, and dependency release gates.
 - [Release plan](../FEATURE_PLAN.md): canonical open-source-first plan, private Cloud status, and public-launch gates.
+- [Research plan](research-plan.md): forward plan for per-article research, business profiles, topic plans, and mobile review; not shipped.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.
 - [UI system](../UI_UX.md): Device Console rules, current information architecture, and responsive behavior.
 - [Agent context](../AGENTS.md): repository-specific implementation and release rules.
