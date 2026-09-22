@@ -163,6 +163,7 @@ export interface SearchConsoleInsights {
   };
   opportunity_scope: SearchConsoleOpportunityScope;
   provenance: SearchConsoleProvenance | null;
+  unavailable?: string | null;
 }
 
 interface SaveInput {

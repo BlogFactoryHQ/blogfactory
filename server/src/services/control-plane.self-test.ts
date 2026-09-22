@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyDraftAction, filterActionItems, generationReadiness, revisionChangeSummary } from "./control-plane.js";
+import { classifyDraftAction, filterActionItems, generationReadiness, revisionChangeSummary, searchGrowthDigest } from "./control-plane.js";
 import { seoSourceHash } from "./seo-metadata.js";
 
 const title = "A useful article title";
@@ -66,5 +66,21 @@ assert.deepEqual(revisionChangeSummary(
   { title: "New", content: "one two three", summary: null, cover_image_url: null, inline_images: null, publishing_metadata: null },
   { title: "Old", content: "one two", summary: null, cover_image_url: null, inline_images: null, publishing_metadata: null },
 ), { changed_fields: ["title", "content"], word_delta: 1 });
+
+const connectedInsights = {
+  integration: { id: "integration-1" },
+  segments: { needsAttention: 2 },
+  totals: {},
+  opportunity_scope: {},
+  provenance: null,
+  unavailable: null as string | null,
+};
+assert.equal(searchGrowthDigest(connectedInsights, null).status, "ok");
+assert.equal(searchGrowthDigest(connectedInsights, null).connected, true);
+const degraded = searchGrowthDigest({ ...connectedInsights, unavailable: "GOOGLE_SEARCH_CONSOLE_CLIENT_ID is not configured" }, null);
+assert.equal(degraded.status, "unavailable");
+assert.equal(degraded.connected, true);
+assert.deepEqual(degraded.segments, { needsAttention: 2 });
+assert.equal(searchGrowthDigest({ ...connectedInsights, integration: null }, null).connected, false);
 
 console.log("control plane classification self-check passed");
