@@ -243,6 +243,11 @@ function SearchGrowthOverview({
   return (
     <TooltipProvider>
       <div className="space-y-6">
+        {insights.unavailable && (
+          <p className="rounded-lg border border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.08)] px-4 py-3 text-sm text-[hsl(var(--status-warning))]">
+            Search Console could not be refreshed, so these numbers come from the last sync. Reconnect the property to bring them up to date.
+          </p>
+        )}
         <GrowthBriefing siteDomain={activeSite.domain} insights={insights} onOpenOptimize={onOpenOptimize} />
         <SearchGrowthDependencyBand
           items={[

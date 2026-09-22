@@ -82,7 +82,7 @@ export function useWorkspaceReadiness(): WorkspaceReadiness {
       step: "search-console",
       label: "Connect Search Console",
       description: "Real search evidence for growth work.",
-      done: Boolean(data?.connections.search_console.connected),
+      done: Boolean(data?.connections.search_console.connected) && data?.connections.search_console.status !== "unavailable",
       required: false,
     },
     {

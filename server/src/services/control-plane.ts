@@ -31,6 +31,16 @@ export const ACTION_KINDS = [
 ] as const;
 export const ACTION_SEVERITIES = ["blocker", "review", "warning"] as const;
 
+type SearchGrowthInsights = {
+  integration: unknown;
+  segments: unknown;
+  totals: unknown;
+  opportunity_scope: unknown;
+  provenance: unknown;
+  unavailable: string | null;
+};
+type SeoGrowthPlan = Awaited<ReturnType<typeof getSeoGrowthPlan>>;
+
 export function generationReadiness(credentialStatus: CredentialStatus) {
   return { ready: credentialStatus === "usable", credential_status: credentialStatus };
 }
@@ -359,6 +369,28 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
   };
 }
 
+export function searchGrowthDigest(insights: SearchGrowthInsights, plan: SeoGrowthPlan) {
+  return {
+    connected: Boolean(insights.integration),
+    status: insights.unavailable ? "unavailable" as const : "ok" as const,
+    segments: insights.segments,
+    totals: insights.totals,
+    opportunity_scope: insights.opportunity_scope,
+    provenance: insights.provenance,
+    plan: plan ? {
+      summary: plan.summary,
+      next_items: plan.items.filter((item) => item.stage === "planned").slice(0, 3).map((item) => ({
+        id: item.id,
+        planned_for: item.plannedFor,
+        action_type: item.actionType,
+        target_query: item.keyword,
+        page_url: item.pageUrl,
+      })),
+      data_through: plan.freshness.dataThrough,
+    } : null,
+  };
+}
+
 export async function getWorkspaceDigest(input: { userId: string; siteId: string; now?: Date }) {
   const site = await ownedSite(input.userId, input.siteId);
   if (!site) return null;
@@ -399,6 +431,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       .from(siteIntegrations).where(and(eq(siteIntegrations.userId, input.userId), eq(siteIntegrations.siteId, input.siteId))),
     getApiKeyMetadata(input.userId),
   ]);
+  const searchGrowthSection = searchGrowthDigest(searchGrowth, seoPlan);
   const [cmsDrafts] = await db.select({ count: count() }).from(postPublications).where(and(
     eq(postPublications.userId, input.userId),
     eq(postPublications.siteId, input.siteId),
@@ -422,24 +455,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       cost: Number(cost?.total || 0),
       window_days: 30,
     },
-    search_growth: {
-      connected: Boolean(searchGrowth.integration),
-      segments: searchGrowth.segments,
-      totals: searchGrowth.totals,
-      opportunity_scope: searchGrowth.opportunity_scope,
-      provenance: searchGrowth.provenance,
-      plan: seoPlan ? {
-        summary: seoPlan.summary,
-        next_items: seoPlan.items.filter((item) => item.stage === "planned").slice(0, 3).map((item) => ({
-          id: item.id,
-          planned_for: item.plannedFor,
-          action_type: item.actionType,
-          target_query: item.keyword,
-          page_url: item.pageUrl,
-        })),
-        data_through: seoPlan.freshness.dataThrough,
-      } : null,
-    },
+    search_growth: searchGrowthSection,
     recent_outputs: recentOutputs.map((post) => ({ ...post, updated_at: post.updated_at.toISOString() })),
     connections: {
       generation: generationReadiness(apiKeys.openrouterCredentialStatus),
@@ -449,7 +465,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
         connected: cmsConnections.filter(testedConnectionReady).length,
         attention: cmsConnections.filter((connection) => !testedConnectionReady(connection)).length,
       },
-      search_console: { connected: Boolean(searchGrowth.integration) },
+      search_console: { connected: searchGrowthSection.connected, status: searchGrowthSection.status },
     },
     activity,
   };
