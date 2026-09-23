@@ -166,13 +166,13 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
             {currentStep === "error" 
               ? "Generation failed" 
               : currentStep === "complete"
-                ? `${getSourceLabel(sourceType)} processed!`
+                ? `${getSourceLabel(sourceType)} processed`
                 : `Processing ${getSourceLabel(sourceType)}...`}
           </span>
         </div>
         <span className="text-muted-foreground">
           {currentStep === "complete" 
-            ? "Done!" 
+            ? "Done"
             : draftProgress && draftProgress.total > 1
               ? `Draft ${draftProgress.current}/${draftProgress.total} • ${draftProgress.completed} done`
               : `Step ${currentIndex + 1} of ${steps.length}`}

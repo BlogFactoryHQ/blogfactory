@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { StatRowSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import {
@@ -24,7 +25,6 @@ import {
   Zap,
   Clock,
   Hash,
-  Loader2,
   BarChart3,
   TrendingUp,
   Image,
@@ -50,7 +50,7 @@ import {
 
 export default function UsageAnalytics() {
   const [days, setDays] = useState(30);
-  const { summary, modelBreakdown, dailyUsage, isLoading, error, costs, openRouterUsage } = useUsageAnalytics(days);
+  const { summary, modelBreakdown, dailyUsage, isLoading, error, refetch, costs, openRouterUsage } = useUsageAnalytics(days);
   const currentMonthSpend = costs?.monthToDateSpend || 0;
 
   const formatCurrency = (amount: number) =>
@@ -179,17 +179,20 @@ export default function UsageAnalytics() {
       </PageHeader>
 
       {error ? (
-        <BywordCard className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          <AlertTriangle className="h-8 w-8 text-destructive" />
-          <div>
-            <p className="font-medium text-foreground">Usage analytics could not be loaded</p>
-            <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "Try again shortly."}</p>
-          </div>
+        <BywordCard>
+          <EmptyState
+            size="page"
+            tone="error"
+            title="Could not load usage analytics"
+            description={error instanceof Error ? error.message : "Nothing was lost. Try again in a moment."}
+            primaryAction={{ label: "Retry", onClick: () => refetch() }}
+          />
         </BywordCard>
       ) : isLoading ? (
-        <BywordCard className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </BywordCard>
+        <div className="space-y-6">
+          <StatRowSkeleton items={3} />
+          <BywordCard><TableSkeleton rows={6} columns={5} /></BywordCard>
+        </div>
       ) : (
         <>
           <BywordCard className="mb-8">
@@ -414,13 +417,13 @@ function SpendStackChart({ data }: { data: Array<{ date: string; textCost: numbe
               name === "textCost" ? "Text cost" : "Image cost",
             ]}
           />
-          <Bar dataKey="textCost" stackId="cost" fill="#1481c0" radius={[0, 0, 3, 3]} />
-          <Bar dataKey="imageCost" stackId="cost" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="textCost" stackId="cost" fill="hsl(var(--byword-blue))" radius={[0, 0, 2, 2]} />
+          <Bar dataKey="imageCost" stackId="cost" fill="hsl(var(--factory-amber))" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#1481c0]" /> Text</span>
-        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#f59e0b]" /> Images</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-byword-blue" /> Text</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-factory-amber" /> Images</span>
       </div>
     </div>
   );

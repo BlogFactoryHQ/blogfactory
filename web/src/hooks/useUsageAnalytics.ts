@@ -88,7 +88,7 @@ export function useUsageAnalytics(days = 30) {
     return startOfDay(subDays(new Date(), days)).toISOString();
   }, [days]);
 
-  const { data: costs, isLoading, error } = useQuery({
+  const { data: costs, isLoading, error, refetch } = useQuery({
     queryKey: ["cost-analytics", user?.id, days],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -111,5 +111,5 @@ export function useUsageAnalytics(days = 30) {
   const modelBreakdown = costs?.modelBreakdown || [];
   const dailyUsage = costs?.daily || [];
 
-  return { summary, modelBreakdown, dailyUsage, isLoading, error, costs, openRouterUsage };
+  return { summary, modelBreakdown, dailyUsage, isLoading, error, refetch, costs, openRouterUsage };
 }

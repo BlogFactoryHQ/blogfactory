@@ -73,7 +73,7 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
     setIsLoading(true);
     try {
       await login(email, password, rememberMe);
-      toast.success("Welcome back!");
+      toast.success("Signed in");
       navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");

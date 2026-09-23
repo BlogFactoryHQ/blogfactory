@@ -31,6 +31,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/patterns/StatCard";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { seoStatusPresentation, type SeoStatus } from "@/lib/seo-metadata";
 
@@ -159,41 +161,23 @@ function CampaignList() {
 
   return (
     <BywordPageShell className="max-w-7xl">
-      <div className="mb-8 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-          <p className="mt-2 text-muted-foreground">All campaign and programmatic SEO runs with progress, drafts, and item status.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            More than a flat keyword list? <Link to="/create?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link to="/create?mode=programmatic"><Grid2X2 className="mr-2 h-4 w-4" />New Programmatic Run</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/create?mode=campaign"><Plus className="mr-2 h-4 w-4" />New Campaign</Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Campaigns"
+        description="Campaign and programmatic SEO runs with progress, drafts and item status. For more than a flat keyword list, start a programmatic run."
+      >
+        <Button variant="outline" asChild>
+          <Link to="/create?mode=programmatic"><Grid2X2 className="mr-2 h-4 w-4" />New programmatic run</Link>
+        </Button>
+        <Button asChild>
+          <Link to="/create?mode=campaign"><Plus className="mr-2 h-4 w-4" />New campaign</Link>
+        </Button>
+      </PageHeader>
 
       <div className="mb-6 grid gap-3 md:grid-cols-4">
-        <BywordCard className="p-4">
-          <p className="type-meta">Runs</p>
-          <p className="mt-2 text-2xl font-semibold">{campaigns.length}</p>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="type-meta">Active</p>
-          <p className="mt-2 text-2xl font-semibold text-byword-blue">{activeCount}</p>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="type-meta">Drafts made</p>
-          <p className="mt-2 text-2xl font-semibold">{generatedCount}</p>
-        </BywordCard>
-        <BywordCard className="p-4">
-          <p className="type-meta">Failed items</p>
-          <p className="mt-2 text-2xl font-semibold text-destructive">{failedCount}</p>
-        </BywordCard>
+        <StatCard label="Runs" value={campaigns.length} />
+        <StatCard label="Active" value={activeCount} tone={activeCount ? "running" : "neutral"} />
+        <StatCard label="Drafts made" value={generatedCount} tone={generatedCount ? "success" : "neutral"} />
+        <StatCard label="Failed items" value={failedCount} tone={failedCount ? "error" : "neutral"} />
       </div>
 
       <BywordCard>
@@ -432,17 +416,10 @@ function CampaignDetail({ id }: { id: string }) {
 
   return (
     <BywordPageShell className="max-w-7xl">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{campaign.name}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} />
-            <span>{modeLabels[campaign.mode] || campaign.mode}</span>
-            <span>{campaign.completedItems}/{campaign.totalItems} completed</span>
-            <span>{safeFormatDistanceToNow(campaign.createdAt)}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        title={campaign.name}
+        description={[modeLabels[campaign.mode] || campaign.mode, `${campaign.completedItems}/${campaign.totalItems} completed`, safeFormatDistanceToNow(campaign.createdAt)].join(" · ")}
+      >
           <Button variant="outline" asChild><Link to="/sources/campaigns">Back</Link></Button>
           {(campaign.status === "draft" || (campaign.status === "stopped" && resumableCount > 0)) && (
             <Button onClick={() => action.mutate(`/campaigns/${campaign.id}/start`)} disabled={action.isPending}>
@@ -453,7 +430,7 @@ function CampaignDetail({ id }: { id: string }) {
             <>
               {queuedCount > 0 && (
                 <Button onClick={() => action.mutate(`/campaigns/${campaign.id}/run-next`)} disabled={action.isPending}>
-                  <Play className="mr-2 h-4 w-4" />Run Next Batch
+                  <Play className="mr-2 h-4 w-4" />Run next batch
                 </Button>
               )}
               <Button variant="outline" onClick={() => action.mutate(`/campaigns/${campaign.id}/stop`)} disabled={action.isPending}>
@@ -463,11 +440,10 @@ function CampaignDetail({ id }: { id: string }) {
           )}
           {failedCount > 0 && (
             <Button variant="outline" onClick={() => action.mutate(`/campaigns/${campaign.id}/retry-failed`)} disabled={action.isPending}>
-              <RotateCcw className="mr-2 h-4 w-4" />Retry Failed
+              <RotateCcw className="mr-2 h-4 w-4" />Retry failed
             </Button>
           )}
-        </div>
-      </div>
+      </PageHeader>
 
       <BywordCard className="mb-6">
         <SectionHeader
