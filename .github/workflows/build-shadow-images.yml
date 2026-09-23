@@ -52,10 +52,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run test --workspace=web
       - run: npm run build
-      - name: Validate backup scripts
+      - name: Validate deployment scripts
         run: |
-          for file in deploy/cloud/postgres/*.sh deploy/cloud/backup/*.sh; do sh -n "$file"; done
+          for file in deploy/cloud/postgres/*.sh deploy/cloud/backup/*.sh deploy/cloud/preflight-registry*.sh; do sh -n "$file"; done
           sh deploy/cloud/backup/backup.self-test.sh
+          sh deploy/cloud/preflight-registry.self-test.sh
       - name: Validate Compose
         env:
           POSTGRES_IMAGE: postgres:18-alpine

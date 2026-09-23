@@ -56,13 +56,22 @@ package credential for pulls.
 
 From `/home/deploy/blogfactory-cloud-shadow`:
 
-1. Record the current container image references and restart counts.
-2. Confirm the backup service is healthy and its latest encrypted R2 upload
+1. Pull both approved immutable image references before changing `cloud.env`.
+   This fails early when the host's read-only GHCR credential has expired:
+
+   ```bash
+   ./preflight-registry.sh \
+     ghcr.io/blogfactoryhq/blogfactory-cloud-api@sha256:... \
+     ghcr.io/blogfactoryhq/blogfactory-cloud-web@sha256:...
+   ```
+
+2. Record the current container image references and restart counts.
+3. Confirm the backup service is healthy and its latest encrypted R2 upload
    succeeded. For a database migration, also run a disposable restore check.
-3. Copy `cloud.env` to a timestamped mode-`0600` rollback file.
-4. Replace only `BLOGFACTORY_API_IMAGE` and `BLOGFACTORY_WEB_IMAGE` with the
+4. Copy `cloud.env` to a timestamped mode-`0600` rollback file.
+5. Replace only `BLOGFACTORY_API_IMAGE` and `BLOGFACTORY_WEB_IMAGE` with the
    approved immutable digests.
-5. Validate and deploy:
+6. Validate and deploy:
 
    ```bash
    docker compose --env-file cloud.env -f compose.cloud.yaml config --quiet
@@ -72,9 +81,9 @@ From `/home/deploy/blogfactory-cloud-shadow`:
    docker compose --env-file cloud.env -f compose.cloud.yaml ps
    ```
 
-6. Confirm PostgreSQL, API, worker, web, and backup are healthy, have zero
+7. Confirm PostgreSQL, API, worker, web, and backup are healthy, have zero
    unexpected restarts, and use the exact approved digest references.
-7. Verify the public boundary:
+8. Verify the public boundary:
 
    ```bash
    curl -i https://app.blogfactory.io/api/health
@@ -111,6 +120,11 @@ Keep the following evidence healthy:
 The six-hour RPO is the configured schedule, not a substitute for monitoring.
 Treat stale markers, a failed restore check, or an unhealthy backup container
 as an incident.
+
+Set separate external heartbeat URLs for the worker, RSS scheduler,
+maintenance scheduler, and backup service. A heartbeat is sent only after that
+cycle succeeds; the backup heartbeat is also suppressed after a restore check
+failure. Keep the URLs in `cloud.env`, never in the repository.
 
 ## Rollback
 

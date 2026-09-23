@@ -19,6 +19,7 @@ x-runtime-env: &runtime-env
   DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-blogfactory_runtime}:${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD in the deployment secret store}@postgres:5432/${POSTGRES_DB:-blogfactory_prod_live}
   JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the deployment secret store}
   API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET in the deployment secret store}
+  API_KEY_ENCRYPTION_PREVIOUS_SECRETS: ${API_KEY_ENCRYPTION_PREVIOUS_SECRETS:-}
   AUTH_RATE_LIMIT_SECRET: ${AUTH_RATE_LIMIT_SECRET:?Set AUTH_RATE_LIMIT_SECRET in the deployment secret store}
   CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
   ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in the deployment secret store}
@@ -50,6 +51,10 @@ x-runtime-env: &runtime-env
   TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
   TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
   OPENROUTER_MANAGED_API_KEY: ${OPENROUTER_MANAGED_API_KEY:-}
+  BACKGROUND_WORKER_HEARTBEAT_URL: ${BACKGROUND_WORKER_HEARTBEAT_URL:-}
+  RSS_SCHEDULER_HEARTBEAT_URL: ${RSS_SCHEDULER_HEARTBEAT_URL:-}
+  MAINTENANCE_SCHEDULER_HEARTBEAT_URL: ${MAINTENANCE_SCHEDULER_HEARTBEAT_URL:-}
+  BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
   GOOGLE_SEARCH_CONSOLE_CLIENT_ID: ${GOOGLE_SEARCH_CONSOLE_CLIENT_ID:-}
   GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET: ${GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET:-}
   GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: ${GOOGLE_SEARCH_CONSOLE_REDIRECT_URI:-}
@@ -162,12 +167,15 @@ services:
     environment:
       CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
       RSS_SCHEDULER_INTERVAL_SECONDS: ${RSS_SCHEDULER_INTERVAL_SECONDS:-1800}
+      RSS_SCHEDULER_HEARTBEAT_URL: ${RSS_SCHEDULER_HEARTBEAT_URL:-}
     command:
       - |
         while true; do
-          if ! curl --fail --silent --show-error --max-time 300 \
+          if curl --fail --silent --show-error --max-time 300 \
             --header "Authorization: Bearer $${CRON_SECRET}" \
             "http://api:3000/api/cron/drain?task=feeds&maxFeeds=10&maxPostsPerFeed=5"; then
+            if [ -n "$${RSS_SCHEDULER_HEARTBEAT_URL}" ]; then curl --fail --silent --show-error --max-time 10 "$${RSS_SCHEDULER_HEARTBEAT_URL}" || echo "rss_heartbeat_failed"; fi
+          else
             echo "rss_tick_failed"
           fi
           sleep "$${RSS_SCHEDULER_INTERVAL_SECONDS}"
@@ -184,12 +192,15 @@ services:
     environment:
       CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in the deployment secret store}
       MAINTENANCE_SCHEDULER_INTERVAL_SECONDS: ${MAINTENANCE_SCHEDULER_INTERVAL_SECONDS:-21600}
+      MAINTENANCE_SCHEDULER_HEARTBEAT_URL: ${MAINTENANCE_SCHEDULER_HEARTBEAT_URL:-}
     command:
       - |
         while true; do
-          if ! curl --fail --silent --show-error --max-time 600 \
+          if curl --fail --silent --show-error --max-time 600 \
             --header "Authorization: Bearer $${CRON_SECRET}" \
             "http://api:3000/api/cron/drain"; then
+            if [ -n "$${MAINTENANCE_SCHEDULER_HEARTBEAT_URL}" ]; then curl --fail --silent --show-error --max-time 10 "$${MAINTENANCE_SCHEDULER_HEARTBEAT_URL}" || echo "maintenance_heartbeat_failed"; fi
+          else
             echo "maintenance_tick_failed"
           fi
           sleep "$${MAINTENANCE_SCHEDULER_INTERVAL_SECONDS}"
@@ -217,6 +228,7 @@ services:
       BACKUP_AGE_IDENTITY_FILE: /run/secrets/backup_age_identity
       BACKUP_R2_PREFIX: ${BACKUP_R2_PREFIX:-database-backups}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
     secrets:
       - backup_age_identity
     volumes:

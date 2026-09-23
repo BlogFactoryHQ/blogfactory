@@ -27,6 +27,11 @@ export function requiresCloudPlan(state: BillingState | undefined) {
   return Boolean(state?.cloud_enforcement && !state.access_allowed);
 }
 
+export function transitionDaysRemaining(state: BillingState | undefined, now = Date.now()) {
+  if (state?.entitlement_source !== "transition" || !state.period_end) return null;
+  return Math.max(0, Math.ceil((new Date(state.period_end).getTime() - now) / 86_400_000));
+}
+
 // Checkout success alone never grants access; activation is confirmed only once the Polar webhook lands.
 export function isCheckoutActivated(state: BillingState | undefined, baselineCredits: number | null) {
   if (!state) return false;

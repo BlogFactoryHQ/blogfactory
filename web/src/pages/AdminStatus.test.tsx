@@ -28,7 +28,7 @@ describe("AdminStatus", () => {
       state: "attention",
       checks: [
         { id: "dependencies", label: "Database and object storage", state: "healthy", detail: "Readiness checks passed." },
-        { id: "monitoring", label: "External worker heartbeat", state: "attention", detail: "No external heartbeat endpoint configured." },
+        { id: "monitoring", label: "External heartbeats", state: "attention", detail: "0/4 worker, RSS, maintenance, and backup heartbeats configured." },
       ],
       snapshot: { billing: { lastProcessedAt: null }, jobs: { completed24h: 2 } },
     });
@@ -40,7 +40,7 @@ describe("AdminStatus", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     expect(document.body).toHaveTextContent("System status");
-    expect(document.body).toHaveTextContent("No external heartbeat endpoint configured");
+    expect(document.body).toHaveTextContent("0/4 worker, RSS, maintenance, and backup heartbeats configured");
     expect(document.body).toHaveTextContent("Container, backup, and public uptime alerts still require an external monitor");
   });
 });

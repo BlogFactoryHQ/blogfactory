@@ -10,7 +10,7 @@ export type CloudStatusSnapshot = {
   billing: { pending: number; failed: number; oldestPendingAt: Date | string | null; lastProcessedAt: Date | string | null };
   jobs: { queued: number; running: number; stuck: number; failed24h: number; completed24h: number };
   searchConsole: { total: number; errors: number; stale: number; neverSynced: number };
-  monitoring: { workerHeartbeatConfigured: boolean };
+  monitoring: { worker: boolean; rss: boolean; maintenance: boolean; backup: boolean };
 };
 
 export function summarizeCloudStatus(snapshot: CloudStatusSnapshot) {
@@ -43,9 +43,9 @@ export function summarizeCloudStatus(snapshot: CloudStatusSnapshot) {
     },
     {
       id: "monitoring",
-      label: "External worker heartbeat",
-      state: snapshot.monitoring.workerHeartbeatConfigured ? "healthy" as const : "attention" as const,
-      detail: snapshot.monitoring.workerHeartbeatConfigured ? "Heartbeat endpoint configured." : "No external heartbeat endpoint configured.",
+      label: "External heartbeats",
+      state: Object.values(snapshot.monitoring).every(Boolean) ? "healthy" as const : "attention" as const,
+      detail: `${Object.values(snapshot.monitoring).filter(Boolean).length}/4 worker, RSS, maintenance, and backup heartbeats configured.`,
     },
   ];
   const state: OperationalState = checks.some((check) => check.state === "unavailable")
@@ -82,7 +82,12 @@ export async function getCloudStatus() {
     billing,
     jobs: jobStats,
     searchConsole,
-    monitoring: { workerHeartbeatConfigured: Boolean(process.env.BACKGROUND_WORKER_HEARTBEAT_URL?.trim()) },
+    monitoring: {
+      worker: Boolean(process.env.BACKGROUND_WORKER_HEARTBEAT_URL?.trim()),
+      rss: Boolean(process.env.RSS_SCHEDULER_HEARTBEAT_URL?.trim()),
+      maintenance: Boolean(process.env.MAINTENANCE_SCHEDULER_HEARTBEAT_URL?.trim()),
+      backup: Boolean(process.env.BACKUP_HEARTBEAT_URL?.trim()),
+    },
   };
   return { checkedAt: new Date().toISOString(), ...summarizeCloudStatus(snapshot), snapshot };
 }
