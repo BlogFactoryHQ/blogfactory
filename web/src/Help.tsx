@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -21,6 +21,7 @@ const sourceUrl = "https://github.com/BlogFactoryHQ/blogfactory";
 const issuesUrl = `${sourceUrl}/issues`;
 
 type HelpArticle = {
+  audience?: "cloud" | "self-hosted";
   category: string;
   title: string;
   symptom: string;
@@ -58,6 +59,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read the product model",
   },
   {
+    audience: "self-hosted",
     category: "Getting Started",
     title: "Create the first administrator account",
     symptom: "A new self-hosted instance has no user who can sign in.",
@@ -66,6 +68,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Follow self-host setup",
   },
   {
+    audience: "cloud",
     category: "BlogFactory Cloud",
     title: "Choose a plan and activate access",
     symptom: "You signed up for BlogFactory Cloud and can look around, but cannot add a site or create drafts.",
@@ -74,6 +77,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open Billing",
   },
   {
+    audience: "cloud",
     category: "BlogFactory Cloud",
     title: "Add your OpenRouter key",
     symptom: "Content generation asks for an OpenRouter key.",
@@ -82,6 +86,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Create an OpenRouter key",
   },
   {
+    audience: "cloud",
     category: "BlogFactory Cloud",
     title: "Change, cancel, or update payment details",
     symptom: "You need to switch plans, update a card, or cancel a subscription.",
@@ -90,14 +95,16 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open Billing",
   },
   {
+    audience: "cloud",
     category: "BlogFactory Cloud",
     title: "Connect Search Console on Cloud",
-    symptom: "The Search Console connection screen does not offer Continue with Google.",
-    solution: "Connect with a Google service account instead: create one in Google Cloud, add its email to your Search Console property under Users and permissions, and paste its JSON in the connection screen. Access stays read-only.",
+    symptom: "You need to connect or reconnect a Search Console property.",
+    solution: "Use Continue with Google, then choose the property for this site. If browser OAuth is unsuitable, use the service-account option and add its email to the property under Users and permissions. Access stays read-only.",
     href: "https://support.google.com/webmasters/answer/7687615?hl=en",
     linkLabel: "Add a Search Console user",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Check whether the instance is ready",
     symptom: "The app is running, but you are unsure whether PostgreSQL and object storage are available.",
@@ -106,6 +113,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read acceptance checks",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Back up or roll back safely",
     symptom: "You are preparing an upgrade or need to recover an older instance.",
@@ -114,6 +122,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read backup and rollback steps",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Choose a supported deployment target",
     symptom: "You are deciding whether to use Docker Compose, Railway, Vercel, or Netlify.",
@@ -122,6 +131,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Does a Community instance call blogfactory.io?",
     symptom: "You need to confirm where self-hosted content, credentials, and operation data travel.",
@@ -130,6 +140,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Secure signup after the first administrator",
     symptom: "You have created the initial self-hosted administrator and want to prevent open signup.",
@@ -138,6 +149,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "A generation was interrupted by an API restart",
     symptom: "An in-flight generation stopped after the persistent API process restarted.",
@@ -210,6 +222,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read the authority boundary",
   },
   {
+    audience: "self-hosted",
     category: "Search Growth & Troubleshooting",
     title: "Google OAuth is not configured",
     symptom: "The Search Console dialog says this self-hosted instance has no Google OAuth client.",
@@ -235,10 +248,10 @@ const helpArticles: HelpArticle[] = [
   },
 ];
 
-function filterHelpArticles(query: string) {
+function filterHelpArticles(query: string, articles = helpArticles) {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return helpArticles;
-  return helpArticles.filter((article) => [article.category, article.title, article.symptom, article.solution].join(" ").toLowerCase().includes(normalized));
+  if (!normalized) return articles;
+  return articles.filter((article) => [article.category, article.title, article.symptom, article.solution].join(" ").toLowerCase().includes(normalized));
 }
 
 const commonQuestions = [
@@ -265,9 +278,19 @@ function PublicHeader() {
   );
 }
 
-export function Help() {
+export function Help({ cloudMode }: { cloudMode?: boolean }) {
   const [query, setQuery] = useState("");
-  const results = useMemo(() => filterHelpArticles(query), [query]);
+  const [cloud, setCloud] = useState<boolean | null>(cloudMode ?? null);
+  useEffect(() => {
+    if (cloudMode !== undefined) return;
+    fetch("/api/auth/config")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((config: { cloud?: boolean }) => setCloud(config.cloud === true))
+      .catch(() => setCloud(false));
+  }, [cloudMode]);
+  const visibleArticles = useMemo(() => helpArticles.filter((article) => !article.audience || (cloud === true ? article.audience === "cloud" : cloud === false ? article.audience === "self-hosted" : false)), [cloud]);
+  const visibleCategories = useMemo(() => helpCategories.filter((category) => visibleArticles.some((article) => article.category === category.title)), [visibleArticles]);
+  const results = useMemo(() => filterHelpArticles(query, visibleArticles), [query, visibleArticles]);
 
   return (
     <WorkspaceBackground className="overflow-hidden">
@@ -292,7 +315,7 @@ export function Help() {
             <p className="type-kicker text-byword-blue">Browse by topic</p>
             <h2 id="topics-title" className="mt-3 text-3xl font-semibold sm:text-4xl">Find the right part of the operation.</h2>
             <div className="mt-9 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {helpCategories.map(({ title, description, icon: Icon }) => (
+              {visibleCategories.map(({ title, description, icon: Icon }) => (
                 <a key={title} href={`#${categoryId(title)}`} className="group rounded-md border border-byword-border bg-card p-5 transition-calm hover:-translate-y-0.5 hover:border-byword-blue/60 hover:shadow-[0_12px_28px_var(--panel-lift)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
                   <h3 className="mt-6 text-lg font-semibold group-hover:text-byword-blue">{title}</h3>
@@ -314,7 +337,7 @@ export function Help() {
             </div>
             {results.length ? (
               <div className="mt-10 space-y-12">
-                {helpCategories.map((category) => {
+                {visibleCategories.map((category) => {
                   const articles = results.filter((article) => article.category === category.title);
                   if (!articles.length) return null;
                   return (

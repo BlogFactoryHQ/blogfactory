@@ -40,6 +40,7 @@ import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VER
 import { readinessStatus } from "./services/readiness.js";
 import { API_IDLE_TIMEOUT_SECONDS, resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
 import { cloudEntitlementMiddleware } from "./middleware/cloud-entitlements.js";
+import { getCloudStatus } from "./services/cloud-status.js";
 
 validateSelfHostedConfig();
 
@@ -66,6 +67,7 @@ app.route("/api/storage", storageRoutes);
 app.route("/api/content", contentRoutes);
 app.route("/api/scheduler", schedulerRoutes);
 app.route("/api/webhooks", webhooksRoutes);
+app.get("/api/admin/status", async (c) => c.json(await getCloudStatus()));
 app.route("/api/admin/customers", cloudAdminRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sites", sitesRoutes);

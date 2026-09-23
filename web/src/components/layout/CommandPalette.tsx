@@ -22,6 +22,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Activity,
 } from "lucide-react";
 
 import {
@@ -127,7 +128,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     { id: "connect-cms", label: "Connect a CMS destination", hint: "WordPress, Ghost, Wix, Framer", icon: Plug, run: () => go("/control/integrations") },
     { id: "connect-agent", label: "Connect an MCP client", hint: "Site-scoped agent access", icon: Bot, run: () => go("/control/connections") },
     ...(user?.role === "admin"
-      ? [{ id: "admin", label: "Manage users", hint: "Approvals and roles", icon: Users, run: () => go("/admin/users") } as CommandEntry]
+      ? [
+          { id: "admin", label: "Manage users", hint: "Approvals and roles", icon: Users, run: () => go("/admin/users") } as CommandEntry,
+          { id: "admin-status", label: "System status", hint: "Cloud operations", icon: Activity, run: () => go("/admin/status") } as CommandEntry,
+        ]
       : []),
   ];
 

@@ -21,6 +21,7 @@ import {
   CreditCard,
   MessageSquarePlus,
   BookOpen,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -328,10 +329,16 @@ export function AppSidebar() {
                 Runs &amp; activity
               </DropdownMenuItem>
               {user?.role === "admin" && (
-                <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/customers")}>
-                  <Shield />
-                  Admin Console
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/customers")}>
+                    <Shield />
+                    Admin Console
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/status")}>
+                    <Activity />
+                    System status
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="type-kicker px-2 py-1.5">Appearance</DropdownMenuLabel>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Users } from "lucide-react";
+import { Activity, Search, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,9 @@ export default function AdminCustomers() {
   return (
     <div className="p-6">
       <PageHeader title="Customers" description="Look up an account, see its plan, sites and recent jobs, and suspend abusive accounts.">
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/admin/status"><Activity className="mr-1.5 h-3.5 w-3.5" />System status</Link>
+        </Button>
         <Button variant="outline" size="sm" asChild>
           <Link to="/admin/users"><Users className="mr-1.5 h-3.5 w-3.5" />Approvals &amp; roles</Link>
         </Button>
