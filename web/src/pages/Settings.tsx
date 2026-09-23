@@ -648,7 +648,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       invalidateSettings();
-      toast.success("Style prompt saved!");
+      toast.success("Style prompt saved");
     },
     onError: (err) => {
       console.error("Save settings error:", err);

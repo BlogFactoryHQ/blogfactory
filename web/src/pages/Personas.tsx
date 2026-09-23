@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -678,9 +679,7 @@ export default function Personas() {
 
           <div className="flex-1 space-y-1 overflow-y-auto">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
+              <ListSkeleton rows={4} />
             ) : filteredPersonas.length === 0 ? (
               <EmptyState
                 size="row"
@@ -1133,7 +1132,7 @@ export default function Personas() {
                   </>
                 ) : (
                   <div className="rounded-lg border border-dashed border-border p-8 text-center">
-                    {isLoading ? <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /> : (
+                    {isLoading ? <ListSkeleton rows={3} /> : (
                       <>
                         <EmptyState
                           icon={Bot}

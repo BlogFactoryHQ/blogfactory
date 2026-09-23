@@ -602,7 +602,7 @@ export default function ContentCreator() {
       const result = await api.upload<{ path: string }>("/content/upload-pdf", formData);
       setPdfFile(file);
       setPdfPath(result.path);
-      toast.success("PDF uploaded successfully!");
+      toast.success("PDF uploaded");
     } catch (err) {
       console.error("PDF upload error:", err);
       toast.error("Failed to upload PDF");

@@ -14,6 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Eye, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { FeedPreviewItem, type PreviewFeedItem, type ItemStatus } from "./FeedPreviewItem";
 import { FeedHealthSummary } from "./FeedHealthSummary";
 import { useAuth } from "@/hooks/useAuth";
@@ -242,19 +244,14 @@ export function FeedPreview({ platform, platformConfig, filterType, filterValue,
           <ScrollArea className="h-[500px]">
             <div className="px-6 py-4">
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-3" />
-                  <p className="text-sm text-muted-foreground">Fetching content...</p>
-                </div>
+                <ListSkeleton rows={5} />
               ) : displayItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                  <p className="font-medium">No items found</p>
-                  <p className="text-xs mt-1">
-                    {showEligibleOnly
-                      ? "No eligible items — try toggling off the filter"
-                      : "Try adjusting your filters or configuration"}
-                  </p>
-                </div>
+                <EmptyState
+                  tone={showEligibleOnly ? "filtered" : "empty"}
+                  title={showEligibleOnly ? "No eligible items" : "No items in this feed"}
+                  description={showEligibleOnly ? "Every item was filtered out by this source's rules." : "The feed answered with no entries. Check its URL and filters."}
+                  primaryAction={showEligibleOnly ? { label: "Show all items", onClick: () => setShowEligibleOnly(false) } : undefined}
+                />
               ) : (
                 <div className="space-y-3">
                   {displayItems.map((item, index) => (
