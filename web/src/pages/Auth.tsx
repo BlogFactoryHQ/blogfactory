@@ -39,9 +39,10 @@ function AuthShell({ children }: { children: ReactNode }) {
 export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = authReturnTo(location.state, new URLSearchParams(location.search).get("returnTo"));
+  const searchParams = new URLSearchParams(location.search);
+  const returnTo = authReturnTo(location.state, searchParams.get("returnTo"));
   const { login, devLogin, signup } = useAuth();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup">(searchParams.get("mode") === "signup" ? "signup" : "login");
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
 
@@ -50,7 +51,8 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const [displayName, setDisplayName] = useState("");
   const [consent, setConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [signupEnabled, setSignupEnabled] = useState(selfHosted ?? false);
+  // null while /auth/config loads, so a ?mode=signup link is not reset to login early.
+  const [signupEnabled, setSignupEnabled] = useState<boolean | null>(selfHosted ?? null);
 
   useEffect(() => {
     if (selfHosted !== undefined) {
@@ -65,7 +67,7 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   }, [selfHosted]);
 
   useEffect(() => {
-    if (!signupEnabled && mode === "signup") setMode("login");
+    if (signupEnabled === false && mode === "signup") setMode("login");
   }, [mode, signupEnabled]);
 
   const handleSignIn = async (e: React.FormEvent) => {

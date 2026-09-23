@@ -76,4 +76,34 @@ describe("authReturnTo", () => {
     expect(apiGetMock).toHaveBeenCalledWith("/auth/config");
     await act(async () => root.unmount());
   });
+
+  it("opens signup mode from a ?mode=signup link once runtime signup is confirmed", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Back to sign in"));
+    });
+    expect(container).toHaveTextContent("Other accounts wait for administrator approval");
+    await act(async () => root.unmount());
+  });
+
+  it("falls back to sign in when a signup link reaches a build without signup", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: false });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Access your BlogFactory workspace."));
+    });
+    expect(container).not.toHaveTextContent("Create account");
+    await act(async () => root.unmount());
+  });
 });
