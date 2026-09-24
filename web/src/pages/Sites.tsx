@@ -4,6 +4,18 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { RowActions } from "@/components/patterns/RowActions";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { InputAffordance } from "@/components/ui/input-affordance";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +34,7 @@ export default function Sites() {
   const [siteUrl, setSiteUrl] = useState("");
   const [topicSite, setTopicSite] = useState<Site | null>(null);
   const [topicInput, setTopicInput] = useState("");
+  const [pendingDeleteSite, setPendingDeleteSite] = useState<Site | null>(null);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,27 +65,15 @@ export default function Sites() {
     <BywordPageShell className="max-w-6xl">
       <PageHeader title="Sites" description="Connect and manage every site in your BlogFactory account." />
 
-      <div className="grid gap-8 lg:grid-cols-[270px_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-lg border border-byword-border bg-card">
-          <div className="flex w-full items-center gap-4 border-l-2 border-byword-blue bg-byword-blue-soft px-5 py-4 text-left text-byword-blue">
-            <Globe2 className="h-5 w-5 shrink-0" />
-            <span>
-              <span className="block text-sm font-semibold">Domains</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">Manage sites</span>
-            </span>
-          </div>
-        </aside>
-
+      <div>
         <div className="min-w-0 space-y-6">
           <BywordCard>
             <SectionHeader icon={Globe2} title="Domains" description="Unlimited sites are available for every beta account." />
             <div className="space-y-5 p-6">
-              <div className="h-3 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-byword-blue" style={{ width: sites.length ? "100%" : "10%" }} />
-              </div>
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <p className="text-3xl font-semibold text-byword-blue">{activeCount}</p>
+                  <p className="type-kicker">Active</p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">{activeCount}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {sites.length === 1 ? "1 connected site" : `${sites.length} connected sites`}
                   </p>
@@ -93,7 +94,7 @@ export default function Sites() {
                   />
                   <Button type="submit" disabled={isCreating || !siteUrl.trim()} className="h-11">
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                    Create Domain
+                    Create domain
                   </Button>
                 </form>
               </div>
@@ -101,7 +102,7 @@ export default function Sites() {
           </BywordCard>
 
           <BywordCard>
-            <SectionHeader icon={Globe2} title="Your Domains" description={`${sites.length} total`} />
+            <SectionHeader icon={Globe2} title="Your domains" description={`${sites.length} total`} />
             <div className="divide-y divide-byword-border">
               {sites.length === 0 ? (
                 <EmptyState
@@ -118,7 +119,7 @@ export default function Sites() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="truncate font-semibold">{site.name}</p>
-                          {active && <Badge className="bg-byword-blue-soft text-byword-blue hover:bg-byword-blue-soft">Active</Badge>}
+                          {active && <StatusBadge status="active" label="Active" showIcon={false} />}
                         </div>
                         <p className="truncate text-sm text-muted-foreground">{site.domain}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -139,10 +140,13 @@ export default function Sites() {
                         <Button variant="outline" size="sm" onClick={() => { setTopicSite(site); setTopicInput(site.editorialTopics.join(", ")); }}>
                           <Tags className="mr-2 h-4 w-4" /> Topics
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteSite(site.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </Button>
+                        <RowActions
+                          triggerLabel={`More actions for ${site.name}`}
+                          label={site.name}
+                          actions={[
+                            { label: "Delete site", icon: Trash2, destructive: true, onSelect: () => setPendingDeleteSite(site) },
+                          ]}
+                        />
                       </div>
                     </div>
                   );
@@ -154,11 +158,33 @@ export default function Sites() {
       </div>
       <Dialog open={Boolean(topicSite)} onOpenChange={(open) => !open && setTopicSite(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Editorial Topics · {topicSite?.name}</DialogTitle><DialogDescription>Controlled labels used by RSS topic suggestions. Sitemap topics remain separate.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Editorial topics · {topicSite?.name}</DialogTitle><DialogDescription>Controlled labels used by RSS topic suggestions. Sitemap topics remain separate.</DialogDescription></DialogHeader>
           <div className="space-y-2"><Label>Topic vocabulary</Label><Input value={topicInput} onChange={(event) => setTopicInput(event.target.value)} placeholder="Teknoloji, Yapay Zeka, İş Dünyası" /><p className="text-xs text-muted-foreground">Comma-separated, up to 50 topics.</p></div>
           <DialogFooter><Button variant="outline" onClick={() => setTopicSite(null)}>Cancel</Button><Button onClick={async () => { if (!topicSite) return; await updateEditorialTopics(topicSite.id, topicInput.split(",").map((item) => item.trim()).filter(Boolean)); toast.success("Editorial topics saved"); setTopicSite(null); }}>Save topics</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={Boolean(pendingDeleteSite)} onOpenChange={(open) => !open && setPendingDeleteSite(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {pendingDeleteSite?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteSite?.domain} is removed from this account. Other connected sites are not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDeleteSite) deleteSite(pendingDeleteSite.id);
+                setPendingDeleteSite(null);
+              }}
+            >
+              Delete site
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </BywordPageShell>
   );
 }

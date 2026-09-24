@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { StatCard, type StatTone } from "@/components/patterns/StatCard";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { StatRowSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
@@ -11,7 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -44,7 +45,6 @@ import {
   formatCompactNumber,
   formatDuration,
   safePercent,
-  semanticToneClass,
   type SemanticTone,
 } from "@/lib/search-insights";
 
@@ -80,42 +80,42 @@ export default function UsageAnalytics() {
 
   const pulseMetrics = [
     {
-      title: "Total Cost",
+      title: "Total cost",
       value: formatCompactCurrency(summary.totalCost),
       icon: DollarSign,
       description: `Last ${days} days`,
       tone: "performance" as SemanticTone,
     },
     {
-      title: "Text Cost",
+      title: "Text cost",
       value: formatCompactCurrency(summary.textCost),
       icon: Hash,
       description: `${formatCompactNumber(summary.totalTokens)} tokens`,
       tone: "performance" as SemanticTone,
     },
     {
-      title: "Image Cost",
+      title: "Image cost",
       value: formatCompactCurrency(summary.imageCost),
       icon: Image,
       description: imageSummary ? `${imageSummary.ai} AI · ${imageSummary.stock} stock` : "Generated images",
       tone: summary.imageCost > summary.textCost ? "opportunity" as SemanticTone : "neutral" as SemanticTone,
     },
     {
-      title: "Avg / Post",
+      title: "Avg / post",
       value: summary.avgCostPerPost ? formatCompactCurrency(summary.avgCostPerPost) : "—",
       icon: Clock,
       description: `${summary.postCount || 0} attributed posts`,
       tone: "neutral" as SemanticTone,
     },
     {
-      title: "Failed Calls",
+      title: "Failed calls",
       value: formatCompactNumber(summary.failedCalls),
       icon: AlertTriangle,
       description: `${formatCompactNumber(summary.totalRequests)} requests`,
       tone: summary.failedCalls > 0 ? "risk" as SemanticTone : "success" as SemanticTone,
     },
     {
-      title: "Credits Left",
+      title: "Credits left",
       value: openRouterRemaining ? formatCompactCurrency(openRouterRemaining) : "—",
       icon: Zap,
       description: openRouterRemaining ? "OpenRouter balance" : "Not reported",
@@ -162,7 +162,7 @@ export default function UsageAnalytics() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Usage Analytics"
+        title="Usage"
         description="Track your AI generation costs, tokens, and model performance."
       >
         <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
@@ -201,7 +201,7 @@ export default function UsageAnalytics() {
               title="Spend pulse"
               description="Cost, reliability, and remaining credits for the selected window."
               action={
-                <div className="min-w-[220px] rounded-md border border-byword-border bg-muted/20 p-3">
+                <div className="min-w-[220px] rounded-sm border border-border bg-muted/40 p-3">
                   <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span>Month-to-date</span>
                     <span>{openRouterCapacity ? `${Math.round(openRouterUsedPercent)}% of visible credits` : "Budget tracked below"}</span>
@@ -213,16 +213,16 @@ export default function UsageAnalytics() {
                 </div>
               }
             />
-            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:p-6 xl:grid-cols-6">
+            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:p-6 xl:grid-cols-3 2xl:grid-cols-6">
               {pulseMetrics.map((stat) => (
-                <div key={stat.title} className={cn("rounded-md border p-4", semanticToneClass(stat.tone))}>
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-bold uppercase opacity-75">{stat.title}</p>
-                    <stat.icon className="h-4 w-4 opacity-70" />
-                  </div>
-                  <p className="text-2xl font-semibold text-foreground">{stat.value}</p>
-                  <p className="mt-1 text-xs opacity-75">{stat.description}</p>
-                </div>
+                <StatCard
+                  key={stat.title}
+                  label={stat.title}
+                  value={stat.value}
+                  hint={stat.description}
+                  icon={stat.icon}
+                  tone={statTone(stat.tone)}
+                />
               ))}
             </div>
           </BywordCard>
@@ -237,17 +237,20 @@ export default function UsageAnalytics() {
 
             <BywordCard>
               <SectionHeader icon={TrendingUp} title="Cost drivers" description="Models and retries most likely to move spend." />
-              <div className="grid gap-3 p-4 sm:p-5 lg:p-6">
+              <div className="divide-y divide-byword-border">
                 {costDrivers.map((driver) => (
-                  <div key={driver.title} className={cn("rounded-md border p-3", semanticToneClass(driver.tone))}>
+                  <div key={driver.title} className="px-4 py-3 sm:px-5 lg:px-6">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-bold uppercase opacity-75">{driver.title}</p>
+                        <p className="type-kicker flex items-center gap-2">
+                          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", toneDotClass[statTone(driver.tone)])} aria-hidden="true" />
+                          {driver.title}
+                        </p>
                         <p className="mt-1 truncate text-sm font-medium text-foreground">{driver.label}</p>
                       </div>
-                      <p className="shrink-0 text-lg font-semibold text-foreground">{driver.value}</p>
+                      <p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">{driver.value}</p>
                     </div>
-                    <p className="mt-2 text-xs opacity-75">{driver.detail}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{driver.detail}</p>
                   </div>
                 ))}
               </div>
@@ -290,22 +293,12 @@ export default function UsageAnalytics() {
             </BywordCard>
           </div>
 
-          <Tabs defaultValue="tokens" className="mb-8">
-            <TabsList>
-              <TabsTrigger value="tokens" className="gap-1.5">
-                <Zap className="h-4 w-4" />
-                Tokens Over Time
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="tokens" className="mt-4">
-              <BywordCard>
-                <SectionHeader icon={Zap} title="Daily token usage" />
-                <div className="p-4 sm:p-5 lg:p-6">
-                  <UsageTokenChart data={dailyUsage} />
-                </div>
-              </BywordCard>
-            </TabsContent>
-          </Tabs>
+          <BywordCard className="mb-8">
+            <SectionHeader icon={Zap} title="Daily token usage" description="Tokens over time for the selected window." />
+            <div className="p-4 sm:p-5 lg:p-6">
+              <UsageTokenChart data={dailyUsage} />
+            </div>
+          </BywordCard>
 
           {/* Budget Controls */}
           <div className="mb-6">
@@ -339,8 +332,8 @@ export default function UsageAnalytics() {
                     <TableRow>
                       <TableHead>Time</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Provider / Model</TableHead>
-                      <TableHead>Post / Job</TableHead>
+                      <TableHead>Provider / model</TableHead>
+                      <TableHead>Post / job</TableHead>
                       <TableHead className="text-right">Tokens</TableHead>
                       <TableHead className="text-right">Cost</TableHead>
                       <TableHead>Status</TableHead>
@@ -358,7 +351,7 @@ export default function UsageAnalytics() {
                         <TableCell className="max-w-[180px] truncate text-xs">{call.post_id || call.session_id || "—"}</TableCell>
                         <TableCell className="text-right">{formatNumber(call.total_tokens || 0)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(Number(call.cost || 0))}</TableCell>
-                        <TableCell>{call.status || "—"}</TableCell>
+                        <TableCell>{call.status ? <StatusBadge {...callStatusBadge(call.status)} showIcon={false} /> : "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -379,12 +372,39 @@ export default function UsageAnalytics() {
   );
 }
 
+const toneDotClass: Record<StatTone, string> = {
+  neutral: "bg-status-pending",
+  success: "bg-status-success",
+  warning: "bg-status-warning",
+  error: "bg-status-error",
+  running: "bg-status-running",
+};
+
+function statTone(tone: SemanticTone): StatTone {
+  if (tone === "risk") return "error";
+  if (tone === "success") return "success";
+  if (tone === "opportunity") return "warning";
+  return "neutral";
+}
+
+function callStatusBadge(status: string): { status: StatusType; label: string } {
+  const value = status.toLowerCase();
+  const label = value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ");
+  if (value === "success" || value === "succeeded" || value === "completed" || value === "ok") return { status: "success", label };
+  if (value === "failed" || value === "error") return { status: "error", label };
+  if (value === "running" || value === "processing") return { status: "running", label };
+  return { status: "pending", label };
+}
+
 function SpendStackChart({ data }: { data: Array<{ date: string; textCost: number; imageCost: number; total: number }> }) {
   if (!data.length) {
     return (
-      <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-        No usage data for this period.
-      </div>
+      <EmptyState
+        size="row"
+        className="flex h-[300px] flex-col justify-center"
+        title="No spend in this period"
+        description="Text and image costs appear here after generation runs. Widen the date range to see earlier spend."
+      />
     );
   }
 

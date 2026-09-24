@@ -16,14 +16,10 @@ import { api } from "@/lib/api";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import { useSites } from "@/hooks/useSites";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { EDITORIAL_STATE_BADGES } from "@/lib/editorial-state";
 import { WorkspaceSetupGuide, type WorkspaceSetupStep } from "@/components/setup/WorkspaceSetupGuide";
 
-const editorialStates: Record<string, { status: StatusType; label: string }> = {
-  draft: { status: "draft", label: "Draft" },
-  in_review: { status: "warning", label: "In review" },
-  approved: { status: "success", label: "Approved" },
-  changes_requested: { status: "error", label: "Changes requested" },
-};
+const editorialStates = EDITORIAL_STATE_BADGES;
 
 const severityBadges: Record<string, { status: StatusType; label: string }> = {
   blocker: { status: "error", label: "Blocker" },

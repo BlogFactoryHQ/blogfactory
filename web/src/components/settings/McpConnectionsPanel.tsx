@@ -2,13 +2,14 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
 import { api, retryTransientApiError } from "@/lib/api";
 import { useMcpCapabilities } from "@/hooks/useMcpCapabilities";
 import { useSites } from "@/hooks/useSites";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -60,11 +61,11 @@ type RevokeTarget = {
 };
 
 function tokenStatus(token: McpToken) {
-  if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
+  if (token.revoked_at) return { label: "Revoked", status: "error" as const };
   if (token.expires_at && new Date(token.expires_at).getTime() <= Date.now()) {
-    return { label: "Expired", variant: "secondary" as const };
+    return { label: "Expired", status: "paused" as const };
   }
-  return { label: "Active", variant: "default" as const };
+  return { label: "Active", status: "active" as const };
 }
 
 function formatDate(value: string | null) {
@@ -273,7 +274,7 @@ export function McpConnectionsPanel() {
 
           <div className="rounded-md border border-byword-border bg-muted/35 p-4">
             <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-status-success" aria-hidden="true" />
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-byword-blue" aria-hidden="true" />
               <div>
                 <h3 className="text-sm font-semibold">Site-scoped MCP access</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -287,18 +288,28 @@ export function McpConnectionsPanel() {
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><span>Server tool catalog</span><span className="type-meta">{capabilitiesQuery.data ? `${capabilitiesQuery.data.tool_count} tools` : capabilitiesQuery.isError ? "Unavailable" : "Checking"}</span></summary>
             <div className="flex flex-wrap gap-2 border-t border-byword-border p-4">
               {capabilitiesQuery.data?.tools?.map((tool) => <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">{tool}</code>)}
-              {capabilitiesQuery.isLoading && <span className="text-sm text-muted-foreground">Loading catalog…</span>}
-              {capabilitiesQuery.isError && <span className="text-sm text-destructive">Tool catalog unavailable.</span>}
+              {capabilitiesQuery.isLoading && [0, 1, 2, 3, 4, 5].map((index) => <Skeleton key={index} className="h-6 w-28" />)}
+              {capabilitiesQuery.isError && (
+                <EmptyState
+                  size="row"
+                  tone="error"
+                  className="w-full"
+                  title="Tool catalog unavailable"
+                  description="Existing connections keep working. Retry to load the current catalog."
+                  primaryAction={{ label: "Try again", onClick: () => void capabilitiesQuery.refetch() }}
+                />
+              )}
             </div>
           </details>
 
           {!sitesLoading && !sites.length && (
-            <div className="rounded-md border border-dashed border-byword-border p-6 text-center">
-              <p className="text-sm font-medium">Add a site before creating an MCP connection.</p>
-              <Button asChild variant="link" className="mt-1">
-                <Link to="/control/sites">Go to Sites</Link>
-              </Button>
-            </div>
+            <EmptyState
+              size="row"
+              className="rounded-md border border-dashed border-byword-border"
+              title="Add a site before creating an MCP connection"
+              description="Connections are scoped to sites, so at least one site is required."
+              primaryAction={{ label: "Go to Sites", href: "/control/sites" }}
+            />
           )}
 
           {oauthEnabled && <section className="space-y-3">
@@ -309,21 +320,23 @@ export function McpConnectionsPanel() {
               </p>
             </div>
             {oauthConnectionsQuery.isLoading ? (
-              <div className="flex min-h-20 items-center justify-center text-sm text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading OAuth connections
-              </div>
+              <ListSkeleton rows={2} className="rounded-md border border-byword-border" />
             ) : oauthConnectionsQuery.isError ? (
-              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
-                <p className="text-sm font-medium text-destructive">OAuth connections could not be loaded.</p>
-                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => oauthConnectionsQuery.refetch()}>
-                  Try again
-                </Button>
-              </div>
+              <EmptyState
+                size="row"
+                tone="error"
+                className="rounded-md border border-byword-border"
+                title="OAuth connections could not be loaded"
+                description="Existing connections keep their access. Retry to see the current list."
+                primaryAction={{ label: "Try again", onClick: () => void oauthConnectionsQuery.refetch() }}
+              />
             ) : oauthConnections.length === 0 ? (
-              <div className="rounded-md border border-dashed border-byword-border p-5 text-sm text-muted-foreground">
-                No browser-authorized MCP clients yet.
-              </div>
+              <EmptyState
+                size="row"
+                className="rounded-md border border-dashed border-byword-border"
+                title="No browser-authorized MCP clients yet"
+                description={oauthEnabled ? "Run the OAuth command in a client; it appears here after its first successful request." : undefined}
+              />
             ) : (
               <div className="divide-y divide-byword-border rounded-md border border-byword-border">
                 {oauthConnections.map((connection) => {
@@ -338,7 +351,7 @@ export function McpConnectionsPanel() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{connection.name}</p>
-                          <Badge variant={active ? "default" : "destructive"}>{active ? "Active" : "Revoked"}</Badge>
+                          <StatusBadge status={active ? "active" : "error"} label={active ? "Active" : "Revoked"} showIcon={false} />
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground" title={siteLabels.join(", ")}>
                           {siteLabels.join(", ")} · {connection.scopes.map(scopeLabel).join(", ")}
@@ -351,7 +364,7 @@ export function McpConnectionsPanel() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="self-start text-destructive hover:text-destructive sm:self-auto"
+                        className="self-start sm:self-auto"
                         aria-label={`Revoke ${connection.name}`}
                         disabled={!active || revokeMutation.isPending}
                         onClick={() => setRevokeTarget({
@@ -382,17 +395,16 @@ export function McpConnectionsPanel() {
               </Button>
             </div>
           {tokensQuery.isLoading ? (
-            <div className="flex min-h-28 items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading connections
-            </div>
+            <TableSkeleton rows={3} columns={6} className="rounded-md border border-byword-border" />
           ) : tokensQuery.isError ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
-              <p className="text-sm font-medium text-destructive">Connections could not be loaded.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => tokensQuery.refetch()}>
-                Try again
-              </Button>
-            </div>
+            <EmptyState
+              size="row"
+              tone="error"
+              className="rounded-md border border-byword-border"
+              title="Connections could not be loaded"
+              description="Existing tokens keep their access. Retry to see the current list."
+              primaryAction={{ label: "Try again", onClick: () => void tokensQuery.refetch() }}
+            />
           ) : tokens.length === 0 ? (
             <EmptyState
               icon={KeyRound}
@@ -434,13 +446,12 @@ export function McpConnectionsPanel() {
                       <TableCell className="whitespace-nowrap">{formatDate(token.created_at)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(token.last_used_at)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(token.expires_at)}</TableCell>
-                      <TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell>
+                      <TableCell><StatusBadge status={status.status} label={status.label} showIcon={false} /></TableCell>
                       <TableCell className="text-right">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="text-destructive hover:text-destructive"
                           aria-label={`Revoke ${token.name}`}
                           disabled={status.label !== "Active" || revokeMutation.isPending}
                           onClick={() => setRevokeTarget({
@@ -504,7 +515,7 @@ export function McpConnectionsPanel() {
                   </div>
                 ))}
               </div>
-              {!siteIds.length && <p className="text-xs text-destructive">Select at least one site.</p>}
+              {!siteIds.length && <p className="text-xs text-status-error">Select at least one site.</p>}
             </fieldset>
 
             <fieldset className="space-y-2">

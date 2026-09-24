@@ -9,6 +9,19 @@ import { InputAffordance } from "@/components/ui/input-affordance";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { asArray, asStringArray } from "@/lib/api-shape";
@@ -179,15 +192,8 @@ interface InternalLinkIndexingState {
 type ModelPriceFilter = "all" | "free" | "low" | "medium" | "high";
 type DirtyState = "clean" | "dirty";
 
-const priceBadgeClass = (pricing: ModelPriceFilter) => {
-  if (pricing === "free") return "bg-primary/10 text-primary";
-  if (pricing === "low") return "bg-[hsl(var(--status-success)/0.12)] text-status-success";
-  if (pricing === "medium") return "bg-accent text-accent-foreground";
-  return "bg-destructive/10 text-destructive";
-};
-
 const priceBadgeText = (pricing: ModelPriceFilter) => {
-  if (pricing === "free") return "FREE";
+  if (pricing === "free") return "Free";
   if (pricing === "low") return "$";
   if (pricing === "medium") return "$$";
   return "$$$";
@@ -210,13 +216,13 @@ const keyBadgeText = (saved: boolean | undefined, last4?: string | null, status?
   return saved ? `Saved ****${last4}` : "Missing";
 };
 
-const keyBadgeVariant = (saved: boolean | undefined, status?: string) =>
-  status === "undecryptable" ? "destructive" : saved ? "default" : "secondary";
+const keyBadgeStatus = (saved: boolean | undefined, status?: string): StatusType =>
+  status === "undecryptable" ? "error" : saved ? "success" : "pending";
 
 const unsavedBadge = (state: DirtyState) =>
   state === "dirty" ? (
-    <span className="mr-1.5 inline-flex items-center gap-1 rounded-sm border border-primary-foreground/30 bg-primary-foreground/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-primary-foreground/90">
-      <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground/80" aria-hidden="true" />
+    <span className="mr-1.5 inline-flex items-center gap-1 rounded-sm border border-current px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase opacity-80">
+      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
       Unsaved
     </span>
   ) : null;
@@ -334,6 +340,7 @@ export default function Settings() {
   const [modelSearch, setModelSearch] = useState("");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
   const [activeSection, setActiveSection] = useState(() => searchParams.get("section") || "basics");
+  const [pendingKeyDelete, setPendingKeyDelete] = useState<{ provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay"; label: string } | null>(null);
   const [articleWordCount, setArticleWordCount] = useState(1500);
   const [articleLanguage, setArticleLanguage] = useState("US English");
   const [articleVoice, setArticleVoice] = useState("Natural");
@@ -797,7 +804,7 @@ export default function Settings() {
   })();
 
   const settingsSections = [
-    { id: "basics", title: "Article Basics", description: "Length, language", icon: SlidersHorizontal },
+    { id: "basics", title: "Article basics", description: "Length, language", icon: SlidersHorizontal },
     { id: "images", title: "Images", description: "Generation settings", icon: ImageIcon },
     { id: "models", title: "Models", description: "Text + images", icon: Zap },
     { id: "api-keys", title: "Keys", description: "OpenRouter + stock", icon: KeyRound },
@@ -836,7 +843,7 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={SlidersHorizontal}
-                title="Article Basics"
+                title="Article basics"
                 description="Core settings for generated content."
                 action={
                   <Button
@@ -858,7 +865,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={FileText} />
                     <div>
-                      <h3 className="text-base font-semibold">Article Length</h3>
+                      <h3 className="text-base font-semibold">Article length</h3>
                       <p className="text-sm text-muted-foreground">{articleWordRangeLabel}</p>
                     </div>
                   </div>
@@ -930,7 +937,7 @@ export default function Settings() {
                 </section>
 
                 <section className="space-y-3 border-t border-byword-border pt-6">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Other Defaults</p>
+                  <p className="type-kicker">Other defaults</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
                       { label: "Images", value: imageConfig.cover.enabled || (imageConfig.inline.enabled && imageConfig.inline.count > 0) ? "On" : "Off", icon: ImageIcon, section: "images" },
@@ -959,21 +966,19 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={KeyRound}
-                title="Access Keys"
-                description="OpenRouter is the only text and AI image provider. Stock keys only apply when Inline Source is Stock."
+                title="Access keys"
+                description="OpenRouter is the only text and AI image provider. Stock keys only apply when the inline source is Stock."
               />
               <div className="grid gap-6 p-6 md:grid-cols-2">
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="openrouter-key">OpenRouter</Label>
-                    <Badge variant={keyBadgeVariant(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterCredentialStatus)}>
-                      {keyBadgeText(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterKeyLast4, apiKeys?.openrouterCredentialStatus)}
-                    </Badge>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterCredentialStatus)} label={keyBadgeText(apiKeys?.hasOpenrouterKey, apiKeys?.openrouterKeyLast4, apiKeys?.openrouterCredentialStatus)} showIcon={false} />
                   </div>
                   <Input
                     id="openrouter-key"
                     type="password"
-                    placeholder="sk-or-..."
+                    placeholder="sk-or-…"
                     value={openrouterKey}
                     onChange={(e) => setOpenrouterKey(e.target.value)}
                     autoComplete="off"
@@ -984,6 +989,7 @@ export default function Settings() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
+                      variant="secondary"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "openrouter", apiKey: openrouterKey })}
                       disabled={!openrouterKey || saveApiKeyMutation.isPending}
                     >
@@ -993,7 +999,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("openrouter")}
+                      onClick={() => setPendingKeyDelete({ provider: "openrouter", label: "OpenRouter" })}
                       disabled={!apiKeys?.hasOpenrouterKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -1011,12 +1017,10 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="google-key">Google PDF Import</Label>
-                    <Badge variant={keyBadgeVariant(apiKeys?.hasGoogleAiKey, apiKeys?.googleAiCredentialStatus)}>
-                      {keyBadgeText(apiKeys?.hasGoogleAiKey, apiKeys?.googleKeyLast4, apiKeys?.googleAiCredentialStatus)}
-                    </Badge>
+                    <Label htmlFor="google-key">Google PDF import</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasGoogleAiKey, apiKeys?.googleAiCredentialStatus)} label={keyBadgeText(apiKeys?.hasGoogleAiKey, apiKeys?.googleKeyLast4, apiKeys?.googleAiCredentialStatus)} showIcon={false} />
                   </div>
                   <Input
                     id="google-key"
@@ -1032,6 +1036,7 @@ export default function Settings() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
+                      variant="secondary"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "google", apiKey: googleKey })}
                       disabled={!googleKey || saveApiKeyMutation.isPending}
                     >
@@ -1041,7 +1046,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("google")}
+                      onClick={() => setPendingKeyDelete({ provider: "google", label: "Google PDF import" })}
                       disabled={!apiKeys?.hasGoogleAiKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -1059,17 +1064,15 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="openai-key">OpenAI Internal Linking</Label>
-                    <Badge variant={keyBadgeVariant(apiKeys?.hasOpenaiKey, apiKeys?.openaiCredentialStatus)}>
-                      {keyBadgeText(apiKeys?.hasOpenaiKey, apiKeys?.openaiKeyLast4, apiKeys?.openaiCredentialStatus)}
-                    </Badge>
+                    <Label htmlFor="openai-key">OpenAI internal linking</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasOpenaiKey, apiKeys?.openaiCredentialStatus)} label={keyBadgeText(apiKeys?.hasOpenaiKey, apiKeys?.openaiKeyLast4, apiKeys?.openaiCredentialStatus)} showIcon={false} />
                   </div>
                   <Input
                     id="openai-key"
                     type="password"
-                    placeholder="sk-..."
+                    placeholder="sk-…"
                     value={openaiKey}
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     autoComplete="off"
@@ -1080,6 +1083,7 @@ export default function Settings() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
+                      variant="secondary"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "openai", apiKey: openaiKey })}
                       disabled={!openaiKey || saveApiKeyMutation.isPending}
                     >
@@ -1089,7 +1093,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("openai")}
+                      onClick={() => setPendingKeyDelete({ provider: "openai", label: "OpenAI internal linking" })}
                       disabled={!apiKeys?.hasOpenaiKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -1107,12 +1111,10 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="pixabay-key">Pixabay Stock Photos</Label>
-                    <Badge variant={keyBadgeVariant(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)}>
-                      {keyBadgeText(apiKeys?.hasPixabayKey, apiKeys?.pixabayKeyLast4, apiKeys?.pixabayCredentialStatus)}
-                    </Badge>
+                    <Label htmlFor="pixabay-key">Pixabay stock photos</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)} label={keyBadgeText(apiKeys?.hasPixabayKey, apiKeys?.pixabayKeyLast4, apiKeys?.pixabayCredentialStatus)} showIcon={false} />
                   </div>
                   <Input
                     id="pixabay-key"
@@ -1128,6 +1130,7 @@ export default function Settings() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
+                      variant="secondary"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "pixabay", apiKey: pixabayKey })}
                       disabled={!pixabayKey || saveApiKeyMutation.isPending}
                     >
@@ -1137,7 +1140,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("pixabay")}
+                      onClick={() => setPendingKeyDelete({ provider: "pixabay", label: "Pixabay stock photos" })}
                       disabled={!apiKeys?.hasPixabayKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -1146,12 +1149,10 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-byword-border p-5">
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="pexels-key">Pexels Stock Photos</Label>
-                    <Badge variant={keyBadgeVariant(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)}>
-                      {keyBadgeText(apiKeys?.hasPexelsKey, apiKeys?.pexelsKeyLast4, apiKeys?.pexelsCredentialStatus)}
-                    </Badge>
+                    <Label htmlFor="pexels-key">Pexels stock photos</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)} label={keyBadgeText(apiKeys?.hasPexelsKey, apiKeys?.pexelsKeyLast4, apiKeys?.pexelsCredentialStatus)} showIcon={false} />
                   </div>
                   <Input
                     id="pexels-key"
@@ -1167,6 +1168,7 @@ export default function Settings() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
+                      variant="secondary"
                       onClick={() => saveApiKeyMutation.mutate({ provider: "pexels", apiKey: pexelsKey })}
                       disabled={!pexelsKey || saveApiKeyMutation.isPending}
                     >
@@ -1176,7 +1178,7 @@ export default function Settings() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteApiKeyMutation.mutate("pexels")}
+                      onClick={() => setPendingKeyDelete({ provider: "pexels", label: "Pexels stock photos" })}
                       disabled={!apiKeys?.hasPexelsKey || deleteApiKeyMutation.isPending}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -1237,22 +1239,20 @@ export default function Settings() {
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <ImageIcon className="h-4 w-4" />
-                    Image Models
+                    Image models
                   </h4>
                   {imageModelsLoading ? (
-                    <div className="py-4 text-center text-muted-foreground">Loading models...</div>
+                    <ListSkeleton rows={3} />
                   ) : filteredImageModels.length === 0 ? (
                     <EmptyState size="row" tone="filtered" title="No image model matches these filters" description="Clear the provider or price filter to see the full catalog." />
                   ) : (
                     <div className="grid grid-cols-1 gap-3">
                       {filteredImageModels.map((model) => (
-                        <div key={model.id} className="flex items-start justify-between rounded-lg border border-byword-border p-3">
+                        <div key={model.id} className="flex items-start justify-between rounded-sm border border-border bg-muted/40 p-3">
                           <div className="mr-3 min-w-0 flex-1">
                             <div className="mb-1 flex items-center gap-2">
                               <span className="truncate text-sm font-medium">{model.name}</span>
-                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
-                                {priceBadgeText(model.pricing)}
-                              </span>
+                              <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{priceBadgeText(model.pricing)}</Badge>
                             </div>
                             <p className="mb-1 font-mono text-xs text-muted-foreground">{model.id}</p>
                             <p className="line-clamp-1 text-xs text-muted-foreground">{model.description}</p>
@@ -1260,7 +1260,7 @@ export default function Settings() {
                               {model.provider} · {model.constraints?.resolutions?.join("/") || "1K"} output
                             </p>
                             {model.isFree && model.limits && (
-                              <p className="mt-0.5 text-xs text-primary">{model.limits}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{model.limits}</p>
                             )}
                           </div>
                           <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -1275,21 +1275,19 @@ export default function Settings() {
                 <div>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <FileText className="h-4 w-4" />
-                    Text Models
+                    Text models
                   </h4>
                   {textModelsLoading ? (
-                    <div className="py-4 text-center text-muted-foreground">Loading models...</div>
+                    <ListSkeleton rows={3} />
                   ) : filteredTextModels.length === 0 ? (
                     <EmptyState size="row" tone="filtered" title="No text model matches these filters" description="Clear the provider or price filter to see the full catalog." />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {filteredTextModels.map((model) => (
-                        <div key={model.id} className="flex flex-col gap-2 rounded-lg border border-byword-border p-3">
+                        <div key={model.id} className="flex flex-col gap-2 rounded-sm border border-border bg-muted/40 p-3">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{model.name}</span>
-                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${priceBadgeClass(model.pricing)}`}>
-                              {priceBadgeText(model.pricing)}
-                            </span>
+                            <Badge variant="outline" className="font-mono text-[10px]">{priceBadgeText(model.pricing)}</Badge>
                           </div>
                           <span className="font-mono text-xs text-muted-foreground">{model.id}</span>
                           <span className="font-mono text-xs text-muted-foreground">{model.costInfo}</span>
@@ -1313,7 +1311,7 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                   icon={MessageSquare}
-                  title="Voice & Style"
+                  title="Voice and style"
                   description="Choose how generated articles should sound."
                   action={
                     <Button
@@ -1350,11 +1348,11 @@ export default function Settings() {
                       </button>
                     ))}
                   </div>
-                  <div className="rounded-lg border border-byword-border p-5">
+                  <div className="rounded-sm border border-border bg-muted/40 p-5">
                     <div className="mb-4 flex items-center gap-3">
                       <IconTile icon={FileText} />
                       <div>
-                        <h3 className="font-semibold">Image Style Prompt</h3>
+                        <h3 className="font-semibold">Image style prompt</h3>
                         <p className="text-sm text-muted-foreground">Also used when BlogFactory generates article images.</p>
                       </div>
                     </div>
@@ -1375,7 +1373,7 @@ export default function Settings() {
                       ) : (
                         <Save className="mr-2 h-4 w-4" />
                       )}
-                      Save Style
+                      Save style
                     </Button>
                   </div>
                 </div>
@@ -1387,7 +1385,7 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={LinkIcon}
-                title="Internal Links moved to Search Growth"
+                title="Internal links moved to Search Growth"
                 description="Sitemap indexing and semantic internal links now live beside Optimize and Indexing."
                 action={
                   <Button asChild>
@@ -1399,16 +1397,16 @@ export default function Settings() {
                 }
               />
               <div className="grid gap-4 p-6 md:grid-cols-3">
-                <div className="rounded-lg border border-byword-border p-5">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Status</p>
+                <div className="rounded-sm border border-border bg-muted/40 p-5">
+                  <p className="type-kicker">Status</p>
                   <p className="mt-2 text-2xl font-semibold">{internalLinkStatus === "connected" ? "Ready" : internalLinkStatus}</p>
                 </div>
-                <div className="rounded-lg border border-byword-border p-5">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Pages</p>
+                <div className="rounded-sm border border-border bg-muted/40 p-5">
+                  <p className="type-kicker">Pages</p>
                   <p className="mt-2 text-2xl font-semibold">{internalLinkIndex?.pageCount || internalLinkIndexingState?.totalPages || 0}</p>
                 </div>
-                <div className="rounded-lg border border-byword-border p-5">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Last sync</p>
+                <div className="rounded-sm border border-border bg-muted/40 p-5">
+                  <p className="type-kicker">Last sync</p>
                   <p className="mt-2 text-2xl font-semibold">{lastSyncLabel}</p>
                 </div>
               </div>
@@ -1419,7 +1417,7 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={LinkIcon}
-                title="Internal Linking"
+                title="Internal linking"
                 description="Sitemap indexing helps generated posts support each other."
                 action={
                   <div className="flex items-center gap-3">
@@ -1447,7 +1445,7 @@ export default function Settings() {
               />
               <div className="divide-y divide-byword-border">
                 <div className="space-y-5 p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-byword-border p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4 rounded-sm border border-border bg-muted/40 p-5">
                     <div className="flex items-start gap-4">
                       <IconTile
                         icon={
@@ -1460,9 +1458,9 @@ export default function Settings() {
                                 : LinkIcon
                         }
                         className={cn(
-                          internalLinkStatus === "connected" && "bg-[hsl(var(--status-success)/0.12)] text-status-success",
-                          internalLinkStatus === "failed" && "bg-destructive/10 text-destructive",
-                          internalLinkStatus === "indexing" && "bg-byword-blue-soft text-byword-blue"
+                          internalLinkStatus === "connected" && "text-status-success",
+                          internalLinkStatus === "failed" && "text-status-error",
+                          internalLinkStatus === "indexing" && "text-status-running"
                         )}
                       />
                       <div>
@@ -1476,9 +1474,10 @@ export default function Settings() {
                                   ? "Failed"
                                   : "Disconnected"}
                           </h3>
-                          <Badge variant={internalLinkStatus === "failed" ? "destructive" : "secondary"}>
-                            {internalLinkStatus === "connected" ? "Ready" : internalLinkStatus}
-                          </Badge>
+                          <StatusBadge
+                            status={internalLinkStatus === "failed" ? "error" : internalLinkStatus === "connected" ? "success" : internalLinkStatus === "indexing" ? "running" : "pending"}
+                            label={internalLinkStatus === "connected" ? "Ready" : internalLinkStatus.charAt(0).toUpperCase() + internalLinkStatus.slice(1)}
+                          />
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {internalLinkIndex?.siteHost || internalLinkSitemapUrl || "Connect a sitemap to start semantic link matching."}
@@ -1489,22 +1488,22 @@ export default function Settings() {
                   </div>
 
                   {!hasOpenAiKey && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+                    <Alert variant="warning" className="flex flex-wrap items-center justify-between gap-3 p-4">
                       <div className="flex items-start gap-3">
-                        <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                        <AlertCircle className="mt-0.5 h-4 w-4 text-status-warning" />
                         <p className="text-sm text-muted-foreground">Add an OpenAI API key before creating semantic link embeddings.</p>
                       </div>
                       <Button type="button" variant="outline" size="sm" onClick={() => setActiveSection("api-keys")}>
                         <KeyRound className="mr-2 h-4 w-4" />
-                        Access Keys
+                        Access keys
                       </Button>
-                    </div>
+                    </Alert>
                   )}
 
                   {internalLinkStatus === "failed" && internalLinkIndexingState?.errorMessage && (
-                    <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive">
-                      {internalLinkIndexingState.errorMessage}
-                    </div>
+                    <Alert variant="destructive">
+                      <AlertDescription className="text-foreground">{internalLinkIndexingState.errorMessage}</AlertDescription>
+                    </Alert>
                   )}
 
                   <div className="space-y-2">
@@ -1536,7 +1535,7 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <label className="flex items-center justify-between gap-4 rounded-lg border border-byword-border p-5">
+                  <label className="flex items-center justify-between gap-4 rounded-sm border border-border bg-muted/40 p-5">
                     <span>
                       <span className="block font-semibold">Use internal links in generated articles</span>
                       <span className="mt-1 block text-sm text-muted-foreground">Turn this off to stop adding backlink/internal-link suggestions during generation.</span>
@@ -1545,7 +1544,7 @@ export default function Settings() {
                   </label>
 
                   {isIndexingInternalLinks && (
-                    <div className="space-y-4 rounded-lg border border-byword-border p-5">
+                    <div className="space-y-4 rounded-sm border border-border bg-muted/40 p-5">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold">Indexing progress</h3>
@@ -1585,22 +1584,22 @@ export default function Settings() {
                 {(internalLinkIndex || isIndexingInternalLinks) && (
                   <div className="space-y-5 p-6">
                     <div className="grid gap-4 md:grid-cols-4">
-                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                      <div className="flex items-center gap-4 rounded-sm border border-border bg-muted/40 p-5">
                         <FileText className="h-5 w-5 text-muted-foreground" />
                         <span className="text-2xl font-semibold">{internalLinkIndex?.pageCount || internalLinkIndexingState?.totalPages || 0}</span>
                         <span className="text-sm text-muted-foreground">Pages</span>
                       </div>
-                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                      <div className="flex items-center gap-4 rounded-sm border border-border bg-muted/40 p-5">
                         <Database className="h-5 w-5 text-muted-foreground" />
                         <span className="text-2xl font-semibold">{internalLinkIndex?.vectorCount || internalLinkIndexingState?.embeddedPages || 0}</span>
                         <span className="text-sm text-muted-foreground">Link candidates</span>
                       </div>
-                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                      <div className="flex items-center gap-4 rounded-sm border border-border bg-muted/40 p-5">
                         <Clock className="h-5 w-5 text-muted-foreground" />
                         <span className="text-lg font-semibold">{lastSyncLabel}</span>
                         <span className="text-sm text-muted-foreground">Last sync</span>
                       </div>
-                      <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+                      <div className="flex items-center gap-4 rounded-sm border border-border bg-muted/40 p-5">
                         <RefreshCw className="h-5 w-5 text-muted-foreground" />
                         <span className="text-lg font-semibold">{refreshBlocked && refreshAvailableAt ? formatRelativeLabel(refreshAvailableAt.toISOString()) : "Ready"}</span>
                         <span className="text-sm text-muted-foreground">Refresh</span>
@@ -1613,7 +1612,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={Filter} />
                     <div>
-                      <h3 className="text-lg font-semibold">URL Filters</h3>
+                      <h3 className="text-lg font-semibold">URL filters</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Control which pages get indexed for linking.</p>
                     </div>
                   </div>
@@ -1698,7 +1697,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={LinkIcon} />
                     <div>
-                      <h3 className="text-lg font-semibold">Custom Link Rules</h3>
+                      <h3 className="text-lg font-semibold">Custom link rules</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Override AI linking for specific keywords.</p>
                     </div>
                   </div>
@@ -1724,7 +1723,7 @@ export default function Settings() {
                   {internalLinkRules.length > 0 && (
                     <div className="grid gap-3">
                       {internalLinkRules.map((rule) => (
-                        <div key={rule.id} className="flex items-center gap-3 rounded-lg border border-byword-border p-3">
+                        <div key={rule.id} className="flex items-center gap-3 rounded-sm border border-border bg-muted/40 p-3">
                           <LinkIcon className="h-4 w-4 text-byword-blue" />
                           <span className="min-w-0 flex-1 truncate text-sm">{rule.triggers}</span>
                           <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -1746,12 +1745,12 @@ export default function Settings() {
                 {indexedPagePreview.length > 0 && (
                   <div className="space-y-4 p-6">
                     <div>
-                      <h3 className="text-lg font-semibold">Indexed Pages</h3>
+                      <h3 className="text-lg font-semibold">Indexed pages</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Recent pages available for semantic matching.</p>
                     </div>
                     <div className="grid gap-3">
                       {indexedPagePreview.map((page) => (
-                        <div key={page.url} className="rounded-lg border border-byword-border p-4">
+                        <div key={page.url} className="rounded-sm border border-border bg-muted/40 p-4">
                           <p className="truncate font-medium">{page.title || page.path}</p>
                           <p className="mt-1 truncate text-sm text-muted-foreground">{page.path || page.url}</p>
                         </div>
@@ -1768,7 +1767,7 @@ export default function Settings() {
                     disabled={!internalLinkSitemapUrl.trim() || isIndexingInternalLinks || refreshBlocked || !hasOpenAiKey}
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Refresh Index
+                    Refresh index
                   </Button>
                   <Button
                     type="button"
@@ -1789,7 +1788,7 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                   icon={ImagePlus}
-                  title="Image Generation"
+                  title="Image generation"
                   description="Generate images automatically, or queue Midjourney prompt slots for manual image creation."
                   action={
                     <Button
@@ -1809,7 +1808,7 @@ export default function Settings() {
                 />
                 <div className="space-y-5 p-6">
                   {manualPromptMode ? (
-                    <div className="space-y-4 rounded-lg border border-byword-border bg-muted/20 p-4">
+                    <div className="space-y-4 rounded-sm border border-border bg-muted/40 p-4">
                       <div>
                         <p className="text-sm font-medium">Manual provider</p>
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1834,15 +1833,15 @@ export default function Settings() {
                     <>
                       <div className="grid gap-5 lg:grid-cols-2">
                         <div className="space-y-2">
-                          <Label>Cover AI Model</Label>
+                          <Label>Cover AI model</Label>
                           <LiveImageModelSelect value={selectedImageModel} onValueChange={setSelectedImageModel} models={coverImageModels} />
                           {selectedImageModelUnavailable && (
-                            <p className="text-xs text-destructive">Pick a live OpenRouter image model for covers.</p>
+                            <p className="text-xs text-status-error">Pick a live OpenRouter image model for covers.</p>
                           )}
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Inline Source</Label>
+                          <Label>Inline source</Label>
                           <div className="grid grid-cols-2 rounded-lg border border-byword-border p-1">
                             {(["ai", "stock"] as const).map((source) => (
                               <button
@@ -1865,24 +1864,20 @@ export default function Settings() {
 
                       {inlineImageSource === "ai" && (
                         <div className="space-y-2">
-                          <Label>Inline AI Model</Label>
+                          <Label>Inline AI model</Label>
                           <LiveImageModelSelect value={selectedInlineImageModel} onValueChange={setSelectedInlineImageModel} models={imageModels} />
                           {selectedInlineImageModelUnavailable && (
-                            <p className="text-xs text-destructive">Pick a live OpenRouter image model for inline images.</p>
+                            <p className="text-xs text-status-error">Pick a live OpenRouter image model for inline images.</p>
                           )}
                         </div>
                       )}
 
                       {inlineImageSource === "stock" && (
                         <div className="space-y-2">
-                          <Label>Stock Providers</Label>
+                          <Label>Stock providers</Label>
                           <div className="flex flex-wrap gap-2">
-                            <Badge variant={keyBadgeVariant(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)}>
-                              Pixabay {apiKeys?.pixabayCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPixabayKey ? "saved" : "missing"}
-                            </Badge>
-                            <Badge variant={keyBadgeVariant(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)}>
-                              Pexels {apiKeys?.pexelsCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPexelsKey ? "saved" : "missing"}
-                            </Badge>
+                            <StatusBadge status={keyBadgeStatus(apiKeys?.hasPixabayKey, apiKeys?.pixabayCredentialStatus)} label={`Pixabay ${apiKeys?.pixabayCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPixabayKey ? "saved" : "missing"}`} showIcon={false} />
+                            <StatusBadge status={keyBadgeStatus(apiKeys?.hasPexelsKey, apiKeys?.pexelsCredentialStatus)} label={`Pexels ${apiKeys?.pexelsCredentialStatus === "undecryptable" ? "needs re-save" : apiKeys?.hasPexelsKey ? "saved" : "missing"}`} showIcon={false} />
                             <Badge variant="secondary">Openverse available</Badge>
                           </div>
                         </div>
@@ -1891,18 +1886,18 @@ export default function Settings() {
                   )}
 
                   {imageSettingsError && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                      {imageSettingsError}
-                    </div>
+                    <Alert variant="destructive">
+                      <AlertDescription className="text-foreground">{imageSettingsError}</AlertDescription>
+                    </Alert>
                   )}
 
-                  <div className="grid gap-3 rounded-lg border border-byword-border bg-muted/20 p-4 text-sm md:grid-cols-3">
+                  <div className="grid gap-3 rounded-sm border border-border bg-muted/40 p-4 text-sm md:grid-cols-3">
                     <div>
-                      <p className="text-xs text-muted-foreground">{manualPromptMode ? "Cover Prompt" : "Cover AI"}</p>
+                      <p className="text-xs text-muted-foreground">{manualPromptMode ? "Cover prompt" : "Cover AI"}</p>
                       <p className="font-medium">{manualPromptMode ? "$0 manual" : imageConfig.cover.enabled ? formatImageCostAmount(coverImageCost) : "$0 off"}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Inline {manualPromptMode ? "Prompts" : inlineImageSource === "stock" ? "Stock" : "AI"}</p>
+                      <p className="text-xs text-muted-foreground">Inline {manualPromptMode ? "prompts" : inlineImageSource === "stock" ? "stock" : "AI"}</p>
                       <p className="font-medium">
                         {manualPromptMode
                           ? imageConfig.inline.enabled && imageConfig.inline.count > 0 ? `$0 / ${imageConfig.inline.count}` : "$0 off"
@@ -1914,7 +1909,7 @@ export default function Settings() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Per Post</p>
+                      <p className="text-xs text-muted-foreground">Per post</p>
                       <p className="font-medium">{formatImageCostAmount(coverImageCost + inlineImageCost)}</p>
                     </div>
                   </div>
@@ -1934,15 +1929,15 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                   icon={ImageIcon}
-                  title="Image Style Prompt"
+                  title="Image style prompt"
                   description="Customize the style description appended to all image generation prompts."
                 />
                 <div className="space-y-4 p-6">
                   <div className="space-y-2">
-                    <Label htmlFor="imageStyle">Style Prompt</Label>
+                    <Label htmlFor="imageStyle">Style prompt</Label>
                     <Textarea
                       id="imageStyle"
-                      placeholder="Describe the style for generated images..."
+                      placeholder="Describe the style for generated images…"
                       value={imageStylePrompt}
                       onChange={(e) => setImageStylePrompt(e.target.value)}
                       className="min-h-[100px] resize-none"
@@ -1952,6 +1947,7 @@ export default function Settings() {
                     </p>
                   </div>
                   <Button
+                    variant="secondary"
                     onClick={() => saveStyleMutation.mutate(imageStylePrompt)}
                     disabled={saveStyleMutation.isPending || settingsLoading}
                   >
@@ -1961,7 +1957,7 @@ export default function Settings() {
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Save Style
+                    Save style
                   </Button>
                 </div>
               </BywordCard>
@@ -1973,7 +1969,7 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                 icon={Building2}
-                title="Brand Profile"
+                title="Brand profile"
                 description="Your brand identity for article integration."
                 action={
                   <Button
@@ -1993,7 +1989,7 @@ export default function Settings() {
                 <div className="divide-y divide-byword-border">
                   <div className="grid gap-4 p-6 md:grid-cols-[1fr_420px]">
                     <div>
-                      <Label htmlFor="brand-company" className="text-base font-semibold">Company Name</Label>
+                      <Label htmlFor="brand-company" className="text-base font-semibold">Company name</Label>
                       <p className="mt-1 text-sm text-muted-foreground">Your brand or company name.</p>
                     </div>
                     <Input
@@ -2007,7 +2003,7 @@ export default function Settings() {
 
                   <div className="space-y-4 p-6">
                     <div>
-                      <Label htmlFor="brand-description" className="text-base font-semibold">What We Do</Label>
+                      <Label htmlFor="brand-description" className="text-base font-semibold">What you do</Label>
                       <p className="mt-1 text-sm text-muted-foreground">Brief description of your products or services.</p>
                     </div>
                     <Textarea
@@ -2021,14 +2017,14 @@ export default function Settings() {
 
                   <div className="space-y-4 p-6">
                     <div>
-                      <h3 className="text-base font-semibold">Unique Value Propositions</h3>
+                      <h3 className="text-base font-semibold">Unique value propositions</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Key differentiators to weave into articles, max 5.</p>
                     </div>
                     <div className="flex gap-2">
                       <Input
                         value={newValueProp}
                         onChange={(event) => setNewValueProp(event.target.value)}
-                        placeholder="Add value prop..."
+                        placeholder="Add value prop…"
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             event.preventDefault();
@@ -2044,7 +2040,7 @@ export default function Settings() {
                     {brandValueProps.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {brandValueProps.map((prop) => (
-                          <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-byword-border bg-byword-blue-soft px-3 py-1 text-sm text-byword-blue">
+                          <span key={prop} className="inline-flex items-center gap-2 rounded-sm border border-byword-border bg-byword-blue-soft px-3 py-1 text-sm text-byword-blue">
                             {prop}
                             <button
                               type="button"
@@ -2061,7 +2057,7 @@ export default function Settings() {
 
                   <div className="grid gap-4 p-6 md:grid-cols-[1fr_420px]">
                     <div>
-                      <Label htmlFor="brand-audience" className="text-base font-semibold">Target Audience</Label>
+                      <Label htmlFor="brand-audience" className="text-base font-semibold">Target audience</Label>
                       <p className="mt-1 text-sm text-muted-foreground">Who your products or services are for.</p>
                     </div>
                     <Input
@@ -2075,7 +2071,7 @@ export default function Settings() {
 
                   <div className="space-y-4 p-6">
                     <div>
-                      <h3 className="text-base font-semibold">Brand Mentions</h3>
+                      <h3 className="text-base font-semibold">Brand mentions</h3>
                       <p className="mt-1 text-sm text-muted-foreground">How prominently to integrate your brand into articles.</p>
                     </div>
                     <div className="grid gap-3 md:grid-cols-3">
@@ -2104,7 +2100,7 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                 icon={FileText}
-                title="Knowledge Base"
+                title="Knowledge base"
                 description="Reference saved content during article generation for more accurate, on-brand content."
                 action={
                   <div className="flex items-center gap-3">
@@ -2114,6 +2110,7 @@ export default function Settings() {
                       aria-label="Use knowledge documents"
                     />
                     <Button
+                      variant="secondary"
                       onClick={() => saveBrandSettingsMutation.mutate(undefined)}
                       disabled={saveBrandSettingsMutation.isPending}
                     >
@@ -2129,7 +2126,7 @@ export default function Settings() {
                 }
               />
                 <div className="space-y-5 p-6">
-                  <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-byword-border text-sm md:max-w-md">
+                  <div className="grid grid-cols-3 overflow-hidden rounded-sm border border-border bg-muted/40 text-sm md:max-w-md">
                     <div className="p-3">
                       <p className="font-semibold">{knowledgeDocuments.length}</p>
                       <p className="text-muted-foreground">Docs</p>
@@ -2152,7 +2149,7 @@ export default function Settings() {
                     <Textarea
                       value={knowledgeContent}
                       onChange={(event) => setKnowledgeContent(event.target.value)}
-                      placeholder="Paste notes, product facts, FAQs, or brand context..."
+                      placeholder="Paste notes, product facts, FAQs, or brand context…"
                       className="min-h-[110px] resize-none"
                     />
                   </div>
@@ -2164,7 +2161,7 @@ export default function Settings() {
                       disabled={!canAddKnowledge || saveBrandSettingsMutation.isPending}
                     >
                       <Plus className="mr-2 h-4 w-4" />
-                      Add Text
+                      Add text
                     </Button>
                     <Button
                       type="button"
@@ -2173,7 +2170,7 @@ export default function Settings() {
                       disabled={isImportingKnowledge || saveBrandSettingsMutation.isPending}
                     >
                       {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
-                      Import File
+                      Import file
                     </Button>
                     <input
                       ref={knowledgeFileInputRef}
@@ -2191,9 +2188,9 @@ export default function Settings() {
                       className="rounded-md border border-dashed border-byword-border"
                     />
                   ) : (
-                    <div className="grid gap-3">
+                    <div className="divide-y divide-byword-border border-y border-byword-border">
                       {knowledgeDocuments.map((document) => (
-                        <div key={document.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
+                        <div key={document.id} className="flex items-start gap-3 py-4">
                           <IconTile icon={FileText} />
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{document.title}</p>
@@ -2204,6 +2201,7 @@ export default function Settings() {
                             variant="ghost"
                             size="icon"
                             onClick={() => removeKnowledgeDocument(document.id)}
+                            aria-label={`Remove ${document.title}`}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -2217,7 +2215,7 @@ export default function Settings() {
               <BywordCard>
                 <SectionHeader
                 icon={Target}
-                title="Call to Action"
+                title="Calls to action"
                 description="Promotional content included in your articles."
                 action={
                   <div className="flex gap-2">
@@ -2226,6 +2224,7 @@ export default function Settings() {
                       Add
                     </Button>
                     <Button
+                      variant="secondary"
                       onClick={() => saveBrandSettingsMutation.mutate(undefined)}
                       disabled={saveBrandSettingsMutation.isPending}
                     >
@@ -2261,9 +2260,9 @@ export default function Settings() {
                       className="rounded-md border border-dashed border-byword-border"
                     />
                   ) : (
-                    <div className="grid gap-3">
+                    <div className="divide-y divide-byword-border border-y border-byword-border">
                       {brandCtas.map((cta) => (
-                        <div key={cta.id} className="flex items-start gap-3 rounded-lg border border-byword-border p-4">
+                        <div key={cta.id} className="flex items-start gap-3 py-4">
                           <IconTile icon={Target} />
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{cta.label}</p>
@@ -2275,6 +2274,7 @@ export default function Settings() {
                             variant="ghost"
                             size="icon"
                             onClick={() => removeCta(cta.id)}
+                            aria-label={`Remove ${cta.label}`}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -2291,7 +2291,7 @@ export default function Settings() {
             <BywordCard>
               <SectionHeader
                 icon={SlidersHorizontal}
-                title="Advanced Defaults"
+                title="Advanced defaults"
                 description="Article instructions saved into the generation prompt."
                 action={
                   <Button
@@ -2313,7 +2313,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={Globe2} />
                     <div>
-                      <h3 className="text-base font-semibold">Research Context</h3>
+                      <h3 className="text-base font-semibold">Research context</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Ask the writer to add useful context and explain claims clearly.</p>
                     </div>
                   </div>
@@ -2324,7 +2324,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={ListChecks} />
                     <div>
-                      <h3 className="text-base font-semibold">Table of Contents</h3>
+                      <h3 className="text-base font-semibold">Table of contents</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Include a concise table of contents near the beginning.</p>
                     </div>
                   </div>
@@ -2335,7 +2335,7 @@ export default function Settings() {
                   <div className="flex items-start gap-4">
                     <IconTile icon={MessageSquare} />
                     <div>
-                      <h3 className="text-base font-semibold">Default Voice</h3>
+                      <h3 className="text-base font-semibold">Default voice</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Fallback voice used when no persona overrides it.</p>
                     </div>
                   </div>
@@ -2357,6 +2357,29 @@ export default function Settings() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={Boolean(pendingKeyDelete)} onOpenChange={(open) => !open && setPendingKeyDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete the {pendingKeyDelete?.label} key?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Generation that depends on this key stops until a new key is saved. Other saved keys are not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingKeyDelete) deleteApiKeyMutation.mutate(pendingKeyDelete.provider);
+                setPendingKeyDelete(null);
+              }}
+            >
+              Delete key
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </BywordPageShell>
   );
 }

@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, CheckCircle2, Clock, Search } from "lucide-react";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { StatRowSkeleton } from "@/components/patterns/PageSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
@@ -24,7 +27,7 @@ function timeAgo(value: string | null) {
 }
 
 export default function AdminStatus() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => api.get<AdminStatusResponse>("/admin/status"),
     refetchInterval: 60_000,
@@ -32,37 +35,42 @@ export default function AdminStatus() {
 
   return (
     <BywordPageShell>
-      <SectionHeader
-        icon={Activity}
+      <PageHeader
         title="System status"
         description="Live operational signals from the API, job queue, scheduler, and Search Console connections."
-        action={data && <StatusBadge status={data.status === "operational" ? "success" : "warning"} label={data.status === "operational" ? "Operational" : "Needs attention"} />}
-      />
+      >
+        {data && <StatusBadge status={data.status === "operational" ? "success" : "warning"} label={data.status === "operational" ? "Operational" : "Needs attention"} />}
+      </PageHeader>
 
       {error ? (
-        <BywordCard className="border-[hsl(var(--status-error)/0.35)] p-5 text-sm text-status-error">
-          Status could not be loaded: {error.message}
+        <BywordCard>
+          <EmptyState
+            tone="error"
+            title="Status could not be loaded"
+            description={`${error.message}. Nothing was changed; the check runs again every minute.`}
+            primaryAction={{ label: "Try again", onClick: () => void refetch() }}
+          />
         </BywordCard>
       ) : isLoading || !data ? (
-        <BywordCard className="p-5 text-sm text-muted-foreground">Checking system status…</BywordCard>
+        <StatRowSkeleton items={3} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
           <StatusCard icon={Activity} label="API and database" value="Operational" ok />
           <StatusCard icon={Clock} label="Last scheduler run" value={timeAgo(data.scheduler.lastRunAt)} ok={Boolean(data.scheduler.lastRunAt && Date.now() - new Date(data.scheduler.lastRunAt).getTime() <= 30 * 60 * 60 * 1000)} />
           <StatusCard icon={AlertTriangle} label="Stale running jobs" value={String(data.staleRunningJobs)} ok={data.staleRunningJobs === 0} />
 
-          <BywordCard className="p-5 lg:col-span-3">
-            <h2 className="text-sm font-semibold text-foreground">Job queue</h2>
-            <div className="mt-4 flex flex-wrap gap-6">
+          <BywordCard className="lg:col-span-3">
+            <SectionHeader icon={Activity} title="Job queue" description="Jobs by state across every workspace." />
+            <div className="flex flex-wrap gap-6 p-5">
               {Object.entries(data.jobs).map(([status, count]) => (
-                <div key={status}><p className="type-meta">{status}</p><p className="mt-1 text-2xl font-semibold">{count}</p></div>
+                <div key={status}><p className="type-kicker">{status.replace(/_/g, " ")}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{count}</p></div>
               ))}
             </div>
           </BywordCard>
 
-          <BywordCard className="p-5 lg:col-span-3">
-            <div className="flex items-center gap-2"><Search className="h-4 w-4" /><h2 className="text-sm font-semibold text-foreground">Search Console</h2></div>
-            <div className="mt-4 divide-y divide-border">
+          <BywordCard className="lg:col-span-3">
+            <SectionHeader icon={Search} title="Search Console" description="Property connections and their last sync." />
+            <div className="divide-y divide-border px-5 py-4">
               {data.searchConsole.map((integration) => {
                 const ok = integration.status === "connected";
                 return (

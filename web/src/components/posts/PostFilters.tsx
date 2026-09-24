@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Filter, ArrowUpDown, X } from "lucide-react";
+import { formatSourceType } from "@/lib/source-labels";
 import { Badge } from "@/components/ui/badge";
 
 export type SortField = "created_at" | "title";
@@ -123,7 +124,7 @@ export function PostFilters({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Source Type</label>
+              <label className="text-xs text-muted-foreground">Source type</label>
               <Select value={sourceFilter} onValueChange={onSourceFilterChange}>
                 <SelectTrigger className="h-8">
                   <SelectValue placeholder="All sources" />
@@ -132,7 +133,7 @@ export function PostFilters({
                   <SelectItem value="all">All sources</SelectItem>
                   {sourceTypes.map((source) => (
                     <SelectItem key={source} value={source}>
-                      {source.replace("_", " ")}
+                      {formatSourceType(source)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -243,7 +244,7 @@ export function PostFilters({
         <div className="flex items-center gap-1.5 ml-2">
           {sourceFilter !== "all" && (
             <Badge variant="secondary" className="gap-1">
-              {sourceFilter.replace("_", " ")}
+              {formatSourceType(sourceFilter)}
               <X className="h-3 w-3 cursor-pointer" onClick={() => onSourceFilterChange("all")} />
             </Badge>
           )}

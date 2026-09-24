@@ -27,8 +27,8 @@ type CheckRow = {
 };
 
 function markTone(ok: boolean | null) {
-  if (ok === true) return "bg-[hsl(var(--status-success))]";
-  if (ok === false) return "bg-[hsl(var(--status-error))]/65";
+  if (ok === true) return "bg-status-success";
+  if (ok === false) return "bg-status-error/65";
   return "bg-byword-border";
 }
 
@@ -83,7 +83,7 @@ export function RevisionScorecard({
             <span
               className={cn(
                 "font-mono text-[11px] font-semibold",
-                delta > 0 ? "text-[hsl(var(--status-success))]" : "text-destructive",
+                delta > 0 ? "text-status-success" : "text-status-error",
               )}
             >
               {delta > 0 ? "+" : ""}{delta} vs r{base!.revision_number}
@@ -134,9 +134,9 @@ export function RevisionScorecard({
                     className={cn(
                       "w-20 text-right font-mono text-[11px] font-semibold",
                       row.current === true
-                        ? "text-[hsl(var(--status-success))]"
+                        ? "text-status-success"
                         : row.current === false
-                          ? "text-destructive"
+                          ? "text-status-error"
                           : "text-muted-foreground",
                     )}
                   >
@@ -157,9 +157,9 @@ export function RevisionScorecard({
       {comparing && (fixed > 0 || regressed > 0) && (
         <div className="border-t border-byword-border bg-muted/25 px-4 py-2.5">
           <span className="font-mono text-[11px] text-muted-foreground">
-            {fixed > 0 && <span className="font-semibold text-[hsl(var(--status-success))]">{fixed} fixed</span>}
+            {fixed > 0 && <span className="font-semibold text-status-success">{fixed} fixed</span>}
             {fixed > 0 && regressed > 0 && " · "}
-            {regressed > 0 && <span className="font-semibold text-destructive">{regressed} lost</span>}
+            {regressed > 0 && <span className="font-semibold text-status-error">{regressed} lost</span>}
             {" "}since r{base!.revision_number}
           </span>
         </div>
