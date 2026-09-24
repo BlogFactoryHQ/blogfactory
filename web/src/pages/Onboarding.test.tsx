@@ -126,7 +126,7 @@ describe("Onboarding", () => {
   it("asks only for site information the product uses", async () => {
     await renderOnboarding();
 
-    expect(document.body).toHaveTextContent("We only ask for information the product uses");
+    expect(document.body).toHaveTextContent("BlogFactory asks only for what it uses");
     expect(document.querySelector("#site-url")).toBeInTheDocument();
     expect(document.querySelector("#first-name")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("Agency");
@@ -148,7 +148,7 @@ describe("Onboarding", () => {
     await rerenderOnboarding();
 
     expect(document.body).toHaveTextContent("Choose your first topic");
-    expect(document.body).not.toHaveTextContent("What site are we writing for?");
+    expect(document.body).not.toHaveTextContent("Which site should BlogFactory write for?");
   });
 
   it("resumes a ready workspace at site topics without showing optional integrations", async () => {

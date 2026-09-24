@@ -267,8 +267,8 @@ export default function Onboarding() {
             <div className="mb-8 text-center">
               <IconTile icon={Globe2} className="mx-auto h-12 w-12" />
               <p className="type-kicker mt-5 text-byword-blue">Step 1 · Your site</p>
-              <h1 className="mt-2 text-2xl font-semibold">What site are we writing for?</h1>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">We only ask for information the product uses. BlogFactory reads the homepage and sitemap to find useful starting topics.</p>
+              <h1 className="mt-2 text-2xl font-semibold">Which site should BlogFactory write for?</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">BlogFactory asks only for what it uses. It reads the homepage and sitemap to find useful starting topics.</p>
             </div>
             <form onSubmit={submitSite} className="space-y-5">
               <div className="space-y-2">
@@ -348,7 +348,7 @@ export default function Onboarding() {
           <BywordCard className="mx-auto max-w-2xl overflow-hidden">
             <div className="border-b border-byword-border p-6 sm:p-8">
               <p className="type-kicker text-byword-blue">Step 4 · First draft</p>
-              <h1 className="mt-2 text-2xl font-semibold">One clear decision before we write</h1>
+              <h1 className="mt-2 text-2xl font-semibold">One decision before the first draft</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">BlogFactory picked the writing defaults. You can change models, images, voice, and research after you have seen the first result.</p>
             </div>
             <div className="space-y-5 p-6 sm:p-8">

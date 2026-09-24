@@ -170,7 +170,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild disabled={effectiveCollapsed}>
                 <button className="flex h-10 w-full items-center gap-2.5 overflow-hidden rounded-sm border border-sidebar-border bg-card px-2.5 text-left shadow-[inset_0_1px_0_var(--panel-highlight)] transition-calm hover:border-byword-blue/60 hover:bg-byword-blue-soft/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-1">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-byword-border bg-byword-blue-soft text-byword-blue">
-                    <span className="text-[10px] font-bold tracking-tight">{workspaceInitial}</span>
+                    <span className="text-[10px] font-bold">{workspaceInitial}</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold leading-tight text-foreground">{workspaceName}</p>
@@ -182,7 +182,7 @@ export function AppSidebar() {
               <DropdownMenuContent align="start" sideOffset={8} className="w-[432px] rounded-md border-byword-border p-3">
                 {activeSite && (
                   <>
-                    <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                    <DropdownMenuLabel className="type-kicker px-2 py-2">
                       Current domain
                     </DropdownMenuLabel>
                     <div className="mb-3 flex items-center gap-4 rounded-md border border-byword-border bg-byword-blue-soft p-4">
@@ -198,7 +198,7 @@ export function AppSidebar() {
                   </>
                 )}
 
-                <DropdownMenuLabel className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                <DropdownMenuLabel className="type-kicker px-2 py-2">
                   Switch to
                 </DropdownMenuLabel>
                 <div className="max-h-64 overflow-y-auto">
