@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -76,7 +77,10 @@ import { useSites } from "@/hooks/useSites";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 import { ProgrammaticPanel } from "@/pages/Programmatic";
-import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
+import { formatCompactCurrency } from "@/lib/search-insights";
+import { formatSourceType } from "@/lib/source-labels";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
 const DEFAULT_INLINE_IMAGE_MODEL = "";
@@ -221,20 +225,20 @@ const formatCost = (value: number) =>
 
 function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
   return (
-    <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+    <div className="rounded-md border border-byword-border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <DollarSign className="h-4 w-4 text-byword-blue" />
           <p className="font-semibold">Projected cost</p>
         </div>
-        <p className="text-lg font-bold">{formatCost(estimate.totalExpected)}</p>
+        <p className="type-data text-lg font-semibold tabular-nums">{formatCost(estimate.totalExpected)}</p>
       </div>
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <span>Text {formatCost(estimate.textCost)}</span>
         <span>Cover {formatCost(estimate.coverImageCost)}</span>
         <span>Inline {formatCost(estimate.inlineImageCost)}</span>
       </div>
-      <div className="mt-3 rounded-md border border-byword-border bg-card p-3 text-xs text-muted-foreground">
+      <div className="mt-3 rounded-sm border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
         <div className="flex items-center justify-between gap-3 font-medium text-foreground">
           <span>Per draft text</span>
           <span>{formatCost(estimate.textCostPerPost)} × {estimate.postCount}</span>
@@ -256,18 +260,18 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
 }
 
 function TopicFitNote({ result }: { result: TopicFitResult }) {
-  const toneClass = {
-    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
-    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
-    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
-    neutral: "border-byword-border bg-muted/20 text-foreground",
-  }[result.tone];
+  const variant = ({
+    good: "success",
+    context: "warning",
+    scale: "info",
+    neutral: "default",
+  } as const)[result.tone];
 
   return (
-    <div className={cn("rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground", toneClass)}>
-      <p className="font-semibold">{result.title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
-    </div>
+    <Alert variant={variant}>
+      <AlertTitle>{result.title}</AlertTitle>
+      <AlertDescription className="text-xs">{result.detail}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -298,39 +302,40 @@ function GenerationBrief({
   topicFit: TopicFitResult;
   blockers: string[];
 }) {
-  const statusTone: SemanticTone = blockers.length ? "risk" : topicFit.tone === "good" ? "success" : topicFit.tone === "context" ? "opportunity" : "performance";
   const items = [
-    { label: "Source", value: source || "Missing", tone: source ? "performance" as SemanticTone : "risk" as SemanticTone },
-    { label: "Voice", value: persona || "No persona", tone: persona ? "success" as SemanticTone : "risk" as SemanticTone },
-    { label: "Model", value: model || "No model", tone: model ? "neutral" as SemanticTone : "risk" as SemanticTone },
-    { label: "Cost", value: formatCompactCurrency(estimate.totalExpected), tone: "opportunity" as SemanticTone },
-    { label: "Images", value: imagePlan, tone: imagePlan === "Off" ? "neutral" as SemanticTone : "performance" as SemanticTone },
-    { label: "Links", value: linkState, tone: linkState === "Off" ? "neutral" as SemanticTone : "success" as SemanticTone },
+    { label: "Source", value: source || "Missing" },
+    { label: "Voice", value: persona || "No persona" },
+    { label: "Model", value: model || "No model" },
+    { label: "Cost", value: formatCompactCurrency(estimate.totalExpected) },
+    { label: "Images", value: imagePlan },
+    { label: "Links", value: linkState },
   ];
 
   return (
-    <div className="rounded-lg border border-byword-border bg-card p-4">
+    <div className="rounded-md border border-byword-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-semibold">{title}</p>
           <p className="mt-1 text-xs text-muted-foreground">{topicFit.title}</p>
         </div>
-        <span className={cn("rounded-md border px-2.5 py-1 text-xs font-semibold", semanticToneClass(statusTone))}>
-          {blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "Ready"}
-        </span>
+        {blockers.length ? (
+          <StatusBadge status="error" label={`${blockers.length} blocker${blockers.length === 1 ? "" : "s"}`} />
+        ) : (
+          <StatusBadge status="success" label="Ready" />
+        )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
-          <div key={item.label} className={cn("rounded-md border px-3 py-2", semanticToneClass(item.tone))}>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{item.label}</p>
-            <p className="mt-1 truncate text-sm font-medium text-foreground">{item.value}</p>
+          <div key={item.label} className="rounded-sm border border-border bg-muted/40 px-3 py-2">
+            <p className="type-kicker">{item.label}</p>
+            <p className="mt-1 truncate text-sm font-medium text-foreground" title={item.value}>{item.value}</p>
           </div>
         ))}
       </div>
-      <div className={cn("mt-3 rounded-md border px-3 py-2", linksEnabled ? semanticToneClass("success") : semanticToneClass("neutral"))}>
+      <div className="mt-3 rounded-sm border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">Link density</p>
+            <p className="type-kicker">Link density</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{linksEnabled ? "Applies to this generation" : "Internal links off"}</p>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -340,11 +345,12 @@ function GenerationBrief({
                 type="button"
                 disabled={!linksEnabled}
                 onClick={() => onLinkDensityChange(option.value)}
+                aria-pressed={linksEnabled && linkDensity === option.value}
                 className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-semibold transition-calm disabled:cursor-not-allowed disabled:opacity-45",
+                  "rounded-sm border px-2.5 py-1 text-xs font-semibold transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
                   linksEnabled && linkDensity === option.value
-                    ? "border-[hsl(var(--status-success)/0.45)] bg-[hsl(var(--status-success)/0.16)] text-[hsl(var(--status-success))]"
-                    : "border-byword-border bg-card text-foreground hover:border-[hsl(var(--status-success)/0.45)]"
+                    ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                    : "border-byword-border bg-card text-foreground hover:border-byword-blue/40"
                 )}
                 title={option.label}
               >
@@ -355,14 +361,14 @@ function GenerationBrief({
         </div>
       </div>
       {blockers.length > 0 && (
-        <div className="mt-3 grid gap-2">
+        <ul className="mt-3 space-y-1" aria-live="polite">
           {blockers.map((blocker) => (
-            <p key={blocker} className="flex items-center gap-2 rounded-md border border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] px-3 py-2 text-xs font-medium text-[hsl(var(--status-error))]">
-              <AlertTriangle className="h-3.5 w-3.5" />
+            <li key={blocker} className="flex items-center gap-2 text-xs font-medium text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               {blocker}
-            </p>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -956,11 +962,11 @@ export default function ContentCreator() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Create Content"
-        description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
+        description="Create one article draft, a batch campaign, or programmatic drafts from a template."
       />
 
       <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
-        <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="type-kicker flex items-center gap-4 text-center">
           <div className="h-px flex-1 bg-byword-border" />
           Choose how to create
           <div className="h-px flex-1 bg-byword-border" />
@@ -1052,7 +1058,7 @@ export default function ContentCreator() {
                   </TabsList>
 
                   <TabsContent value="article_keyword" className="space-y-2">
-                    <Label>Target Keyword</Label>
+                    <Label>Target keyword</Label>
                     <div className="relative">
                       <Sparkles className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -1069,7 +1075,7 @@ export default function ContentCreator() {
                   </TabsContent>
 
                   <TabsContent value="article_title" className="space-y-2">
-                    <Label>Article Title</Label>
+                    <Label>Article title</Label>
                     <div className="relative">
                       <FileText className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -1088,7 +1094,7 @@ export default function ContentCreator() {
 
                 {sourceType === "article_keyword" && articleTitlePreview && (
                   <div className="space-y-2">
-                    <Label>Title Preview</Label>
+                    <Label>Title preview</Label>
                     <Input
                       value={articleTitlePreview}
                       onChange={(e) => setArticleTitlePreview(e.target.value)}
@@ -1109,7 +1115,7 @@ export default function ContentCreator() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Custom Instructions</Label>
+                    <Label>Custom instructions</Label>
                     <Input
                       placeholder="Keep it practical, skeptical, and example-led"
                       value={articleCustomInstructions}
@@ -1132,7 +1138,7 @@ export default function ContentCreator() {
                   <CollapsibleContent className="mt-4 space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label>Article Type</Label>
+                        <Label>Article type</Label>
                         <Select value={articleType} onValueChange={(value) => setArticleType(value as ArticleType)}>
                           <SelectTrigger className="h-11">
                             <SelectValue />
@@ -1147,7 +1153,7 @@ export default function ContentCreator() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Related Keywords</Label>
+                        <Label>Related keywords</Label>
                         <Input
                           placeholder="free project management software, agile project management"
                           value={articleRelatedKeywords}
@@ -1157,7 +1163,7 @@ export default function ContentCreator() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Word Count</Label>
+                        <Label>Word count</Label>
                         <Input
                           type="number"
                           min={300}
@@ -1171,12 +1177,12 @@ export default function ContentCreator() {
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                      <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                         <Checkbox checked={articleIncludeToc} onCheckedChange={(checked) => setArticleIncludeToc(Boolean(checked))} />
                         Table of contents
                       </label>
 
-                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                      <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                         <Checkbox checked={articleResearchFocus} onCheckedChange={(checked) => setArticleResearchFocus(Boolean(checked))} />
                         Research emphasis
                       </label>
@@ -1232,7 +1238,7 @@ export default function ContentCreator() {
               </TabsContent>
 
               <TabsContent value="pdf" className="space-y-4">
-                <Label>PDF Document</Label>
+                <Label>PDF document</Label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1241,7 +1247,7 @@ export default function ContentCreator() {
                   className="hidden"
                 />
                 {pdfFile ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/30 p-4">
+                  <div className="flex items-center gap-3 rounded-md border border-byword-border bg-muted/40 p-4">
                     <IconTile icon={FileText} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{pdfFile.name}</p>
@@ -1262,7 +1268,7 @@ export default function ContentCreator() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
-                    className="w-full rounded-lg border border-dashed border-byword-border bg-muted/20 p-9 text-center transition-calm hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
+                    className="w-full rounded-md border border-dashed border-byword-border bg-muted/20 p-9 text-center transition-calm hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
                   >
                     {isUploading ? (
                       <>
@@ -1284,7 +1290,7 @@ export default function ContentCreator() {
               </TabsContent>
 
               <TabsContent value="raw_text" className="space-y-2">
-                <Label>Source Content</Label>
+                <Label>Source content</Label>
                 <Textarea
                   placeholder="Paste or type your content here..."
                   value={rawText}
@@ -1345,7 +1351,7 @@ export default function ContentCreator() {
               </div>
 
               <div className="space-y-2">
-                <Label>OpenRouter Text Model</Label>
+                <Label>OpenRouter text model</Label>
                 <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1384,21 +1390,23 @@ export default function ContentCreator() {
             />
 
             <div className="space-y-3">
-              <Label>Output Variations</Label>
+              <Label>Output variations</Label>
               <div className="grid grid-cols-3 gap-3">
                 {([1, 3, 5] as const).map((num) => (
                   <button
                     key={num}
+                    type="button"
                     onClick={() => setVariations(num)}
+                    aria-pressed={variations === num}
                     className={cn(
-                      "rounded-lg border p-4 text-center transition-calm",
+                      "rounded-md border p-4 text-center transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       variations === num
                         ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
                         : "border-byword-border bg-card hover:border-byword-blue/40"
                     )}
                   >
                     <p className="text-base font-semibold">
-                      {num} Draft{num > 1 ? "s" : ""}
+                      {num} draft{num > 1 ? "s" : ""}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {num === 1 ? "Fastest" : num === 3 ? "Recommended" : "Exploratory"}
@@ -1415,10 +1423,11 @@ export default function ContentCreator() {
             <Button
               onClick={handleGenerate}
               disabled={selectedModelUnavailable}
-              className="h-12 w-full text-base"
+              size="lg"
+              className="w-full"
             >
-              <Sparkles className="mr-2 h-5 w-5" />
-              {runningCount > 0 ? `New Generation (${runningCount} running)` : "Generate Drafts"}
+              <Sparkles className="mr-2 h-4 w-4" />
+              {runningCount > 0 ? `New generation (${runningCount} running)` : "Generate drafts"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
@@ -1439,7 +1448,7 @@ export default function ContentCreator() {
             title="Recent generations"
             description="The latest drafts created in this workspace."
           />
-          <div className="p-6">
+          <div className="px-4 py-2 sm:px-6">
             {recentPosts.length === 0 ? (
               <EmptyState
                 size="panel"
@@ -1449,12 +1458,12 @@ export default function ContentCreator() {
                 className="rounded-md border border-dashed border-byword-border"
               />
             ) : (
-              <div className="grid gap-3">
+              <div className="divide-y divide-byword-border">
                 {recentPosts.map((post) => (
                   <Link
                     key={post.id}
                     to={`/library/posts/${post.id}/edit`}
-                    className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
+                    className="flex items-start gap-3 px-2 py-3 transition-calm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <IconTile icon={FileTextIcon} />
                     <div className="min-w-0 flex-1">
@@ -1462,7 +1471,7 @@ export default function ContentCreator() {
                         {post.title}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Generated from {post.source_type?.replace("_", " ") || "unknown"}
+                        Generated from {post.source_type ? formatSourceType(post.source_type) : "unknown source"}
                       </p>
                     </div>
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
@@ -1484,9 +1493,9 @@ export default function ContentCreator() {
               title="Your next campaign"
               description="Batch articles with shared voice, model, image settings, and context."
               action={
-                <span className="rounded-md border border-byword-border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground">
+                <Badge variant="outline">
                   {campaignItemCount} item{campaignItemCount === 1 ? "" : "s"}
-                </span>
+                </Badge>
               }
             />
             <div className="space-y-7 p-6">
@@ -1496,27 +1505,27 @@ export default function ContentCreator() {
                   <Input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder="Q1 product guides" className="h-11" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Input Mode</Label>
+                  <Label>Input mode</Label>
                   <Select value={campaignMode} onValueChange={(value) => setCampaignMode(value as CampaignMode)}>
                     <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="keyword">Keyword</SelectItem>
                       <SelectItem value="title">Title</SelectItem>
-                      <SelectItem value="title_outline">Title + Outline</SelectItem>
+                      <SelectItem value="title_outline">Title + outline</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
                 <Link to="/create?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
-              </div>
+              </p>
 
               {campaignMode === "title_outline" && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Outline Mode</Label>
+                    <Label>Outline mode</Label>
                     <Select value={campaignOutlineMode} onValueChange={setCampaignOutlineMode}>
                       <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1527,7 +1536,7 @@ export default function ContentCreator() {
                   </div>
                   {campaignOutlineMode === "shared" && (
                     <div className="space-y-2">
-                      <Label>Shared Outline</Label>
+                      <Label>Shared outline</Label>
                       <Textarea value={campaignSharedOutline} onChange={(event) => setCampaignSharedOutline(event.target.value)} placeholder={"Introduction\nH3:Key details\nConclusion"} className="min-h-24" />
                       {campaignNeedsSharedOutline && <p className="text-xs text-destructive">Add at least one shared heading.</p>}
                     </div>
@@ -1552,7 +1561,7 @@ export default function ContentCreator() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Brand Voice</Label>
+                  <Label>Brand voice</Label>
                   <Select value={personaId || "none"} onValueChange={handleCampaignPersonaChange}>
                     <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1566,7 +1575,7 @@ export default function ContentCreator() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>OpenRouter Text Model</Label>
+                  <Label>OpenRouter text model</Label>
                   <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                   {selectedModelUnavailable && (
                     <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1575,7 +1584,7 @@ export default function ContentCreator() {
               </div>
 
               <div className="space-y-2">
-                <Label>Custom Instructions</Label>
+                <Label>Custom instructions</Label>
                 <Textarea value={campaignCustomInstructions} onChange={(event) => setCampaignCustomInstructions(event.target.value)} className="min-h-24" />
               </div>
 
@@ -1608,7 +1617,7 @@ export default function ContentCreator() {
                 blockers={campaignBriefBlockers}
               />
 
-              <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm">
+              <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                 <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />
                 <span>
                   <span className="block font-medium">Start after create</span>
@@ -1623,10 +1632,11 @@ export default function ContentCreator() {
                 <Button
                   onClick={handleCreateCampaign}
                   disabled={createCampaignMutation.isPending || !campaignCanSubmit}
-                  className="h-11 sm:min-w-[220px]"
+                  size="lg"
+                  className="sm:min-w-[220px]"
                 >
                   {createCampaignMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create & Start Campaign" : "Create Campaign"}
+                  {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create and start campaign" : "Create campaign"}
                   {!createCampaignMutation.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
               </div>
@@ -1648,14 +1658,14 @@ export default function ContentCreator() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+              <AlertTriangle className="h-5 w-5 text-status-warning" />
               Confirm projected cost
             </DialogTitle>
           </DialogHeader>
           {pendingCostAction && (
             <div className="space-y-4">
               <CostEstimateCard estimate={pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate} />
-              <div className="rounded-lg border border-byword-border p-3 text-sm text-muted-foreground">
+              <div className="rounded-md border border-byword-border p-3 text-sm text-muted-foreground">
                 {(pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate).assumptions.map((item) => (
                   <p key={item}>- {item}</p>
                 ))}
@@ -1665,7 +1675,7 @@ export default function ContentCreator() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingCostAction(null)}>Cancel</Button>
-            <Button onClick={confirmCost}>Continue</Button>
+            <Button onClick={confirmCost}>{pendingCostAction === "campaign" ? "Create campaign" : "Generate drafts"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

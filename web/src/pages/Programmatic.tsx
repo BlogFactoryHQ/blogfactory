@@ -31,6 +31,19 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { CardGridSkeleton } from "@/components/patterns/PageSkeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -106,16 +119,16 @@ const sectionTypes = [
   { type: "tldr", label: "TL;DR", description: "Quick summary for scanners" },
   { type: "conclusion", label: "Conclusion", description: "Wrap up and next steps" },
   { type: "cta", label: "CTA", description: "Call to action block" },
-  { type: "text", label: "Text Section", description: "Prose paragraphs under your heading" },
+  { type: "text", label: "Text section", description: "Prose paragraphs under your heading" },
   { type: "table", label: "Table", description: "Structured comparison or details" },
   { type: "faq", label: "FAQ", description: "Question and answer section" },
-  { type: "how-to", label: "How-To", description: "Numbered steps" },
+  { type: "how-to", label: "How-to", description: "Numbered steps" },
 ];
 
 const dimensionalStrategies = [
-  { dimension: "0D", title: "Flat keyword list", description: "Hand-picked targets with no shared pattern.", action: "Use Campaigns", to: "/content-creator?mode=campaign", icon: ListChecks },
-  { dimension: "1D", title: "One variable", description: "Example: how many calories in {{food}}.", action: "Use Programmatic", to: "/content-creator?mode=programmatic", icon: FileText },
-  { dimension: "2D", title: "Two variables", description: "Example: how much {{nutrient}} in {{food}}.", action: "Use all-combinations", to: "/content-creator?mode=programmatic", icon: Grid2X2 },
+  { dimension: "0D", title: "Flat keyword list", description: "Hand-picked targets with no shared pattern.", action: "Use Campaigns", to: "/create?mode=campaign", icon: ListChecks },
+  { dimension: "1D", title: "One variable", description: "Example: how many calories in {{food}}.", action: "Use Programmatic", to: "/create?mode=programmatic", icon: FileText },
+  { dimension: "2D", title: "Two variables", description: "Example: how much {{nutrient}} in {{food}}.", action: "Use all-combinations", to: "/create?mode=programmatic", icon: Grid2X2 },
 ];
 
 const variableExamples: Record<string, string> = {
@@ -158,7 +171,7 @@ function newSection(type = "text"): ProgrammaticSection {
   return {
     id: `section-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type,
-    heading: details?.label || "New Section",
+    heading: details?.label || "New section",
     instructions: details?.description || "Explain the key details readers need in this section.",
     minWords: 120,
     maxWords: 180,
@@ -214,9 +227,9 @@ function FlowCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative min-h-[175px] rounded-lg border border-byword-border bg-card p-7 text-left transition-calm hover:border-byword-blue/40 hover:shadow-[0_18px_45px_rgba(22,82,125,0.08)]"
+      className="group relative min-h-[175px] rounded-md border border-byword-border bg-card p-7 text-left transition-calm hover:border-byword-blue/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {badge && <span className="absolute right-6 top-6 rounded bg-muted px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{badge}</span>}
+      {badge && <Badge variant="secondary" className="absolute right-6 top-6">{badge}</Badge>}
       <IconTile icon={icon} className="h-12 w-12" />
       <h2 className="mt-7 text-xl font-semibold text-foreground">{title}</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>
@@ -241,26 +254,26 @@ function ScoreBar({ label, value, total }: { label: string; value: number; total
 }
 
 function StrategyFitNote({ result }: { result: TopicFitResult }) {
-  const toneClass = {
-    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
-    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
-    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
-    neutral: "border-byword-border bg-muted/20 text-foreground",
-  }[result.tone];
+  const variant = ({
+    good: "success",
+    context: "warning",
+    scale: "info",
+    neutral: "default",
+  } as const)[result.tone];
 
   return (
-    <div className={`rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground ${toneClass}`}>
-      <p className="font-semibold">{result.title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
-    </div>
+    <Alert variant={variant}>
+      <AlertTitle>{result.title}</AlertTitle>
+      <AlertDescription className="text-xs">{result.detail}</AlertDescription>
+    </Alert>
   );
 }
 
 function SignalPill({ label, value }: { label: string; value?: string }) {
   const Icon = value ? CheckCircle2 : AlertCircle;
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs ${value ? "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)] text-foreground" : "border-byword-border bg-muted text-muted-foreground"}`}>
-      <Icon className={`h-3.5 w-3.5 ${value ? "text-[hsl(var(--status-success))]" : "text-muted-foreground"}`} />
+    <span className={`inline-flex items-center gap-1.5 rounded-sm border border-byword-border px-2.5 py-1 text-xs ${value ? "bg-card text-foreground" : "bg-muted text-muted-foreground"}`}>
+      <Icon className={`h-3.5 w-3.5 ${value ? "text-status-success" : "text-muted-foreground"}`} />
       <span className="font-medium">{label}</span>
       {value && <span className="font-mono text-muted-foreground">{variableLabel(value)}</span>}
     </span>
@@ -269,8 +282,15 @@ function SignalPill({ label, value }: { label: string; value?: string }) {
 
 function WorkflowStep({ step, title, detail, active }: { step: string; title: string; detail: string; active?: boolean }) {
   return (
-    <div className={`border-l-2 px-4 py-3 ${active ? "border-byword-blue bg-byword-blue-soft/35" : "border-byword-border bg-card"}`}>
-      <p className="type-meta">{step}</p>
+    <div className="bg-card px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="type-meta">{step}</p>
+        {active ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-status-success" aria-label="Done" />
+        ) : (
+          <span className="h-3.5 w-3.5 rounded-full border border-byword-border" aria-label="Not done" />
+        )}
+      </div>
       <p className="mt-1 text-sm font-semibold">{title}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
     </div>
@@ -302,7 +322,9 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   const [startNow, setStartNow] = useState(true);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All Templates");
+  const [category, setCategory] = useState("All templates");
+  const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
@@ -356,11 +378,11 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
   const briefCoverage = briefSignalMap.filter((signal) => signal.variable).length;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
   const customTemplates = templates.filter((template) => !template.builtIn);
-  const categories = useMemo(() => ["All Templates", ...Array.from(new Set(templates.map((template) => template.category).filter(Boolean)))], [templates]);
+  const categories = useMemo(() => ["All templates", ...Array.from(new Set(templates.map((template) => template.category).filter(Boolean)))], [templates]);
   const filteredTemplates = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return templates.filter((template) => {
-      const matchesCategory = category === "All Templates" || template.category === category;
+      const matchesCategory = category === "All templates" || template.category === category;
       const haystack = [
         template.name,
         template.category,
@@ -594,7 +616,10 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   function handleCreate() {
     if (!canCreate) return;
-    if (shouldWarnForCost({ estimate }) && !window.confirm(`Generate ${materialized.rows.length} drafts? High estimate is ${formatCost(estimate.totalHigh)}.`)) return;
+    if (shouldWarnForCost({ estimate })) {
+      setConfirmCreateOpen(true);
+      return;
+    }
     createCampaign.mutate();
   }
 
@@ -612,7 +637,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
             onChange={(event) => setPreviewIndex(Math.max(0, Math.min(Number(event.target.value) - 1, materialized.rows.length - 1)))}
           />
         </div>
-        <div className="rounded-lg border border-byword-border bg-muted/20 p-5">
+        <div className="rounded-md border border-byword-border bg-muted/40 p-5">
           <h2 className="text-lg font-semibold leading-7">{renderedPreview.title}</h2>
           <div className="mt-5 space-y-4">
             {renderedPreview.sections.filter((section) => section.type !== "title").slice(0, 6).map((section) => (
@@ -629,7 +654,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   const renderGenerateCard = () => (
     <BywordCard>
-      <SectionHeader icon={Play} title="Launch Campaign" />
+      <SectionHeader icon={Play} title="Launch campaign" />
       <div className="space-y-4 p-6">
         <div className="space-y-2">
           <Label>Campaign name</Label>
@@ -661,7 +686,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           </div>
         )}
         <div className="space-y-2">
-          <Label>Brand Voice</Label>
+          <Label>Brand voice</Label>
           <Select value={personaId} onValueChange={setPersonaId}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -671,12 +696,12 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>OpenRouter Text Model</Label>
+          <Label>OpenRouter text model</Label>
           <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
           {selectedModelUnavailable && <p className="text-xs text-destructive">Pick a live OpenRouter model.</p>}
         </div>
         <div className="space-y-2">
-          <Label>Custom Instructions</Label>
+          <Label>Custom instructions</Label>
           <Textarea value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} className="min-h-20" />
         </div>
         <label className="flex items-center gap-2 rounded-md border border-byword-border bg-muted/20 p-3 text-sm">
@@ -689,20 +714,39 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <p className="mt-1 text-xs text-muted-foreground">Each finished draft then runs one separate validated SEO metadata job.</p>
         </div>
         {validationErrors.length > 0 && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-            {validationErrors.slice(0, 4).map((error) => <p key={error}>{error}</p>)}
-            {validationErrors.length > 4 && <p>{validationErrors.length - 4} more issue{validationErrors.length - 4 === 1 ? "" : "s"}</p>}
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription className="text-foreground">
+              {validationErrors.slice(0, 4).map((error) => <p key={error}>{error}</p>)}
+              {validationErrors.length > 4 && <p>{validationErrors.length - 4} more issue{validationErrors.length - 4 === 1 ? "" : "s"}</p>}
+            </AlertDescription>
+          </Alert>
         )}
         {createBlocker && !validationErrors.length && <p className="text-sm text-destructive">{createBlocker}</p>}
         {materialized.rows.length > MAX_PROGRAMMATIC_ROWS && <p className="text-sm text-destructive">Too many rows.</p>}
-        <Button className="h-11 w-full" onClick={handleCreate} disabled={!canCreate || createCampaign.isPending}>
+        <Button size="lg" className="w-full" onClick={handleCreate} disabled={!canCreate || createCampaign.isPending}>
           {createCampaign.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-          {startNow ? "Create & Start" : "Create Campaign"}
+          {startNow ? "Create and start" : "Create campaign"}
         </Button>
         <Button variant="outline" className="w-full" asChild>
           <Link to="/sources/campaigns">View Campaigns</Link>
         </Button>
+        <AlertDialog open={confirmCreateOpen} onOpenChange={setConfirmCreateOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Generate {materialized.rows.length} drafts?</AlertDialogTitle>
+              <AlertDialogDescription>
+                High estimate is {formatCost(estimate.totalHigh)}. Actual cost uses provider-returned billing data after each call.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => createCampaign.mutate()}>
+                Generate {materialized.rows.length} drafts
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </BywordCard>
   );
@@ -714,8 +758,8 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <div className="flex items-start gap-4">
             <BackButton onClick={() => setView("home")} />
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Template Library</h1>
-              <p className="mt-1.5 text-sm text-muted-foreground">Pre-built templates for common content needs</p>
+              <h1 className="type-page-title">Templates</h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">Pre-built templates for common content needs.</p>
             </div>
           </div>
           <div className="relative w-full max-w-sm">
@@ -733,12 +777,25 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </div>
 
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-          <span>{category === "All Templates" ? "Templates" : category}</span>
+          <span>{category === "All templates" ? "Templates" : category}</span>
           <span className="text-muted-foreground/60">{filteredTemplates.length}</span>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3">
-          {templatesLoading && <BywordCard className="p-6 text-sm text-muted-foreground">Loading templates...</BywordCard>}
+          {templatesLoading && <CardGridSkeleton cards={3} className="lg:col-span-2 2xl:col-span-3" />}
+          {!templatesLoading && filteredTemplates.length === 0 && (
+            <BywordCard className="lg:col-span-2 2xl:col-span-3">
+              <EmptyState
+                size="panel"
+                tone={templates.length ? "filtered" : "empty"}
+                title={templates.length ? "No templates match" : "No templates yet"}
+                description={templates.length ? "Clear the search or pick another category." : "Create a template to reuse its section plan."}
+                primaryAction={templates.length
+                  ? { label: "Clear filters", onClick: () => { setSearch(""); setCategory("All templates"); } }
+                  : { label: "Create template", onClick: createNewTemplate }}
+              />
+            </BywordCard>
+          )}
           {filteredTemplates.map((template) => {
             const templateScore = scoreProgrammaticTemplate(template);
             return (
@@ -786,8 +843,8 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
           <div className="flex items-start gap-4">
             <BackButton onClick={() => setView("home")} />
             <div>
-              <span className="type-meta">New Programmatic Campaign</span>
-              <h1 className="mt-1 text-2xl font-semibold">{isSeoBriefCampaign ? "SEO Content Brief Campaign" : `${liveTemplate.name} Campaign`}</h1>
+              <span className="type-meta">New programmatic campaign</span>
+              <h1 className="mt-1 text-2xl font-semibold">{isSeoBriefCampaign ? "SEO content brief campaign" : `${liveTemplate.name} campaign`}</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 {isSeoBriefCampaign
                   ? "Turn each imported brief row into one article draft with its title, keywords, intent, metadata, outline, and CTA preserved."
@@ -838,7 +895,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                 </Button>
                 <Button variant="outline" onClick={() => saveTemplate.mutate()} disabled={saveTemplate.isPending}>
                   {saveTemplate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Save Template
+                  Save template
                 </Button>
               </div>
             </div>
@@ -848,9 +905,9 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
             <BywordCard>
               <SectionHeader
                 icon={Search}
-                title="SEO Brief Field Map"
+                title="SEO brief field map"
                 description="Detected brief columns are passed into the generated article plan."
-                action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{briefCoverage}/{seoBriefSignals.length} detected</span>}
+                action={<Badge variant="outline" className="font-mono">{briefCoverage}/{seoBriefSignals.length} detected</Badge>}
               />
               <div className="flex flex-wrap gap-2 p-5">
                 {briefSignalMap.map((signal) => (
@@ -865,7 +922,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               <div className="flex items-center justify-between gap-4">
                 <SectionHeader
                   icon={Database}
-                  title={isSeoBriefCampaign ? "Brief Rows" : "Your Data"}
+                  title={isSeoBriefCampaign ? "Brief rows" : "Your data"}
                   description={isSeoBriefCampaign ? "One spreadsheet row becomes one article draft." : `Needs: ${variables.map(variableLabel).join(", ")}`}
                 />
                 <div className="flex flex-wrap gap-2">
@@ -901,7 +958,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                               event.currentTarget.value = "";
                             }}
                           />
-                          <Button variant="ghost" size="icon" onClick={() => navigator.clipboard.readText().then((text) => setVariableValues((current) => ({ ...current, [variable]: text })))}>
+                          <Button variant="ghost" size="icon" aria-label={`Paste ${variable} values`} onClick={() => navigator.clipboard.readText().then((text) => setVariableValues((current) => ({ ...current, [variable]: text })))}>
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
@@ -913,7 +970,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     <div className="flex items-center gap-5">
                     <IconTile icon={FileText} className="h-12 w-12" />
                     <div>
-                      <p className="text-4xl font-semibold text-byword-blue">{materialized.rows.length}</p>
+                      <p className="type-data text-4xl font-semibold tabular-nums text-foreground">{materialized.rows.length}</p>
                       <p className="text-sm text-muted-foreground">articles</p>
                     </div>
                     </div>
@@ -946,7 +1003,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                               </TableCell>
                             ))}
                             <TableCell>
-                              <Button variant="ghost" size="icon" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
+                              <Button variant="ghost" size="icon" aria-label={`Remove row ${index + 1}`} onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </TableCell>
@@ -965,7 +1022,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               )}
 
               <BywordCard>
-                <SectionHeader icon={LinkIcon} title="Import Data" />
+                <SectionHeader icon={LinkIcon} title="Import data" />
                 <div className="space-y-4 p-6">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                     <Input value={csvUrl} onChange={(event) => setCsvUrl(event.target.value)} placeholder="Public CSV URL" />
@@ -982,7 +1039,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
             <div className="space-y-6">
               <BywordCard>
-                <SectionHeader icon={FolderOpen} title="Saved Data" />
+                <SectionHeader icon={FolderOpen} title="Saved data" />
                 <div className="space-y-4 p-6">
                   <Select onValueChange={handleDatasetLoad} disabled={!datasets.length}>
                     <SelectTrigger>
@@ -994,7 +1051,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                   </Select>
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                     <Input value={datasetName} onChange={(event) => setDatasetName(event.target.value)} placeholder="Dataset name" />
-                    <Button variant="outline" size="icon" onClick={() => saveDataset.mutate()} disabled={!datasetName.trim() || !materialized.rows.length || saveDataset.isPending}>
+                    <Button variant="outline" size="icon" aria-label="Save dataset" onClick={() => saveDataset.mutate()} disabled={!datasetName.trim() || !materialized.rows.length || saveDataset.isPending}>
                       <Save className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1021,27 +1078,24 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               <h1 className="text-lg font-semibold">{liveTemplate.name}{selectedTemplate?.builtIn ? " (Copy)" : ""}</h1>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost"><span className="mr-2 text-byword-blue">&lt;&gt;</span>Variables {variables.length}</Button>
-              <Button variant={showPreview ? "secondary" : "ghost"} onClick={() => setShowPreview((value) => !value)}><Eye className="mr-2 h-4 w-4" />Preview</Button>
-              <Button variant="secondary"><Zap className="mr-2 h-4 w-4" />Score</Button>
+              <span className="type-meta">Variables {variables.length}</span>
+              <Button variant={showPreview ? "secondary" : "ghost"} aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}><Eye className="mr-2 h-4 w-4" />Preview</Button>
             </div>
           </div>
           <div className="flex items-center gap-4 border-t border-byword-border px-6 py-3">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              <span className="text-byword-blue">T</span> Title Template
-            </div>
+            <Label className="type-kicker shrink-0">Title template</Label>
             <Input className="max-w-xl" value={draftTemplate.titleTemplate} onChange={(event) => updateTemplate({ titleTemplate: event.target.value })} />
             <div className="flex flex-wrap gap-2">
               {variables.map((variable) => <TemplateVariableBadge key={variable} variable={variable} />)}
             </div>
-            <p className="ml-auto hidden text-sm text-muted-foreground xl:block">Generates article titles from your dataset</p>
+            <p className="ml-auto hidden text-sm text-muted-foreground xl:block">Generates article titles from your dataset.</p>
           </div>
         </div>
 
         <div className="grid min-h-[calc(100vh-132px)] grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="px-6 py-10">
             <div className="mx-auto max-w-3xl">
-              <div className="mx-auto mb-10 flex h-9 w-24 items-center justify-center gap-2 rounded-md border border-byword-border bg-card text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="type-kicker mx-auto mb-10 flex h-9 w-24 items-center justify-center gap-2 rounded-md border border-byword-border bg-card">
                 <span className="h-2 w-2 rounded-full bg-status-success" />Start
               </div>
               <div className="space-y-6">
@@ -1063,7 +1117,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                             <Input type="number" value={section.minWords || ""} onChange={(event) => updateSection(index, { minWords: Number(event.target.value) || undefined })} placeholder="Min" />
                             <Input type="number" value={section.maxWords || ""} onChange={(event) => updateSection(index, { maxWords: Number(event.target.value) || undefined })} placeholder="Max" />
                             {draftTemplate.sections.length > 1 && (
-                              <Button variant="ghost" size="icon" onClick={() => updateTemplate({ sections: draftTemplate.sections.filter((_, sectionIndex) => sectionIndex !== index) })}>
+                              <Button variant="ghost" size="icon" aria-label={`Remove section ${index + 1}`} onClick={() => updateTemplate({ sections: draftTemplate.sections.filter((_, sectionIndex) => sectionIndex !== index) })}>
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
@@ -1079,7 +1133,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     <div className="flex justify-center py-4">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="icon" className="rounded-full">
+                          <Button variant="outline" size="icon" className="rounded-full" aria-label="Add section">
                             <Plus className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -1106,31 +1160,31 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                   </div>
                 ))}
               </div>
-              <div className="mx-auto mt-3 flex h-9 w-20 items-center justify-center rounded-md border border-byword-border bg-card text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">End</div>
+              <div className="type-kicker mx-auto mt-3 flex h-9 w-20 items-center justify-center rounded-md border border-byword-border bg-card">End</div>
             </div>
           </div>
 
           <aside className="border-l border-byword-border bg-background p-6">
             <div className="sticky top-36 space-y-6">
               <BywordCard>
-                <SectionHeader icon={Zap} title="Template Score" />
+                <SectionHeader icon={Zap} title="Template score" />
                 <div className="space-y-5 p-6">
                   <div className="flex items-end justify-between">
-                    <p className="text-5xl font-semibold text-byword-blue">{score.score}</p>
-                    <p className="text-sm text-muted-foreground">{score.score >= 80 ? "Strong" : score.score >= 55 ? "Getting There" : "Needs Work"}</p>
+                    <p className="type-data text-5xl font-semibold tabular-nums text-foreground">{score.score}</p>
+                    <p className="text-sm text-muted-foreground">{score.score >= 80 ? "Strong" : score.score >= 55 ? "Getting there" : "Needs work"}</p>
                   </div>
                   <div className="h-2 overflow-hidden rounded bg-muted">
                     <div className="h-full bg-byword-blue" style={{ width: `${score.score}%` }} />
                   </div>
-                  <ScoreBar label="SEO Readiness" value={scoreParts.seo} total={30} />
+                  <ScoreBar label="SEO readiness" value={scoreParts.seo} total={30} />
                   <ScoreBar label="Structure" value={scoreParts.structure} total={25} />
-                  <ScoreBar label="Content Quality" value={scoreParts.content} total={25} />
-                  <ScoreBar label="Data Integration" value={scoreParts.data} total={20} />
+                  <ScoreBar label="Content quality" value={scoreParts.content} total={25} />
+                  <ScoreBar label="Data integration" value={scoreParts.data} total={20} />
                 </div>
               </BywordCard>
 
               <BywordCard>
-                <SectionHeader icon={HelpCircle} title="Strategy Fit" />
+                <SectionHeader icon={HelpCircle} title="Strategy fit" />
                 <div className="p-6">
                   <StrategyFitNote result={programmaticFit} />
                 </div>
@@ -1138,7 +1192,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
               {score.quickWins.length > 0 && (
                 <BywordCard>
-                  <SectionHeader icon={HelpCircle} title="Quick Wins" />
+                  <SectionHeader icon={HelpCircle} title="Quick wins" />
                   <div className="divide-y divide-byword-border text-sm">
                     {score.quickWins.map((win) => <p key={win} className="px-6 py-3 text-muted-foreground">{win}</p>)}
                   </div>
@@ -1157,10 +1211,29 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
                     </Button>
                   </div>
                   {!selectedTemplate?.builtIn && selectedTemplateId && selectedTemplateId !== "new" && (
-                    <Button variant="ghost" className="w-full text-destructive" onClick={() => deleteTemplate.mutate(selectedTemplateId)} disabled={deleteTemplate.isPending}>
+                    <Button variant="ghost" className="w-full text-destructive" onClick={() => setConfirmDeleteOpen(true)} disabled={deleteTemplate.isPending}>
                       <Trash2 className="mr-2 h-4 w-4" />Delete template
                     </Button>
                   )}
+                  <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete {liveTemplate.name}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          The template is removed for this workspace. Campaigns already created from it keep their drafts.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => deleteTemplate.mutate(selectedTemplateId)}
+                        >
+                          Delete template
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </BywordCard>
             </div>
@@ -1172,7 +1245,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
 
   return (
     <ProgrammaticShell embedded={embedded} className="max-w-7xl">
-      {!embedded && <PageHeader title="Programmatic" description="Scale your content with templates and data" />}
+      {!embedded && <PageHeader title="Programmatic" description="Scale your content with templates and data." />}
 
       <div className="mx-auto max-w-6xl space-y-8">
         <input
@@ -1185,11 +1258,11 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         <BywordCard>
           <SectionHeader
             icon={Search}
-            title="SEO Content Brief Campaign"
+            title="SEO content brief campaign"
             description="Import an editorial brief, generate one draft per row, then prepare its validated canonical SEO package."
             action={
               <Button onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" />Import Brief Sheet
+                <Upload className="mr-2 h-4 w-4" />Import brief sheet
               </Button>
             }
           />
@@ -1198,9 +1271,9 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
               <p className="type-meta">Expected columns</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {seoBriefSignals.map((signal) => (
-                  <span key={signal.label} className="rounded-sm border border-byword-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  <Badge key={signal.label} variant="secondary" className="font-medium">
                     {signal.label}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             </div>
@@ -1222,13 +1295,13 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </BywordCard>
 
         <BywordCard>
-          <SectionHeader icon={Grid2X2} title="Dimensional Strategy" description="Choose the smallest workflow that fits the keyword pattern." />
+          <SectionHeader icon={Grid2X2} title="Dimensional strategy" description="Choose the smallest workflow that fits the keyword pattern." />
           <div className="grid gap-0 divide-y divide-byword-border md:grid-cols-3 md:divide-x md:divide-y-0">
             {dimensionalStrategies.map((strategy) => (
               <div key={strategy.dimension} className="p-6">
                 <div className="flex items-center gap-3">
                   <IconTile icon={strategy.icon} className="h-9 w-9" />
-                  <span className="rounded bg-muted px-2 py-1 text-xs font-bold text-muted-foreground">{strategy.dimension}</span>
+                  <Badge variant="secondary" className="font-mono">{strategy.dimension}</Badge>
                 </div>
                 <h2 className="mt-5 font-semibold">{strategy.title}</h2>
                 <p className="mt-2 min-h-12 text-sm leading-6 text-muted-foreground">{strategy.description}</p>
@@ -1247,14 +1320,14 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </BywordCard>
 
         <div className="grid gap-6 lg:grid-cols-4">
-          <FlowCard icon={Grid2X2} title="Browse Templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
-          <FlowCard icon={Plus} title="Create New Template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
-          <FlowCard icon={Upload} title="Import Any Sheet" description="Auto-build a template from spreadsheet rows when it is not a standard SEO brief" onClick={() => fileInputRef.current?.click()} />
-          <FlowCard icon={History} title="Programmatic Runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/sources/campaigns")} />
+          <FlowCard icon={Grid2X2} title="Browse templates" description="Proven templates for location pages, comparisons, and more" badge="Recommended" onClick={() => setView("library")} />
+          <FlowCard icon={Plus} title="Create new template" description="Start from scratch with full control over your article structure" onClick={createNewTemplate} />
+          <FlowCard icon={Upload} title="Import any sheet" description="Auto-build a template from spreadsheet rows when it is not a standard SEO brief" onClick={() => fileInputRef.current?.click()} />
+          <FlowCard icon={History} title="Programmatic runs" description="View every campaign, progress state, generated draft, and failed item" onClick={() => navigate("/sources/campaigns")} />
         </div>
 
         <BywordCard>
-          <SectionHeader icon={FolderOpen} title="Your Templates" description={`${customTemplates.length}`} action={<Button variant="ghost" onClick={() => setView("library")}>View all <ChevronRight className="ml-2 h-4 w-4" /></Button>} />
+          <SectionHeader icon={FolderOpen} title="Your templates" description={`${customTemplates.length} saved`} action={<Button variant="ghost" onClick={() => setView("library")}>View all <ChevronRight className="ml-2 h-4 w-4" /></Button>} />
           <div className="divide-y divide-byword-border">
             {customTemplates.length ? customTemplates.map((template) => (
               <div key={template.id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
@@ -1274,7 +1347,7 @@ export function ProgrammaticPanel({ embedded = true }: { embedded?: boolean }) {
         </BywordCard>
 
         <BywordCard>
-          <SectionHeader icon={Database} title="Saved Datasets" description={`${datasets.length}`} />
+          <SectionHeader icon={Database} title="Saved datasets" description={`${datasets.length} saved`} />
           <div className="divide-y divide-byword-border">
             {datasets.length ? datasets.map((dataset) => (
               <button key={dataset.id} type="button" onClick={() => handleDatasetLoad(dataset.id)} className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition-calm hover:bg-muted/30">
