@@ -56,7 +56,7 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 ## Phase 2 — BlogFactory Cloud
 
 - [x] Run private Cloud heavy jobs in a persistent worker using the existing PostgreSQL-backed claims, retries, stale recovery, terminal states, and heartbeat health.
-- [x] Deploy the private Cloud stack to Hetzner Nuremberg with immutable GHCR image digests, Neon PostgreSQL 18 in Frankfurt, private EU R2 storage, Cloudflare routing, and a clean Vercel rollback deployment.
+- [x] Deploy the private Cloud stack to Hetzner Nuremberg with immutable GHCR image digests, local PostgreSQL 18, age-encrypted database backups in private EU R2 storage, Cloudflare routing, and a clean Vercel application rollback deployment.
 - [x] Migrate the existing production database and objects, verify row/object counts, encrypted backup readback, the 22-tool MCP catalog, and tenant/site isolation.
 - [x] Merge the validated worker-mode core changes into the public `main` branch.
 - [x] Implement verified email, password recovery delivery, abuse controls, and production login acceptance (hosted auth is WorkOS AuthKit in the private Cloud repository; lifecycle email beyond authentication is still open there).

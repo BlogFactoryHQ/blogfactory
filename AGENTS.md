@@ -59,7 +59,7 @@ Grouped surfaces:
 - Backend: Hono TypeScript app; Bun for local backend development and self-tests.
 - Database: PostgreSQL with Drizzle ORM and additive SQL migrations.
 - Storage: S3-compatible storage, commonly Cloudflare R2.
-- Deploy: the private marketing repository owns the Cloudflare-fronted apex. The private Cloud repository validates this shared core, builds immutable GHCR images, and deploys API, worker, and web containers to Hetzner. Neon and R2 remain managed off-host services; Vercel is the ready rollback target.
+- Deploy: the private marketing repository owns the Cloudflare-fronted apex. The private Cloud repository validates this shared core, builds immutable GHCR images, and deploys PostgreSQL, API, worker, backup, and web containers to Hetzner. R2 remains the off-host object and encrypted-backup store; Vercel is the ready application rollback target.
 
 ## Project Map
 
@@ -148,7 +148,7 @@ npm run db:generate
 
 - Frontend changes: targeted lint, `npm run typecheck`, web tests, and production build.
 - Backend/MCP changes: server self-tests, exact catalog assertions, PostgreSQL integration, and production build.
-- Database integration writes must use a disposable PostgreSQL database, never shared production Neon.
+- Database integration writes must use a disposable PostgreSQL database, never the shared production database.
 - Run the full web lint; do not hide changed-file failures behind warning filters.
 - A local missing backend or environment may return `/api/*` 500; do not misattribute that to UI-only work.
 - Before release: `git diff --check`, clean intended diff, commit, push, then verify the private Cloud sync, immutable GHCR builds, migration completion, and Hetzner container health.

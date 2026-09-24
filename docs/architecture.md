@@ -21,7 +21,7 @@ React control app                                      MCP auth + tools
                               |
                    shared tenant-scoped services
                               |
-          Neon PostgreSQL + Cloudflare R2 object storage
+      Hetzner PostgreSQL + Cloudflare R2 object storage
                               |
        CMS drafts / Search Console / configured AI providers
 ```
@@ -127,11 +127,14 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | --- | --- |
 | Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
 | Private `BlogFactoryHQ/blogfactory-cloud` | Cloud-only Compose, Caddy, image-build, and deployment ownership |
-| Hetzner Nuremberg | Current API, worker, and web container runtime |
-| Neon Frankfurt | Managed PostgreSQL 18; direct migration role and pooled least-privilege runtime role |
+| Hetzner Nuremberg | PostgreSQL 18, API, worker, backup, and web container runtime |
 | Cloudflare R2 EU | Private production image/object storage and encrypted portable backup |
 | GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA |
 | Vercel project `editorial-flow-main` | Last clean serverless deployment retained as the DNS rollback target |
+
+The pre-cutover Neon database and manual snapshot remain available only as a
+short-term rollback source. Current writes go to the private Hetzner Compose
+PostgreSQL service; encrypted R2 backups are the durable recovery source.
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 

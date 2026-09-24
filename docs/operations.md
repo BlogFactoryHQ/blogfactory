@@ -16,18 +16,20 @@ Run `npm run db:migrate` against the target database before using code that requ
 
 For an existing database that predates the migration ledger, first confirm its schema contains every checked-in migration. Then use `MIGRATION_BASELINE_EXISTING=true` once to record the baseline without replaying historical SQL.
 
-Never run PostgreSQL integration tests against shared production Neon. Use a disposable database.
+Never run PostgreSQL integration tests against the shared production database. Use a disposable database.
 
 ## Production delivery
 
 The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core through a fail-closed sync workflow, validates it, and builds API and web images in GHCR. Production pins those images by SHA-256 digest in a Docker Compose stack on the Hetzner Nuremberg host:
 
-- one-shot database migration using the direct Neon owner endpoint;
-- Bun/Hono API using the pooled least-privilege runtime role;
+- PostgreSQL 18 on a named host volume, private to the Compose network;
+- one-shot role initialization and migration using the local owner role;
+- Bun/Hono API using the local least-privilege runtime role;
 - persistent Bun worker for campaigns, SEO metadata, and deferred images;
+- six-hour age-encrypted backup scheduler writing to private EU R2;
 - Nginx web container, the only Compose service bound to the host loopback interface.
 
-Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback web port. Cloudflare proxies the public hostname to Hetzner. Production data remains off-host in Neon PostgreSQL 18 in Frankfurt and a private EU Cloudflare R2 bucket. No local PostgreSQL, MinIO, Redis, or external queue runs in the managed Cloud stack.
+Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback web port. Cloudflare proxies the public hostname to Hetzner. Production data is stored in the private PostgreSQL service; images and encrypted database backups are stored in a private EU Cloudflare R2 bucket. No MinIO, Redis, or external queue runs in the managed Cloud stack.
 
 The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare Pages public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment. The production host split is:
 

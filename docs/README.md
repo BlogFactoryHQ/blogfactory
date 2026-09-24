@@ -3,7 +3,7 @@
 ## Current product and operations
 
 - [Repository README](../README.md): current phase, product model, production surfaces, setup, and acceptance checks.
-- [Architecture and developer map](architecture.md): runtime entries, service ownership, tenancy, current Hetzner/Neon/R2 hosting, background work, and where to make changes.
+- [Architecture and developer map](architecture.md): runtime entries, service ownership, tenancy, current Hetzner PostgreSQL/R2 hosting, background work, and where to make changes.
 - [MCP and OAuth](mcp.md): 22-tool catalog, connection setup, Review Card, permissions, and safety boundary.
 - [Operations and deployment](operations.md): environment, migrations, hosted Compose delivery, rollback, background drains, ledger retention, and production verification.
 - [Self-hosting](self-hosting.md): Docker Compose, Dokploy, and Railway topology; account flows, readiness, MCP setup, backup/restore, upgrades, rollback, and current ceiling.

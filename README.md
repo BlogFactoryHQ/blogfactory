@@ -119,9 +119,9 @@ The verified topology includes the web app, API, PostgreSQL, MinIO, migrations, 
 
 ## Hosted production
 
-The managed service uses Cloudflare in front of an immutable Docker Compose deployment on Hetzner in Nuremberg. The Bun/Hono API and persistent worker use a pooled Neon PostgreSQL 18 database in Frankfurt and private EU Cloudflare R2 storage. GitHub Actions builds the API and web images in GHCR; Vercel retains the last clean deployment as a DNS rollback target rather than serving current production traffic.
+The managed service uses Cloudflare in front of an immutable Docker Compose deployment on Hetzner in Nuremberg. PostgreSQL 18, the Bun/Hono API, the persistent worker, the backup scheduler, and the web app run in that stack; private EU Cloudflare R2 stores images and age-encrypted database backups. GitHub Actions builds immutable images in GHCR; Vercel retains the last clean deployment as a DNS rollback target rather than serving current production traffic.
 
-This hosted topology is maintained in the private `BlogFactoryHQ/blogfactory-cloud` repository. Its persistent-worker changes are not yet merged into the public `main` branch, and it does not change the community self-host contract above.
+This hosted topology and the Cloud-only billing/authentication overlay are maintained in the private `BlogFactoryHQ/blogfactory-cloud` repository. Shared product changes originate in this public core and sync one way into Cloud; the hosted topology does not change the community self-host contract above.
 
 ## How the system is shaped
 
