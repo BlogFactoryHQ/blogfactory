@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { connectionReady } from "@/lib/credential-status";
@@ -106,6 +107,11 @@ function parseMarkdownMeta(content: string): MarkdownMeta {
   };
 }
 
+function sentenceCase(value: string) {
+  const words = value.replace(/[_-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export default function BatchImport() {
   const [items, setItems] = useState<ImportItem[]>([]);
   const [isReading, setIsReading] = useState(false);
@@ -116,7 +122,7 @@ export default function BatchImport() {
   const [mode, setMode] = useState<"draft" | "publish">("draft");
   const { integrations, isLoading } = useIntegrations();
   const queryClient = useQueryClient();
-  const { data: postList, isLoading: isLoadingHistory } = useQuery({
+  const { data: postList, isLoading: isLoadingHistory, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ["posts", "batch-import-history"],
     queryFn: () => api.get<ImportedPostList>("/posts?sourceType=batch_import&limit=100&page=1"),
   });
@@ -249,7 +255,7 @@ export default function BatchImport() {
 
   return (
     <BywordPageShell className="max-w-7xl">
-      <PageHeader title="Batch Import" description="Upload a zip of folders containing markdown files and images." />
+      <PageHeader title="Batch Import" description="Upload a zip of folders containing Markdown files and images." />
 
       <BywordCard>
         <SectionHeader
@@ -259,10 +265,10 @@ export default function BatchImport() {
         />
         <div className="space-y-6 p-6">
           <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-            <label className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-byword-border bg-muted/20 px-6 text-center hover:bg-muted/40">
+            <label className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-byword-border bg-muted/20 px-6 text-center hover:bg-muted/40">
               {isReading ? <Loader2 className="mb-3 h-8 w-8 animate-spin text-muted-foreground" /> : <UploadCloud className="mb-3 h-8 w-8 text-byword-blue" />}
               <span className="font-semibold">Choose zip file</span>
-              <span className="mt-1 text-sm text-muted-foreground">Folders, markdown, and images stay local until you run import.</span>
+              <span className="mt-1 text-sm text-muted-foreground">Folders, Markdown, and images stay local until you run import.</span>
               <input
                 type="file"
                 accept=".zip,application/zip"
@@ -276,7 +282,7 @@ export default function BatchImport() {
               />
             </label>
 
-            <div className="space-y-4 rounded-lg border border-byword-border p-4">
+            <div className="space-y-4 rounded-md border border-byword-border p-4">
               <div className="space-y-2">
                 <Label>Destination</Label>
                 <Select value={integrationId} onValueChange={setIntegrationId} disabled={isLoading || isRunning}>
@@ -328,16 +334,16 @@ export default function BatchImport() {
             }}
           />
 
-          <div className="overflow-hidden rounded-lg border border-byword-border">
+          <div className="overflow-hidden rounded-md border border-byword-border">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Folder</th>
-                  <th className="px-4 py-3 font-medium">Markdown</th>
-                  <th className="px-4 py-3 font-medium">SEO</th>
-                  <th className="px-4 py-3 font-medium">Images</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Draft</th>
+                  <th className="type-kicker px-4 py-3">Folder</th>
+                  <th className="type-kicker px-4 py-3">Markdown</th>
+                  <th className="type-kicker px-4 py-3">SEO</th>
+                  <th className="type-kicker px-4 py-3">Images</th>
+                  <th className="type-kicker px-4 py-3">Status</th>
+                  <th className="type-kicker px-4 py-3">Draft</th>
                 </tr>
               </thead>
               <tbody>
@@ -369,7 +375,7 @@ export default function BatchImport() {
                         <div className="flex flex-col items-start gap-1">
                           <StatusBadge
                             status={item.status === "failed" ? "error" : item.status === "done" ? "success" : item.status === "ready" ? "pending" : "running"}
-                            label={item.status === "ready" ? "queued" : item.status}
+                            label={item.status === "ready" ? "Queued" : sentenceCase(item.status)}
                           />
                           {item.message && <span className="type-meta">{item.message}</span>}
                         </div>
@@ -400,23 +406,35 @@ export default function BatchImport() {
           description="Batch-imported drafts and their current states."
         />
         <div className="overflow-hidden p-6 pt-0">
-          <div className="overflow-hidden rounded-lg border border-byword-border">
+          <div className="overflow-hidden rounded-md border border-byword-border">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Imported</th>
-                  <th className="px-4 py-3 font-medium">Folder</th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Images</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Draft</th>
+                  <th className="type-kicker px-4 py-3">Imported</th>
+                  <th className="type-kicker px-4 py-3">Folder</th>
+                  <th className="type-kicker px-4 py-3">Title</th>
+                  <th className="type-kicker px-4 py-3">Images</th>
+                  <th className="type-kicker px-4 py-3">Status</th>
+                  <th className="type-kicker px-4 py-3">Draft</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoadingHistory ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                      Loading previous imports...
+                    <td colSpan={6} className="p-0">
+                      <TableSkeleton rows={3} columns={6} />
+                    </td>
+                  </tr>
+                ) : historyError && batchImports.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-0">
+                      <EmptyState
+                        size="row"
+                        tone="error"
+                        title="Previous imports could not be loaded"
+                        description={`${historyError instanceof Error ? historyError.message : "The request failed."} Imported drafts are unchanged.`}
+                        primaryAction={{ label: "Retry", onClick: () => void refetchHistory() }}
+                      />
                     </td>
                   </tr>
                 ) : batchImports.length === 0 ? (
@@ -433,7 +451,7 @@ export default function BatchImport() {
                       <td className="max-w-[420px] truncate px-4 py-3 font-medium">{post.title}</td>
                       <td className="px-4 py-3">{(post.cover_image_url ? 1 : 0) + (post.inline_images?.length || 0)}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={post.status === "published" ? "success" : "draft"} label={post.status} />
+                        <StatusBadge status={post.status === "published" ? "success" : "draft"} label={sentenceCase(post.status)} />
                       </td>
                       <td className="px-4 py-3">
                         <Button asChild variant="outline" size="sm">

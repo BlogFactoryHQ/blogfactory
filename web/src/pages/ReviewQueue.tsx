@@ -15,10 +15,32 @@ import { api, ApiError } from "@/lib/api";
 import type { ActionItem, ReviewPacket } from "@/lib/control-plane";
 import { useSites } from "@/hooks/useSites";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { formatSourceType } from "@/lib/source-labels";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type QueueResponse = { items: ActionItem[]; counts: { total: number; blocker: number; review: number; warning: number } };
 type PublishResponse = { success: boolean; idempotent?: boolean; publication?: { externalEditUrl?: string | null; externalUrl?: string | null } };
 type SeverityFilter = "all" | "blocker" | "review" | "warning";
+
+const editorialLabels: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In review",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+};
+
+function editorialLabel(state: string) {
+  if (editorialLabels[state]) return editorialLabels[state];
+  const words = state.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const checkStatus: Record<"pass" | "warning" | "blocker", { status: StatusType; label: string }> = {
+  pass: { status: "success", label: "Pass" },
+  warning: { status: "warning", label: "Warning" },
+  blocker: { status: "error", label: "Blocker" },
+};
 
 export default function ReviewQueue() {
   const { activeSite } = useSites();
@@ -72,7 +94,7 @@ export default function ReviewQueue() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
         <BywordCard className="order-2 xl:order-1"><div className="divide-y divide-byword-border">{data.items.map((item) => <button key={item.id} type="button" aria-pressed={selectedId === item.id} onClick={() => selectPost(item.id)} className={`relative flex w-full gap-4 p-4 text-left transition-calm hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${selectedId === item.id ? "bg-byword-blue-soft/50 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-byword-blue" : ""}`}>
           <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.severity === "blocker" ? "bg-status-error" : item.severity === "review" ? "bg-status-warning" : "bg-status-pending"}`} />
-          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block text-xs text-muted-foreground">{item.source_type.replace(/_/g, " ")} · {item.editorial_state.replace(/_/g, " ")} · Revision {item.revision_number || "—"}</span><span className="mt-2 flex flex-wrap gap-1">{item.reasons.map((reason) => <Badge key={reason.kind} variant="outline" className="text-[10px]">{reason.label}</Badge>)}</span></span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block text-xs text-muted-foreground">{formatSourceType(item.source_type)} · {editorialLabel(item.editorial_state)} · Revision {item.revision_number || "—"}</span><span className="mt-2 flex flex-wrap gap-1">{item.reasons.map((reason) => <Badge key={reason.kind} variant="outline" className="text-[10px]">{reason.label}</Badge>)}</span></span>
           <span className="shrink-0 text-right text-[11px] text-muted-foreground">{safeFormatDistanceToNow(item.updated_at)}<span className="mt-1 block">{item.routing_status === "ready" ? [item.destination_name, item.destination_provider].filter(Boolean).join(" · ") || "Routed" : "Choose CMS"}</span></span>
         </button>)}{!data.items.length && <EmptyState icon={CheckCircle2} title="Queue clear" description="No draft is waiting on an editorial or delivery decision." />}</div></BywordCard>
         <ReviewDetail postId={selectedId} />
@@ -118,12 +140,12 @@ function ReviewDetail({ postId }: { postId: string | null }) {
   const externalUrl = delivery?.publication?.externalEditUrl || delivery?.publication?.externalUrl;
 
   return <BywordCard className="order-1 self-start xl:order-2 xl:sticky xl:top-16">
-    <SectionHeader icon={AlertTriangle} title={packet.post.title} description={`${packet.source.type.replace(/_/g, " ")} · ${packet.editorial.state.replace(/_/g, " ")} · Revision ${packet.editorial.revision_number || "—"}`} />
+    <SectionHeader icon={AlertTriangle} title={packet.post.title} description={`${formatSourceType(packet.source.type)} · ${editorialLabel(packet.editorial.state)} · Revision ${packet.editorial.revision_number || "—"}`} />
     <div className="space-y-5 p-5">
       {packet.post.summary && <p className="text-sm leading-6 text-muted-foreground">{packet.post.summary}</p>}
       <div><p className="type-kicker text-muted-foreground">Last revision</p><p className="mt-2 text-sm">{packet.changes.changed_fields.length ? packet.changes.changed_fields.join(", ") : "No changed fields"} · {packet.changes.word_delta >= 0 ? "+" : ""}{packet.changes.word_delta} words</p></div>
-      <div className={`rounded-sm border px-3 py-2.5 ${packet.preflight.has_blockers ? "border-destructive/30 bg-destructive/5" : "border-status-success/25 bg-status-success/5"}`}><p className="type-kicker">Delivery state</p><p className="mt-1 text-sm font-semibold">{packet.preflight.has_blockers ? "Resolve blockers before delivery" : "Ready for a CMS draft"}</p><p className="mt-0.5 text-xs text-muted-foreground">Draft only · live publishing is unavailable in this workflow.</p></div>
-      <div className="grid gap-2 sm:grid-cols-2">{packet.preflight.checks.map((check) => <div key={check.id} className="flex items-start gap-3 rounded-sm border border-byword-border p-3"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${check.status === "blocker" ? "bg-status-error" : check.status === "warning" ? "bg-status-warning" : "bg-status-success"}`} /><div><p className="text-sm font-medium">{check.label}</p><p className="mt-0.5 text-xs text-muted-foreground">{check.message}</p></div></div>)}</div>
+      <Alert variant={packet.preflight.has_blockers ? "destructive" : "success"}><AlertTitle>{packet.preflight.has_blockers ? "Resolve blockers before delivery" : "Ready for a CMS draft"}</AlertTitle><AlertDescription className="text-xs">Draft only · live publishing is unavailable in this workflow.</AlertDescription></Alert>
+      <div className="grid gap-2 sm:grid-cols-2">{packet.preflight.checks.map((check) => <div key={check.id} className="rounded-sm border border-border bg-muted/40 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{check.label}</p><StatusBadge status={checkStatus[check.status].status} label={checkStatus[check.status].label} /></div><p className="mt-1 text-xs text-muted-foreground">{check.message}</p></div>)}</div>
       <div><p className="mb-2 text-xs font-semibold">CMS destination</p><Select value={destinationId} onValueChange={setDestinationId}><SelectTrigger aria-label="CMS destination"><SelectValue placeholder="Choose a destination" /></SelectTrigger><SelectContent>{connected.map((destination) => <SelectItem key={destination.id} value={destination.id}>{destination.display_name} · {destination.provider}</SelectItem>)}</SelectContent></Select>{!connected.length && <p className="mt-2 text-xs text-destructive">No usable CMS destination. Repair the connection in Control.</p>}</div>
       <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link to={packet.links.edit}>Edit <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button><Button asChild variant="outline" size="sm"><Link to={packet.links.preview} target="_blank">Preview <ExternalLink className="ml-1.5 h-4 w-4" /></Link></Button>
         <AlertDialog><AlertDialogTrigger asChild><Button size="sm" disabled={!canSend || push.isPending}><Send className="mr-1.5 h-4 w-4" />Send CMS draft</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Send this revision to CMS?</AlertDialogTitle><AlertDialogDescription>This creates a draft in {connected.find((destination) => destination.id === destinationId)?.display_name || "the selected destination"}. It never publishes live.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => push.mutate()}>Create CMS draft</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

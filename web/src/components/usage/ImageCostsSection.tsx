@@ -1,5 +1,7 @@
 import { Fragment } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
+import { StatCard } from "@/components/patterns/StatCard";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -31,48 +33,32 @@ export function ImageCostsSection({ breakdown, days }: ImageCostsSectionProps) {
     }).format(amount);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Image className="h-4 w-4" />
-          Image Generation Costs
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <BywordCard>
+      <SectionHeader icon={Image} title="Image generation costs" description={`Image spend by provider and model for the last ${days} days.`} />
+      <div className="space-y-6 p-4 sm:p-5 lg:p-6">
         {/* Summary stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-muted/50 border border-border">
-            <div className="flex items-center gap-2 mb-1">
-              <Image className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Total Images</span>
-            </div>
-            <p className="text-2xl font-bold">{totalImageCount}</p>
-            <p className="text-xs text-muted-foreground">Last {days} days</p>
-          </div>
-          <div className="p-4 rounded-lg bg-muted/50 border border-border">
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Total Image Cost</span>
-            </div>
-            <p className="text-2xl font-bold">{formatCurrency(totalImageCost)}</p>
-            <p className="text-xs text-muted-foreground">
-              Avg {formatCurrency(totalImageCount ? totalImageCost / totalImageCount : 0)}/image
-            </p>
-          </div>
-          <div className="p-4 rounded-lg bg-muted/50 border border-border">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Providers Used</span>
-            </div>
-            <p className="text-2xl font-bold">{providerSummaries.length}</p>
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {providerSummaries.map((p) => (
-                <Badge key={p.provider} variant="outline" className="text-xs">
-                  {p.label}
-                </Badge>
-              ))}
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard label="Total images" icon={Image} value={totalImageCount} hint={`Last ${days} days`} />
+          <StatCard
+            label="Total image cost"
+            icon={DollarSign}
+            value={formatCurrency(totalImageCost)}
+            hint={`Avg ${formatCurrency(totalImageCount ? totalImageCost / totalImageCount : 0)}/image`}
+          />
+          <StatCard
+            label="Providers used"
+            icon={Layers}
+            value={providerSummaries.length}
+            hint={providerSummaries.length ? (
+              <span className="flex flex-wrap gap-1">
+                {providerSummaries.map((p) => (
+                  <Badge key={p.provider} variant="outline" className="text-xs">
+                    {p.label}
+                  </Badge>
+                ))}
+              </span>
+            ) : "None yet"}
+          />
         </div>
 
         {/* Breakdown table */}
@@ -80,17 +66,17 @@ export function ImageCostsSection({ breakdown, days }: ImageCostsSectionProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Provider / Model</TableHead>
+                <TableHead>Provider / model</TableHead>
                 <TableHead className="text-right">Images</TableHead>
-                <TableHead className="text-right">Total Cost</TableHead>
-                <TableHead className="text-right">Avg Cost / Image</TableHead>
+                <TableHead className="text-right">Total cost</TableHead>
+                <TableHead className="text-right">Avg cost / image</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {providerSummaries.map((provider) => (
                 <Fragment key={provider.provider}>
                   {/* Provider row */}
-                  <TableRow key={provider.provider} className="font-medium bg-muted/30">
+                  <TableRow key={provider.provider} className="font-medium">
                     <TableCell>{provider.label}</TableCell>
                     <TableCell className="text-right">{provider.imageCount}</TableCell>
                     <TableCell className="text-right">{formatCurrency(provider.totalCost)}</TableCell>
@@ -114,13 +100,15 @@ export function ImageCostsSection({ breakdown, days }: ImageCostsSectionProps) {
             </TableBody>
           </Table>
         ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            <Image className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No image generation data yet</p>
-            <p className="text-xs">Image costs will appear here after generating posts with images enabled</p>
-          </div>
+          <EmptyState
+            size="row"
+            icon={Image}
+            title="No image generation data yet"
+            description="Image costs appear here after generating posts with images enabled."
+            primaryAction={{ label: "Open Article Settings", href: "/control/article-settings?section=images" }}
+          />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </BywordCard>
   );
 }

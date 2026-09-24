@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -12,8 +13,6 @@ import {
   Download,
   Star,
   ImagePlus,
-  AlertTriangle,
-  ImageOff,
   DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,24 +54,13 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
     } catch { /* ignore */ }
   };
 
-  const statusIcon = image.status === "orphaned"
-    ? <AlertTriangle className="h-2.5 w-2.5" />
-    : image.status === "unused"
-    ? <ImageOff className="h-2.5 w-2.5" />
-    : null;
-
-  const statusColor = image.status === "orphaned"
-    ? "bg-destructive text-destructive-foreground"
-    : image.status === "unused"
-    ? "bg-muted-foreground text-background"
-    : "";
   const sourceLabel = imageSourceLabel(image);
 
   return (
     <div
       className={cn(
         "group relative rounded-lg border overflow-hidden cursor-pointer aspect-[3/2] transition-all",
-        selected ? "border-primary ring-2 ring-primary/30" : "border-border bg-background"
+        selected ? "border-byword-blue ring-2 ring-byword-blue/30" : "border-border bg-background"
       )}
       onClick={onClick}
     >
@@ -115,18 +103,19 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
       {/* Type + status badges */}
       <div className="absolute top-2 left-2 flex items-center gap-1">
         {image.type === "cover" ? (
-          <div className="bg-status-warning text-status-warning-foreground text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
+          <div className="flex items-center gap-1 rounded-sm border border-border bg-background/90 px-1.5 py-0.5 text-[10px] text-foreground">
             <Star className="h-2.5 w-2.5" /> Cover
           </div>
         ) : (
-          <div className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
+          <div className="flex items-center gap-1 rounded-sm border border-border bg-background/90 px-1.5 py-0.5 text-[10px] text-foreground">
             <ImagePlus className="h-2.5 w-2.5" /> Inline{positionLabel(image.position)}
           </div>
         )}
-        {statusIcon && (
-          <div className={cn("text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1", statusColor)}>
-            {statusIcon} {image.status}
-          </div>
+        {image.status === "orphaned" && (
+          <StatusBadge status="warning" label="Orphaned" className="bg-background/90" />
+        )}
+        {image.status === "unused" && (
+          <StatusBadge status="pending" label="Unused" className="bg-background/90" />
         )}
       </div>
 
@@ -160,6 +149,7 @@ export function GalleryCard({ image, signedUrl, selected, onSelect, onClick }: G
                 size="icon"
                 className="h-6 w-6 ml-auto"
                 onClick={handleDownload}
+                aria-label="Download image"
               >
                 <Download className="h-3 w-3" />
               </Button>

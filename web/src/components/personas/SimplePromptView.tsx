@@ -27,8 +27,8 @@ export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
       {/* Two-column layout for name and model */}
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Agent Name
+          <Label className="type-kicker">
+            Agent name
           </Label>
           <Input
             value={persona.name}
@@ -37,15 +37,15 @@ export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Base Model
+          <Label className="type-kicker">
+            Base model
           </Label>
           <LiveTextModelSelect
             value={persona.base_model}
             onValueChange={(v) => onChange({ base_model: v })}
           />
           {unavailable && (
-            <p className="text-xs text-destructive">Unavailable: {persona.base_model}. Pick a live OpenRouter model.</p>
+            <p className="text-xs text-status-error">Unavailable: {persona.base_model}. Pick a live OpenRouter model.</p>
           )}
         </div>
       </div>
@@ -53,8 +53,8 @@ export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
       {/* System Prompt - the main focus */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            System Prompt
+          <Label className="type-kicker">
+            System prompt
           </Label>
           <span className="text-xs text-muted-foreground">Markdown supported</span>
         </div>
@@ -70,7 +70,7 @@ export function SimplePromptView({ persona, onChange }: SimplePromptViewProps) {
       </div>
 
       {/* Active Toggle */}
-      <div className="flex items-center justify-between py-4 px-4 rounded-lg border border-border">
+      <div className="flex items-center justify-between py-4 px-4 rounded-sm border border-border bg-muted/40">
         <div>
           <p className="font-medium">Active</p>
           <p className="text-sm text-muted-foreground">

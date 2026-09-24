@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { Star, ImagePlus, AlertTriangle, ImageOff, DollarSign, Images } from "lucide-react";
+import { Star, ImagePlus, ImageOff, DollarSign, Images } from "lucide-react";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 interface GalleryStatsBarProps {
   total: number;
@@ -18,18 +19,15 @@ export function GalleryStatsBar({ total, cover, inline, orphaned, unused, totalC
         {total} total
       </Badge>
       <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
-        <Star className="h-3.5 w-3.5 text-status-warning" />
+        <Star className="h-3.5 w-3.5 text-muted-foreground" />
         {cover} cover
       </Badge>
       <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
-        <ImagePlus className="h-3.5 w-3.5 text-primary" />
+        <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
         {inline} inline
       </Badge>
       {orphaned > 0 && (
-        <Badge variant="outline" className="text-sm py-1 px-3 gap-1.5 border-destructive/30 text-destructive">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          {orphaned} orphaned
-        </Badge>
+        <StatusBadge status="warning" label={`${orphaned} orphaned`} />
       )}
       {unused > 0 && (
         <Badge variant="outline" className="text-sm py-1 px-3 gap-1.5 text-muted-foreground">
@@ -39,7 +37,7 @@ export function GalleryStatsBar({ total, cover, inline, orphaned, unused, totalC
       )}
       {totalCost > 0 && (
         <Badge variant="secondary" className="text-sm py-1 px-3 gap-1.5">
-          <DollarSign className="h-3.5 w-3.5 text-status-success" />
+          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
           ${totalCost.toFixed(2)} total cost
         </Badge>
       )}

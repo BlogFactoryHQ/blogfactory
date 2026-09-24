@@ -12,9 +12,12 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 - Primary actions use orange, like a record/action control.
 - Links and navigation emphasis use TE-style blue.
 - Secondary controls use black or graphite.
-- Status colors are green, red, yellow, and orange, reserved for operational state and priority.
+- Status colors are reserved for operational state: `status-success` (green), `status-warning` (amber), `status-error` (red), `status-pending` (grey), and `status-running` (blue). Orange is the action colour, not a status.
 - Colour comes from semantic tokens only. Raw Tailwind palette utilities (`text-emerald-700`, `bg-amber-50`, `border-slate-300`, …) are banned outside `web/src/components/ui/`, and `npm run lint:colors --workspace=web` enforces that. Use `primary`, `byword-blue`/`accent`, `status-success`, `status-warning`, `status-error`, `status-pending`, `status-running`, and `factory-purple` for non-status categories. Brand marks (YouTube, Reddit, …) render neutral so red/amber/green keep meaning only operational state.
 - Table rows carry no background colour by default; state lives in the badge. Only hover and selected change a row background.
+- Never flood a tile, panel, card, or row with a status colour. Metric tiles use `StatCard` (tone drives a dot and a hairline only), and `Alert` is the one tinted box, for a notice that lasts. Decorative tiles stay neutral (`bg-card` or `bg-muted` with a hairline).
+- No coloured left-border accent cards, notices, or section headings. The only left rule is the 2px blue rule on an active navigation item (sidebar, `SettingNavItem`).
+- Corners stay small: `rounded-sm` (2px) for controls, `rounded-md` (4px) for shared plates, and `rounded-lg` (6px) as the largest corner in the app.
 - Light and dark are both real themes, driven by `next-themes` (`ThemeProvider` in `web/src/App.tsx`, class strategy, `blogfactory-theme` storage key) and the `.dark` token block in `web/src/index.css`. Panel lighting, grid texture, and field shadows read `--panel-*`, `--grid-*`, and `--field-inset`, so never hardcode a white inset or a dark drop shadow.
 - Factory identity should come from assembly labels, rails, small technical marks, dividers, dense tables, and subtle drawing-grid/perforation textures.
 - Avoid full-page color floods, decorative fake controls, soft SaaS gradients, oversized rounded cards, dark-mode leftovers, and landing-page treatment inside the app.
@@ -25,6 +28,7 @@ This is the default theme for now. Do not reintroduce the previous dark retro/pi
 - Mono/technical labels: `IBM Plex Mono`.
 - Use mono text for section labels, metadata, table headers, status labels, and small technical captions.
 - Keep text compact and readable. Do not scale type with viewport width. Long names, domains, titles, and URLs must wrap or truncate intentionally.
+- Letter-spacing is zero everywhere. Do not add `tracking-*` utilities; uppercase labels use `type-kicker` and are written in sentence case in code.
 
 ## Component Layers
 
@@ -46,14 +50,19 @@ with the same job as a primitive; install the primitive and use it.
 
 - Prefer `WorkspaceBackground`, `BywordPageShell`, `BywordCard`, `SectionHeader`, `IconTile`, `OptionCard`, `SettingNavItem`, `FactoryMark`, and `FactoryDivider` before creating new page surfaces.
 - Keep `byword-*`, `factory-*`, and shadcn token names as compatibility aliases. Remap tokens rather than rewriting every page. These aliases now resolve to CSS variables, so a theme change is a token change.
-- Empty, zero-result, and failed-read states use `EmptyState` with an explicit tone (`empty`, `filtered`, `error`) and must name the next action.
-- List and table routes load with a shape-matched skeleton, never a centered spinner.
+- Page tops use `PageHeader` inside `BywordPageShell`. The title is the sidebar or tab name that opened the page (Runs, RSS sources, Usage, Users), never an internal name.
+- Operational state uses `StatusBadge` (icon and word). `Badge` is only for kinds, counts, and categories. Editorial state always maps through `web/src/lib/editorial-state.ts` (draft, in review → warning, approved → success, changes requested → error); never map it locally.
+- Show a post's or run's `source_type` through `formatSourceType()` in `web/src/lib/source-labels.ts` (rss → RSS, youtube → YouTube), never as a raw or `capitalize`d value.
+- Empty, zero-result, and failed-read states use `EmptyState` with an explicit tone (`empty`, `filtered`, `error`) and must name the next action. A failed read offers Retry.
+- List, table, and panel loads use a shape-matched skeleton, never a centered spinner. A small spinner inside a busy button, and the `running` StatusBadge, are the only spinners.
 - Row-level destructive actions live in `RowActions`, never as a bare icon button in the row.
+- Anything irreversible (deleting a key, site, integration, tool, or template; revoking access) is confirmed by an `AlertDialog` that names the thing and the consequence, with a confirm button that repeats the verb. Do not use `window.confirm`, `window.prompt`, or `window.alert`.
 - Put broad style changes in `web/src/index.css`, `web/tailwind.config.ts`, shared shadcn-style primitives, and `web/src/components/layout/BywordSurface.tsx`.
 - Touch page-specific classes only when they bypass the shared system or cause obvious visual mismatch.
 
 ## Controls
 
+- One orange primary per surface. Banners, row actions, and secondary panels use outline or secondary buttons.
 - Buttons are compact device controls:
   - Primary: orange action button.
   - Secondary: black/graphite device button.
@@ -64,6 +73,13 @@ with the same job as a primitive; install the primitive and use it.
 - Tables should stay dense, with compact rows, mono metadata/header rails, clear hover/selected states, and no wasted card padding.
 - Dialogs, sheets, dropdowns, toasts, badges, progress bars, and skeletons should inherit the same panel language.
 
+## Copy
+
+- Sentence case for buttons, labels, tabs, and section titles ("Add source", "Generate drafts"). Product places keep their capitals (Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, Control, MCP Connections, Integrations, Sites, Brand Voice, Article Settings, Usage, Growth Plan, Image Gallery, Batch Import, Campaigns). Acronyms stay acronyms (RSS, URL, PDF, MCP, CMS, SEO, AI).
+- Write like an operator briefing another operator: name the object, then its state. No greetings, no exclamation marks, no emoji, and never "we" for the system.
+- Use the operator's words, not backend names: run (not job), destination (not integration id), Templates (not Template Library).
+- Success is a past-tense toast, once. A lasting problem is an `Alert`. A field error is one line under the field.
+
 ## Workflow Rules
 
 - Auth, onboarding, and not-found can carry the strongest branded treatment, but the form itself must stay simple.
@@ -71,7 +87,7 @@ with the same job as a primitive; install the primitive and use it.
 - Search Growth tabs are Overview, Growth Plan, Optimize, Analytics, Indexing, and Internal Links. Growth Plan uses native dates and explicit item handoffs; it never implies automatic live publishing.
 - Sidebar labels use the current task language: Overview, Create Content, Review Queue, Runs, Search Growth, Sources, Content, and Control.
 - Visible product wording is **Content**, even though `/library` remains the stable technical URL. Do not show “Library” in navigation or actions.
-- The News surface is removed. RSS, Campaigns, and Batch Import live under Sources.
+- The News surface is removed. RSS, Campaigns, and Batch Import live under Sources. RSS sources keeps a "Reporting mode" filter for feeds in a news editorial mode; it is a filter, not a surface.
 - Overview owns cross-workspace summaries. Content owns filters, bulk actions, and inventory; avoid duplicating large analytics panels above its table.
 - Visible search, command, dropdown, toggle, slider, or button controls must work. Do not add fake knobs, switches, sliders, or decorative-only controls.
 - ⌘K opens the command palette (`CommandPalette`, built on shadcn `command`/cmdk). It searches pages, sites, content, actions, and help. Keep new surfaces registered there.

@@ -18,6 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { Alert } from "@/components/ui/alert";
 
 interface ToolCall {
   id: string;
@@ -107,7 +108,7 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
       case "plugin":
         return <Globe className="h-4 w-4 text-factory-purple" />;
       case "error":
-        return <XCircle className="h-4 w-4 text-destructive" />;
+        return <XCircle className="h-4 w-4 text-status-error" />;
       case "input":
         return <FileText className="h-4 w-4 text-muted-foreground" />;
       default:
@@ -118,7 +119,7 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Test Harness</h3>
+        <h3 className="text-lg font-medium">Test harness</h3>
         <p className="text-sm text-muted-foreground">
           Test your agent configuration before using it in production
         </p>
@@ -127,11 +128,11 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
       {/* Test Input */}
       <div className="grid grid-cols-1 gap-4">
         <div className="space-y-2">
-          <Label className="section-label">Test Prompt</Label>
+          <Label className="section-label">Test prompt</Label>
           <Textarea
             value={testInput}
             onChange={(e) => setTestInput(e.target.value)}
-            placeholder="Enter a test message for the agent..."
+            placeholder="Enter a test message for the agent…"
             className="min-h-[100px]"
           />
         </div>
@@ -149,16 +150,16 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
         </div>
       </div>
 
-      <Button onClick={runTest} disabled={isRunning} className="w-full">
+      <Button variant="secondary" onClick={runTest} disabled={isRunning} className="w-full">
         {isRunning ? (
           <>
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Running Test...
+            Running test…
           </>
         ) : (
           <>
             <Play className="h-4 w-4 mr-2" />
-            Run Test
+            Run test
           </>
         )}
       </Button>
@@ -167,22 +168,16 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
       {result && (
         <div className="space-y-4">
           {/* Status Banner */}
-          <div
-            className={`p-4 rounded-lg border ${
-              result.success
-                ? "bg-status-success/10 border-status-success/30"
-                : "bg-destructive/10 border-destructive/30"
-            }`}
-          >
+          <Alert variant={result.success ? "success" : "destructive"} className="p-4">
             <div className="flex items-center gap-3">
               {result.success ? (
                 <CheckCircle2 className="h-5 w-5 text-status-success" />
               ) : (
-                <XCircle className="h-5 w-5 text-destructive" />
+                <XCircle className="h-5 w-5 text-status-error" />
               )}
               <div>
                 <p className="font-medium">
-                  {result.success ? "Test Passed" : "Test Failed"}
+                  {result.success ? "Test passed" : "Test failed"}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   Execution time: {result.executionTime}ms
@@ -196,18 +191,18 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
             {result.validationErrors && result.validationErrors.length > 0 && (
               <div className="mt-3 space-y-1">
                 {result.validationErrors.map((err, i) => (
-                  <p key={i} className="text-sm text-destructive">
+                  <p key={i} className="text-sm text-status-error">
                     • {err}
                   </p>
                 ))}
               </div>
             )}
-          </div>
+          </Alert>
 
           {/* Execution Trace */}
-          <div className="border border-border rounded-lg">
+          <div className="border border-border rounded-sm">
             <div className="p-3 border-b border-border bg-muted/30">
-              <h4 className="font-medium">Execution Trace</h4>
+              <h4 className="font-medium">Execution trace</h4>
             </div>
             <ScrollArea className="h-48">
               <div className="p-3 space-y-2">
@@ -248,7 +243,7 @@ export function PersonaTestTab({ personaId }: PersonaTestTabProps) {
           {result.output && (
             <div className="rounded-md border border-border bg-card factory-panel">
               <div className="p-3 border-b border-border bg-muted/30">
-                <h4 className="font-medium">Generated Output</h4>
+                <h4 className="font-medium">Generated output</h4>
               </div>
               <ScrollArea className="h-64">
                 <div className="prose prose-sm max-w-none p-4">

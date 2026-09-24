@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { StatCard, type StatTone } from "@/components/patterns/StatCard";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -67,15 +68,12 @@ import {
   type ImageResolution,
   type ManualImageProvider,
 } from "@/components/content/ImageGenerationSettings";
-import { cn } from "@/lib/utils";
 import type { FeedEditorialDefaults } from "@/lib/feed-routing";
 import { useSites } from "@/hooks/useSites";
 import {
   formatCompactNumber,
   safePercent,
-  semanticToneClass,
   topBuckets,
-  type SemanticTone,
 } from "@/lib/search-insights";
 
 interface Feed {
@@ -369,7 +367,7 @@ export default function RSSFeeds() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success(`${feedDraftQueueLabel(result.queued)} queued. Check the Job Queue for progress.`);
+      toast.success(`${feedDraftQueueLabel(result.queued)} queued. Check Runs for progress.`);
       setRunningFeedId(null);
     },
     onError: (error) => {
@@ -446,7 +444,7 @@ export default function RSSFeeds() {
   };
 
   const getPersonaName = (personaId: string | null) => {
-    if (!personaId) return "No Persona";
+    if (!personaId) return "No persona";
     const persona = personas.find((p) => p.id === personaId);
     return persona?.name || "Unknown";
   };
@@ -460,10 +458,10 @@ export default function RSSFeeds() {
       case "hackernews":
         return <span className="font-mono text-xs font-bold text-muted-foreground">Y</span>;
       case "github":
-        return <Github className="h-4 w-4" />;
+        return <Github className="h-4 w-4 text-muted-foreground" />;
       case "rss":
       default:
-        return <Rss className="h-4 w-4 text-primary" />;
+        return <Rss className="h-4 w-4 text-byword-blue" />;
     }
   };
 
@@ -509,12 +507,12 @@ export default function RSSFeeds() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Content Sources"
-        description="Monitor, pause, run, and delete all saved content sources."
+        title="RSS sources"
+        description="Monitor, pause, run, and delete saved RSS and platform sources."
       >
         <Button onClick={() => navigate("/sources/rss/new")}>
           <Plus className="h-4 w-4" />
-          Add Source
+          Add source
         </Button>
       </PageHeader>
 
@@ -560,14 +558,14 @@ export default function RSSFeeds() {
           <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
             <TabsList className="h-auto flex-wrap justify-start">
               <TabsTrigger value="all" className="gap-2">
-                All Feeds
-                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                All sources
+                <span className="text-xs tabular-nums opacity-70">
                   {feeds.length}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="news" className="gap-2">
-                News
-                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              <TabsTrigger value="news" className="gap-2" title="Sources in a news editorial mode or with the Haber content type">
+                Reporting mode
+                <span className="text-xs tabular-nums opacity-70">
                   {newsFeedCount}
                 </span>
               </TabsTrigger>
@@ -632,7 +630,7 @@ export default function RSSFeeds() {
         <BywordCard className="mb-6">
           <SectionHeader
             icon={CalendarClock}
-            title="Source health"
+            title="Schedule health"
             description="Whether each source is keeping to the schedule the scheduler can actually deliver."
           />
           <SourceSyncHealth />
@@ -659,10 +657,10 @@ export default function RSSFeeds() {
                 />
               </TableHead>
               <TableHead>Source</TableHead>
-              <TableHead>Assigned Persona</TableHead>
+              <TableHead>Assigned persona</TableHead>
               <TableHead>Destination</TableHead>
-              <TableHead>Last Run</TableHead>
-              <TableHead>Next Run</TableHead>
+              <TableHead>Last run</TableHead>
+              <TableHead>Next run</TableHead>
               <TableHead className="text-center">Posts</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-10" />
@@ -685,12 +683,22 @@ export default function RSSFeeds() {
             ) : paginatedFeeds.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={9} className="p-0">
-                  <EmptyState
-                    size="row"
-                    title="No sources configured"
-                    description="Add an RSS or news source and BlogFactory turns new items into drafts on a schedule."
-                    primaryAction={{ label: "Add a source", href: "/sources/rss/new" }}
-                  />
+                  {feeds.length > 0 ? (
+                    <EmptyState
+                      size="row"
+                      tone="filtered"
+                      title="No sources match these filters"
+                      description="Widen the status, site, or search filter to see more sources."
+                      primaryAction={{ label: "Clear filters", onClick: () => { setFilter("all"); setSiteFilter("all"); setSearchQuery(""); } }}
+                    />
+                  ) : (
+                    <EmptyState
+                      size="row"
+                      title="No sources configured"
+                      description="Add an RSS or platform source and BlogFactory turns new items into drafts on a schedule."
+                      primaryAction={{ label: "Add a source", href: "/sources/rss/new" }}
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -715,23 +723,23 @@ export default function RSSFeeds() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border bg-card">
                         {getPlatformIcon(feed.platform)}
                       </div>
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-primary">{feed.name}</span>
-                          {feedIsNews && <Badge variant="outline" className="text-xs">News</Badge>}
+                          <span className="font-medium text-foreground">{feed.name}</span>
+                          {feedIsNews && <Badge variant="outline" className="text-xs">Reporting mode</Badge>}
                           {matchedLabel && <Badge variant="secondary" className="text-xs">{matchedLabel}</Badge>}
                           {feed.extract_full_content && (
                             <Badge variant="secondary" className="text-xs gap-1 px-1.5 py-0">
                               <FileText className="h-3 w-3" />
-                              Full Text
+                              Full text
                             </Badge>
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {feedIsNews ? "News RSS Feed" : getPlatformLabel(feed.platform)}
+                          {feedIsNews ? "RSS · reporting mode" : getPlatformLabel(feed.platform)}
                         </span>
                       </div>
                     </div>
@@ -771,9 +779,7 @@ export default function RSSFeeds() {
                     {!feed.is_active ? (
                       <span className="text-sm text-muted-foreground/50">Paused</span>
                     ) : isDue ? (
-                      <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
-                        Due now
-                      </Badge>
+                      <StatusBadge status="running" label="Due now" showIcon={false} />
                     ) : nextRun ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -795,7 +801,7 @@ export default function RSSFeeds() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {feed.routing_status === "needs_routing" ? <Badge variant="outline" className="border-status-warning/30 text-status-warning">Needs routing</Badge> : <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />}
+                    {feed.routing_status === "needs_routing" ? <StatusBadge status="warning" label="Needs routing" showIcon={false} /> : <StatusBadge status={feed.is_active ? "active" : "paused"} showIcon={false} />}
                   </TableCell>
                   <TableCell>
                     <Tooltip>
@@ -880,7 +886,7 @@ export default function RSSFeeds() {
       <AlertDialog open={!!feedToDelete} onOpenChange={(open) => !open && setFeedToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Feed</AlertDialogTitle>
+            <AlertDialogTitle>Delete feed</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{feedToDelete?.name}"? This action cannot be undone.
             </AlertDialogDescription>
@@ -901,7 +907,7 @@ export default function RSSFeeds() {
       <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Selected Feeds</AlertDialogTitle>
+            <AlertDialogTitle>Delete selected feeds</AlertDialogTitle>
             <AlertDialogDescription>
               Delete {selectedFeeds.length} selected feed{selectedFeeds.length === 1 ? "" : "s"}? This cannot be undone.
             </AlertDialogDescription>
@@ -948,36 +954,36 @@ function SourceHealthInsights({
   onShowActive: () => void;
   running: boolean;
 }) {
-  const metrics = [
-    { label: "Active", value: activeCount, tone: activeCount ? "success" as SemanticTone : "opportunity" as SemanticTone, icon: CheckCircle },
-    { label: "Paused", value: pausedCount, tone: pausedCount ? "opportunity" as SemanticTone : "success" as SemanticTone, icon: Pause },
-    { label: "Due now", value: dueNowCount, tone: dueNowCount ? "performance" as SemanticTone : "neutral" as SemanticTone, icon: CalendarClock },
-    { label: "Scheduler errors", value: schedulerErrors, tone: schedulerErrors ? "risk" as SemanticTone : "success" as SemanticTone, icon: AlertCircle },
-    { label: "Posts generated", value: postsGenerated, tone: "performance" as SemanticTone, icon: FileText },
+  const metrics: Array<{ label: string; value: number; tone: StatTone; icon: typeof Rss }> = [
+    { label: "Active", value: activeCount, tone: activeCount ? "success" : "neutral", icon: CheckCircle },
+    { label: "Paused", value: pausedCount, tone: pausedCount ? "warning" : "neutral", icon: Pause },
+    { label: "Due now", value: dueNowCount, tone: dueNowCount ? "running" : "neutral", icon: CalendarClock },
+    { label: "Scheduler errors", value: schedulerErrors, tone: schedulerErrors ? "error" : "neutral", icon: AlertCircle },
+    { label: "Posts generated", value: postsGenerated, tone: "neutral", icon: FileText },
   ];
 
   return (
     <BywordCard className="mb-6">
       <SectionHeader
         icon={BarChart3}
-        title="Source health"
+        title="Source summary"
         description="Which sources are alive, due, and contributing posts."
         action={<Badge variant="outline">{formatCompactNumber(totalSources)} total sources</Badge>}
       />
       <div className="p-4 sm:p-5 lg:p-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {metrics.map((metric) => (
-            <div key={metric.label} className={cn("rounded-md border p-4", semanticToneClass(metric.tone))}>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase opacity-75">{metric.label}</p>
-                <metric.icon className="h-4 w-4 opacity-70" />
-              </div>
-              <p className="text-2xl font-semibold text-foreground">{formatCompactNumber(metric.value)}</p>
-            </div>
+            <StatCard
+              key={metric.label}
+              label={metric.label}
+              value={formatCompactNumber(metric.value)}
+              icon={metric.icon}
+              tone={metric.tone}
+            />
           ))}
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="rounded-md border border-byword-border bg-muted/20 p-4">
+          <div className="rounded-md border border-border bg-muted/40 p-4">
             <div className="mb-3 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-byword-blue" />
               <p className="text-sm font-semibold">Contribution by platform</p>
@@ -1003,7 +1009,7 @@ function SourceHealthInsights({
               title="Due now"
               value={formatCompactNumber(dueNowCount)}
               detail={dueNowCount ? "Run the next due source now or let the scheduler pick it up." : "No active source is due."}
-              tone={dueNowCount ? "performance" : "success"}
+              status={dueNowCount ? { status: "running", label: "Due" } : undefined}
               action={running ? "Running..." : "Run first due"}
               disabled={!dueNowCount || running}
               icon={Play}
@@ -1013,7 +1019,7 @@ function SourceHealthInsights({
               title="Paused sources"
               value={formatCompactNumber(pausedCount)}
               detail={pausedCount ? "Paused sources are no longer feeding the content pipeline." : "All sources are active."}
-              tone={pausedCount ? "opportunity" : "success"}
+              status={pausedCount ? { status: "paused", label: "Paused" } : undefined}
               action="Show paused"
               disabled={!pausedCount}
               icon={Pause}
@@ -1023,7 +1029,7 @@ function SourceHealthInsights({
               title="Scheduler errors"
               value={formatCompactNumber(schedulerErrors)}
               detail={schedulerErrors ? "Open active sources and check credentials or feed URLs." : "Latest scheduler run is clean."}
-              tone={schedulerErrors ? "risk" : "success"}
+              status={schedulerErrors ? { status: "error", label: "Errors" } : undefined}
               action={schedulerErrors ? "Show active" : "View sources"}
               disabled={false}
               icon={schedulerErrors ? AlertCircle : ArrowRight}
@@ -1040,7 +1046,7 @@ function SourceLane({
   title,
   value,
   detail,
-  tone,
+  status,
   action,
   disabled,
   icon: Icon,
@@ -1049,20 +1055,23 @@ function SourceLane({
   title: string;
   value: string;
   detail: string;
-  tone: SemanticTone;
+  status?: { status: StatusType; label: string };
   action: string;
   disabled?: boolean;
   icon: typeof Rss;
   onClick: () => void;
 }) {
   return (
-    <div className={cn("rounded-md border p-3", semanticToneClass(tone))}>
+    <div className="rounded-md border border-border bg-muted/40 p-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{title}</p>
-          <p className="mt-1 text-xs opacity-75">{detail}</p>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="type-kicker">{title}</p>
+            {status && <StatusBadge status={status.status} label={status.label} showIcon={false} />}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
         </div>
-        <p className="text-xl font-semibold text-foreground">{value}</p>
+        <p className="shrink-0 text-xl font-semibold tabular-nums text-foreground">{value}</p>
       </div>
       <Button size="sm" variant="outline" className="mt-3 h-8 w-full bg-card" onClick={onClick} disabled={disabled}>
         <Icon className="mr-1.5 h-3.5 w-3.5" />

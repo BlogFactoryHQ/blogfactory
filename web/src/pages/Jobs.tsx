@@ -13,6 +13,8 @@ import { TablePagination } from "@/components/patterns/TablePagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { StatCard, type StatTone } from "@/components/patterns/StatCard";
+import { formatSourceType } from "@/lib/source-labels";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -32,14 +34,13 @@ import {
   formatCompactCurrency,
   formatCompactNumber,
   formatDuration,
-  semanticToneClass,
-  type SemanticTone,
 } from "@/lib/search-insights";
 import { jobListPath, type ListPagination } from "@/lib/list-query";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
   article_title: FileText,
+  rss: Rss,
   rss_feed: Rss,
   url: LinkIcon,
   pdf: FileText,
@@ -433,11 +434,11 @@ export default function Jobs() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Job stopped successfully");
+      toast.success("Run stopped");
       setSelectedJob(null);
     },
     onError: (error) => {
-      toast.error("Failed to stop job: " + error.message);
+      toast.error("Could not stop run: " + error.message);
     },
   });
 
@@ -551,7 +552,7 @@ export default function Jobs() {
         is_batch: current.is_batch,
         personas: detail.personas || current.personas,
       } : current);
-    }).catch((error) => toast.error(error instanceof Error ? error.message : "Job details could not be loaded"));
+    }).catch((error) => toast.error(error instanceof Error ? error.message : "Run details could not be loaded"));
   };
 
   const updateFilter = (value: StatusFilter) => {
@@ -625,8 +626,8 @@ export default function Jobs() {
   return (
     <BywordPageShell className="max-w-7xl">
       <PageHeader
-        title="Job Queue"
-        description={`Monitoring generation pipeline. ${statusCounts.running} active job${statusCounts.running !== 1 ? "s" : ""} running.`}
+        title="Runs"
+        description={`Generation runs across your sites. ${statusCounts.running} active run${statusCounts.running !== 1 ? "s" : ""}.`}
       />
 
       <JobReliabilityInsights
@@ -654,31 +655,31 @@ export default function Jobs() {
           <Tabs value={filter} onValueChange={(v) => updateFilter(v as StatusFilter)}>
             <TabsList className="h-auto flex-wrap justify-start">
               <TabsTrigger value="all" className="gap-2">
-                All Jobs
+                All runs
                 <span className="text-xs opacity-70">{statusCounts.all}</span>
               </TabsTrigger>
               <TabsTrigger value="pending" className="gap-2">
                 Pending
-                <span className="text-xs text-status-pending">{statusCounts.pending}</span>
+                <span className="text-xs tabular-nums opacity-70">{statusCounts.pending}</span>
               </TabsTrigger>
               <TabsTrigger value="running" className="gap-2">
                 Running
-                <span className="text-xs text-status-running">{statusCounts.running}</span>
+                <span className="text-xs tabular-nums opacity-70">{statusCounts.running}</span>
               </TabsTrigger>
               <TabsTrigger value="completed" className="gap-2">
                 Completed
-                <span className="text-xs text-status-success">{statusCounts.completed}</span>
+                <span className="text-xs tabular-nums opacity-70">{statusCounts.completed}</span>
               </TabsTrigger>
               <TabsTrigger value="failed" className="gap-2">
                 Failed
-                <span className="text-xs text-status-error">{statusCounts.failed}</span>
+                <span className="text-xs tabular-nums opacity-70">{statusCounts.failed}</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
           <div className="relative w-full lg:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search Job ID..."
+              placeholder="Search run ID..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               className="pl-9"
@@ -702,13 +703,13 @@ export default function Jobs() {
         <SectionHeader
           icon={BarChart3}
           title="Queue table"
-          description={`${formatCompactNumber(jobPagination?.total || 0)} matching job${jobPagination?.total === 1 ? "" : "s"}. Select a row for progress, cost, and recovery controls.`}
+          description={`${formatCompactNumber(jobPagination?.total || 0)} matching run${jobPagination?.total === 1 ? "" : "s"}. Select a row for progress, cost, and recovery controls.`}
         />
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Job ID</TableHead>
-              <TableHead>Source Type</TableHead>
+              <TableHead>Run ID</TableHead>
+              <TableHead>Source type</TableHead>
               <TableHead>Persona</TableHead>
               <TableHead>Model</TableHead>
               <TableHead>Step</TableHead>
@@ -770,7 +771,7 @@ export default function Jobs() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <SourceIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="capitalize">{job.source_type.replace("_", " ")}</span>
+                        <span>{formatSourceType(job.source_type)}</span>
                       </div>
                       {(job.site_name || job.feed_name) && <p className="mt-1 text-[11px] text-muted-foreground">{[job.site_name, job.feed_name].filter(Boolean).join(" · ")}</p>}
                     </TableCell>
@@ -820,7 +821,7 @@ export default function Jobs() {
               <SheetHeader className="mb-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="section-label mb-1">Selected Job</p>
+                    <p className="section-label mb-1">Selected run</p>
                     <div className="flex items-center gap-3">
                       <SheetTitle className="font-mono">
                         #{selectedJob.id.slice(0, 8)}
@@ -880,23 +881,18 @@ export default function Jobs() {
                 const isPartial = draftStats.partial;
 
                 return (
-                  <div className={cn(
-                    "p-4 rounded-md border mb-6",
-                    isPartial
-                      ? "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.12)]"
-                      : "border-status-success/30 bg-[hsl(var(--status-success)/0.05)]"
-                  )}>
-                    <div className={cn("flex items-center gap-2 mb-3", isPartial ? "text-[hsl(var(--status-warning))]" : "text-[hsl(var(--status-success))]")}>
-                      <CheckCircle className="h-4 w-4" />
-                      <span className="font-medium text-sm">
-                        {isPartial ? `${draftStats.created}/${draftStats.total} drafts created · ${draftStats.failed} failed` : "Generation Successful"}
+                  <div className="mb-6 rounded-md border border-border bg-card p-4">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <StatusBadge status={isPartial ? "warning" : "success"} label={isPartial ? "Partial" : "Completed"} />
+                      <span className="text-sm font-medium">
+                        {isPartial ? `${draftStats.created}/${draftStats.total} drafts created · ${draftStats.failed} failed` : "Generation successful"}
                       </span>
                     </div>
                     {jobPosts.map((post) => (
                       <Link
                         key={post.id}
                         to={`/library/posts/${post.id}/edit`}
-                        className="mb-1.5 flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-calm last:mb-0 hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
+                        className="mb-1.5 flex items-center gap-3 rounded-sm border border-border bg-card p-3 transition-calm last:mb-0 hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
                       >
                         <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
                           <FileText className="h-4 w-4 text-muted-foreground" />
@@ -918,7 +914,7 @@ export default function Jobs() {
                           const passedChecks = item.qa.checks.filter((qaCheck) => qaCheck.ok === true);
                           const orderedChecks = [...failedChecks, ...skippedChecks, ...passedChecks];
                           return (
-                          <div key={item.postId} className="rounded-lg border border-border bg-card p-3">
+                          <div key={item.postId} className="rounded-sm border border-border bg-card p-3">
                             <div className="mb-2 flex items-center justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium">{item.title}</p>
@@ -928,12 +924,12 @@ export default function Jobs() {
                                   {skippedChecks.length ? ` • ${skippedChecks.length} skipped` : ""}
                                 </p>
                               </div>
-                              <div className={cn(
-                                "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                                item.qa.score >= 80 ? "bg-status-success/10 text-status-success" : item.qa.score >= 60 ? "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]" : "bg-status-error/10 text-status-error"
-                              )}>
-                                {item.qa.score}
-                              </div>
+                              <StatusBadge
+                                status={item.qa.score >= 80 ? "success" : item.qa.score >= 60 ? "warning" : "error"}
+                                label={`Score ${item.qa.score}`}
+                                showIcon={false}
+                                className="shrink-0 tabular-nums"
+                              />
                             </div>
                             <div className="space-y-1.5">
                               {orderedChecks.map((qaCheck) => (
@@ -960,7 +956,7 @@ export default function Jobs() {
                       <div className="mt-3 pt-3 border-t border-border space-y-3">
                         <p className="text-xs font-medium text-muted-foreground">{manualPromptMode ? "Manual prompt slots" : "Images"}</p>
                         {imageResolution.map((item) => (
-                          <div key={item.postId} className="rounded-lg border border-border bg-card p-3">
+                          <div key={item.postId} className="rounded-sm border border-border bg-card p-3">
                             <p className="truncate text-sm font-medium">{item.title}</p>
                             {item.error && <p className="mt-1 text-xs text-status-error">{item.error}</p>}
                             <div className="mt-2 space-y-1.5">
@@ -1001,7 +997,7 @@ export default function Jobs() {
                             disabled={retryDraftsMutation.isPending}
                           >
                             {retryDraftsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                            Retry All Failed
+                            Retry all failed
                           </Button>
                         </div>
                         {failedDrafts.map((fd, idx) => (
@@ -1036,11 +1032,11 @@ export default function Jobs() {
                 const hasRetryableItems = failedDrafts.length > 0;
 
                 return (
-                  <div className="p-4 rounded-lg border border-status-error/30 bg-[hsl(var(--status-error)/0.05)] mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 text-[hsl(0_72%_40%)]">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="font-medium text-sm">Generation Failed</span>
+                  <div className="mb-6 rounded-md border border-border bg-card p-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status="error" />
+                        <span className="text-sm font-medium">Generation failed</span>
                       </div>
                       {hasRetryableItems && (
                         <Button
@@ -1054,7 +1050,7 @@ export default function Jobs() {
                           disabled={retryDraftsMutation.isPending}
                         >
                           {retryDraftsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                          Retry Failed
+                          Retry failed
                         </Button>
                       )}
                     </div>
@@ -1091,12 +1087,12 @@ export default function Jobs() {
 
               {/* Input Configuration */}
               <div className="space-y-4 mb-6">
-                <p className="section-label">Input Configuration</p>
+                <p className="section-label">Input configuration</p>
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Source</span>
-                    <span className="font-medium capitalize">
-                      {selectedJob.source_type.replace("_", " ")}
+                    <span className="font-medium">
+                      {formatSourceType(selectedJob.source_type)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -1114,14 +1110,14 @@ export default function Jobs() {
                   {selectedJob.token_cost !== null && selectedJob.token_cost > 0 && (
                     <>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Token Cost</span>
+                        <span className="text-muted-foreground">Token cost</span>
                         <p className="font-medium">
                           {(selectedJob.token_cost / 1000).toFixed(1)}k tokens
                         </p>
                       </div>
                       {selectedJob.total_cost != null && selectedJob.total_cost > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Total Cost</span>
+                          <span className="text-muted-foreground">Total cost</span>
                           <p className="font-medium">
                             {selectedJob.total_cost < 0.01 ? "<$0.01" : `$${Number(selectedJob.total_cost).toFixed(4)}`}
                           </p>
@@ -1134,7 +1130,7 @@ export default function Jobs() {
 
               {/* Job Timeline */}
               <div className="space-y-4 mb-6">
-                <p className="section-label">Job Timeline</p>
+                <p className="section-label">Run timeline</p>
                 <div className="space-y-4">
                   {selectedJob.completed_at && (
                     <div className="flex gap-3">
@@ -1155,7 +1151,7 @@ export default function Jobs() {
                   <div className="flex gap-3">
                     <div className="h-2 w-2 rounded-full bg-muted-foreground/30 mt-1.5" />
                     <div>
-                      <p className="text-sm font-medium">Job Created</p>
+                      <p className="text-sm font-medium">Run created</p>
                       <p className="text-xs text-muted-foreground">
                         {safeFormatDate(selectedJob.created_at, "h:mm:ss a")}
                       </p>
@@ -1167,13 +1163,13 @@ export default function Jobs() {
               {/* Source Preview */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="section-label">Source Content</p>
+                  <p className="section-label">Source content</p>
                   <Button variant="ghost" size="sm" onClick={copyPrompt}>
                     <Copy className="h-3.5 w-3.5 mr-1.5" />
                     Copy
                   </Button>
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                <div className="rounded-sm border border-border bg-muted/40 p-4">
                   <p className="text-sm font-mono text-muted-foreground leading-relaxed line-clamp-4">
                     {selectedJob.source_value}
                   </p>
@@ -1216,12 +1212,12 @@ function JobReliabilityInsights({
   retrying: boolean;
   stopping: boolean;
 }) {
-  const metrics = [
-    { label: "Running", value: statusCounts.running, tone: statusCounts.running ? "performance" as SemanticTone : "neutral" as SemanticTone, icon: Loader2 },
-    { label: "Completed", value: statusCounts.completed, tone: "success" as SemanticTone, icon: CheckCircle },
-    { label: "Failed", value: statusCounts.failed, tone: statusCounts.failed ? "risk" as SemanticTone : "success" as SemanticTone, icon: AlertCircle },
-    { label: "Partial batches", value: partialCount, tone: partialCount ? "opportunity" as SemanticTone : "success" as SemanticTone, icon: BarChart3 },
-    { label: "Total cost", value: totalCost, tone: "neutral" as SemanticTone, icon: DollarSign, currency: true },
+  const metrics: Array<{ label: string; value: number; tone: StatTone; icon: typeof FileText; currency?: boolean; filter: StatusFilter }> = [
+    { label: "Running", value: statusCounts.running, tone: statusCounts.running ? "running" : "neutral", icon: Activity, filter: "running" },
+    { label: "Completed", value: statusCounts.completed, tone: statusCounts.completed ? "success" : "neutral", icon: CheckCircle, filter: "completed" },
+    { label: "Failed", value: statusCounts.failed, tone: statusCounts.failed ? "error" : "neutral", icon: AlertCircle, filter: "failed" },
+    { label: "Partial batches", value: partialCount, tone: partialCount ? "warning" : "neutral", icon: BarChart3, filter: "failed" },
+    { label: "Total cost", value: totalCost, tone: "neutral", icon: DollarSign, currency: true, filter: "all" },
   ];
   const slowest = slowJobs[0];
   const priciest = expensiveJobs[0];
@@ -1231,8 +1227,8 @@ function JobReliabilityInsights({
       <SectionHeader
         icon={RefreshCw}
         title="Generation reliability"
-        description="Queue health, recovery work, and the jobs that cost or waited the most."
-        action={<Badge variant="outline">{formatCompactNumber(statusCounts.all)} total jobs</Badge>}
+        description="Queue health, recovery work, and the runs that cost or waited the most."
+        action={<Badge variant="outline">{formatCompactNumber(statusCounts.all)} total runs</Badge>}
       />
       <div className="p-4 sm:p-5 lg:p-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -1240,21 +1236,16 @@ function JobReliabilityInsights({
             <button
               key={metric.label}
               type="button"
-              onClick={() => {
-                if (metric.label === "Failed" || metric.label === "Partial batches") onFilter("failed");
-                else if (metric.label === "Running") onFilter("running");
-                else if (metric.label === "Completed") onFilter("completed");
-                else onFilter("all");
-              }}
-              className={cn("rounded-md border p-4 text-left transition-calm hover:border-byword-blue/45 hover:bg-byword-blue-soft/30", semanticToneClass(metric.tone))}
+              onClick={() => onFilter(metric.filter)}
+              className="rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase opacity-75">{metric.label}</p>
-                <metric.icon className={cn("h-4 w-4 opacity-70", metric.label === "Running" && statusCounts.running > 0 && "animate-spin")} />
-              </div>
-              <p className="text-2xl font-semibold text-foreground">
-                {metric.currency ? formatCompactCurrency(metric.value) : formatCompactNumber(metric.value)}
-              </p>
+              <StatCard
+                label={metric.label}
+                value={metric.currency ? formatCompactCurrency(metric.value) : formatCompactNumber(metric.value)}
+                icon={metric.icon}
+                tone={metric.tone}
+                className="hover:border-byword-blue/45"
+              />
             </button>
           ))}
         </div>
@@ -1262,8 +1253,8 @@ function JobReliabilityInsights({
           <ReliabilityLane
             title="Failed drafts"
             value={retryableJob ? retryableJob.id.slice(0, 8) : "Clear"}
-            detail={retryableJob ? (failedDraftsFor(retryableJob)[0]?.error || retryableJob.error_message || "Review and retry the failed generation.") : "No failed jobs need action."}
-            tone={retryableJob ? "risk" : "success"}
+            detail={retryableJob ? (failedDraftsFor(retryableJob)[0]?.error || retryableJob.error_message || "Review and retry the failed generation.") : "No failed runs need action."}
+            status={retryableJob ? { status: "error", label: "Needs retry" } : undefined}
             action={retrying ? "Retrying..." : "Retry first failure"}
             disabled={!retryableJob || retrying}
             icon={RefreshCw}
@@ -1271,21 +1262,20 @@ function JobReliabilityInsights({
             onSecondary={retryableJob ? () => onSelectJob(retryableJob) : undefined}
           />
           <ReliabilityLane
-            title="Expensive jobs"
+            title="Expensive runs"
             value={priciest ? formatCompactCurrency(Number(priciest.total_cost) || 0) : "—"}
-            detail={priciest ? `${formatModelNameForInsight(priciest.model_id)} · ${priciest.source_type.replace(/_/g, " ")}` : "Cost data appears after completed calls."}
-            tone={priciest ? "opportunity" : "neutral"}
-            action="Open job"
+            detail={priciest ? `${formatModelNameForInsight(priciest.model_id)} · ${formatSourceType(priciest.source_type)}` : "Cost data appears after completed calls."}
+            action="Open run"
             disabled={!priciest}
             icon={DollarSign}
             onClick={() => priciest && onSelectJob(priciest)}
           />
           <ReliabilityLane
-            title="Slow jobs"
+            title="Slow runs"
             value={slowest ? formatDuration(slowest.duration) : "—"}
             detail={slowest ? `${formatModelNameForInsight(slowest.job.model_id)} completed ${formatDuration(slowest.duration)} after start.` : "No completed duration signal yet."}
-            tone={slowest && slowest.duration > 120_000 ? "opportunity" : "neutral"}
-            action={runningJobs.length ? (stopping ? "Stopping..." : "Stop active jobs") : "Open slowest"}
+            status={slowest && slowest.duration > 120_000 ? { status: "warning", label: "Slow" } : undefined}
+            action={runningJobs.length ? (stopping ? "Stopping..." : "Stop active runs") : "Open slowest"}
             disabled={runningJobs.length ? stopping : !slowest}
             icon={runningJobs.length ? StopCircle : Timer}
             onClick={() => runningJobs.length ? onStop(runningJobs) : slowest && onSelectJob(slowest.job)}
@@ -1300,7 +1290,7 @@ function ReliabilityLane({
   title,
   value,
   detail,
-  tone,
+  status,
   action,
   disabled,
   icon: Icon,
@@ -1310,7 +1300,7 @@ function ReliabilityLane({
   title: string;
   value: string;
   detail: string;
-  tone: SemanticTone;
+  status?: { status: StatusType; label: string };
   action: string;
   disabled?: boolean;
   icon: typeof FileText;
@@ -1318,13 +1308,16 @@ function ReliabilityLane({
   onSecondary?: () => void;
 }) {
   return (
-    <div className={cn("rounded-md border p-3", semanticToneClass(tone))}>
+    <div className="rounded-md border border-border bg-muted/40 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-[0.1em] opacity-75">{title}</p>
-          <p className="mt-1 line-clamp-2 text-xs opacity-75">{detail}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="type-kicker">{title}</p>
+            {status && <StatusBadge status={status.status} label={status.label} />}
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{detail}</p>
         </div>
-        <p className="shrink-0 text-lg font-semibold text-foreground">{value}</p>
+        <p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">{value}</p>
       </div>
       <div className="mt-3 flex gap-2">
         <Button size="sm" variant="outline" className="h-8 flex-1 bg-card" onClick={onClick} disabled={disabled}>
@@ -1332,7 +1325,7 @@ function ReliabilityLane({
           {action}
         </Button>
         {onSecondary && (
-          <Button size="sm" variant="ghost" className="h-8 bg-card/60" onClick={onSecondary}>
+          <Button size="sm" variant="ghost" className="h-8" onClick={onSecondary}>
             Details
           </Button>
         )}

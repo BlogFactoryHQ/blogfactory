@@ -25,6 +25,20 @@ import {
   SectionHeader,
 } from "@/components/layout/BywordSurface";
 import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { RowActions } from "@/components/patterns/RowActions";
+import { StatStrip } from "@/components/patterns/StatCard";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -136,6 +150,19 @@ const providers: IntegrationProvider[] = ["wordpress", "ghost", "wix", "framer"]
 export const shouldReloadGhostAuthors = (existing: boolean, provider: IntegrationProvider | null, profile: string, credentialsChanged: boolean, hasDefaultAuthor: boolean) =>
   existing && provider === "ghost" && profile === "ortak_alan_news" && credentialsChanged && !hasDefaultAuthor;
 
+const MAPPING_LABELS: Record<string, string> = {
+  title: "Title",
+  slug: "Slug",
+  content: "Content",
+  excerpt: "Excerpt",
+  coverImage: "Cover image",
+};
+
+function connectionStatusLabel(status: string) {
+  if (!status) return "Missing";
+  return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
+}
+
 export default function Integrations() {
   const { activeSite } = useSites();
   const { integrations, isLoading, saveIntegration, testIntegration, deleteIntegration } = useIntegrations();
@@ -143,6 +170,7 @@ export default function Integrations() {
   const [providerToConnect, setProviderToConnect] = useState<IntegrationProvider | null>(null);
   const [editing, setEditing] = useState<SiteIntegration | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [pendingDisconnect, setPendingDisconnect] = useState<SiteIntegration | null>(null);
 
   const connectedCount = integrations.filter(connectionReady).length;
   const fromFirstDraft = searchParams.get("from") === "first-draft";
@@ -185,30 +213,20 @@ export default function Integrations() {
       />
 
       <div className="space-y-8">
-        {fromFirstDraft && <BywordCard className="relative overflow-hidden border-primary/30">
-          <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
-          <div className="flex items-start gap-4 p-5 pl-6 sm:p-6 sm:pl-7">
-            <IconTile icon={ShieldCheck} className="h-10 w-10 border-status-success/30 bg-status-success/10 text-status-success" />
-            <div>
-              <p className="type-kicker text-byword-blue">First draft complete</p>
-              <h2 className="mt-1 text-lg font-semibold">Choose where approved drafts should go</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Your first draft is still safe in BlogFactory. Select a CMS below, connect its credentials, and test the destination. Nothing is published live.</p>
-            </div>
-          </div>
-        </BywordCard>}
+        {fromFirstDraft && <Alert variant="info">
+          <ShieldCheck />
+          <p className="type-kicker text-byword-blue">First draft complete</p>
+          <AlertTitle className="mt-1">Choose where approved drafts should go</AlertTitle>
+          <AlertDescription className="max-w-2xl">Your first draft is still safe in BlogFactory. Select a CMS below, connect its credentials, and test the destination. Nothing is published live.</AlertDescription>
+        </Alert>}
 
-        <div className="grid overflow-hidden rounded-lg border border-byword-border bg-card md:grid-cols-3">
-          {[
-            ["Site", activeSite?.domain || "No site selected"],
-            ["Ready", `${connectedCount} tested ${connectedCount === 1 ? "destination" : "destinations"}`],
-            ["Last delivery", lastPublish ? new Date(lastPublish).toLocaleString() : "None yet"],
-          ].map(([label, value]) => (
-            <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-              <p className="mt-2 truncate text-2xl font-semibold text-foreground">{value}</p>
-            </div>
-          ))}
-        </div>
+        <StatStrip
+          items={[
+            { label: "Site", value: activeSite?.domain || "No site selected" },
+            { label: "Ready", value: `${connectedCount} tested ${connectedCount === 1 ? "destination" : "destinations"}` },
+            { label: "Last delivery", value: lastPublish ? new Date(lastPublish).toLocaleString() : "None yet" },
+          ]}
+        />
 
         {(isLoading || integrations.length > 0) && <BywordCard>
           <SectionHeader
@@ -230,13 +248,15 @@ export default function Integrations() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-foreground">{integration.displayName}</h3>
-                          <Badge variant="secondary" className="bg-byword-blue-soft text-byword-blue">{details.name}</Badge>
+                          <Badge variant="outline">{details.name}</Badge>
                           {integration.config?.profile === "ortak_alan_news" && (
                             <Badge variant="outline">Ortak Alan Haber</Badge>
                           )}
-                          <Badge variant={ready ? "default" : integration.lastTestedAt ? "destructive" : "outline"}>
-                            {integration.lastTestedAt ? displayConnectionStatus(integration) : "Not tested"}
-                          </Badge>
+                          <StatusBadge
+                            status={ready ? "success" : integration.lastTestedAt ? "error" : "pending"}
+                            label={integration.lastTestedAt ? connectionStatusLabel(displayConnectionStatus(integration)) : "Not tested"}
+                            showIcon={false}
+                          />
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {integration.credentialHint ? `Credential: ${integration.credentialHint}` : details.description}
@@ -256,10 +276,13 @@ export default function Integrations() {
                         <Settings2 className="mr-1.5 h-4 w-4" />
                         Manage
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(integration)}>
-                        <Trash2 className="mr-1.5 h-4 w-4" />
-                        Disconnect
-                      </Button>
+                      <RowActions
+                        triggerLabel={`More actions for ${integration.displayName}`}
+                        label={integration.displayName}
+                        actions={[
+                          { label: "Disconnect", icon: Trash2, destructive: true, onSelect: () => setPendingDisconnect(integration) },
+                        ]}
+                      />
                     </div>
                   </div>
                 );
@@ -287,7 +310,7 @@ export default function Integrations() {
                   <IconTile icon={details.icon} />
                   <div className="mt-7 flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-foreground">{details.name}</h3>
-                    <Badge variant="secondary" className="bg-byword-blue-soft text-byword-blue">{details.badge}</Badge>
+                    <Badge variant="outline">{details.badge}</Badge>
                   </div>
                   <p className="mt-3 min-h-[60px] text-sm leading-6 text-muted-foreground">{details.description}</p>
                   <span className="mt-5 inline-flex items-center text-sm font-medium text-byword-blue">
@@ -299,6 +322,29 @@ export default function Integrations() {
           </div>
         </BywordCard>
       </div>
+
+      <AlertDialog open={Boolean(pendingDisconnect)} onOpenChange={(open) => !open && setPendingDisconnect(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect {pendingDisconnect?.displayName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              BlogFactory stops delivering drafts to this destination and removes its saved credentials. Drafts already in the CMS are not touched.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDisconnect) void handleDelete(pendingDisconnect);
+                setPendingDisconnect(null);
+              }}
+            >
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <IntegrationSetupDialog
         provider={providerToConnect}
@@ -481,7 +527,7 @@ function IntegrationSetupDialog({
                 <div key={field.key} className="space-y-2">
                   <Label htmlFor={inputId}>
                     {field.label}
-                    {!integration && <span className="ml-1 text-destructive">*</span>}
+                    {!integration && <span className="ml-1 text-status-error">*</span>}
                   </Label>
                   <Input
                     id={inputId}
@@ -543,7 +589,7 @@ function IntegrationSetupDialog({
                         <p className="rounded-sm border border-dashed border-byword-border p-2 text-xs text-muted-foreground">Bağlantıyı kaydettikten sonra Manage ekranından varsayılan yazarı seçebilirsiniz.</p>
                       )}
                       {credentialsChanged && <p className="text-xs text-muted-foreground">Yeni anahtarı doğrulayıp yazarları yüklemek için bağlantıyı kaydedin.</p>}
-                      {!credentialsChanged && authorsError && <p className="text-xs text-destructive">Ghost yazarları yüklenemedi. Admin API anahtarını yeniden girip bağlantıyı kaydedin.</p>}
+                      {!credentialsChanged && authorsError && <p className="text-xs text-status-error">Ghost yazarları yüklenemedi. Admin API anahtarını yeniden girip bağlantıyı kaydedin.</p>}
                     </div>
                   </div>
                 )}
@@ -560,7 +606,7 @@ function IntegrationSetupDialog({
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   {Object.entries(mapping).map(([key, value]) => (
                     <div key={key} className="space-y-2">
-                      <Label className="capitalize">{key.replace("coverImage", "cover image")}</Label>
+                      <Label>{MAPPING_LABELS[key] || key}</Label>
                       <Input value={value} onChange={(event) => setMapping((current) => ({ ...current, [key]: event.target.value }))} />
                     </div>
                   ))}
@@ -568,9 +614,9 @@ function IntegrationSetupDialog({
               </div>
             </>
           )}
-          <div className="rounded-md border border-byword-blue/20 bg-byword-blue-soft/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+          <Alert variant="info" className="text-xs leading-5 text-muted-foreground">
             BlogFactory encrypts the credentials, checks access when you save, and only delivers CMS drafts.
-          </div>
+          </Alert>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
