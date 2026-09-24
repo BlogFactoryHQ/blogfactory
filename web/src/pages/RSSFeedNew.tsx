@@ -138,7 +138,7 @@ export default function RSSFeedNew() {
   const selectedModelUnavailable = isUnavailableModel(modelId, textModels);
   const fallbackTextModelId = preferredTextModelId(textModels);
   const availableFilterTypes = filterTypesForPlatform(platform, filterType);
-  const imageSectionTitle = imageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
+  const imageSectionTitle = imageDeliveryMode === "manual_prompt" ? "Manual image prompts" : "Image generation";
 
   // Fetch personas
   const { data: personas = [] } = useQuery({
@@ -437,17 +437,17 @@ export default function RSSFeedNew() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbLink href="/sources/rss">Content Sources</BreadcrumbLink>
+            <BreadcrumbLink href="/sources/rss">RSS sources</BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Add New</BreadcrumbPage>
+            <BreadcrumbPage>Add source</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <PageHeader
-        title="Add Content Source"
+        title="Add RSS source"
         description="Configure a new content source from RSS feeds, YouTube channels, Reddit, Hacker News, or GitHub. Set up filtering and AI generation preferences."
       />
 
@@ -461,10 +461,7 @@ export default function RSSFeedNew() {
           <div className="space-y-8 p-4 sm:p-6">
             {/* Platform Selection */}
             <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-5 bg-primary rounded-full" />
-                <h2 className="text-lg font-semibold">Platform</h2>
-              </div>
+              <h2 className="type-kicker border-b border-byword-border pb-2">Platform</h2>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {PLATFORMS.map((p) => (
@@ -487,14 +484,11 @@ export default function RSSFeedNew() {
 
           {/* Feed Information */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Source Configuration</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">Source configuration</h2>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="feedName">Feed Name</Label>
+                <Label htmlFor="feedName">Feed name</Label>
                 <Input
                   id="feedName"
                   placeholder={platform === "reddit" ? "e.g., r/technology Hot Posts" : "e.g., TechCrunch AI"}
@@ -506,7 +500,7 @@ export default function RSSFeedNew() {
               {/* Platform-specific fields */}
               {platform === "rss" && (
                 <div className="space-y-2">
-                  <Label htmlFor="sourceUrl">RSS Source URL</Label>
+                  <Label htmlFor="sourceUrl">RSS source URL</Label>
                   <InputAffordance
                     id="sourceUrl"
                     type="text"
@@ -573,7 +567,7 @@ export default function RSSFeedNew() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="redditDomain">Reddit Domain</Label>
+                    <Label htmlFor="redditDomain">Reddit domain</Label>
                     <Select value={redditDomain} onValueChange={setRedditDomain}>
                       <SelectTrigger>
                         <SelectValue />
@@ -590,7 +584,7 @@ export default function RSSFeedNew() {
 
               {platform === "hackernews" && (
                 <div className="space-y-2">
-                  <Label>Story Type</Label>
+                  <Label>Story type</Label>
                   <Select value={hnType} onValueChange={setHnType}>
                     <SelectTrigger>
                       <SelectValue />
@@ -629,7 +623,7 @@ export default function RSSFeedNew() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Time Period</Label>
+                    <Label>Time period</Label>
                     <Select value={githubPeriod} onValueChange={setGithubPeriod}>
                       <SelectTrigger className="w-[200px]">
                         <SelectValue />
@@ -656,14 +650,11 @@ export default function RSSFeedNew() {
 
           {/* Filtering */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Filtering</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">Filtering</h2>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Filter Type</Label>
+                <Label>Filter type</Label>
                 <Select value={filterType} onValueChange={setFilterType}>
                   <SelectTrigger>
                     <SelectValue />
@@ -683,9 +674,9 @@ export default function RSSFeedNew() {
               {filterType !== "none" && (
                 <div className="space-y-2">
                   <Label htmlFor="filterValue">
-                    {filterType === "score" && "Minimum Score"}
+                    {filterType === "score" && "Minimum score"}
                     {filterType === "threshold" && "Threshold %"}
-                    {filterType === "posts_per_day" && "Posts Per Run"}
+                    {filterType === "posts_per_day" && "Posts per run"}
                   </Label>
                   <Input
                     id="filterValue"
@@ -701,19 +692,16 @@ export default function RSSFeedNew() {
 
           {/* Content Scope */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Content Scope</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">Content scope</h2>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Target Keywords / Categories</Label>
+                <Label>Target keywords / categories</Label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {keywords.map((keyword) => (
                     <span
                       key={keyword}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-byword-blue/30 bg-byword-blue-soft px-3 py-1.5 text-sm text-byword-blue"
+                      className="inline-flex items-center gap-1.5 rounded-sm border border-byword-blue/30 bg-byword-blue-soft px-3 py-1.5 text-sm text-byword-blue"
                     >
                       {keyword}
                       <button
@@ -740,14 +728,11 @@ export default function RSSFeedNew() {
 
           {/* AI Configuration */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">AI Configuration</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">AI configuration</h2>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Writer Persona</Label>
+                <Label>Writer persona</Label>
                 <Select value={personaId} onValueChange={handlePersonaChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select persona..." />
@@ -762,13 +747,13 @@ export default function RSSFeedNew() {
                 </Select>
                 {personas.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No active personas. <a href="/control/brand-voice" className="text-primary underline">Create one first</a>.
+                    No active personas. <a href="/control/brand-voice" className="text-byword-blue underline">Create one first</a>.
                   </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label>OpenRouter Text Model</Label>
+                <Label>OpenRouter text model</Label>
                 <LiveTextModelSelect value={modelId} onValueChange={setModelId} />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -785,10 +770,7 @@ export default function RSSFeedNew() {
 
           {/* Image Generation */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">{imageSectionTitle}</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">{imageSectionTitle}</h2>
             <div>
               <SplitImageGenerationSettings
                 config={imageConfig}
@@ -806,7 +788,7 @@ export default function RSSFeedNew() {
             <CollapsibleTrigger asChild>
               <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
-                Advanced Options
+                Advanced options
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 mt-4">
@@ -815,9 +797,9 @@ export default function RSSFeedNew() {
                 {platform === "rss" && (
                   <div className="flex items-center justify-between gap-3 rounded-md border border-byword-blue/25 bg-byword-blue-soft/40 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-primary" />
+                      <FileText className="h-5 w-5 text-byword-blue" />
                       <div>
-                        <p className="font-medium text-sm">Full-Text Extraction</p>
+                        <p className="font-medium text-sm">Full-text extraction</p>
                         <p className="text-xs text-muted-foreground">Fetch complete article content from URLs</p>
                       </div>
                     </div>
@@ -828,7 +810,7 @@ export default function RSSFeedNew() {
                 {/* Freshness filter - context-specific label */}
                 <div className="space-y-2">
                   <Label htmlFor="filterOldPosts">
-                    {platform === "youtube" ? "Filter Old Videos (days)" : "Filter Old Posts (days)"}
+                    {platform === "youtube" ? "Filter old videos (days)" : "Filter old posts (days)"}
                   </Label>
                   <Input
                     id="filterOldPosts"
@@ -850,15 +832,12 @@ export default function RSSFeedNew() {
 
           {/* Scheduling */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="text-lg font-semibold">Scheduling</h2>
-            </div>
+            <h2 className="type-kicker border-b border-byword-border pb-2">Scheduling</h2>
 
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Fetch Frequency</Label>
+                  <Label>Fetch frequency</Label>
                   <Select value={frequency} onValueChange={setFrequency}>
                     <SelectTrigger>
                       <SelectValue />
@@ -874,7 +853,7 @@ export default function RSSFeedNew() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Posts per Run</Label>
+                  <Label>Posts per run</Label>
                   <Select value={String(postsPerRun)} onValueChange={(v) => setPostsPerRun(parseInt(v))}>
                     <SelectTrigger>
                       <SelectValue />
@@ -925,7 +904,7 @@ export default function RSSFeedNew() {
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                Save & Run Now
+                Save and run now
               </Button>
               <Button onClick={handleSave} disabled={isSubmitting || selectedModelUnavailable}>
                 {isSubmitting ? (
@@ -933,7 +912,7 @@ export default function RSSFeedNew() {
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                Save Feed
+                Save feed
               </Button>
             </div>
           </div>

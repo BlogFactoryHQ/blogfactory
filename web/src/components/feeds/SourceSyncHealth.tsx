@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 
 export type FeedSyncState = "running" | "paused" | "never" | "overdue" | "synced";
 
@@ -39,12 +40,12 @@ export type FeedHealthResponse = {
 
 const HOUR = 60 * 60 * 1000;
 
-const STATE_STYLE: Record<FeedSyncState, { ring: string; pill: string }> = {
-  synced: { ring: "hsl(var(--accent))", pill: "border-byword-border bg-muted text-foreground" },
-  running: { ring: "hsl(var(--status-running))", pill: "border-status-running/30 bg-status-running/10 text-status-running" },
-  overdue: { ring: "hsl(var(--status-error))", pill: "border-status-error/30 bg-status-error/10 text-status-error" },
-  paused: { ring: "hsl(var(--byword-border))", pill: "border-byword-border bg-card text-muted-foreground" },
-  never: { ring: "hsl(var(--byword-border))", pill: "border-status-warning/30 bg-status-warning/10 text-status-warning" },
+const STATE_STYLE: Record<FeedSyncState, { ring: string; status: StatusType }> = {
+  synced: { ring: "hsl(var(--accent))", status: "success" },
+  running: { ring: "hsl(var(--status-running))", status: "running" },
+  overdue: { ring: "hsl(var(--status-error))", status: "error" },
+  paused: { ring: "hsl(var(--byword-border))", status: "paused" },
+  never: { ring: "hsl(var(--byword-border))", status: "warning" },
 };
 
 function stateLabel(entry: FeedSyncHealth) {
@@ -129,13 +130,10 @@ export function SourceSyncHealth() {
             </div>
             <FreshnessRing entry={entry} />
             <span
-              className={cn(
-                "hidden w-44 shrink-0 truncate rounded-sm border px-2 py-1 text-center font-mono text-[11px] sm:inline-block",
-                STATE_STYLE[entry.state].pill,
-              )}
+              className="hidden w-44 shrink-0 justify-end sm:flex"
               title={entry.next_due_at ? `Next due ${new Date(entry.next_due_at).toLocaleString()}` : undefined}
             >
-              {stateLabel(entry)}
+              <StatusBadge status={STATE_STYLE[entry.state].status} label={stateLabel(entry)} showIcon={false} className="max-w-full truncate" />
             </span>
           </li>
         ))}

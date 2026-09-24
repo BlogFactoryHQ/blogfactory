@@ -8,7 +8,8 @@ import { asArray } from "@/lib/api-shape";
 import { connectionReady } from "@/lib/credential-status";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { EmptyState } from "@/components/patterns/EmptyState";
-import { TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { DetailSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -134,7 +135,7 @@ function CampaignList() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | "all">("all");
   const [modeFilter, setModeFilter] = useState<CampaignMode | "all">("all");
-  const { data: campaigns = [], isLoading } = useQuery({
+  const { data: campaigns = [], isLoading, error: campaignsError, refetch: refetchCampaigns } = useQuery({
     queryKey: ["campaigns"],
     queryFn: () => api.getArray<Campaign>("/campaigns"),
     refetchInterval: (query) => query.state.data?.some((campaign) => campaign.status === "running" || campaign.status === "queued") ? 5000 : false,
@@ -183,7 +184,7 @@ function CampaignList() {
       <BywordCard>
         <SectionHeader
           icon={Megaphone}
-          title="Campaign Control"
+          title="Campaign control"
           description="Find a run, inspect output, retry failures, or push completed drafts."
           action={<span className="type-meta rounded-sm border border-byword-border bg-muted px-2 py-1">{filteredCampaigns.length} shown</span>}
         />
@@ -193,7 +194,7 @@ function CampaignList() {
             <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns, modes, models..." />
           </div>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as CampaignStatus | "all")}>
-            <SelectTrigger aria-label="Item status filter">
+            <SelectTrigger aria-label="Status filter">
               <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -233,7 +234,20 @@ function CampaignList() {
             {isLoading && (
               <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><TableSkeleton rows={4} columns={5} /></TableCell></TableRow>
             )}
-            {!isLoading && campaigns.length === 0 && (
+            {!isLoading && campaignsError && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={7} className="p-0">
+                  <EmptyState
+                    size="row"
+                    tone="error"
+                    title="Campaigns could not be loaded"
+                    description={`${campaignsError instanceof Error ? campaignsError.message : "The request failed."} No campaign was changed.`}
+                    primaryAction={{ label: "Retry", onClick: () => void refetchCampaigns() }}
+                  />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && !campaignsError && campaigns.length === 0 && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={7} className="p-0">
                   <EmptyState
@@ -247,7 +261,7 @@ function CampaignList() {
               </TableRow>
             )}
             {!isLoading && campaigns.length > 0 && filteredCampaigns.length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone="filtered" title="No campaigns match these filters" description="Widen the search or status filter to see the rest." /></TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone="filtered" title="No campaigns match these filters" description="Widen the search, status, or mode filter to see the rest." primaryAction={{ label: "Clear filters", onClick: () => { setSearch(""); setStatusFilter("all"); setModeFilter("all"); } }} /></TableCell></TableRow>
             )}
             {filteredCampaigns.map((campaign) => (
               <TableRow
@@ -293,7 +307,7 @@ function CampaignDetail({ id }: { id: string }) {
   const autoRunRequestKey = useRef("");
   const { integrations } = useIntegrations();
   const connectedIntegrations = useMemo(() => integrations.filter(connectionReady), [integrations]);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["campaign", id],
     queryFn: async () => {
       const response = await api.get<{ campaign: Campaign; items?: CampaignItem[]; history?: CampaignHistory[] }>(`/campaigns/${id}`);
@@ -375,10 +389,24 @@ function CampaignDetail({ id }: { id: string }) {
     action.mutate(`/campaigns/${campaignForAutoRun.id}/run-next`);
   }, [action, autoQueuedCount, autoRunBatches, autoRunningCount, campaignForAutoRun]);
 
+  if (error && !data) {
+    return (
+      <BywordPageShell className="max-w-7xl">
+        <EmptyState
+          tone="error"
+          title="This campaign could not be loaded"
+          description={`${error instanceof Error ? error.message : "The request failed."} Nothing was changed.`}
+          primaryAction={{ label: "Retry", onClick: () => void refetch() }}
+          secondaryAction={{ label: "Back to Campaigns", href: "/sources/campaigns" }}
+        />
+      </BywordPageShell>
+    );
+  }
+
   if (isLoading || !data) {
     return (
-      <BywordPageShell>
-        <p className="text-muted-foreground">Loading...</p>
+      <BywordPageShell className="max-w-7xl">
+        <DetailSkeleton />
       </BywordPageShell>
     );
   }
@@ -448,7 +476,7 @@ function CampaignDetail({ id }: { id: string }) {
       <BywordCard className="mb-6">
         <SectionHeader
           icon={FileText}
-          title="Run Console"
+          title="Run console"
           description={campaign.mode === "programmatic" ? "Programmatic rows are converted into draft articles one batch at a time." : "Campaign items move from queued to generated drafts as batches finish."}
           action={<StatusBadge status={statusType(campaign.status)} label={formatStatusLabel(campaign.status)} />}
         />
@@ -466,11 +494,11 @@ function CampaignDetail({ id }: { id: string }) {
           </div>
           <div className="p-4">
             <p className="type-meta">Running</p>
-            <p className="mt-2 text-2xl font-semibold text-byword-blue">{runningCount}</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{runningCount}</p>
           </div>
           <div className="p-4">
             <p className="type-meta">Failed</p>
-            <p className="mt-2 text-2xl font-semibold text-destructive">{campaign.failedItems}</p>
+            <p className={cn("mt-2 text-2xl font-semibold tabular-nums", campaign.failedItems > 0 && "text-status-error")}>{campaign.failedItems}</p>
           </div>
           <div className="p-4">
             <p className="type-meta">Cost</p>
@@ -478,7 +506,7 @@ function CampaignDetail({ id }: { id: string }) {
           </div>
           <div className="p-4">
             <p className="type-meta">SEO ready</p>
-            <p className="mt-2 text-2xl font-semibold text-[hsl(var(--status-success))]">{seoReadyCount}/{completedPostIds.length}</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{seoReadyCount}/{completedPostIds.length}</p>
           </div>
         </div>
       </BywordCard>
@@ -504,7 +532,7 @@ function CampaignDetail({ id }: { id: string }) {
                 {seoReadyCount} ready · {seoPendingCount} preparing · {seoReviewCount} review · {seoFailedCount} failed or missing
               </p>
               {!allSeoReady && <p className="mt-1 text-xs text-muted-foreground">CMS push unlocks when every generated draft is SEO ready.</p>}
-              {cmsBatchTooLarge && <p className="mt-1 text-xs text-status-warning">CMS batches support 500 posts. Use <Link to={`/library/content?campaign=${campaign.id}`} className="font-medium underline">My Content</Link> to send smaller selections.</p>}
+              {cmsBatchTooLarge && <p className="mt-1 text-xs text-status-warning">CMS batches support 500 posts. Use <Link to={`/library/content?campaign=${campaign.id}`} className="font-medium underline">Content</Link> to send smaller selections.</p>}
               {seoReviewCount > 0 && <p className="mt-1 text-xs text-status-warning">Open review items and confirm preserved manual fields before publishing.</p>}
             </div>
             <div className="flex flex-wrap items-end gap-3">
@@ -528,8 +556,8 @@ function CampaignDetail({ id }: { id: string }) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={() => bulkPush.mutate(completedPosts)} disabled={bulkPush.isPending || !allSeoReady || cmsBatchTooLarge} title={!allSeoReady ? "Every draft needs current, valid SEO metadata" : cmsBatchTooLarge ? "Select at most 500 posts in My Content" : undefined}>
-                    Push {completedPostIds.length} Draft{completedPostIds.length === 1 ? "" : "s"}
+                  <Button onClick={() => bulkPush.mutate(completedPosts)} disabled={bulkPush.isPending || !allSeoReady || cmsBatchTooLarge} title={!allSeoReady ? "Every draft needs current, valid SEO metadata" : cmsBatchTooLarge ? "Select at most 500 posts in Content" : undefined}>
+                    Push {completedPostIds.length} draft{completedPostIds.length === 1 ? "" : "s"}
                   </Button>
                 </>
               ) : <Button variant="outline" asChild><Link to="/control/integrations">Connect CMS</Link></Button>}
@@ -553,7 +581,7 @@ function CampaignDetail({ id }: { id: string }) {
           </TableHeader>
           <TableBody>
             {history.length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="p-0"><EmptyState size="row" title="No job history yet" description="Runs for this campaign appear here once generation starts." /></TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="p-0"><EmptyState size="row" title="No run history yet" description="Runs for this campaign appear here once generation starts." /></TableCell></TableRow>
             )}
             {history.map((job) => (
               <TableRow key={job.id}>
@@ -620,7 +648,7 @@ function CampaignDetail({ id }: { id: string }) {
           </TableHeader>
           <TableBody>
             {filteredItems.length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone="filtered" title="No items match these filters" description="Widen the filters to see the rest of this campaign." /></TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="p-0"><EmptyState size="row" tone={items.length ? "filtered" : "empty"} title={items.length ? "No items match these filters" : "No items in this campaign"} description={items.length ? "Widen the filters to see the rest of this campaign." : "Items appear here once the campaign is created with keywords, titles, or rows."} primaryAction={items.length ? { label: "Clear filters", onClick: () => { setItemSearch(""); setItemStatusFilter("all"); setSeoStatusFilter("all"); } } : undefined} /></TableCell></TableRow>
             )}
             {filteredItems.map((item) => (
               <TableRow key={item.id}>

@@ -1,3 +1,4 @@
+import { formatSourceType } from "@/lib/source-labels";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/search-insights";
@@ -16,10 +17,10 @@ type RunSpan = {
 };
 
 function statusTone(status: string) {
-  if (status === "failed") return { bar: "bg-[hsl(var(--status-error))]", text: "text-[hsl(var(--status-error))]" };
-  if (status === "running") return { bar: "bg-[hsl(var(--status-running))]", text: "text-[hsl(var(--status-running))]" };
+  if (status === "failed") return { bar: "bg-status-error", text: "text-status-error" };
+  if (status === "running") return { bar: "bg-status-running", text: "text-status-running" };
   if (status === "pending") return { bar: "bg-byword-border", text: "text-muted-foreground" };
-  return { bar: "bg-[hsl(var(--status-success))]", text: "text-[hsl(var(--status-success))]" };
+  return { bar: "bg-status-success", text: "text-status-success" };
 }
 
 function percentile(sorted: number[], fraction: number) {
@@ -124,14 +125,14 @@ export function RunWaterfall({
               type="button"
               onClick={() => onSelect(span.job)}
               aria-pressed={isSelected}
-              title={`${span.job.source_type.replace(/_/g, " ")} · started ${safeFormatDate(span.job.created_at, "MMM d HH:mm")} · ${span.open ? "still running" : formatDuration(span.duration)}`}
+              title={`${formatSourceType(span.job.source_type)} · started ${safeFormatDate(span.job.created_at, "MMM d HH:mm")} · ${span.open ? "still running" : formatDuration(span.duration)}`}
               className={cn(
                 "grid w-full grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_3rem] items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-calm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/45 sm:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)_4rem] sm:gap-3",
                 isSelected && "bg-byword-blue-soft",
               )}
             >
               <span className="truncate font-mono text-[11px] text-foreground">
-                {span.job.source_type.replace(/_/g, " ")}
+                {formatSourceType(span.job.source_type)}
                 <span className="ml-1.5 hidden text-muted-foreground sm:inline">{safeFormatDate(span.job.created_at, "HH:mm")}</span>
               </span>
               <span className="relative h-3 rounded-sm bg-muted/60">
@@ -166,7 +167,7 @@ export function RunWaterfall({
                 key={index}
                 className={cn(
                   "flex-1 rounded-t-[2px] transition-calm",
-                  index === selectedBucket ? "bg-primary" : bin.count ? "bg-byword-blue/45" : "bg-byword-border/50",
+                  index === selectedBucket ? "bg-byword-blue" : bin.count ? "bg-byword-blue/45" : "bg-byword-border/50",
                 )}
                 style={{ height: `${Math.max(bin.height * 100, bin.count ? 12 : 4)}%` }}
                 title={`${bin.count} run${bin.count === 1 ? "" : "s"}`}
@@ -176,7 +177,7 @@ export function RunWaterfall({
           <div className="mt-1.5 flex items-center justify-between">
             <span className="type-meta">0</span>
             {selected && !selected.open && (
-              <span className="font-mono text-[11px] font-semibold text-primary">
+              <span className="font-mono text-[11px] font-semibold text-byword-blue">
                 this run {formatDuration(selected.duration)}
               </span>
             )}
