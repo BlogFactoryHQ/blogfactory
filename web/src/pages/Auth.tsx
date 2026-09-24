@@ -85,7 +85,9 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   }, [location.search, navigate]);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).get("error") === "auth_failed") toast.error("Sign in could not be completed. Please try again.");
+    const error = new URLSearchParams(location.search).get("error");
+    if (error === "auth_failed") toast.error("Sign in could not be completed. Please try again.");
+    if (error === "signup_required") toast.info("Accept the terms to finish creating your BlogFactory account.");
   }, [location.search]);
 
   useEffect(() => {

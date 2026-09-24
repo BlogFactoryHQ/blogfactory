@@ -26,6 +26,16 @@ export function safeAuthReturnTo(value: string | undefined) {
   return value?.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value : "/";
 }
 
+// A verified AuthKit user with no local account who never accepted the Cloud
+// terms, e.g. someone who picked "Sign up" inside AuthKit after "Continue to sign in".
+export class WorkosSignupRequiredError extends Error {
+  constructor() { super("Cloud signup requires accepting the terms"); this.name = "WorkosSignupRequiredError"; }
+}
+
+export function workosCallbackErrorPath(error: unknown) {
+  return error instanceof WorkosSignupRequiredError ? "/auth?mode=signup&error=signup_required" : "/auth?error=auth_failed";
+}
+
 function required(name: "WORKOS_API_KEY" | "WORKOS_CLIENT_ID" | "WORKOS_COOKIE_PASSWORD" | "WORKOS_REDIRECT_URI") {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for WorkOS AuthKit`);
@@ -83,7 +93,8 @@ async function upsertLocalWorkosUser(user: User, allowCreate: boolean, consentAc
     return bootstrapUserAccess(updated);
   }
 
-  if (!allowCreate || !consentAccepted) throw new Error("Cloud signup is not available for this account");
+  if (!allowCreate) throw new Error("Cloud signup is not available for this account");
+  if (!consentAccepted) throw new WorkosSignupRequiredError();
   const admin = isAdminEmail(user.email);
   const [created] = await db.insert(users).values({
     email: user.email,
