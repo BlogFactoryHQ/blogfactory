@@ -71,7 +71,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
       setTouched(false);
       queryClient.invalidateQueries({ queryKey: ["budget-settings"] });
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Budget settings saved!");
+      toast.success("Budget settings saved");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
   });
@@ -84,7 +84,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budget-settings"] });
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
-      toast.success("Generation resumed!");
+      toast.success("Generation resumed");
     },
     onError: () => toast.error("Failed to resume"),
   });

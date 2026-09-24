@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { connectionReady } from "@/lib/credential-status";
@@ -248,10 +249,7 @@ export default function BatchImport() {
 
   return (
     <BywordPageShell className="max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Batch Import</h1>
-        <p className="mt-2 text-muted-foreground">Upload a zip of folders containing markdown files and images.</p>
-      </div>
+      <PageHeader title="Batch Import" description="Upload a zip of folders containing markdown files and images." />
 
       <BywordCard>
         <SectionHeader

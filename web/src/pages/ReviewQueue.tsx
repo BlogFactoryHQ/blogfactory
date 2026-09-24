@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, RefreshCw, Send } from "lucide-react";
+import { DetailSkeleton, ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -57,8 +58,8 @@ export default function ReviewQueue() {
     <PageHeader title="Review Queue" description="Drafts that require an editorial decision or delivery fix.">
       <Button variant="outline" onClick={() => refetch()}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
     </PageHeader>
-    {isLoading && <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
-    {error && <BywordCard><p className="p-6 text-sm text-destructive">{error instanceof Error ? error.message : "Review Queue could not be loaded."}</p></BywordCard>}
+    {isLoading && <BywordCard><ListSkeleton rows={6} /></BywordCard>}
+    {error && <BywordCard><EmptyState tone="error" title="Could not load the Review Queue" description={error instanceof Error ? error.message : "Nothing was changed. Try again in a moment."} primaryAction={{ label: "Retry", onClick: () => refetch() }} /></BywordCard>}
     {data && <>
       <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="Queue severity filters">
         {([
@@ -84,7 +85,7 @@ function ReviewDetail({ postId }: { postId: string | null }) {
   const queryClient = useQueryClient();
   const [destinationId, setDestinationId] = useState("");
   const [delivery, setDelivery] = useState<PublishResponse | null>(null);
-  const { data: packet, isLoading, error } = useQuery({
+  const { data: packet, isLoading, error, refetch } = useQuery({
     queryKey: ["review-packet", postId],
     queryFn: () => api.get<ReviewPacket>(`/posts/${postId}/review`),
     enabled: Boolean(postId),
@@ -109,9 +110,9 @@ function ReviewDetail({ postId }: { postId: string | null }) {
       toast.error(pushError instanceof ApiError && pushError.code === "POST_VERSION_CONFLICT" ? "Draft changed. Review the refreshed version before sending again." : pushError instanceof Error ? pushError.message : "CMS draft could not be created");
     },
   });
-  if (!postId) return <BywordCard><p className="p-8 text-sm text-muted-foreground">Select a draft to review.</p></BywordCard>;
-  if (isLoading) return <BywordCard><div className="flex justify-center p-12"><Loader2 className="h-5 w-5 animate-spin" /></div></BywordCard>;
-  if (error || !packet) return <BywordCard><p className="p-6 text-sm text-destructive">Review packet could not be loaded.</p></BywordCard>;
+  if (!postId) return <BywordCard><EmptyState title="Select a draft to review" description="Its provenance, revision summary, preflight and destination appear here." /></BywordCard>;
+  if (isLoading) return <BywordCard><DetailSkeleton className="p-6" /></BywordCard>;
+  if (error || !packet) return <BywordCard><EmptyState tone="error" title="Could not load this review packet" description="The draft is unchanged. Try again, or pick another item." primaryAction={{ label: "Retry", onClick: () => refetch() }} /></BywordCard>;
   const connected = packet.destinations.filter((item) => item.status === "connected" && item.credential_status === "usable");
   const canSend = packet.preflight.can_send && Boolean(destinationId);
   const externalUrl = delivery?.publication?.externalEditUrl || delivery?.publication?.externalUrl;

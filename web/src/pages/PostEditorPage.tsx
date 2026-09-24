@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
 import { EditorialSafetyPanel, type EditorialState, type PostRevision } from "@/components/posts/EditorialSafetyPanel";
 import type { OrtakAlanMetadata } from "@/components/posts/ortak-alan-publishing";
-import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
+import { BywordCard, BywordPageShell, WorkspaceBackground } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { DetailSkeleton } from "@/components/patterns/PageSkeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cleanGeneratedPostContent, cleanPostTitle } from "@/lib/post-cleanup";
 import type { FeedEditorialDefaults } from "@/lib/feed-routing";
@@ -253,21 +255,27 @@ export default function PostEditorPage() {
 
   if (isLoadingPost) {
     return (
-      <WorkspaceBackground className="flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </WorkspaceBackground>
+      <BywordPageShell>
+        <BywordCard className="p-6">
+          <DetailSkeleton />
+        </BywordCard>
+      </BywordPageShell>
     );
   }
 
   if (error || !post) {
     return (
-      <WorkspaceBackground className="flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">Post not found</p>
-        <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Posts
-        </Button>
-      </WorkspaceBackground>
+      <BywordPageShell>
+        <BywordCard>
+          <EmptyState
+            size="page"
+            tone={error ? "error" : "empty"}
+            title={error ? "Could not load this post" : "Post not found"}
+            description={error ? "Nothing was changed. Go back to Content and open it again." : "It may have been deleted, or it belongs to another site."}
+            primaryAction={{ label: "Back to Content", onClick: handleBack }}
+          />
+        </BywordCard>
+      </BywordPageShell>
     );
   }
 

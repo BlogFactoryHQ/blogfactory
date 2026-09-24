@@ -57,10 +57,10 @@ interface InternalLinkSettings {
 }
 
 const INSIGHT_COLORS = {
-  performance: "#2F8EDB",
-  opportunity: "#D68400",
-  risk: "#D92D20",
-  improved: "#00856A",
+  performance: "hsl(var(--byword-blue))",
+  opportunity: "hsl(var(--factory-amber))",
+  risk: "hsl(var(--status-error))",
+  improved: "hsl(var(--status-success))",
 };
 
 const rowTone: Record<SearchInsightRow["kind"], string> = {
