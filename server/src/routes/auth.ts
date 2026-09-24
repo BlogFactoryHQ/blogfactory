@@ -11,7 +11,7 @@ import { readJsonObject, requiredString } from "../http/error-contract.js";
 import { consumeAuthRateLimit, hashAuthToken, newAuthToken, requestIp, sendResetEmail, sendVerificationEmail, verifyTurnstile } from "../services/auth-security.js";
 import { appUrl } from "../services/polar-client.js";
 import { cloudCheckoutEnabled, managedAiEnabled } from "../services/billing-config.js";
-import { beginWorkosAuth, endWorkosSession, finishWorkosAuth, workosCloudEnabled } from "../services/workos-auth.js";
+import { beginWorkosAuth, endWorkosSession, finishWorkosAuth, workosCallbackErrorPath, workosCloudEnabled } from "../services/workos-auth.js";
 
 export const authRoutes = new Hono();
 
@@ -62,7 +62,7 @@ authRoutes.get("/workos/callback", async (c) => {
     return c.redirect(`${appUrl()}${returnTo}`);
   } catch (error) {
     console.error("[auth] WorkOS callback failed", { name: error instanceof Error ? error.name : "UnknownError" });
-    return c.redirect(`${appUrl()}/auth?error=auth_failed`);
+    return c.redirect(`${appUrl()}${workosCallbackErrorPath(error)}`);
   }
 });
 

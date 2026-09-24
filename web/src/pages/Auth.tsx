@@ -39,10 +39,11 @@ function AuthShell({ children }: { children: ReactNode }) {
 export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = authReturnTo(location.state, new URLSearchParams(location.search).get("returnTo"));
+  const searchParams = new URLSearchParams(location.search);
+  const returnTo = authReturnTo(location.state, searchParams.get("returnTo"));
   const { login, devLogin, signup } = useAuth();
-  const resetToken = new URLSearchParams(location.search).get("reset");
-  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">(resetToken ? "reset" : "login");
+  const resetToken = searchParams.get("reset");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">(resetToken ? "reset" : searchParams.get("mode") === "signup" ? "signup" : "login");
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
 
@@ -51,7 +52,8 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const [displayName, setDisplayName] = useState("");
   const [consent, setConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [signupEnabled, setSignupEnabled] = useState(selfHosted ?? false);
+  // null while /auth/config loads, so a ?mode=signup link is not reset to login early.
+  const [signupEnabled, setSignupEnabled] = useState<boolean | null>(selfHosted ?? null);
   const [workosEnabled, setWorkosEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -70,7 +72,7 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   }, [selfHosted]);
 
   useEffect(() => {
-    if (!signupEnabled && mode === "signup") setMode("login");
+    if (signupEnabled === false && mode === "signup") setMode("login");
   }, [mode, signupEnabled]);
 
   useEffect(() => {
@@ -83,7 +85,9 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   }, [location.search, navigate]);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).get("error") === "auth_failed") toast.error("Sign in could not be completed. Please try again.");
+    const error = new URLSearchParams(location.search).get("error");
+    if (error === "auth_failed") toast.error("Sign in could not be completed. Please try again.");
+    if (error === "signup_required") toast.info("Accept the terms to finish creating your BlogFactory account.");
   }, [location.search]);
 
   useEffect(() => {
