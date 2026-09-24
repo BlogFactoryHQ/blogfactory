@@ -485,6 +485,16 @@ try {
     SELECT action, status FROM operation_events WHERE user_id = ${userId} AND object_id = ${jobId} AND origin = 'system'
   `;
   assert.deepEqual(systemJobEvents, [{ action: "job.completed", status: "succeeded" }], "job completion was not recorded in the operation ledger");
+  const oldJobId = randomUUID();
+  await sql`
+    INSERT INTO jobs (id, user_id, site_id, source_type, source_value, model_id, status, created_at)
+    VALUES (${oldJobId}, ${userId}, ${siteId}, 'campaign', 'old campaign item', 'integration/model', 'running', now() - interval '40 days')
+  `;
+  await sql`UPDATE jobs SET status = 'failed', completed_at = now() WHERE id = ${oldJobId}`;
+  const [oldJobEvent] = await sql<{ duration_ms: number }[]>`
+    SELECT duration_ms FROM operation_events WHERE object_id = ${oldJobId} AND action = 'job.failed'
+  `;
+  assert.equal(oldJobEvent.duration_ms, 2147483647, "old job duration overflowed the operation ledger");
   const mcpEvents = await sql<{ site_id: string | null; metadata: unknown }[]>`
     SELECT site_id, metadata FROM operation_events WHERE user_id = ${userId} AND origin = 'mcp'
   `;
