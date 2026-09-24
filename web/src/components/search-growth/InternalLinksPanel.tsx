@@ -23,7 +23,8 @@ import { api } from "@/lib/api";
 import { asArray, asStringArray } from "@/lib/api-shape";
 import { BywordCard, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGrowthDependencyBand";
-import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -251,7 +252,7 @@ export function InternalLinksPanel() {
       <BywordCard>
         <SectionHeader
           icon={LinkIcon}
-          title="Internal Links"
+          title="Internal links"
           description="Build a sitemap index for semantic links in generated articles."
           action={
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isIndexing}>
@@ -262,48 +263,41 @@ export function InternalLinksPanel() {
         />
         <div className="divide-y divide-byword-border">
         <div className="space-y-5 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-byword-border p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4 rounded-sm border border-border bg-muted/40 p-5">
             <div className="flex items-start gap-4">
-              <IconTile
-                icon={status === "connected" ? CheckCircle2 : status === "failed" ? AlertCircle : status === "indexing" ? Loader2 : LinkIcon}
-                className={cn(
-                  status === "connected" && "bg-[hsl(var(--status-success)/0.12)] text-status-success",
-                  status === "failed" && "bg-destructive/10 text-destructive",
-                  status === "indexing" && "bg-byword-blue-soft text-byword-blue"
-                )}
-              />
+              <IconTile icon={status === "connected" ? CheckCircle2 : status === "failed" ? AlertCircle : LinkIcon} />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold">{statusLabel(status)}</h3>
-                  <Badge variant={status === "failed" ? "destructive" : "secondary"}>{status === "connected" ? "Ready" : status}</Badge>
+                  <StatusBadge status={statusType(status)} label={status === "connected" ? "Ready" : status === "disconnected" || !["indexing", "failed"].includes(status) ? "Not connected" : statusLabel(status)} />
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {index?.siteHost || sitemapUrl || "Connect a sitemap to start semantic link matching."}
                 </p>
               </div>
             </div>
-            {status === "indexing" && <Loader2 className="h-5 w-5 animate-spin text-byword-blue" />}
           </div>
 
           {!hasOpenAiKey && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-                <p className="text-sm text-muted-foreground">Add an OpenAI API key before creating semantic link embeddings.</p>
+            <Alert variant="warning">
+              <AlertCircle />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <AlertDescription>Add an OpenAI API key before creating semantic link embeddings.</AlertDescription>
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <Link to="/control/article-settings?section=api-keys">
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Access keys
+                  </Link>
+                </Button>
               </div>
-              <Button type="button" variant="outline" size="sm" asChild>
-                <Link to="/control/article-settings?section=api-keys">
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Access Keys
-                </Link>
-              </Button>
-            </div>
+            </Alert>
           )}
 
           {status === "failed" && state?.errorMessage && (
-            <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive">
-              {state.errorMessage}
-            </div>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription className="text-foreground">{state.errorMessage}</AlertDescription>
+            </Alert>
           )}
 
           <div className="space-y-2">
@@ -322,6 +316,7 @@ export function InternalLinksPanel() {
               </div>
               <Button
                 type="button"
+                variant="secondary"
                 className="h-12"
                 onClick={() => indexMutation.mutate()}
                 disabled={!sitemapUrl.trim() || isIndexing || !hasOpenAiKey || cooldownBlocksIndexing}
@@ -390,7 +385,7 @@ export function InternalLinksPanel() {
           <div className="flex items-start gap-4">
             <IconTile icon={Filter} />
             <div>
-              <h3 className="text-lg font-semibold">URL Filters</h3>
+              <h3 className="text-lg font-semibold">URL filters</h3>
               <p className="mt-1 text-sm text-muted-foreground">Control which pages get indexed for linking.</p>
             </div>
           </div>
@@ -437,7 +432,7 @@ export function InternalLinksPanel() {
                   density === option.value ? "border-byword-blue bg-byword-blue-soft text-byword-blue" : "border-byword-border hover:border-byword-blue/40"
                 )}
               >
-                {option.badge && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded bg-byword-blue px-3 py-1 text-[10px] font-bold uppercase text-white">{option.badge}</span>}
+                {option.badge && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-sm border border-byword-blue/30 bg-card px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-byword-blue">{option.badge}</span>}
                 <p className="font-semibold">{option.label}</p>
                 <p className="mt-2 text-xl font-bold">{option.count}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
@@ -450,7 +445,7 @@ export function InternalLinksPanel() {
           <div className="flex items-start gap-4">
             <IconTile icon={LinkIcon} />
             <div>
-              <h3 className="text-lg font-semibold">Custom Link Rules</h3>
+              <h3 className="text-lg font-semibold">Custom link rules</h3>
               <p className="mt-1 text-sm text-muted-foreground">Override AI linking for specific keywords.</p>
             </div>
           </div>
@@ -458,17 +453,17 @@ export function InternalLinksPanel() {
             <Input value={ruleTriggers} onChange={(event) => setRuleTriggers(event.target.value)} placeholder="demo, free trial, book a call" />
             <ArrowRight className="hidden h-10 w-5 text-muted-foreground md:block" />
             <Input value={ruleUrl} onChange={(event) => setRuleUrl(event.target.value)} placeholder="https://example.com/book-demo" />
-            <Button type="button" onClick={addRule}>Add</Button>
+            <Button type="button" variant="outline" onClick={addRule}>Add</Button>
           </div>
           {rules.length > 0 && (
-            <div className="grid gap-3">
+            <div className="divide-y divide-byword-border rounded-sm border border-byword-border">
               {rules.map((rule) => (
-                <div key={rule.id} className="flex items-center gap-3 rounded-lg border border-byword-border p-3">
+                <div key={rule.id} className="flex items-center gap-3 p-3">
                   <LinkIcon className="h-4 w-4 text-byword-blue" />
                   <span className="min-w-0 flex-1 truncate text-sm">{rule.triggers}</span>
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{rule.url}</span>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))}>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Remove rule for ${rule.triggers}`} onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -480,12 +475,12 @@ export function InternalLinksPanel() {
         {indexedPagePreview.length > 0 && (
           <div className="space-y-4 p-6">
             <div>
-              <h3 className="text-lg font-semibold">Indexed Pages</h3>
+              <h3 className="text-lg font-semibold">Indexed pages</h3>
               <p className="mt-1 text-sm text-muted-foreground">Recent pages available for semantic matching.</p>
             </div>
-            <div className="grid gap-3">
+            <div className="divide-y divide-byword-border rounded-sm border border-byword-border">
               {indexedPagePreview.map((page) => (
-                <div key={page.url || page.path} className="rounded-lg border border-byword-border p-4">
+                <div key={page.url || page.path} className="px-4 py-3">
                   <p className="truncate font-medium">{page.title || page.path}</p>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{page.path || page.url}</p>
                 </div>
@@ -503,7 +498,7 @@ export function InternalLinksPanel() {
               disabled={!sitemapUrl.trim() || isIndexing || cooldownBlocksIndexing || !hasOpenAiKey}
             >
               <RefreshCw className="mr-2 h-4 w-4" />
-              {cooldownBlocksIndexing && refreshAvailableAt ? `Refresh ${formatRelativeLabel(refreshAvailableAt.toISOString())}` : "Refresh Index"}
+              {cooldownBlocksIndexing && refreshAvailableAt ? `Refresh ${formatRelativeLabel(refreshAvailableAt.toISOString())}` : "Refresh index"}
             </Button>
             <Button
               type="button"
@@ -524,12 +519,19 @@ export function InternalLinksPanel() {
 
 function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: string | number; label: string }) {
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-byword-border p-5">
+    <div className="flex items-center gap-4 rounded-sm border border-border bg-muted/40 p-5">
       <Icon className="h-5 w-5 text-muted-foreground" />
       <span className="text-lg font-semibold">{value}</span>
       <span className="text-sm text-muted-foreground">{label}</span>
     </div>
   );
+}
+
+function statusType(status: string): StatusType {
+  if (status === "connected") return "success";
+  if (status === "failed") return "error";
+  if (status === "indexing") return "running";
+  return "pending";
 }
 
 function statusLabel(status: string) {

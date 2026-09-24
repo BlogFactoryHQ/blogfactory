@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Bot, Check, CheckCircle2, Copy, ExternalLink, Fi
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -198,9 +199,10 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                     </>
                   ) : (
                     <div className="space-y-5">
-                      <div className="rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm leading-6 text-status-warning">
-                        <strong>OAuth is not configured on this server.</strong> If you operate this instance, complete this one-time admin setup. Regular workspace users cannot do it from their account.
-                      </div>
+                      <Alert variant="warning">
+                        <AlertTitle>OAuth is not configured on this server.</AlertTitle>
+                        <AlertDescription>If you operate this instance, complete this one-time admin setup. Regular workspace users cannot do it from their account.</AlertDescription>
+                      </Alert>
                       <InstructionList items={[
                         "In Google Cloud, create or select a project and enable the Search Console API.",
                         "Configure the OAuth consent screen, then create a Web application OAuth client.",
@@ -240,10 +242,12 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
               {step === "create" && (
                 <SetupSection icon={Sparkles} title={generationReady ? "Create more content" : "Repair AI access"} description={generationReady ? "Your site is connected and its OpenRouter credential is readable. Use the full creator when you want advanced controls." : "BlogFactory needs a connected site and verified OpenRouter key before it can generate content."}>
                   {generationReady ? (
-                    <div className="rounded-md border border-status-success/30 bg-status-success/10 p-5">
-                      <CheckCircle2 className="h-6 w-6 text-status-success" />
-                      <h3 className="mt-3 font-semibold text-status-success">Core access configured</h3>
-                      <p className="mt-1 text-sm leading-6 text-status-success">Open the full creator for model, research, image, and variation controls. Every CMS delivery remains draft-only.</p>
+                    <div>
+                      <Alert variant="success">
+                        <CheckCircle2 />
+                        <AlertTitle>Core access configured</AlertTitle>
+                        <AlertDescription>Open the full creator for model, research, image, and variation controls. Every CMS delivery remains draft-only.</AlertDescription>
+                      </Alert>
                       <Button asChild className="mt-5" onClick={() => onOpenChange(false)}><Link to="/create">Create content <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>
                     </div>
                   ) : <Button type="button" onClick={() => setStep("generation")}>Add OpenRouter key</Button>}
@@ -284,10 +288,11 @@ function SetupSection({ icon: Icon, title, description, children }: { icon: type
 
 function StatusPanel({ ready, title, detail }: { ready: boolean; title: string; detail: string }) {
   return (
-    <div className={cn("flex items-start gap-3 rounded-md border p-4", ready ? "border-status-success/30 bg-status-success/10" : "border-byword-border bg-muted/30")}>
-      <CheckCircle2 className={cn("mt-0.5 h-5 w-5 shrink-0", ready ? "text-status-success" : "text-muted-foreground")} />
-      <div><p className="font-semibold">{title}</p><p className="mt-1 text-sm text-muted-foreground">{detail}</p></div>
-    </div>
+    <Alert variant={ready ? "success" : "default"}>
+      <CheckCircle2 />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{detail}</AlertDescription>
+    </Alert>
   );
 }
 
