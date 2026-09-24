@@ -14,8 +14,8 @@ export function ActiveJobsPanel({ jobs, onDismiss }: ActiveJobsPanelProps) {
   return (
     <div className="space-y-3">
       {jobs.length > 1 && (
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Active Jobs ({jobs.length})
+        <p className="type-kicker">
+          Active jobs ({jobs.length})
         </p>
       )}
       {jobs.map((job) => (
@@ -26,6 +26,7 @@ export function ActiveJobsPanel({ jobs, onDismiss }: ActiveJobsPanelProps) {
               size="icon"
               className="absolute right-2 top-2 h-6 w-6 z-10"
               onClick={() => onDismiss(job.id)}
+              aria-label="Dismiss job"
             >
               <X className="h-3 w-3" />
             </Button>

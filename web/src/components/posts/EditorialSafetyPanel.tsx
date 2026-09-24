@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { EDITORIAL_STATE_BADGES } from "@/lib/editorial-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Eye, History, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Eye, History, RotateCcw, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -9,6 +10,9 @@ import { RevisionTimeline } from "@/components/posts/RevisionTimeline";
 import { RevisionScorecard, type RevisionScore } from "@/components/posts/RevisionScorecard";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -50,12 +54,7 @@ type Preflight = {
   checks: Array<{ id: string; label: string; status: "pass" | "warning" | "blocker"; message: string }>;
 };
 
-const stateCopy: Record<EditorialState, { label: string; status: StatusType }> = {
-  draft: { label: "Draft", status: "draft" },
-  in_review: { label: "In review", status: "pending" },
-  approved: { label: "Approved", status: "success" },
-  changes_requested: { label: "Changes requested", status: "warning" },
-};
+const stateCopy: Record<EditorialState, { label: string; status: StatusType }> = EDITORIAL_STATE_BADGES;
 
 function RevisionHistoryDialog({
   postId,
@@ -130,7 +129,7 @@ function RevisionHistoryDialog({
           <DialogDescription>Compare saved Markdown revisions or restore an older version without deleting history.</DialogDescription>
         </DialogHeader>
         {isLoading ? (
-          <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          <ListSkeleton rows={5} className="min-h-64" />
         ) : revisions.length ? (
           <div className="flex min-h-0 flex-1 flex-col gap-4">
             <RevisionTimeline revisions={revisions} baseId={beforeId} candidateId={afterId} onSelectCandidate={selectCandidate} scores={scoreById} />
@@ -253,11 +252,11 @@ export function EditorialSafetyPanel({
               <span className="font-mono text-xs text-foreground">{currentRevision ? `R${currentRevision.revision_number}` : "—"}</span>
               {currentRevision && <span className="text-xs text-muted-foreground">{new Date(currentRevision.created_at).toLocaleString()}</span>}
             </div>
-            {hasUnsavedChanges && <p className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">Preview and review actions use the last saved revision. Save your changes first.</p>}
+            {hasUnsavedChanges && <Alert variant="warning"><AlertDescription>Preview and review actions use the last saved revision. Save your changes first.</AlertDescription></Alert>}
             <div className="grid gap-2 sm:grid-cols-2">
-              {preflightLoading ? <div className="col-span-full flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Running preflight…</div> : preflight?.checks.map((check) => (
-                <div key={check.id} className="flex gap-2 rounded-sm border border-byword-border bg-muted/15 p-3">
-                  {check.status === "pass" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-success" /> : <ShieldAlert className={cn("mt-0.5 h-4 w-4 shrink-0", check.status === "blocker" ? "text-destructive" : "text-status-warning")} />}
+              {preflightLoading ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-16 rounded-sm" aria-label={index === 0 ? "Running preflight" : undefined} />) : preflight?.checks.map((check) => (
+                <div key={check.id} className="flex gap-2 rounded-sm border border-border bg-muted/40 p-3">
+                  {check.status === "pass" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-success" /> : <ShieldAlert className={cn("mt-0.5 h-4 w-4 shrink-0", check.status === "blocker" ? "text-status-error" : "text-status-warning")} />}
                   <div className="min-w-0"><p className="text-xs font-semibold">{check.label}</p><p className="mt-0.5 break-words text-xs text-muted-foreground">{check.message}</p></div>
                 </div>
               ))}

@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { DailyUsage } from "@/hooks/useUsageAnalytics";
 import { safeFormatIsoDate } from "@/lib/date-format";
@@ -9,9 +10,12 @@ interface Props {
 export function UsageTokenChart({ data }: Props) {
   if (!data.length) {
     return (
-      <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">
-        No usage data for this period.
-      </div>
+      <EmptyState
+        size="row"
+        className="flex h-[300px] flex-col justify-center"
+        title="No token usage in this period"
+        description="Token counts appear here after generation runs. Widen the date range to see earlier usage."
+      />
     );
   }
 

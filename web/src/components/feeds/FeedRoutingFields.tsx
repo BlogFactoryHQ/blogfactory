@@ -1,7 +1,6 @@
-import { CheckCircle2, CircleAlert } from "lucide-react";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { useSites } from "@/hooks/useSites";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,8 +27,8 @@ export function FeedRoutingFields({ value, onChange }: { value: FeedRouteValue; 
   return (
     <section className="space-y-4 rounded-sm border border-byword-border bg-muted/15 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><p className="font-mono text-xs font-semibold uppercase tracking-wide">Destination & Editorial Routing</p><p className="mt-1 text-xs text-muted-foreground">Generated content stops as a BlogFactory draft. Nothing is sent to the CMS automatically.</p></div>
-        <Badge variant={ready ? "default" : "outline"} className={ready ? "" : "border-status-warning/30 text-status-warning"}>{ready ? <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> : <CircleAlert className="mr-1 h-3.5 w-3.5" />}{ready ? "Ready" : "Needs routing"}</Badge>
+        <div><p className="type-kicker">Destination and editorial routing</p><p className="mt-1 text-xs text-muted-foreground">Generated content stops as a BlogFactory draft. Nothing is sent to the CMS automatically.</p></div>
+        <StatusBadge status={ready ? "success" : "warning"} label={ready ? "Ready" : "Needs routing"} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label>Destination site</Label><Select value={value.siteId} onValueChange={(siteId) => onChange({ siteId, integrationId: "", editorialDefaults: { ...EMPTY_FEED_DEFAULTS } })}><SelectTrigger><SelectValue placeholder="Select site" /></SelectTrigger><SelectContent>{sites.map((site) => <SelectItem key={site.id} value={site.id}>{site.name} · {site.domain}</SelectItem>)}</SelectContent></Select></div>

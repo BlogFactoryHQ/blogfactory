@@ -58,27 +58,28 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">OpenRouter Plugins</h3>
+        <h3 className="text-lg font-medium">OpenRouter plugins</h3>
         <p className="text-sm text-muted-foreground">
           Extend model capabilities with built-in OpenRouter features
         </p>
       </div>
 
       {/* Web Search Plugin */}
-      <div className="border border-border rounded-lg p-4 space-y-4">
+      <div className="border border-border rounded-sm bg-muted/40 p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Globe className="h-5 w-5 text-primary" />
+            <div className="h-10 w-10 rounded-sm border border-byword-border bg-byword-blue-soft flex items-center justify-center">
+              <Globe className="h-5 w-5 text-byword-blue" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-medium">Web Search</h4>
+                <h4 className="font-medium">Web search</h4>
                 <a
                   href="https://openrouter.ai/docs/guides/features/plugins/web-search"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary"
+                  className="text-muted-foreground hover:text-byword-blue"
+                  aria-label="Open OpenRouter documentation"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
@@ -97,7 +98,7 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
         {webConfig.enabled && (
           <div className="grid grid-cols-2 gap-4 pl-13 ml-10">
             <div className="space-y-2">
-              <Label className="text-sm">Search Engine</Label>
+              <Label className="text-sm">Search engine</Label>
               <Select
                 value={webConfig.engine || "native"}
                 onValueChange={(v) => updateWebPlugin({ engine: v as "native" | "exa" })}
@@ -112,7 +113,7 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Max Results</Label>
+              <Label className="text-sm">Max results</Label>
               <Input
                 type="number"
                 min={1}
@@ -126,20 +127,21 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
       </div>
 
       {/* PDF Inputs Plugin */}
-      <div className="border border-border rounded-lg p-4">
+      <div className="border border-border rounded-sm bg-muted/40 p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg border border-byword-border bg-byword-blue-soft flex items-center justify-center">
+            <div className="h-10 w-10 rounded-sm border border-byword-border bg-byword-blue-soft flex items-center justify-center">
               <FileText className="h-5 w-5 text-byword-blue" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-medium">PDF Inputs</h4>
+                <h4 className="font-medium">PDF inputs</h4>
                 <a
                   href="https://openrouter.ai/docs/guides/overview/multimodal/pdfs"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary"
+                  className="text-muted-foreground hover:text-byword-blue"
+                  aria-label="Open OpenRouter documentation"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
@@ -157,20 +159,21 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
       </div>
 
       {/* Response Healing Plugin */}
-      <div className="border border-border rounded-lg p-4">
+      <div className="border border-border rounded-sm bg-muted/40 p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg border border-byword-border bg-byword-blue-soft flex items-center justify-center">
+            <div className="h-10 w-10 rounded-sm border border-byword-border bg-byword-blue-soft flex items-center justify-center">
               <Wand2 className="h-5 w-5 text-byword-blue" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-medium">Response Healing</h4>
+                <h4 className="font-medium">Response healing</h4>
                 <a
                   href="https://openrouter.ai/docs/guides/features/plugins/response-healing"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary"
+                  className="text-muted-foreground hover:text-byword-blue"
+                  aria-label="Open OpenRouter documentation"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
@@ -187,7 +190,7 @@ export function PersonaPluginsTab({ pluginsConfig, onChange }: PersonaPluginsTab
         </div>
       </div>
 
-      <div className="p-4 rounded-lg bg-muted/50 border border-border">
+      <div className="p-4 rounded-sm bg-muted/40 border border-border">
         <p className="text-sm text-muted-foreground">
           <strong>Note:</strong> Plugins may incur additional costs. Web Search uses $4 per 1000
           results with Exa, or provider pricing for native search. See OpenRouter documentation

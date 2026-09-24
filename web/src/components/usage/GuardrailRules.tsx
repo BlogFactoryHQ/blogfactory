@@ -220,7 +220,7 @@ export function GuardrailRules({ daily }: { daily: DailyUsage[] }) {
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-byword-border px-4 py-3 sm:px-5">
         <p className="type-meta">A breached ceiling stops generation for the rest of the UTC day. The monthly budget is managed above.</p>
-        <Button size="sm" disabled={!dirty || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+        <Button size="sm" variant="secondary" disabled={!dirty || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
           {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           Save guardrails
         </Button>

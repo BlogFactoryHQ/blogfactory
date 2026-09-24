@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
+import { DetailSkeleton } from "@/components/patterns/PageSkeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,11 +93,10 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <BywordCard>
+        <SectionHeader icon={Shield} title="Budget controls" description="Set monthly spending limits to auto-pause generation when exceeded." />
+        <DetailSkeleton className="p-6" />
+      </BywordCard>
     );
   }
 
@@ -106,25 +107,17 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
   const isNearBudget = budgetEnabled && budgetNum > 0 && spendPercent >= alertThreshold;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5" />
-          Budget Controls
-        </CardTitle>
-        <CardDescription>
-          Set monthly spending limits to auto-pause generation when exceeded.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <BywordCard>
+      <SectionHeader icon={Shield} title="Budget controls" description="Set monthly spending limits to auto-pause generation when exceeded." />
+      <div className="space-y-6 p-4 sm:p-5 lg:p-6">
         {/* Paused Banner */}
         {isPaused && (
-          <div className="flex items-center justify-between p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
+          <Alert variant="destructive" className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-error" />
               <div>
-                <p className="text-sm font-medium text-destructive">Generation Paused</p>
-                <p className="text-xs text-muted-foreground">Monthly budget exceeded. Resume or increase your budget.</p>
+                <AlertTitle>Generation paused</AlertTitle>
+                <AlertDescription className="text-xs">Monthly budget exceeded. Resume or increase your budget.</AlertDescription>
               </div>
             </div>
             <Button
@@ -135,7 +128,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
             >
               {unpauseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Resume"}
             </Button>
-          </div>
+          </Alert>
         )}
 
         {/* Burn to date, with a projection at the current daily rate. */}
@@ -148,7 +141,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
         {/* Enable toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <Label className="text-sm font-medium">Enable Monthly Budget</Label>
+            <Label className="text-sm font-medium">Enable monthly budget</Label>
             <p className="text-xs text-muted-foreground mt-0.5">Auto-pause generation when limit is reached</p>
           </div>
           <Switch checked={budgetEnabled} onCheckedChange={(checked) => { setTouched(true); setBudgetEnabled(checked); }} />
@@ -158,7 +151,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
           <>
             {/* Budget amount */}
             <div className="space-y-2">
-              <Label>Monthly Budget (USD)</Label>
+              <Label>Monthly budget (USD)</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                 <Input
@@ -176,7 +169,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
             {/* Alert threshold */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Alert Threshold</Label>
+                <Label>Alert threshold</Label>
                 <span className="text-sm text-muted-foreground">{alertThreshold}%</span>
               </div>
               <Slider
@@ -194,7 +187,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
         )}
 
         {budgetEnabled && isNearBudget && !isOverBudget && !isPaused && (
-          <div className="flex items-center gap-2 text-sm text-[hsl(var(--status-warning))]">
+          <div className="flex items-center gap-2 text-sm text-status-warning">
             <AlertTriangle className="h-4 w-4" />
             Spend has passed {alertThreshold}% of the monthly budget.
           </div>
@@ -202,7 +195,7 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
 
         {/* Status indicator */}
         {budgetEnabled && !isPaused && !isOverBudget && !isNearBudget && (
-          <div className="flex items-center gap-2 text-sm text-[hsl(var(--status-success))]">
+          <div className="flex items-center gap-2 text-sm text-status-success">
             <CheckCircle className="h-4 w-4" />
             Generation active — within budget
           </div>
@@ -218,9 +211,9 @@ export function BudgetCard({ currentMonthSpend, daily }: BudgetCardProps) {
           ) : (
             <Save className="h-4 w-4 mr-2" />
           )}
-          Save Budget Settings
+          Save budget
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </BywordCard>
   );
 }

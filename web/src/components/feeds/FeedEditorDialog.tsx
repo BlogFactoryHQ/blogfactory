@@ -226,7 +226,7 @@ export function FeedEditorDialog({
   const platform = normalizePlatform(editedFeed.platform);
   const platformConfig = editedFeed.platform_config || {};
   const availableFilterTypes = filterTypesForPlatform(platform, editedFeed.filter_type);
-  const imageSectionTitle = activeImageDeliveryMode === "manual_prompt" ? "Manual Image Prompts" : "Image Generation";
+  const imageSectionTitle = activeImageDeliveryMode === "manual_prompt" ? "Manual image prompts" : "Image generation";
   const routingIsReady = routeReady({
     siteId: editedFeed.site_id || "",
     integrationId: editedFeed.integration_id || "",
@@ -296,8 +296,8 @@ export function FeedEditorDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b border-border">
           <DialogTitle className="flex items-center gap-2 text-xl">
-            <Rss className="h-5 w-5 text-primary" />
-            Edit Feed Details
+            <Rss className="h-5 w-5 text-byword-blue" />
+            Edit feed details
           </DialogTitle>
         </DialogHeader>
 
@@ -305,14 +305,14 @@ export function FeedEditorDialog({
           <div className="px-6 py-6 space-y-6">
             {/* Basic Info Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <Rss className="h-4 w-4" />
-                Feed Information
+                Feed information
               </h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="feedName">Feed Name</Label>
+                  <Label htmlFor="feedName">Feed name</Label>
                   <Input
                     id="feedName"
                     value={editedFeed.name}
@@ -327,7 +327,7 @@ export function FeedEditorDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Source Type</Label>
+                  <Label>Source type</Label>
                   <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3 text-sm font-medium">
                     {platformLabel(platform)}
                   </div>
@@ -337,7 +337,7 @@ export function FeedEditorDialog({
 
               {platform === "rss" && (
                 <div className="space-y-2">
-                  <Label htmlFor="sourceUrl">RSS Source URL</Label>
+                  <Label htmlFor="sourceUrl">RSS source URL</Label>
                   <InputAffordance
                     id="sourceUrl"
                     type="text"
@@ -398,7 +398,7 @@ export function FeedEditorDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Reddit Domain</Label>
+                    <Label>Reddit domain</Label>
                     <Select
                       value={String(platformConfig.redditDomain || "www.reddit.com")}
                       onValueChange={(value) => setPlatformConfig({ redditDomain: value })}
@@ -416,7 +416,7 @@ export function FeedEditorDialog({
 
               {platform === "hackernews" && (
                 <div className="space-y-2">
-                  <Label>Story Type</Label>
+                  <Label>Story type</Label>
                   <Select
                     value={String(platformConfig.type || "front_page")}
                     onValueChange={(value) => setPlatformConfig({ type: value })}
@@ -452,7 +452,7 @@ export function FeedEditorDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Time Period</Label>
+                    <Label>Time period</Label>
                     <Select
                       value={String(platformConfig.since || platformConfig.period || "daily")}
                       onValueChange={(value) => setPlatformConfig({ since: value, period: undefined })}
@@ -494,14 +494,14 @@ export function FeedEditorDialog({
             <Separator />
 
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <Settings2 className="h-4 w-4" />
-                Filtering & Scope
+                Filtering and scope
               </h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Filter Type</Label>
+                  <Label>Filter type</Label>
                   <Select
                     value={editedFeed.filter_type || "none"}
                     onValueChange={(value) => setEditedFeed({
@@ -522,9 +522,9 @@ export function FeedEditorDialog({
                 {editedFeed.filter_type && editedFeed.filter_type !== "none" && (
                   <div className="space-y-2">
                     <Label htmlFor="filterValue">
-                      {editedFeed.filter_type === "score" && "Minimum Score"}
+                      {editedFeed.filter_type === "score" && "Minimum score"}
                       {editedFeed.filter_type === "threshold" && "Threshold %"}
-                      {editedFeed.filter_type === "posts_per_day" && "Posts Per Run"}
+                      {editedFeed.filter_type === "posts_per_day" && "Posts per run"}
                     </Label>
                     <Input
                       id="filterValue"
@@ -540,7 +540,7 @@ export function FeedEditorDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="keywordInput">Target Keywords / Categories</Label>
+                <Label htmlFor="keywordInput">Target keywords / categories</Label>
                 <div className="flex flex-wrap gap-2">
                   {(editedFeed.keywords || []).map((keyword) => (
                     <span
@@ -573,14 +573,14 @@ export function FeedEditorDialog({
 
             {/* AI Configuration Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <Zap className="h-4 w-4" />
-                AI Configuration
+                AI configuration
               </h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Writer Persona</Label>
+                  <Label>Writer persona</Label>
                   <Select
                     value={editedFeed.persona_id || "none"}
                     onValueChange={(v) => {
@@ -601,7 +601,7 @@ export function FeedEditorDialog({
                       <SelectValue placeholder="Select persona..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Persona</SelectItem>
+                      <SelectItem value="none">No persona</SelectItem>
                       {personas.map((persona) => (
                         <SelectItem key={persona.id} value={persona.id}>
                           {persona.name}
@@ -615,7 +615,7 @@ export function FeedEditorDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>OpenRouter Text Model</Label>
+                  <Label>OpenRouter text model</Label>
                   <LiveTextModelSelect
                     value={editedFeed.model_id}
                     onValueChange={(v) => setEditedFeed({ ...editedFeed, model_id: v })}
@@ -649,14 +649,14 @@ export function FeedEditorDialog({
 
             {/* Scheduling Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                Scheduling & Limits
+                Scheduling and limits
               </h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Fetch Frequency</Label>
+                  <Label>Fetch frequency</Label>
                   <Select
                     value={editedFeed.frequency}
                     onValueChange={(v) =>
@@ -677,7 +677,7 @@ export function FeedEditorDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Posts per Run</Label>
+                  <Label>Posts per run</Label>
                   <Select
                     value={String(editedFeed.posts_per_run ?? 5)}
                     onValueChange={(v) =>
@@ -706,7 +706,7 @@ export function FeedEditorDialog({
 
             {/* Image Generation Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <ImageIcon className="h-4 w-4" />
                 {imageSectionTitle}
               </h3>
@@ -725,21 +725,21 @@ export function FeedEditorDialog({
 
             {/* Advanced Options Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <h3 className="type-kicker flex items-center gap-2">
                 <Settings2 className="h-4 w-4" />
-                Advanced Options
+                Advanced options
               </h3>
 
               <div className="space-y-4">
                 {/* Freshness Filter - Context-specific label */}
-                <div className="rounded-md border border-border bg-muted/50 p-4">
+                <div className="rounded-md border border-border bg-muted/40 p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/10">
-                      <Clock className="h-4 w-4 text-primary" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border bg-card">
+                      <Clock className="h-4 w-4 text-byword-blue" />
                     </div>
                     <div>
                       <p className="font-medium">
-                        {editedFeed.platform === "youtube" ? "Filter Old Videos" : "Filter Old Posts"}
+                        {editedFeed.platform === "youtube" ? "Filter old videos" : "Filter old posts"}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {editedFeed.platform === "youtube" 
@@ -765,13 +765,13 @@ export function FeedEditorDialog({
 
                 {editedFeed.platform === "rss" && (
                   <>
-                    <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-4">
+                    <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary/10">
-                          <FileText className="h-4 w-4 text-primary" />
+                        <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border bg-card">
+                          <FileText className="h-4 w-4 text-byword-blue" />
                         </div>
                         <div>
-                          <p className="font-medium">Full-Text Extraction</p>
+                          <p className="font-medium">Full-text extraction</p>
                           <p className="text-sm text-muted-foreground">
                             Fetch complete article content from URLs
                           </p>
@@ -788,13 +788,13 @@ export function FeedEditorDialog({
                   </>
                 )}
 
-                <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-4">
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-status-success/10">
-                      <Zap className="h-4 w-4 text-status-success" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-byword-border bg-card">
+                      <Zap className="h-4 w-4 text-byword-blue" />
                     </div>
                     <div>
-                      <p className="font-medium">Active Status</p>
+                      <p className="font-medium">Active status</p>
                       <p className="text-sm text-muted-foreground">
                         {editedFeed.is_active ? "Feed is actively collecting data" : "Data collection is paused"}
                       </p>
@@ -814,7 +814,7 @@ export function FeedEditorDialog({
 
             {/* Statistics Section */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <h3 className="type-kicker">
                 Statistics
               </h3>
 
@@ -834,15 +834,15 @@ export function FeedEditorDialog({
 
                 return (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="rounded-md border border-border bg-muted/50 p-4">
+                    <div className="rounded-md border border-border bg-muted/40 p-4">
                       <p className="text-sm text-muted-foreground">Created</p>
                       <p className="font-medium mt-1">
                         {safeFormatDate(editedFeed.created_at, "MMM d, yyyy")}
                       </p>
                     </div>
 
-                    <div className="rounded-md border border-border bg-muted/50 p-4">
-                      <p className="text-sm text-muted-foreground">Last Run</p>
+                    <div className="rounded-md border border-border bg-muted/40 p-4">
+                      <p className="text-sm text-muted-foreground">Last run</p>
                       <p className="font-medium mt-1">
                         {editedFeed.last_run_at
                           ? safeFormatDate(editedFeed.last_run_at, "MMM d, h:mm a")
@@ -850,8 +850,8 @@ export function FeedEditorDialog({
                       </p>
                     </div>
 
-                    <div className="rounded-md border border-border bg-muted/50 p-4">
-                      <p className="text-sm text-muted-foreground">Next Run</p>
+                    <div className="rounded-md border border-border bg-muted/40 p-4">
+                      <p className="text-sm text-muted-foreground">Next run</p>
                       <p className={`font-medium mt-1 ${isPast ? "text-status-warning" : ""}`}>
                         {!editedFeed.is_active
                           ? "Paused"
@@ -863,8 +863,8 @@ export function FeedEditorDialog({
                       </p>
                     </div>
 
-                    <div className="rounded-md border border-border bg-muted/50 p-4">
-                      <p className="text-sm text-muted-foreground">Total Articles</p>
+                    <div className="rounded-md border border-border bg-muted/40 p-4">
+                      <p className="text-sm text-muted-foreground">Total articles</p>
                       <p className="font-medium mt-1">
                         {editedFeed.total_articles?.toLocaleString() ?? 0}
                       </p>
@@ -881,6 +881,7 @@ export function FeedEditorDialog({
             <Button
               variant="destructive"
               size="icon"
+              aria-label="Delete feed"
               onClick={() => onDelete(editedFeed)}
               disabled={isDeleting}
             >
@@ -903,7 +904,7 @@ export function FeedEditorDialog({
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                {activeImageDeliveryMode === "manual_prompt" ? "Run + Prompts" : "Run Now"}
+                {activeImageDeliveryMode === "manual_prompt" ? "Run with prompts" : "Run now"}
               </Button>
 
               <Button variant="outline" onClick={onClose}>
@@ -912,7 +913,7 @@ export function FeedEditorDialog({
 
               <Button onClick={handleSave} disabled={isSaving || selectedModelUnavailable || Boolean(validationError)}>
                 {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save Changes
+                Save changes
               </Button>
             </div>
           </div>

@@ -41,6 +41,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatCompactNumber } from "@/lib/search-insights";
+import { formatSourceType } from "@/lib/source-labels";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { postListPath, type ListPagination } from "@/lib/list-query";
 
@@ -540,8 +542,8 @@ export default function Posts() {
               </div>
             </div>
           </TableCell>
-          <TableCell className="capitalize text-sm text-muted-foreground">
-            {row.post.source_type?.replace("_", " ")}
+          <TableCell className="text-sm text-muted-foreground">
+            {formatSourceType(row.post.source_type)}
           </TableCell>
           <TableCell>{row.post.personas?.name || "—"}</TableCell>
           <TableCell>
@@ -577,13 +579,13 @@ export default function Posts() {
         ))}
 
         {isExpanded && failedDrafts.map((draft) => (
-          <TableRow key={`${row.key}-failed-${draft.index}`} className="bg-destructive/5">
+          <TableRow key={`${row.key}-failed-${draft.index}`} >
             <TableCell />
             <TableCell className="font-medium">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <AlertCircle className="h-4 w-4 mt-1 text-status-error" />
                 <div>
-                  <div className="text-destructive">Draft {draft.index + 1} failed</div>
+                  <div>Draft {draft.index + 1} failed</div>
                   <div className="text-xs font-normal text-muted-foreground line-clamp-2">
                     {draft.error || "Not enough information returned for this draft."}
                   </div>
@@ -602,13 +604,13 @@ export default function Posts() {
         ))}
 
         {isExpanded && missingDraftIndexes.map((draftIndex) => (
-          <TableRow key={`${row.key}-missing-${draftIndex}`} className="bg-destructive/5">
+          <TableRow key={`${row.key}-missing-${draftIndex}`} >
             <TableCell />
             <TableCell className="font-medium">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <AlertCircle className="h-4 w-4 mt-1 text-status-error" />
                 <div>
-                  <div className="text-destructive">Draft {draftIndex + 1} failed to finish</div>
+                  <div>Draft {draftIndex + 1} failed to finish</div>
                   <div className="text-xs font-normal text-muted-foreground line-clamp-2">
                     No failure detail was recorded for this draft. The job may have timed out before writing the reason.
                   </div>
@@ -642,18 +644,18 @@ export default function Posts() {
       </PageHeader>
 
       {brokenIntegrations.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="font-medium text-destructive">CMS credentials need to be re-saved</p>
-              <p className="text-sm text-muted-foreground">
+              <AlertTitle>CMS credentials need to be re-saved</AlertTitle>
+              <AlertDescription>
                 {brokenIntegrations.map((integration) => integration.provider === "ghost" ? "Ghost" : integration.provider === "wordpress" ? "WordPress" : integration.provider === "wix" ? "Wix" : "Framer").join(", ")} credentials cannot be decrypted, so drafts cannot be sent to the CMS.
-              </p>
+              </AlertDescription>
             </div>
+            <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
           </div>
-          <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
-        </div>
+        </Alert>
       )}
 
       <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_var(--panel-lift)] backdrop-blur sm:mx-0">
@@ -713,14 +715,14 @@ export default function Posts() {
             </div>
             <Progress value={cmsPushProgress.total ? (cmsPushProgress.completed / cmsPushProgress.total) * 100 : 0} className="h-2" />
             {cmsPushProgress.failures.length > 0 && (
-              <div className="mt-3 rounded border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                <p className="font-semibold text-destructive">{cmsPushProgress.failures.length} failed</p>
+              <Alert variant="destructive" className="mt-3">
+                <AlertTitle>{cmsPushProgress.failures.length} failed</AlertTitle>
                 <ul className="mt-2 space-y-1">
                   {cmsPushProgress.failures.map((failure) => (
                     <li key={failure.id} className="break-words"><span className="font-medium">{failure.title}:</span> {failure.error}</li>
                   ))}
                 </ul>
-              </div>
+              </Alert>
             )}
           </div>
         )}

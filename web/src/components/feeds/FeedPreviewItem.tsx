@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -59,18 +59,18 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
 
   const statusBadge = () => {
     if (!item.status) return null;
-    const config = {
-      new: { label: "New", variant: "default" as const, className: "bg-status-success/15 text-status-success border-status-success/30" },
-      duplicate: { label: "Duplicate", variant: "outline" as const, className: "bg-status-warning/15 text-status-warning border-status-warning/30" },
-      filtered: { label: "Filtered", variant: "outline" as const, className: "bg-muted text-muted-foreground border-border" },
+    const config: Record<string, { label: string; status: StatusType }> = {
+      new: { label: "New", status: "success" },
+      duplicate: { label: "Duplicate", status: "warning" },
+      filtered: { label: "Filtered", status: "pending" },
     };
     const c = config[item.status];
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant={c.variant} className={`text-xs ${c.className}`}>
-            {c.label}
-          </Badge>
+          <span>
+            <StatusBadge status={c.status} label={c.label} showIcon={false} />
+          </span>
         </TooltipTrigger>
         {item.statusReason && (
           <TooltipContent side="top" className="max-w-[250px]">
@@ -82,7 +82,7 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
   };
 
   return (
-    <div className="p-4 rounded-lg border border-border hover:border-primary/40 transition-colors bg-card">
+    <div className="rounded-sm border border-border bg-card p-4 transition-colors hover:border-byword-blue/40">
       <div className="flex items-start gap-3">
         {/* Thumbnail */}
         {item.thumbnail && (
@@ -110,7 +110,7 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
               href={item.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-foreground hover:text-primary transition-colors line-clamp-2 flex items-start gap-1.5"
+              className="font-medium text-foreground hover:text-byword-blue transition-colors line-clamp-2 flex items-start gap-1.5"
             >
               {item.title}
               <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />
@@ -172,7 +172,7 @@ export function FeedPreviewItem({ item, showFullTextColumn }: FeedPreviewItemPro
             </span>
 
             {showFullTextColumn && item.fullTextLength !== undefined && item.fullTextLength > 0 && (
-              <span className="flex items-center gap-1 text-xs text-primary/70">
+              <span className="flex items-center gap-1 text-xs text-byword-blue">
                 <FileText className="h-3 w-3" />
                 Full: {item.fullTextLength.toLocaleString()} chars
               </span>
