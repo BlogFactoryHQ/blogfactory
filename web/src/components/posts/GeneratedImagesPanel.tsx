@@ -114,7 +114,7 @@ export function GeneratedImagesPanel({
           <button className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/50 transition-colors rounded-t-lg">
             <div className="flex items-center gap-2">
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Generated Images</span>
+              <span className="text-sm font-medium">Generated images</span>
               <Badge variant="secondary" className="text-xs">
                 {coverCount > 0 && `${coverCount} cover`}
                 {coverCount > 0 && inlineCount > 0 && " + "}
@@ -135,9 +135,9 @@ export function GeneratedImagesPanel({
             {coverImageUrl && signedCoverUrl && (
               <div className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Star className="h-3.5 w-3.5 text-status-warning" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Cover Image
+                  <Star className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="type-kicker">
+                    Cover image
                   </span>
                 </div>
                 <ImageCard
@@ -160,9 +160,9 @@ export function GeneratedImagesPanel({
             {visibleInlineImages.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <ImagePlus className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Inline Images
+                  <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="type-kicker">
+                    Inline images
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -294,7 +294,8 @@ function ImageCard({
                 <Button
                   variant="secondary"
                   size="icon"
-                  className="h-7 w-7 hover:bg-destructive hover:text-destructive-foreground"
+                  className="h-7 w-7"
+                  aria-label="Remove image"
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>

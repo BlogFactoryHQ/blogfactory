@@ -36,6 +36,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import {
   Select,
   SelectContent,
@@ -407,7 +410,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               </div>
               <div className="flex flex-wrap gap-2">
                 {seoWorkflow.canConfirm && (
-                  <Button type="button" size="sm" onClick={() => confirmSeoMutation.mutate()} disabled={seoDirty || confirmSeoMutation.isPending || regenerateSeoMutation.isPending}>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => confirmSeoMutation.mutate()} disabled={seoDirty || confirmSeoMutation.isPending || regenerateSeoMutation.isPending}>
                     {confirmSeoMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                     Alanlar doğru, onayla
                   </Button>
@@ -421,7 +424,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                 {seoWorkflow.canOverwrite && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button type="button" variant={seoMetadata?.status === "needs_review" && !seoWorkflow.canConfirm ? "default" : "outline"} size="sm" disabled={regenerateSeoMutation.isPending || confirmSeoMutation.isPending}>
+                      <Button type="button" variant="outline" size="sm" disabled={regenerateSeoMutation.isPending || confirmSeoMutation.isPending}>
                         {hasManualSeo ? "Tümünü yeniden üret" : seoMetadata?.status === "needs_review" ? "Güncel yazıdan yeniden üret" : "Yeniden üret"}
                       </Button>
                     </AlertDialogTrigger>
@@ -445,46 +448,44 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
             </div>
 
             {seoReview && (
-              <div id={seoReviewId} className="flex gap-3 rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-3 text-status-warning" role="status" aria-live="polite">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{seoReview.title}</p>
-                  <p className="mt-1 text-xs leading-relaxed">{seoReview.description}</p>
-                </div>
-              </div>
+              <Alert id={seoReviewId} variant="warning" role="status" aria-live="polite">
+                <AlertTriangle aria-hidden="true" />
+                <AlertTitle>{seoReview.title}</AlertTitle>
+                <AlertDescription className="text-xs">{seoReview.description}</AlertDescription>
+              </Alert>
             )}
 
             {seoError.message && (
-              <div id={seoErrorId} className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive" role="alert">
+              <Alert id={seoErrorId} variant="destructive" className="text-xs leading-relaxed">
                 <span>{seoError.message}</span>
-                {seoError.settingsHref && <Link className="ml-2 font-semibold underline underline-offset-2" to={seoError.settingsHref}>Anahtar ayarlarını aç</Link>}
-              </div>
+                {seoError.settingsHref && <Link className="ml-2 font-semibold text-byword-blue underline underline-offset-2" to={seoError.settingsHref}>Anahtar ayarlarını aç</Link>}
+              </Alert>
             )}
 
             <div className="space-y-3 border-t border-byword-border pt-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor={`seo-slug-${postId}`}>URL slug</Label>
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("slug") === "manual" ? "Manual" : "AI"}</span>
+                  <span className="type-kicker">{fieldProvenance("slug") === "manual" ? "Manual" : "AI"}</span>
                 </div>
                 <Input id={`seo-slug-${postId}`} value={slug} aria-invalid={!seoChecks[0].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setSlug(normalizeSeoSlugInput(event.target.value)); setSeoFormError(""); }} />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor={`seo-title-${postId}`}>Meta başlık</Label>
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaTitle") === "manual" ? "Manual" : "AI"}</span>
+                  <span className="type-kicker">{fieldProvenance("metaTitle") === "manual" ? "Manual" : "AI"}</span>
                 </div>
                 <Textarea id={`seo-title-${postId}`} value={metaTitle} aria-invalid={!seoChecks[1].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setMetaTitle(event.target.value); setSeoFormError(""); }} className="min-h-[60px] resize-none break-words" />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor={`seo-description-${postId}`}>Meta açıklama</Label>
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{fieldProvenance("metaDescription") === "manual" ? "Manual" : "AI"}</span>
+                  <span className="type-kicker">{fieldProvenance("metaDescription") === "manual" ? "Manual" : "AI"}</span>
                 </div>
                 <Textarea id={`seo-description-${postId}`} value={metaDescription} aria-invalid={!seoChecks[2].ok} aria-describedby={seoFieldDescription} onChange={(event) => { setMetaDescription(event.target.value); setSeoFormError(""); }} className="min-h-[84px] resize-none break-words" />
               </div>
               <div id={seoChecksId} className="flex flex-wrap gap-x-5 gap-y-2 rounded-sm border border-byword-border bg-background p-3 text-xs" aria-live="polite">
-                {seoChecks.map((check) => <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap font-medium text-destructive"}><span>{check.label}</span><span className="ml-2">{check.value}</span></div>)}
+                {seoChecks.map((check) => <div key={check.label} className={check.ok ? "whitespace-nowrap text-muted-foreground" : "whitespace-nowrap font-medium text-status-error"}><span>{check.label}</span><span className="ml-2">{check.value}</span></div>)}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">Kaydedilen değişiklikler manuel olur; açıkça “Tümünü yeniden üret” demeden AI bu alanları ezmez.</p>
@@ -497,28 +498,25 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
           </section>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Entegrasyonlar yükleniyor
-            </div>
+            <ListSkeleton rows={2} />
           ) : brokenCredentials.length > 0 && connected.length === 0 ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-8 text-center">
-              <p className="font-medium text-destructive">CMS credentials need to be re-saved</p>
-              <p className="mt-2 text-sm text-muted-foreground">
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>CMS credentials need to be re-saved</AlertTitle>
+              <AlertDescription>
                 {brokenCredentials.map((integration) => providerLabels[integration.provider]).join(", ")} credentials cannot be decrypted, so drafts cannot be sent. Re-save the credentials in Integrations.
-              </p>
-              <Button asChild className="mt-5">
+              </AlertDescription>
+              <Button asChild variant="outline" size="sm" className="mt-3">
                 <a href="/control/integrations">Fix credentials</a>
               </Button>
-            </div>
+            </Alert>
           ) : connected.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-byword-border p-8 text-center">
-              <p className="font-medium text-foreground">Yayın entegrasyonu bağlı değil</p>
-              <p className="mt-2 text-sm text-muted-foreground">Önce Integrations bölümünden WordPress, Ghost, Wix veya Framer bağlayın.</p>
-              <Button asChild className="mt-5">
-                <a href="/control/integrations">Integrations aç</a>
-              </Button>
-            </div>
+            <EmptyState
+              size="row"
+              title="Yayın entegrasyonu bağlı değil"
+              description="Önce Integrations bölümünden WordPress, Ghost, Wix veya Framer bağlayın."
+              primaryAction={{ label: "Integrations aç", href: "/control/integrations" }}
+            />
           ) : (
             <div className="space-y-4">
               <div className="space-y-2">
@@ -571,17 +569,17 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
                   authorsLoading={authorsLoading}
                   coverImageUrl={coverImageUrl}
                 />
-                {authorsError && <p className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">Ghost yazarları yüklenemedi. Entegrasyon bağlantısını test edip tekrar deneyin.</p>}
-                {inheritedWarnings.length > 0 && <div className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+                {authorsError && <Alert variant="destructive" className="text-xs">Ghost yazarları yüklenemedi. Entegrasyon bağlantısını test edip tekrar deneyin.</Alert>}
+                {inheritedWarnings.length > 0 && <Alert variant="warning" className="text-xs">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</Alert>}
                 <div className="grid gap-2 rounded-sm border border-byword-border bg-muted/30 p-3 text-xs sm:grid-cols-2">
                   {ortakAlanChecks.map((check) => (
-                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" && check.blocking !== false ? "text-destructive" : "text-status-warning"}>
+                    <div key={check.label} className={check.ok ? "text-muted-foreground" : mode === "publish" && check.blocking !== false ? "text-status-error" : "text-status-warning"}>
                       <span className="font-medium">{check.label}</span><span className="ml-2">{check.value}</span>
                     </div>
                   ))}
                 </div>
                 {mode === "draft" && ortakAlanChecks.some((check) => !check.ok) && (
-                  <p className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">Eksik metadata ve yazar eşleşmesi uyarı olarak kaydedilecek; taslak yine Ghost’a gönderilebilir.</p>
+                  <Alert variant="warning" className="text-xs">Eksik metadata ve yazar eşleşmesi uyarı olarak kaydedilecek; taslak yine Ghost’a gönderilebilir.</Alert>
                 )}
               </>
             ) : (
@@ -602,7 +600,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               <div className="space-y-2">
                 <Label htmlFor={`publish-tags-${postId}`}>Etiketler</Label>
                 <TagInput id={`publish-tags-${postId}`} value={publishTags} onChange={(nextTags) => setTags(nextTags.join(", "))} placeholder="opsiyonel" maxItems={TAG_LIMIT} describedBy={publishTagHelpId} />
-                <p id={publishTagHelpId} className={publishTags.length === TAG_LIMIT ? "text-xs font-medium text-status-warning" : hasTagError ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
+                <p id={publishTagHelpId} className={publishTags.length === TAG_LIMIT ? "text-xs font-medium text-status-warning" : hasTagError ? "text-xs font-medium text-status-error" : "text-xs text-muted-foreground"} aria-live="polite">
                   {publishTags.length}/{TAG_LIMIT} etiket{publishTags.length === TAG_LIMIT ? " · Limit doldu; yeni etiket için birini kaldırın." : " · Enter veya virgülle ekleyin."}
                 </p>
               </div>
@@ -612,7 +610,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
               </div>
             </div>
 
-            {inheritedWarnings.length > 0 && <div className="rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</div>}
+            {inheritedWarnings.length > 0 && <Alert variant="warning" className="text-xs">{inheritedWarnings.map((warning) => <p key={warning}>• {warning}</p>)}</Alert>}
               </>
             )}
           </div>
@@ -620,7 +618,7 @@ export function PublishDialog({ postId, title, content, summary, publishingMetad
         </div>
 
         <DialogFooter className="shrink-0 flex-col items-stretch gap-2 border-t border-byword-border pt-4 sm:flex-row sm:items-center">
-          {publishBlockReason && <p className="max-w-sm text-left text-xs leading-relaxed text-destructive sm:mr-auto" role="status">{publishBlockReason}</p>}
+          {publishBlockReason && <p className="max-w-sm text-left text-xs leading-relaxed text-status-error sm:mr-auto" role="status">{publishBlockReason}</p>}
           <Button className="w-full sm:w-auto" variant="outline" onClick={() => setOpen(false)}>
             İptal
           </Button>

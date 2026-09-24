@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 import { useSites } from "@/hooks/useSites";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { BywordCard, BywordPageShell } from "@/components/layout/BywordSurface";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ListSkeleton } from "@/components/patterns/PageSkeleton";
@@ -653,7 +653,7 @@ export default function Personas() {
       >
         <Button onClick={() => saveBrandVoiceMutation.mutate(undefined)} disabled={saveBrandVoiceMutation.isPending}>
           <Save className="h-4 w-4" />
-          {saveBrandVoiceMutation.isPending ? "Saving..." : "Save Brand Voice"}
+          {saveBrandVoiceMutation.isPending ? "Saving…" : "Save brand voice"}
         </Button>
       </PageHeader>
 
@@ -661,8 +661,8 @@ export default function Personas() {
         {/* Left Panel - List */}
         <BywordCard className="flex min-h-[420px] flex-col p-4">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Writer Profiles</p>
-            <Button size="icon" variant="ghost" onClick={() => setIsCreateOpen(true)}>
+            <p className="type-kicker">Writer profiles</p>
+            <Button size="icon" variant="ghost" onClick={() => setIsCreateOpen(true)} aria-label="Create profile">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -670,7 +670,7 @@ export default function Personas() {
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Filter profiles..."
+              placeholder="Filter profiles…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -694,7 +694,7 @@ export default function Personas() {
                   key={persona.id}
                   onClick={() => handleSelectPersona(persona)}
                   className={cn(
-                    "w-full text-left p-3 rounded-lg transition-calm",
+                    "w-full text-left p-3 rounded-sm transition-calm",
                     selectedPersona?.id === persona.id
                       ? "bg-byword-blue-soft text-byword-blue"
                       : "hover:bg-muted"
@@ -705,7 +705,7 @@ export default function Personas() {
                       <p
                         className={cn(
                           "font-medium truncate",
-                          selectedPersona?.id === persona.id && "text-primary"
+                          selectedPersona?.id === persona.id && "text-byword-blue"
                         )}
                       >
                         {persona.name}
@@ -739,24 +739,20 @@ export default function Personas() {
 
         {/* Right Panel - Brand Workspace */}
         <BywordCard className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4 sm:p-5 lg:p-6">
-            <div className="flex items-center gap-3">
-              <Building2 className="h-6 w-6 text-primary" />
-              <div>
-                <h2 className="font-mono text-sm font-semibold uppercase">Voice Workspace</h2>
-                <p className="text-sm text-muted-foreground">Edit global brand rules and persona-specific behavior.</p>
-              </div>
-            </div>
-            <Badge variant="outline">{activeProfileCount} active profiles</Badge>
-          </div>
+          <SectionHeader
+            icon={Building2}
+            title="Voice workspace"
+            description="Edit global brand rules and persona-specific behavior."
+            action={<Badge variant="outline">{activeProfileCount} active profiles</Badge>}
+          />
 
           <Tabs value={activeWorkspaceTab} onValueChange={setActiveWorkspaceTab} className="flex min-h-0 flex-1 flex-col">
             <div className="border-b border-border px-6 py-3">
               <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-muted/50 p-1">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="voice">Voice Rules</TabsTrigger>
-                <TabsTrigger value="brand">Brand Context</TabsTrigger>
-                <TabsTrigger value="profiles">Writer Profiles</TabsTrigger>
+                <TabsTrigger value="voice">Voice rules</TabsTrigger>
+                <TabsTrigger value="brand">Brand context</TabsTrigger>
+                <TabsTrigger value="profiles">Writer profiles</TabsTrigger>
               </TabsList>
             </div>
 
@@ -769,58 +765,58 @@ export default function Personas() {
                     { label: "Knowledge", value: `${readyKnowledgeCount}/${knowledgeDocuments.length} ready`, icon: FileText },
                     { label: "Profiles", value: `${activeProfileCount} active`, icon: Bot },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-lg border border-border bg-muted/20 p-4">
-                      <item.icon className="mb-3 h-4 w-4 text-primary" />
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                    <div key={item.label} className="rounded-sm border border-border bg-muted/40 p-4">
+                      <item.icon className="mb-3 h-4 w-4 text-byword-blue" />
+                      <p className="type-kicker">{item.label}</p>
                       <p className="mt-1 truncate font-semibold">{item.value}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="rounded-lg border border-border">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+                <div className="border-t border-byword-border pt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold">Output defaults</h3>
-                      <p className="text-sm text-muted-foreground">Article mechanics live in Settings, not Brand Voice.</p>
+                      <h3 className="type-panel-title">Output defaults</h3>
+                      <p className="text-sm text-muted-foreground">Article mechanics live in Article Settings, not Brand Voice.</p>
                     </div>
                     <Button variant="outline" size="sm" asChild>
-                      <a href="/control/article-settings">Open Settings</a>
+                      <a href="/control/article-settings">Open Article Settings</a>
                     </Button>
                   </div>
-                  <div className="grid gap-3 p-4 md:grid-cols-3">
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
                     {outputDefaults.map((item) => (
-                      <div key={item.label} className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                      <div key={item.label} className="rounded-sm border border-border bg-muted/40 p-3">
+                        <p className="type-kicker">{item.label}</p>
                         <p className="mt-1 text-sm font-medium">{item.value}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="font-semibold">Selected writer profile</h3>
+                <div className="border-t border-byword-border pt-6">
+                  <h3 className="type-panel-title">Selected writer profile</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {editedPersona ? `${editedPersona.name} · ${editedPersona.base_model}` : "Create a writer profile when you need a specific prompt or model."}
                   </p>
                   {!editedPersona && (
-                    <Button type="button" className="mt-4" onClick={() => setIsCreateOpen(true)}>
+                    <Button type="button" variant="outline" className="mt-4" onClick={() => setIsCreateOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Create Profile
+                      Create profile
                     </Button>
                   )}
                 </div>
               </TabsContent>
 
               <TabsContent value="voice" className="mt-0 space-y-6">
-                <div className="grid rounded-lg border border-border bg-muted/30 p-1 sm:inline-grid sm:grid-cols-2">
+                <div className="grid rounded-sm border border-border bg-muted/40 p-1 sm:inline-grid sm:grid-cols-2">
                   {(["preset", "custom"] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setVoiceMode(mode)}
                       className={cn(
-                        "rounded-md px-3 py-1.5 text-sm font-medium",
-                        voiceMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                        "rounded-sm px-3 py-1.5 text-sm font-medium",
+                        voiceMode === mode ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
                       {mode === "preset" ? "Preset tones" : "Custom training"}
@@ -836,8 +832,8 @@ export default function Personas() {
                         type="button"
                         onClick={() => setArticleVoice(voice.name)}
                         className={cn(
-                          "rounded-lg border p-3 text-left transition-calm",
-                          articleVoice === voice.name ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"
+                          "rounded-sm border p-3 text-left transition-calm",
+                          articleVoice === voice.name ? "border-byword-blue bg-byword-blue-soft text-byword-blue" : "border-border hover:border-byword-blue/40"
                         )}
                       >
                         <p className="text-sm font-medium">{voice.name}</p>
@@ -846,13 +842,13 @@ export default function Personas() {
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="font-medium">Custom training</p>
                         <p className="text-sm text-muted-foreground">{trainingWordCount.toLocaleString()} words · {trainingQuality}</p>
                       </div>
-                      <Button type="button" onClick={() => analyzeVoiceMutation.mutate()} disabled={analyzeVoiceMutation.isPending || voiceTrainingSamples.length === 0}>
+                      <Button type="button" variant="secondary" onClick={() => analyzeVoiceMutation.mutate()} disabled={analyzeVoiceMutation.isPending || voiceTrainingSamples.length === 0}>
                         {analyzeVoiceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
                         Generate profile
                       </Button>
@@ -877,11 +873,12 @@ export default function Personas() {
                             <input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleVoiceSampleFileChange} />
                           </label>
                         </Button>
-                        {customVoiceProfile?.summary && <p className="rounded-lg border border-border bg-background p-3 text-sm text-muted-foreground">{customVoiceProfile.summary}</p>}
+                        {customVoiceProfile?.summary && <p className="rounded-sm border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{customVoiceProfile.summary}</p>}
                       </div>
                     </div>
+                    {voiceTrainingSamples.length > 0 && <div className="divide-y divide-byword-border border-y border-byword-border">
                     {voiceTrainingSamples.map((sample) => (
-                      <div key={sample.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
+                      <div key={sample.id} className="flex items-center justify-between gap-3 py-3">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{sample.title}</p>
                           <p className="text-xs text-muted-foreground">{sample.sourceType} · {sample.content.split(/\s+/).filter(Boolean).length.toLocaleString()} words</p>
@@ -891,12 +888,13 @@ export default function Personas() {
                         </Button>
                       </div>
                     ))}
+                    </div>}
                   </div>
                 )}
 
                 <div className="grid gap-4 lg:grid-cols-3">
-                  <div className="space-y-3 rounded-lg border border-border p-4">
-                    <h3 className="font-semibold">Banned language</h3>
+                  <div className="space-y-3">
+                    <h3 className="type-panel-title">Banned language</h3>
                     <div className="flex gap-2">
                       <Input value={newBannedWord} onChange={(event) => setNewBannedWord(event.target.value)} placeholder="Banned word" />
                       <Button type="button" variant="outline" onClick={() => addRuleItem("bannedWords", newBannedWord, () => setNewBannedWord(""))}>Add</Button>
@@ -911,29 +909,29 @@ export default function Personas() {
                       ))}
                     </div>
                   </div>
-                  <div className="space-y-3 rounded-lg border border-border p-4">
-                    <h3 className="font-semibold">Preferred terms</h3>
+                  <div className="space-y-3">
+                    <h3 className="type-panel-title">Preferred terms</h3>
                     <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                       <Input value={newPreferredFrom} onChange={(event) => setNewPreferredFrom(event.target.value)} placeholder="Avoid" />
                       <Input value={newPreferredTo} onChange={(event) => setNewPreferredTo(event.target.value)} placeholder="Use instead" />
                       <Button type="button" variant="outline" onClick={addPreferredTerm}>Add</Button>
                     </div>
                     {contentRules.preferredTerms.map((term) => (
-                      <div key={`${term.from}-${term.to}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-2 text-sm">
+                      <div key={`${term.from}-${term.to}`} className="flex items-center justify-between gap-3 border-b border-byword-border py-2 text-sm">
                         <span>{term.from} → {term.to}</span>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => updateContentRules({ preferredTerms: contentRules.preferredTerms.filter((item) => item !== term) })}>
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${term.from}`} onClick={() => updateContentRules({ preferredTerms: contentRules.preferredTerms.filter((item) => item !== term) })}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
                     ))}
-                    <label className="flex items-center justify-between rounded-lg border border-border p-3 text-sm font-medium">
+                    <label className="flex items-center justify-between rounded-sm border border-border bg-muted/40 p-3 text-sm font-medium">
                       Avoid AI-sounding phrases
                       <Switch checked={contentRules.avoidAiPhrases} onCheckedChange={(checked) => updateContentRules({ avoidAiPhrases: checked })} />
                     </label>
                   </div>
-                  <div className="space-y-3 rounded-lg border border-border p-4">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-semibold">Competitor avoidance</h3>
+                      <h3 className="type-panel-title">Competitor avoidance</h3>
                       <Switch checked={contentRules.competitorAvoidance} onCheckedChange={(checked) => updateContentRules({ competitorAvoidance: checked })} />
                     </div>
                     <div className="flex gap-2">
@@ -960,9 +958,9 @@ export default function Personas() {
               </TabsContent>
 
               <TabsContent value="brand" className="mt-0 space-y-6">
-                <div className="space-y-4 rounded-lg border border-border p-4">
+                <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="font-semibold">Brand profile</h3>
+                    <h3 className="type-panel-title">Brand profile</h3>
                     <Button type="button" variant="outline" size="sm" onClick={autofillFromActiveSite}>
                       <Globe2 className="mr-2 h-4 w-4" />
                       Autofill from active site
@@ -975,7 +973,7 @@ export default function Personas() {
                   <Textarea value={brandDescription} onChange={(event) => setBrandDescription(event.target.value)} placeholder="What your company does" className="min-h-[100px]" />
                   <div className="grid gap-3 md:grid-cols-3">
                     {brandMentionOptions.map((option) => (
-                      <button key={option.value} type="button" onClick={() => setBrandMentions(option.value)} className={cn("rounded-lg border p-3 text-left transition-calm", brandMentions === option.value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40")}>
+                      <button key={option.value} type="button" onClick={() => setBrandMentions(option.value)} className={cn("rounded-sm border p-3 text-left transition-calm", brandMentions === option.value ? "border-byword-blue bg-byword-blue-soft text-byword-blue" : "border-border hover:border-byword-blue/40")}>
                         <p className="text-sm font-medium">{option.label}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
                       </button>
@@ -987,7 +985,7 @@ export default function Personas() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {brandValueProps.map((prop) => (
-                      <span key={prop} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                      <span key={prop} className="inline-flex items-center gap-2 rounded-sm border border-border px-3 py-1 text-sm">
                         {prop}
                         <button type="button" onClick={() => setBrandValueProps((current) => current.filter((item) => item !== prop))} aria-label={`Remove ${prop}`}>
                           <X className="h-3.5 w-3.5" />
@@ -998,12 +996,12 @@ export default function Personas() {
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-lg border border-border p-4">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-semibold">Knowledge documents</h3>
+                      <h3 className="type-panel-title">Knowledge documents</h3>
                       <Switch checked={knowledgeBaseEnabled} onCheckedChange={setKnowledgeBaseEnabled} />
                     </div>
-                    <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border text-sm">
+                    <div className="grid grid-cols-3 overflow-hidden rounded-sm border border-border bg-muted/40 text-sm">
                       <div className="p-3"><p className="font-semibold">{knowledgeDocuments.length}</p><p className="text-muted-foreground">Docs</p></div>
                       <div className="border-l border-border p-3"><p className="font-semibold">{readyKnowledgeCount}</p><p className="text-muted-foreground">Ready</p></div>
                       <div className="border-l border-border p-3"><p className="font-semibold">{knowledgeChunkTotal}</p><p className="text-muted-foreground">Chunks</p></div>
@@ -1011,17 +1009,17 @@ export default function Personas() {
                     <Input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder="Document title" />
                     <Textarea value={knowledgeContent} onChange={(event) => setKnowledgeContent(event.target.value)} placeholder="Paste product facts, FAQs, or brand context" className="min-h-[100px]" />
                     <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>Add Knowledge</Button>
+                      <Button type="button" variant="outline" onClick={addKnowledgeDocument} disabled={!canAddKnowledge}>Add knowledge</Button>
                       <Button type="button" variant="outline" disabled={isImportingKnowledge} asChild>
                         <label>
                           {isImportingKnowledge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileUp className="mr-2 h-4 w-4" />}
-                          Import File
+                          Import file
                           <input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleKnowledgeFileChange} />
                         </label>
                       </Button>
                     </div>
                     {knowledgeDocuments.map((document) => (
-                      <div key={document.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                      <div key={document.id} className="flex items-start justify-between gap-3 border-b border-byword-border py-3">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{document.title}</p>
                           <p className="line-clamp-2 text-sm text-muted-foreground">{document.content}</p>
@@ -1033,20 +1031,20 @@ export default function Personas() {
                     ))}
                   </div>
 
-                  <div className="space-y-3 rounded-lg border border-border p-4">
-                    <h3 className="font-semibold">Calls to action</h3>
+                  <div className="space-y-3">
+                    <h3 className="type-panel-title">Calls to action</h3>
                     <Input value={ctaLabel} onChange={(event) => setCtaLabel(event.target.value)} placeholder="CTA label" />
                     <Input value={ctaUrl} onChange={(event) => setCtaUrl(event.target.value)} placeholder="URL, optional" />
                     <Textarea value={ctaDescription} onChange={(event) => setCtaDescription(event.target.value)} placeholder="How to use it" className="min-h-[90px]" />
                     <Button type="button" variant="outline" onClick={addCta}>Add CTA</Button>
                     {brandCtas.map((cta) => (
-                      <div key={cta.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                      <div key={cta.id} className="flex items-start justify-between gap-3 border-b border-byword-border py-3">
                         <div className="min-w-0">
                           <p className="font-medium">{cta.label}</p>
                           <p className="text-sm text-muted-foreground">{cta.description}</p>
-                          {cta.url && <p className="truncate text-xs text-primary">{cta.url}</p>}
+                          {cta.url && <p className="truncate text-xs text-byword-blue">{cta.url}</p>}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => removeCta(cta.id)}>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeCta(cta.id)} aria-label={`Remove ${cta.label}`}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1058,11 +1056,11 @@ export default function Personas() {
               <TabsContent value="profiles" className="mt-0 space-y-6">
                 {editedPersona ? (
                   <>
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-byword-border pb-4">
                       <div className="flex items-center gap-3">
-                        <Bot className="h-5 w-5 text-primary" />
+                        <Bot className="h-5 w-5 text-byword-blue" />
                         <div>
-                          <h3 className="font-semibold">{editedPersona.name}</h3>
+                          <h3 className="type-panel-title">{editedPersona.name}</h3>
                           <p className="text-sm text-muted-foreground">{editedPersona.status === "active" ? "Active" : "Inactive"} · {editedPersona.base_model}</p>
                         </div>
                         {hasAdvancedConfig && <Badge variant="secondary">Advanced</Badge>}
@@ -1071,11 +1069,11 @@ export default function Personas() {
                         <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setIsDeleteOpen(true)}>Delete</Button>
                         <Button variant="outline" onClick={() => selectedPersona && duplicateMutation.mutate(selectedPersona)} disabled={duplicateMutation.isPending}>
                           <Copy className="mr-2 h-4 w-4" />
-                          {duplicateMutation.isPending ? "Duplicating..." : "Duplicate"}
+                          {duplicateMutation.isPending ? "Duplicating…" : "Duplicate"}
                         </Button>
-                        <Button onClick={handleSave} disabled={updateMutation.isPending || isUnavailableModel(editedPersona?.base_model, textModels)}>
+                        <Button variant="secondary" onClick={handleSave} disabled={updateMutation.isPending || isUnavailableModel(editedPersona?.base_model, textModels)}>
                           <Save className="mr-2 h-4 w-4" />
-                          {updateMutation.isPending ? "Saving..." : "Save Profile"}
+                          {updateMutation.isPending ? "Saving…" : "Save profile"}
                         </Button>
                       </div>
                     </div>
@@ -1084,21 +1082,21 @@ export default function Personas() {
 
                     <button
                       onClick={toggleAdvanced}
-                      className={cn("flex w-full items-center justify-between rounded-lg border p-4 transition-colors", isAdvanced ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/30 hover:bg-muted/50")}
+                      className={cn("flex w-full items-center justify-between rounded-sm border p-4 transition-colors", isAdvanced ? "border-byword-blue/30 bg-byword-blue-soft/60" : "border-border hover:border-byword-blue/30 hover:bg-muted/50")}
                     >
                       <div className="flex items-center gap-3">
-                        <Settings2 className={cn("h-5 w-5", isAdvanced ? "text-primary" : "text-muted-foreground")} />
+                        <Settings2 className={cn("h-5 w-5", isAdvanced ? "text-byword-blue" : "text-muted-foreground")} />
                         <div className="text-left">
                           <p className="font-medium">Advanced lab</p>
                           <p className="text-sm text-muted-foreground">Tools, plugins, and profile testing.</p>
                         </div>
                       </div>
-                      <ChevronRight className={cn("h-5 w-5 transition-transform", isAdvanced ? "rotate-90 text-primary" : "text-muted-foreground")} />
+                      <ChevronRight className={cn("h-5 w-5 transition-transform", isAdvanced ? "rotate-90 text-byword-blue" : "text-muted-foreground")} />
                     </button>
 
                     {isAdvanced && (
                       <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
-                        <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-hidden rounded-lg border border-border">
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-hidden rounded-sm border border-border">
                           <div className="border-b border-border bg-muted/30 px-4">
                             <TabsList className="h-12 gap-1 bg-transparent">
                               <TabsTrigger value="tools" className="gap-2"><Wrench className="h-4 w-4" />Tools</TabsTrigger>
@@ -1131,18 +1129,14 @@ export default function Personas() {
                     )}
                   </>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-border p-8 text-center">
-                    {isLoading ? <ListSkeleton rows={3} /> : (
-                      <>
-                        <EmptyState
-                          icon={Bot}
-                          title="No writer profiles yet"
-                          description="Create one when a set of articles needs its own prompt, model, or tone."
-                          primaryAction={{ label: "Create profile", onClick: () => setIsCreateOpen(true) }}
-                        />
-                      </>
-                    )}
-                  </div>
+                  isLoading ? <ListSkeleton rows={3} /> : (
+                    <EmptyState
+                      icon={Bot}
+                      title="No writer profiles yet"
+                      description="Create one when a set of articles needs its own prompt, model, or tone."
+                      secondaryAction={{ label: "Create profile", onClick: () => setIsCreateOpen(true) }}
+                    />
+                  )
                 )}
               </TabsContent>
             </div>
@@ -1154,11 +1148,11 @@ export default function Personas() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Create Brand Voice Profile</DialogTitle>
+            <DialogTitle>Create writer profile</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Profile Name</Label>
+              <Label>Profile name</Label>
               <Input
                 placeholder="e.g., Senior Technical Writer, Brand Voice Lead"
                 value={newPersona.name}
@@ -1166,20 +1160,20 @@ export default function Personas() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Base Model</Label>
+              <Label>Base model</Label>
               <LiveTextModelSelect
                 value={newPersona.base_model}
                 onValueChange={(v) => setNewPersona({ ...newPersona, base_model: v })}
               />
               {isUnavailableModel(newPersona.base_model, textModels) && (
-                <p className="text-xs text-destructive">Unavailable: {newPersona.base_model}. Pick a live OpenRouter model.</p>
+                <p className="text-xs text-status-error">Unavailable: {newPersona.base_model}. Pick a live OpenRouter model.</p>
               )}
               <p className="text-xs text-muted-foreground">
                 Different models have varying strengths in reasoning and creativity.
               </p>
             </div>
             <div className="space-y-2">
-              <Label>System Prompt</Label>
+              <Label>System prompt</Label>
               <Textarea
                 placeholder="You are an expert technical writer specializing in API documentation. Your tone is precise, neutral, and helpful..."
                 value={newPersona.system_prompt}
@@ -1201,7 +1195,7 @@ export default function Personas() {
               onClick={handleCreate}
               disabled={createMutation.isPending || !newPersona.base_model || isUnavailableModel(newPersona.base_model, textModels)}
             >
-              {createMutation.isPending ? "Creating..." : "Create Profile"}
+              {createMutation.isPending ? "Creating…" : "Create profile"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1211,7 +1205,7 @@ export default function Personas() {
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Brand Voice Profile</AlertDialogTitle>
+            <AlertDialogTitle>Delete writer profile?</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{selectedPersona?.name}"? This action cannot be undone.
             </AlertDialogDescription>
@@ -1222,7 +1216,7 @@ export default function Personas() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -6,13 +6,42 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ListSkeleton, StatRowSkeleton } from "@/components/patterns/PageSkeleton";
+import { StatCard } from "@/components/patterns/StatCard";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { formatSourceType } from "@/lib/source-labels";
 import { api } from "@/lib/api";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import { useSites } from "@/hooks/useSites";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { EDITORIAL_STATE_BADGES } from "@/lib/editorial-state";
 import { WorkspaceSetupGuide, type WorkspaceSetupStep } from "@/components/setup/WorkspaceSetupGuide";
+
+const editorialStates = EDITORIAL_STATE_BADGES;
+
+const severityBadges: Record<string, { status: StatusType; label: string }> = {
+  blocker: { status: "error", label: "Blocker" },
+  review: { status: "warning", label: "Review" },
+  warning: { status: "warning", label: "Warning" },
+};
+
+function sentence(value: string) {
+  const words = value.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function runStatus(status: string): StatusType {
+  if (status === "failed") return "error";
+  if (status === "completed") return "success";
+  if (status === "running" || status === "processing") return "running";
+  return "pending";
+}
+
+function eventStatus(status: string): StatusType {
+  return status === "succeeded" ? "success" : status === "failed" ? "error" : "running";
+}
 
 function setupStep(value: string | null): WorkspaceSetupStep {
   return value === "site" || value === "generation" || value === "cms" || value === "search-console" || value === "mcp" || value === "create" ? value : "generation";
@@ -56,17 +85,17 @@ export default function Overview() {
       <SetupReadinessCard key={data.site.id} digest={data} onOpenSetup={openSetup} />
       {hasFirstDraft && <>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Blockers" value={data.attention.blocker} tone="red" href="/review?severity=blocker" />
-        <Metric label="Editorial review" value={data.attention.review} tone="amber" href="/review?severity=review" />
-        <Metric label="Warnings" value={data.attention.warning} tone="slate" href="/review?severity=warning" />
+        <StatCard label="Blockers" value={data.attention.blocker} tone="error" href="/review?severity=blocker" />
+        <StatCard label="Editorial review" value={data.attention.review} tone="warning" href="/review?severity=review" />
+        <StatCard label="Warnings" value={data.attention.warning} tone="neutral" href="/review?severity=warning" />
       </div>
 
       <BywordCard>
         <SectionHeader icon={AlertTriangle} title="Needs attention" description="Only drafts with a real editorial or delivery action." action={<Button asChild variant="outline" size="sm"><Link to="/review">Open queue <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>} />
         <div className="divide-y divide-byword-border">
           {data.action_items.map((item) => <Link key={item.id} to={`/review?post=${item.id}`} className="group flex flex-col gap-2 p-4 transition-calm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0"><p className="truncate text-sm font-semibold group-hover:text-byword-blue">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.suggested_action}</p><p className="type-meta mt-1.5">{item.source_type.replace(/_/g, " ")} · revision {item.revision_number || "—"}</p></div>
-            <div className="flex items-center gap-2"><Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>{item.severity}</Badge><ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div>
+            <div className="min-w-0"><p className="truncate text-sm font-semibold group-hover:text-byword-blue">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.suggested_action}</p><p className="type-meta mt-1.5">{formatSourceType(item.source_type)} · Revision {item.revision_number || "—"}</p></div>
+            <div className="flex items-center gap-2"><StatusBadge status={severityBadges[item.severity]?.status ?? "pending"} label={severityBadges[item.severity]?.label ?? sentence(item.severity)} /><ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div>
           </Link>)}
           {!data.action_items.length && <EmptyState size="row" icon={CheckCircle2} title="Queue clear" description="No draft is waiting on an editorial or delivery decision." />}
         </div>
@@ -75,7 +104,7 @@ export default function Overview() {
       <div className="grid gap-6 xl:grid-cols-2">
         <BywordCard>
           <SectionHeader icon={PlayCircle} title="Runs" description={`${data.runs.running} active · ${data.runs.failed} failed`} action={<Button asChild variant="outline" size="sm"><Link to="/runs">View runs</Link></Button>} />
-          <div className="divide-y divide-byword-border">{data.runs.recent.map((run) => <Link to="/runs" key={run.id} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><div><p className="text-sm font-medium">{run.source_type.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{run.current_step} · {safeFormatDistanceToNow(run.created_at)}</p></div><Badge variant={run.status === "failed" ? "destructive" : "secondary"}>{run.status}</Badge></Link>)}{!data.runs.recent.length && <EmptyState size="row" title="No runs yet" description="Generation jobs appear here while they work." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
+          <div className="divide-y divide-byword-border">{data.runs.recent.map((run) => <Link to="/runs" key={run.id} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><div><p className="text-sm font-medium">{formatSourceType(run.source_type)}</p><p className="type-meta mt-0.5">{sentence(run.current_step)} · {safeFormatDistanceToNow(run.created_at)}</p></div><StatusBadge status={runStatus(run.status)} label={sentence(run.status)} /></Link>)}{!data.runs.recent.length && <EmptyState size="row" title="No runs yet" description="Generation jobs appear here while they work." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
         </BywordCard>
         <BywordCard>
           <SectionHeader icon={FileCheck2} title="30-day outcomes" description="Draft and CMS delivery volume." />
@@ -85,13 +114,13 @@ export default function Overview() {
 
       <BywordCard>
         <SectionHeader icon={FileText} title="Recent outputs" description="Latest content created or updated for this site." action={<Button asChild variant="outline" size="sm"><Link to="/library">Open content</Link></Button>} />
-        <div className="divide-y divide-byword-border">{data.recent_outputs.map((post) => <Link key={post.id} to={`/library/posts/${post.id}/preview`} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{post.title}</p><p className="text-xs text-muted-foreground">{post.source_type.replace(/_/g, " ")} · {safeFormatDistanceToNow(post.updated_at)}</p></div><Badge variant="secondary">{post.editorial_state.replace(/_/g, " ")}</Badge></Link>)}{!data.recent_outputs.length && <EmptyState size="row" title="No content yet" description="Drafts created for this site collect here." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
+        <div className="divide-y divide-byword-border">{data.recent_outputs.map((post) => <Link key={post.id} to={`/library/posts/${post.id}/preview`} className="flex items-center justify-between gap-3 px-5 py-3 transition-calm hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{post.title}</p><p className="text-xs text-muted-foreground">{formatSourceType(post.source_type)} · {safeFormatDistanceToNow(post.updated_at)}</p></div><StatusBadge status={editorialStates[post.editorial_state]?.status ?? "draft"} label={editorialStates[post.editorial_state]?.label ?? sentence(post.editorial_state)} className="shrink-0" /></Link>)}{!data.recent_outputs.length && <EmptyState size="row" title="No content yet" description="Drafts created for this site collect here." primaryAction={{ label: "Create content", href: "/create" }} />}</div>
       </BywordCard>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <BywordCard>
           <SectionHeader icon={SearchCheck} title="Search Growth" description={searchConsoleDegraded ? "Search Console could not be refreshed; showing the last synchronized numbers." : data.search_growth.connected ? "Latest synchronized opportunities and plan progress." : "Connect Search Console to add growth signals."} action={<Button asChild variant="outline" size="sm"><Link to="/overview/growth?tab=plan">Open growth plan</Link></Button>} />
-          <div className="space-y-3 p-5 text-sm text-muted-foreground">{searchConsoleDegraded && <p className="text-status-warning">Reconnect the property in Connections to refresh this data.</p>}{data.search_growth.connected ? <><p>{Object.values(data.search_growth.segments || {}).filter((value): value is number => typeof value === "number").reduce((total, value) => total + value, 0)} opportunities across {Object.keys(data.search_growth.segments || {}).length} segments.</p>{data.search_growth.plan ? <div className="grid grid-cols-4 gap-2">{(["planned", "review", "blocked", "measuring"] as const).map((key) => <div key={key} className="rounded-sm border border-byword-border p-2"><p className="font-mono text-[9px] uppercase">{key}</p><p className="mt-1 text-lg font-semibold text-foreground">{data.search_growth.plan!.summary[key] || 0}</p></div>)}</div> : <p>No 30-day plan generated yet.</p>}</> : "No connected Search Console property."}</div>
+          <div className="space-y-3 p-5 text-sm text-muted-foreground">{searchConsoleDegraded && <p className="text-status-warning">Reconnect the property in Connections to refresh this data.</p>}{data.search_growth.connected ? <><p>{Object.values(data.search_growth.segments || {}).filter((value): value is number => typeof value === "number").reduce((total, value) => total + value, 0)} opportunities across {Object.keys(data.search_growth.segments || {}).length} segments.</p>{data.search_growth.plan ? <div className="grid grid-cols-4 gap-2">{(["planned", "review", "blocked", "measuring"] as const).map((key) => <div key={key} className="rounded-sm border border-border bg-muted/40 p-2"><p className="type-kicker">{sentence(key)}</p><p className="mt-1 text-lg font-semibold text-foreground">{data.search_growth.plan!.summary[key] || 0}</p></div>)}</div> : <p>No 30-day plan generated yet.</p>}</> : "No connected Search Console property."}</div>
         </BywordCard>
         <BywordCard>
           <SectionHeader icon={Bot} title="Connection health" description="MCP, CMS, and Search Console readiness." action={<Button asChild variant="outline" size="sm"><Link to="/control/connections">Manage</Link></Button>} />
@@ -100,7 +129,7 @@ export default function Overview() {
       </div>
       <BywordCard>
         <SectionHeader icon={Bot} title="Agent activity" description="Recent MCP and important web operations." />
-        <div className="divide-y divide-byword-border">{data.activity.map((event) => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{event.action.replace(/_/g, " ")}</p><p className="type-meta mt-0.5">{event.client_name || event.origin} · {safeFormatDistanceToNow(event.created_at)}</p></div><div className="flex items-center gap-2"><Badge variant="outline">{event.origin}</Badge><Badge variant={event.status === "failed" ? "destructive" : "secondary"}>{event.status}</Badge></div></div>)}{!data.activity.length && <EmptyState size="row" title="No agent operations yet" description="MCP and web operations are recorded here for 30 days." />}</div>
+        <div className="divide-y divide-byword-border">{data.activity.map((event) => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{sentence(event.action.replace(/\./g, " "))}</p><p className="type-meta mt-0.5">{event.client_name || event.origin} · {safeFormatDistanceToNow(event.created_at)}</p></div><div className="flex items-center gap-2"><Badge variant="outline">{event.origin}</Badge><StatusBadge status={eventStatus(event.status)} label={sentence(event.status)} /></div></div>)}{!data.activity.length && <EmptyState size="row" title="No agent operations yet" description="MCP and web operations are recorded here for 30 days." />}</div>
       </BywordCard>
       </>}
     </div>}
@@ -121,20 +150,19 @@ function SetupReadinessCard({ digest, onOpenSetup }: { digest: WorkspaceDigest; 
   const [dismissedFingerprint, setDismissedFingerprint] = useState(() => localStorage.getItem(storageKey));
 
   if (!hasFirstDraft) {
-    return <section className="relative overflow-hidden rounded-md border border-byword-border bg-card" aria-labelledby="first-draft-title">
-      <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
-      <div className="flex flex-col gap-5 p-5 pl-6 sm:flex-row sm:items-center sm:justify-between sm:p-6 sm:pl-7">
+    return <section aria-labelledby="first-draft-title"><BywordCard>
+      <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-primary/25 bg-primary/5 text-primary"><FileText className="h-5 w-5" /></span>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-muted/40 text-byword-blue"><FileText className="h-5 w-5" /></span>
           <div>
-            <p className="type-kicker text-byword-blue">Start here</p>
+            <p className="type-kicker">Start here</p>
             <h2 id="first-draft-title" className="mt-1 text-xl font-semibold">Create your first draft</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{generation.ready ? "Choose a real topic from your site, see the estimate, and get a reviewable text-only draft." : generation.credential_status === "undecryptable" ? "Your saved OpenRouter key cannot be read. Re-save it inline, then create a real draft." : "Connect OpenRouter inline, choose a real site topic, and create a reviewable draft."}</p>
           </div>
         </div>
-        <Button asChild className="shrink-0"><Link to="/onboarding">{generation.ready ? "Choose a topic" : generation.credential_status === "undecryptable" ? "Repair AI access" : "Continue setup"}<ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>
+        <Button asChild variant="outline" className="shrink-0"><Link to="/onboarding">{generation.ready ? "Choose a topic" : generation.credential_status === "undecryptable" ? "Repair AI access" : "Continue setup"}<ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>
       </div>
-    </section>;
+    </BywordCard></section>;
   }
 
   if (dismissedFingerprint === fingerprint) return null;
@@ -147,26 +175,38 @@ function SetupReadinessCard({ digest, onOpenSetup }: { digest: WorkspaceDigest; 
     setDismissedFingerprint(fingerprint);
   };
 
-  return <section className={`relative rounded-md border bg-card ${generation.ready ? "border-byword-border" : "border-status-warning/30"}`} aria-labelledby="connections-setup-title">
+  if (!generation.ready) {
+    return <Alert variant="warning" aria-labelledby="connections-setup-title">
+      <AlertTriangle />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <AlertTitle id="connections-setup-title">AI access needs attention</AlertTitle>
+          <AlertDescription>Your saved OpenRouter key is missing or unreadable. Repair it before the next generation run.</AlertDescription>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenSetup("generation")}>Repair AI access<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={dismiss} aria-label="Dismiss connections setup"><X className="h-4 w-4" /></Button>
+        </div>
+      </div>
+    </Alert>;
+  }
+
+  return <section className="relative rounded-md border border-byword-border bg-card" aria-labelledby="connections-setup-title">
     <div className="flex flex-col gap-4 p-4 pr-12 sm:flex-row sm:items-center sm:justify-between sm:p-5 sm:pr-14">
       <div className="min-w-0">
-        <p className="type-kicker text-muted-foreground">{generation.ready ? "Optional" : "Action needed"}</p>
-        <h2 id="connections-setup-title" className="mt-1 text-base font-semibold">{generation.ready ? "Connections & setup" : "AI access needs attention"}</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{generation.ready ? `${optionalReady} of 3 optional capabilities configured. Add them only when you need delivery, search evidence, or an AI client.` : "Your saved OpenRouter key is missing or unreadable. Repair it before the next generation run."}</p>
-        {generation.ready && <div className="mt-3 flex flex-wrap gap-2"><ConnectionPill label="CMS" ready={cmsReady} /><ConnectionPill label="Search" ready={searchConsoleReady} /><ConnectionPill label="MCP" ready={mcpConfigured} /></div>}
+        <p className="type-kicker text-muted-foreground">Optional</p>
+        <h2 id="connections-setup-title" className="mt-1 text-base font-semibold">Connections &amp; setup</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{`${optionalReady} of 3 optional capabilities configured. Add them only when you need delivery, search evidence, or an AI client.`}</p>
+        <div className="mt-3 flex flex-wrap gap-2"><ConnectionPill label="CMS" ready={cmsReady} /><ConnectionPill label="Search" ready={searchConsoleReady} /><ConnectionPill label="MCP" ready={mcpConfigured} /></div>
       </div>
-      <Button type="button" variant={generation.ready ? "outline" : "default"} size="sm" className="shrink-0" onClick={() => onOpenSetup(generation.ready ? nextStep : "generation")}>{generation.ready ? "Open setup" : "Repair AI access"}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+      <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => onOpenSetup(nextStep)}>Open setup<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
       <Button type="button" variant="ghost" size="icon" className="absolute right-2 top-2" onClick={dismiss} aria-label="Dismiss connections setup"><X className="h-4 w-4" /></Button>
     </div>
   </section>;
 }
 
 function ConnectionPill({ label, ready }: { label: string; ready: boolean }) {
-  return <span className={`rounded-full border px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${ready ? "border-status-success/30 bg-status-success/10 text-status-success" : "border-byword-border bg-muted/40 text-muted-foreground"}`}>{label} · {ready ? "set" : "off"}</span>;
-}
-
-function Metric({ label, value, tone, href }: { label: string; value: number; tone: "red" | "amber" | "slate"; href: string }) {
-  return <Link to={href} className="group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"><BywordCard className={`h-full transition-calm group-hover:-translate-y-0.5 group-hover:border-byword-blue/50 ${tone === "red" ? "border-status-error/30" : tone === "amber" ? "border-status-warning/30" : ""}`}><div className="flex items-end justify-between gap-3 p-5"><div><p className="type-kicker text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{value}</p></div><span className={`mb-1 h-2 w-2 rounded-full ${tone === "red" ? "bg-status-error" : tone === "amber" ? "bg-status-warning" : "bg-status-pending"}`} /></div></BywordCard></Link>;
+  return <StatusBadge status={ready ? "success" : "pending"} label={`${label} · ${ready ? "set" : "off"}`} />;
 }
 
 function Outcome({ icon: Icon, label, value }: { icon: typeof FileText; label: string; value: string | number }) {

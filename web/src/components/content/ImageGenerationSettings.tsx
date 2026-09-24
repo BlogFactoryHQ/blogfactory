@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -103,7 +104,7 @@ export function SplitImageGenerationSettings({
     }
   }, [config, coverResolutions, inlineResolutions, onConfigChange]);
   const resolutionButtons = (value: ImageResolution | undefined, available: ImageResolution[], onChange: (resolution: ImageResolution) => void) => (
-    <div className="grid grid-cols-2 rounded-lg border border-border p-1">
+    <div className="grid grid-cols-2 rounded-md border border-border p-1">
       {(["512", "1K"] as const).map((resolution) => (
         <button
           key={resolution}
@@ -111,8 +112,8 @@ export function SplitImageGenerationSettings({
           disabled={!available.includes(resolution)}
           onClick={() => available.includes(resolution) && onChange(resolution)}
           className={cn(
-            "rounded-md px-3 py-2 text-sm font-medium transition-calm",
-            (value || "1K") === resolution ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+            "rounded-sm px-3 py-2 text-sm font-medium transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            (value || "1K") === resolution ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted",
             !available.includes(resolution) && "cursor-not-allowed opacity-40 hover:bg-transparent"
           )}
         >
@@ -147,18 +148,18 @@ export function SplitImageGenerationSettings({
   ].filter(Boolean).join(" · ") || "No images";
 
   const deliveryModeControl = onImageDeliveryModeChange ? (
-    <div className="grid grid-cols-2 rounded-lg border border-border p-1">
+    <div className="grid grid-cols-2 rounded-md border border-border p-1">
       {([
-        ["generate", "Generate Images"],
-        ["manual_prompt", "Manual Prompt"],
+        ["generate", "Generate images"],
+        ["manual_prompt", "Manual prompt"],
       ] as const).map(([mode, label]) => (
         <button
           key={mode}
           type="button"
           onClick={() => onImageDeliveryModeChange(mode)}
           className={cn(
-            "rounded-md px-3 py-2 text-sm font-medium transition-calm",
-            imageDeliveryMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            "rounded-sm px-3 py-2 text-sm font-medium transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            imageDeliveryMode === mode ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
           )}
         >
           {label}
@@ -170,9 +171,9 @@ export function SplitImageGenerationSettings({
   const controls = (
     <div className="space-y-3">
       {deliveryModeControl}
-      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between rounded-md border border-border p-3">
         <div>
-          <Label>{imageDeliveryMode === "manual_prompt" ? "Cover Prompt" : "Cover Image"}</Label>
+          <Label>{imageDeliveryMode === "manual_prompt" ? "Cover prompt" : "Cover image"}</Label>
           <p className="text-xs text-muted-foreground">
             {config.cover.enabled ? imageDeliveryMode === "manual_prompt" ? "1 Midjourney prompt slot" : `${config.cover.resolution || "1K"} AI` : "Off"}
           </p>
@@ -181,10 +182,10 @@ export function SplitImageGenerationSettings({
       </div>
       {imageDeliveryMode !== "manual_prompt" && config.cover.enabled && resolutionButtons(config.cover.resolution, coverResolutions, (resolution) => updateCover({ resolution }))}
 
-      <div className="space-y-3 rounded-lg border border-border p-3">
+      <div className="space-y-3 rounded-md border border-border p-3">
         <div className="flex items-center justify-between">
           <div>
-            <Label>{imageDeliveryMode === "manual_prompt" ? "Inline Prompts" : "Inline Images"}</Label>
+            <Label>{imageDeliveryMode === "manual_prompt" ? "Inline prompts" : "Inline images"}</Label>
             <p className="text-xs text-muted-foreground">
               {imageDeliveryMode === "manual_prompt" && config.inline.enabled ? `${config.inline.count} Midjourney slot${config.inline.count === 1 ? "" : "s"}` : inlineCostLabel}
             </p>
@@ -210,12 +211,12 @@ export function SplitImageGenerationSettings({
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-muted/20 p-3">
+      <div className="rounded-md border border-border bg-muted/20 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <Label>Placement</Label>
-          <span className="rounded-sm border border-[hsl(var(--status-success)/0.25)] bg-[hsl(var(--status-success)/0.12)] px-2 py-0.5 font-mono text-[10px] font-semibold text-status-success">
-            Auto (Recommended)
-          </span>
+          <Badge variant="secondary" className="font-mono text-[10px]">
+            Auto (recommended)
+          </Badge>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Smart placement adapts to your image count. With a single image, it is used as the featured image. With multiple images, the first becomes the featured image and remaining images are distributed between sections.
@@ -229,9 +230,9 @@ export function SplitImageGenerationSettings({
 
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="flex items-center justify-between rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between rounded-md border border-border p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-byword-blue/30 bg-byword-blue-soft">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md border border-byword-blue/30 bg-byword-blue-soft">
             <ImageIcon className="h-4 w-4 text-byword-blue" />
           </div>
           <div>
@@ -245,7 +246,7 @@ export function SplitImageGenerationSettings({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold">
+                <span tabIndex={0} className="inline-flex cursor-help items-center gap-1 rounded-sm border border-border bg-card px-2.5 py-0.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   {imageDeliveryMode === "manual_prompt" ? "Manual prompt" : inlineImageSource === "stock" ? "Cover AI + inline stock" : "AI images"}
                 </span>
               </TooltipTrigger>

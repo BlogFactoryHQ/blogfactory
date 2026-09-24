@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
-  CheckCircle2,
   ExternalLink,
   Gauge,
   KeyRound,
@@ -17,6 +15,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -47,7 +47,7 @@ import { cn } from "@/lib/utils";
 import { toggleInspectionSelection } from "@/lib/search-console";
 
 const statuses: Array<{ value: OptimizeStatus; label: string }> = [
-  { value: "needs_attention", label: "Needs Attention" },
+  { value: "needs_attention", label: "Needs attention" },
   { value: "tracking", label: "Tracking" },
   { value: "improved", label: "Improved" },
 ];
@@ -62,79 +62,16 @@ const opportunityFilters: Array<{ value: OptimizeOpportunity; label: string }> =
   { value: "weak_focus", label: "Weak focus" },
 ];
 
-const opportunityMeta: Record<string, { label: string; action: string; tone: string; dot: string; rail: string; row: string }> = {
-  needs_attention: {
-    label: "Needs attention",
-    action: "Review decline",
-    tone: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.10)] text-[hsl(var(--status-error))]",
-    dot: "bg-[hsl(var(--status-error))]",
-    rail: "bg-[hsl(var(--status-error))]",
-    row: "bg-[hsl(var(--status-error)/0.04)]",
-  },
-  wrong_page_risk: {
-    label: "Wrong page risk",
-    action: "Check intent",
-    tone: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.10)] text-[hsl(var(--status-error))]",
-    dot: "bg-[hsl(var(--status-error))]",
-    rail: "bg-[hsl(var(--status-error))]",
-    row: "bg-[hsl(var(--status-error)/0.04)]",
-  },
-  low_ctr: {
-    label: "Low CTR",
-    action: "Rewrite snippet",
-    tone: "border-[hsl(var(--status-warning)/0.4)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-    dot: "bg-[hsl(var(--status-warning))]",
-    rail: "bg-[hsl(var(--status-warning))]",
-    row: "bg-[hsl(var(--status-warning)/0.04)]",
-  },
-  zero_clicks: {
-    label: "Zero clicks",
-    action: "Improve snippet",
-    tone: "border-[hsl(var(--status-warning)/0.4)] bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-    dot: "bg-[hsl(var(--status-warning))]",
-    rail: "bg-[hsl(var(--status-warning))]",
-    row: "bg-[hsl(var(--status-warning)/0.04)]",
-  },
-  almost_ranking: {
-    label: "Almost ranking",
-    action: "Build links",
-    tone: "border-byword-blue/30 bg-byword-blue-soft text-byword-blue",
-    dot: "bg-byword-blue",
-    rail: "bg-byword-blue",
-    row: "bg-byword-blue-soft/45",
-  },
-  page_two: {
-    label: "Page two",
-    action: "Expand section",
-    tone: "border-byword-blue/30 bg-byword-blue-soft text-byword-blue",
-    dot: "bg-byword-blue",
-    rail: "bg-byword-blue",
-    row: "bg-byword-blue-soft/45",
-  },
-  weak_focus: {
-    label: "Weak focus",
-    action: "Tighten intent",
-    tone: "border-border bg-muted text-muted-foreground",
-    dot: "bg-status-pending",
-    rail: "bg-status-pending",
-    row: "bg-muted",
-  },
-  growing: {
-    label: "Growing",
-    action: "Reinforce win",
-    tone: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.10)] text-[hsl(var(--status-success))]",
-    dot: "bg-[hsl(var(--status-success))]",
-    rail: "bg-[hsl(var(--status-success))]",
-    row: "bg-[hsl(var(--status-success)/0.04)]",
-  },
-  tracking: {
-    label: "Tracking",
-    action: "Track",
-    tone: "border-byword-border bg-muted/40 text-muted-foreground",
-    dot: "bg-muted-foreground",
-    rail: "bg-border",
-    row: "",
-  },
+const opportunityMeta: Record<string, { label: string; action: string; dot: string }> = {
+  needs_attention: { label: "Needs attention", action: "Review decline", dot: "bg-status-error" },
+  wrong_page_risk: { label: "Wrong page risk", action: "Check intent", dot: "bg-status-error" },
+  low_ctr: { label: "Low CTR", action: "Rewrite snippet", dot: "bg-status-warning" },
+  zero_clicks: { label: "Zero clicks", action: "Improve snippet", dot: "bg-status-warning" },
+  almost_ranking: { label: "Almost ranking", action: "Build links", dot: "bg-factory-purple" },
+  page_two: { label: "Page two", action: "Expand section", dot: "bg-factory-purple" },
+  weak_focus: { label: "Weak focus", action: "Tighten intent", dot: "bg-status-pending" },
+  growing: { label: "Growing", action: "Reinforce win", dot: "bg-status-success" },
+  tracking: { label: "Tracking", action: "Track", dot: "bg-muted-foreground" },
 };
 
 export function OptimizePanel() {
@@ -303,7 +240,7 @@ export function OptimizePanel() {
             ["GSC clicks", String(summary?.clicks ?? stats.clicks)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
-              <p className="font-mono text-[11px] font-bold uppercase text-muted-foreground">{label}</p>
+              <p className="type-kicker">{label}</p>
               <p className="mt-2 truncate text-2xl font-semibold text-foreground">{value}</p>
             </div>
           ))}
@@ -320,7 +257,7 @@ export function OptimizePanel() {
                   <RefreshCw className={cn("mr-1.5 h-4 w-4", testIntegration.isPending && "animate-spin")} />
                   Test
                 </Button>
-                <Button size="sm" onClick={handleSync} disabled={sync.isPending}>
+                <Button variant="outline" size="sm" onClick={handleSync} disabled={sync.isPending}>
                   {sync.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
                   Refresh Search Console
                 </Button>
@@ -329,7 +266,7 @@ export function OptimizePanel() {
           />
           <div className="p-6">
             {isLoading ? (
-              <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading connection</div>
+              <ListSkeleton rows={1} />
             ) : integration ? (
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-4">
@@ -337,7 +274,7 @@ export function OptimizePanel() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold text-foreground">{integration.propertyUrl}</h3>
-                      <Badge variant={connectionReady(integration) ? "default" : "destructive"}>{displayConnectionStatus(integration)}</Badge>
+                      <StatusBadge status={connectionReady(integration) ? "success" : "error"} label={displayConnectionStatus(integration)} />
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">Credential: {integration.credentialHint || "saved"}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -376,7 +313,7 @@ export function OptimizePanel() {
             icon={Gauge}
             title="Pages"
             description="Review synced pages or analyze a URL manually."
-            action={<Button size="sm" onClick={() => openAnalyze()}><Plus className="mr-1.5 h-4 w-4" />Add Page</Button>}
+            action={<Button size="sm" variant={integration ? "default" : "outline"} onClick={() => openAnalyze()}><Plus className="mr-1.5 h-4 w-4" />Add page</Button>}
           />
           <div>
             <div className="sticky top-0 z-20 space-y-4 border-b border-byword-border bg-background/95 p-4 shadow-[0_12px_24px_var(--panel-lift)] backdrop-blur sm:p-5 lg:p-6">
@@ -419,7 +356,7 @@ export function OptimizePanel() {
                     {sync.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     Sync
                   </Button>
-                  <Button size="sm" onClick={() => openAnalyze()}>
+                  <Button variant="outline" size="sm" onClick={() => openAnalyze()}>
                     <Plus className="h-4 w-4" />
                     Analyze URL
                   </Button>
@@ -441,10 +378,7 @@ export function OptimizePanel() {
                 description="Connect Search Console to sync real page performance, or add a page manually to start tracking it."
               />
             ) : isLoadingPages || isLoadingPageInsights ? (
-              <div className="flex items-center justify-center p-12 text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading pages
-              </div>
+              <TableSkeleton rows={5} columns={6} />
             ) : pageInsights.length === 0 ? (
               <EmptyState
                 tone="filtered"
@@ -474,11 +408,10 @@ export function OptimizePanel() {
                     const primary = primaryOpportunity(page);
                     const meta = opportunityMeta[primary] || opportunityMeta.tracking;
                     return (
-                      <TableRow key={page.pageUrl} className={cn("align-top", meta.row)}>
+                      <TableRow key={page.pageUrl} className="align-top">
                         <TableCell><Checkbox aria-label={`Select ${page.pageUrl} for inspection`} checked={selectedUrls.includes(page.pageUrl)} disabled={!connectionReady(integration)} onCheckedChange={(checked) => toggleInspectionUrl(page.pageUrl, checked === true)} /></TableCell>
                         <TableCell className="max-w-[360px]">
                           <div className="flex min-w-0 gap-3">
-                            <span className={cn("mt-1 h-11 w-1 shrink-0 rounded-full", meta.rail)} />
                             <button type="button" className="block min-w-0 max-w-full text-left" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>
                               <span className="block truncate font-semibold text-foreground">{compactUrl(page.pageUrl)}</span>
                               <span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{page.pageUrl}</span>
@@ -503,14 +436,14 @@ export function OptimizePanel() {
                         </TableCell>
                         <TableCell className="max-w-[300px]">
                           <div className="space-y-2">
-                            <Badge variant="outline" className={cn("border font-mono text-[10px] uppercase", meta.tone)}>{meta.action}</Badge>
+                            <Badge variant="outline" className="gap-1.5"><span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} aria-hidden="true" />{meta.action}</Badge>
                             <p className="text-sm leading-6 text-foreground">{page.suggestedAction}</p>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
-                            <Button variant="outline" size="sm" className="border-byword-blue/35 text-byword-blue hover:bg-byword-blue-soft" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
-                            <Button variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary/10" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
+                            <Button variant="outline" size="sm" onClick={() => handleViewPageDetail(page)} disabled={loadPageDetail.isPending}>Brief</Button>
+                            <Button variant="outline" size="sm" onClick={() => openAnalyze({ pageUrl: page.pageUrl, targetQuery: page.topQuery } as OptimizePage)}>Analyze</Button>
                             <Button variant="outline" size="sm" onClick={() => handleAddToPlan(page)} disabled={addPlanItem.isPending}>Add to plan</Button>
                             {tracked && (
                               <Button variant="ghost" size="sm" onClick={() => markOptimized.mutate(tracked.id)} disabled={markOptimized.isPending}>
@@ -692,9 +625,10 @@ function OpportunityStrip({
             key={item.value}
             type="button"
             onClick={() => onSelect(item.value)}
+            aria-pressed={isActive}
             className={cn(
-              "rounded-lg border bg-card p-3 text-left text-sm transition-colors hover:border-byword-blue",
-              isActive ? meta.tone : "border-byword-border"
+              "rounded-md border p-3 text-left text-sm transition-colors hover:border-byword-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isActive ? "border-byword-blue bg-byword-blue-soft/50" : "border-byword-border bg-card"
             )}
           >
             <span className="flex items-center gap-2 font-semibold text-foreground">
@@ -721,13 +655,11 @@ function WorkbenchStat({
   tone?: "neutral" | "risk" | "info";
 }) {
   return (
-    <div className={cn(
-      "rounded-md border px-3 py-2",
-      tone === "neutral" && "border-byword-border bg-card",
-      tone === "risk" && "border-[hsl(var(--status-error)/0.25)] bg-[hsl(var(--status-error)/0.06)]",
-      tone === "info" && "border-byword-blue/25 bg-byword-blue-soft",
-    )}>
-      <p className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
+    <div className="rounded-sm border border-border bg-muted/40 px-3 py-2">
+      <p className="type-kicker flex items-center gap-2">
+        {tone !== "neutral" && <span className={cn("h-1.5 w-1.5 rounded-full", tone === "risk" ? "bg-status-error" : "bg-status-warning")} aria-hidden="true" />}
+        {label}
+      </p>
       <div className="mt-1 flex items-baseline justify-between gap-3">
         <span className="truncate text-sm font-semibold text-foreground">{value}</span>
         <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
@@ -738,8 +670,8 @@ function WorkbenchStat({
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-[64px] rounded-md border border-byword-border bg-card px-2.5 py-2">
-      <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
+    <div className="min-w-[64px] rounded-sm border border-border bg-muted/40 px-2.5 py-2">
+      <p className="type-kicker">{label}</p>
       <p className="whitespace-nowrap text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
@@ -752,10 +684,10 @@ function DeltaBadge({ page }: { page: OptimizePageInsight }) {
     <Badge
       variant="outline"
       className={cn(
-        "border font-mono text-[10px] uppercase",
-        isBad && "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.08)] text-[hsl(var(--status-error))]",
-        isGood && "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.08)] text-[hsl(var(--status-success))]",
-        !isBad && !isGood && "border-byword-border bg-muted/30 text-muted-foreground",
+        "font-mono text-[10px]",
+        isBad && "text-status-error",
+        isGood && "text-status-success",
+        !isBad && !isGood && "text-muted-foreground",
       )}
     >
       {formatDelta(page)}
@@ -771,12 +703,13 @@ function OpportunityBadges({ opportunities }: { opportunities: string[] }) {
       {visible.map((item) => {
         const meta = opportunityMeta[item] || opportunityMeta.tracking;
         return (
-          <Badge key={item} variant="outline" className={cn("border px-1.5 py-0 font-mono text-[10px] uppercase", meta.tone)}>
+          <Badge key={item} variant="outline" className="gap-1.5 px-1.5 py-0 text-[11px]">
+            <span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} aria-hidden="true" />
             {meta.label}
           </Badge>
         );
       })}
-      {overflow > 0 && <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px] uppercase">+{overflow}</Badge>}
+      {overflow > 0 && <Badge variant="outline" className="px-1.5 py-0 text-[11px]">+{overflow}</Badge>}
     </div>
   );
 }
@@ -852,7 +785,7 @@ function PageDetailSheet({
               <div className="mt-3 space-y-3">
                 {actions.map((item, index) => (
                   <div key={`${item.opportunity}-${index}`} className="rounded-lg border border-byword-border p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant={item.opportunity === "needs_attention" ? "destructive" : "secondary"}>{humanOpportunity(item.opportunity)}</Badge><Button size="sm" variant="outline" onClick={() => insight && onAddToPlan({ ...insight, opportunities: [item.opportunity], suggestedAction: item.title })}>Add to plan</Button></div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">{item.opportunity === "needs_attention" ? <StatusBadge status="error" label={humanOpportunity(item.opportunity)} /> : <Badge variant="outline">{humanOpportunity(item.opportunity)}</Badge>}<Button size="sm" variant="outline" onClick={() => insight && onAddToPlan({ ...insight, opportunities: [item.opportunity], suggestedAction: item.title })}>Add to plan</Button></div>
                     <h4 className="mt-2 font-medium text-foreground">{item.title}</h4>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.detail}</p>
                   </div>
@@ -948,7 +881,7 @@ function AnalysisInline({ analysis }: { analysis: OptimizeAnalysis }) {
       <div className="mt-3 space-y-3">
         {suggestions.slice(0, 4).map((suggestion, index) => (
           <div key={`${suggestion.title}-${index}`} className="rounded-lg border border-byword-border p-4">
-            <Badge variant={suggestion.impact === "high" ? "destructive" : suggestion.impact === "medium" ? "default" : "secondary"}>{suggestion.impact}</Badge>
+            <Badge variant="outline">{impactLabel(suggestion.impact)}</Badge>
             <h4 className="mt-2 font-medium text-foreground">{suggestion.title}</h4>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">{suggestion.detail}</p>
           </div>
@@ -987,7 +920,7 @@ function AnalysisSheet({ analysis, onOpenChange }: { analysis: OptimizeAnalysis 
                 {suggestions.map((suggestion, index) => (
                   <div key={`${suggestion.title}-${index}`} className="rounded-lg border border-byword-border p-4">
                     <div className="flex items-center gap-2">
-                      <Badge variant={suggestion.impact === "high" ? "destructive" : suggestion.impact === "medium" ? "default" : "secondary"}>{suggestion.impact}</Badge>
+                      <Badge variant="outline">{impactLabel(suggestion.impact)}</Badge>
                       <h4 className="font-medium text-foreground">{suggestion.title}</h4>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">{suggestion.detail}</p>
@@ -1023,16 +956,16 @@ function SnapshotSummary({ title, snapshot, compact }: { title: string; snapshot
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="type-kicker">{label}</p>
       <p className="mt-1 font-semibold text-foreground">{value}</p>
     </div>
   );
 }
 
 function OptimizeStatusBadge({ status }: { status: string }) {
-  if (status === "needs_attention") return <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Needs attention</Badge>;
-  if (status === "improved") return <Badge className="bg-[hsl(var(--status-success))] text-white"><CheckCircle2 className="mr-1 h-3 w-3" />Improved</Badge>;
-  return <Badge variant="secondary" className="border border-byword-border">Tracking</Badge>;
+  if (status === "needs_attention") return <StatusBadge status="error" label="Needs attention" />;
+  if (status === "improved") return <StatusBadge status="success" label="Improved" />;
+  return <StatusBadge status="pending" label="Tracking" />;
 }
 
 function primaryOpportunity(page: OptimizePageInsight) {
@@ -1064,5 +997,12 @@ function compactUrl(value: string) {
 }
 
 function humanOpportunity(value: string) {
-  return value.replace(/_/g, " ");
+  if (opportunityMeta[value]) return opportunityMeta[value].label;
+  const words = value.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function impactLabel(impact: string) {
+  if (!impact) return "Impact";
+  return `${impact.charAt(0).toUpperCase()}${impact.slice(1)} impact`;
 }

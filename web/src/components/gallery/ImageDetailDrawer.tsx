@@ -5,6 +5,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Star,
@@ -19,8 +20,6 @@ import {
   Monitor,
   Unlink,
   ImageIcon,
-  AlertTriangle,
-  ImageOff,
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -60,11 +59,11 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
   };
 
   const statusBadge = image.status === "orphaned" ? (
-    <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Orphaned</Badge>
+    <StatusBadge status="warning" label="Orphaned" />
   ) : image.status === "unused" ? (
-    <Badge variant="secondary" className="gap-1"><ImageOff className="h-3 w-3" /> Unused</Badge>
+    <StatusBadge status="pending" label="Unused" />
   ) : (
-    <Badge variant="outline" className="gap-1 border-status-success/30 text-status-success">Used</Badge>
+    <StatusBadge status="success" label="Used" />
   );
   const sourceUrl = image.attribution_url || image.source_url;
   const sourceName = imageProviderName(image.provider);
@@ -77,11 +76,11 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {image.type === "cover" ? (
-              <Star className="h-4 w-4 text-status-warning" />
+              <Star className="h-4 w-4 text-byword-blue" />
             ) : (
-              <ImagePlus className="h-4 w-4 text-primary" />
+              <ImagePlus className="h-4 w-4 text-byword-blue" />
             )}
-            {image.type === "cover" ? "Cover Image" : `Inline Image${positionLabel(image.position)}`}
+            {image.type === "cover" ? "Cover image" : `Inline image${positionLabel(image.position)}`}
           </DialogTitle>
         </DialogHeader>
 
@@ -112,7 +111,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">Type:</span>
-              <Badge variant="outline">{image.type}</Badge>
+              <Badge variant="outline">{image.type === "cover" ? "Cover" : "Inline"}</Badge>
               {image.position != null && (
                 <span className="text-muted-foreground text-xs ml-1">Position #{image.position + 1}</span>
               )}
@@ -129,7 +128,7 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             )}
             <div className="flex items-center gap-2 text-muted-foreground">
               {isAi ? <Sparkles className="h-4 w-4 shrink-0" /> : <Cpu className="h-4 w-4 shrink-0" />}
-              <Badge variant={isAi ? "default" : "secondary"} className="text-xs">{sourceKindLabel}</Badge>
+              <Badge variant={isAi ? "outline" : "secondary"} className="text-xs">{sourceKindLabel}</Badge>
             </div>
             {image.cost != null && image.cost > 0 && (
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -152,15 +151,17 @@ export function ImageDetailDrawer({ image, signedUrl, onClose, onDetach }: Image
             {image.postStatus && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs">Post:</span>
-                <Badge variant={image.postStatus === "published" ? "default" : "secondary"} className="text-xs">
-                  {image.postStatus}
-                </Badge>
+                <StatusBadge
+                  status={image.postStatus === "published" ? "success" : "draft"}
+                  label={image.postStatus === "published" ? "Published" : image.postStatus === "draft" ? "Draft" : image.postStatus}
+                  showIcon={false}
+                />
               </div>
             )}
             {sourceUrl && (
               <div className="col-span-2 flex items-center gap-2 text-muted-foreground">
                 <ExternalLink className="h-4 w-4 shrink-0" />
-                <a href={sourceUrl} target="_blank" rel="noreferrer" className="truncate text-primary underline-offset-2 hover:underline">
+                <a href={sourceUrl} target="_blank" rel="noreferrer" className="truncate text-byword-blue underline-offset-2 hover:underline">
                   {image.credit ? `${image.credit} on ${sourceName}` : sourceName}
                 </a>
                 {image.license_label && <Badge variant="outline" className="text-xs">{image.license_label}</Badge>}

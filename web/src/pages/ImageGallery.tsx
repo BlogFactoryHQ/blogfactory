@@ -5,6 +5,8 @@ import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/
 import { Copy, ExternalLink, ImageIcon, Loader2, Play, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { Alert } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
@@ -70,12 +72,25 @@ function requestLabel(request: ImageGenerationRequest) {
   return `${sourceKind}: ${imageProviderName(request.provider)}${license}${credit}`;
 }
 
-function statusBadgeClass(status: string) {
-  if (status === "done") return "border-transparent bg-[hsl(var(--status-success)/0.12)] text-status-success";
-  if (status === "failed") return "border-transparent bg-destructive text-destructive-foreground";
-  if (status === "processing") return "border-transparent bg-primary text-primary-foreground";
-  if (status === "queued" || status === "pending") return "border-[hsl(var(--status-warning)/0.35)] text-[hsl(var(--status-warning))]";
-  return "";
+const REQUEST_STATUS_LABELS: Record<string, string> = {
+  done: "Done",
+  failed: "Failed",
+  processing: "Processing",
+  queued: "Queued",
+  pending: "Pending",
+  cancelled: "Cancelled",
+};
+
+function requestStatusLabel(status: string) {
+  return REQUEST_STATUS_LABELS[status] || status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function requestStatusType(status: string): StatusType {
+  if (status === "done") return "success";
+  if (status === "failed") return "error";
+  if (status === "processing") return "running";
+  if (status === "cancelled") return "paused";
+  return "pending";
 }
 
 type GalleryEmptyState = { title: string; detail: string; tone: EmptyStateTone; filtered: boolean };
@@ -177,17 +192,15 @@ function ImageRequestCard({
   };
 
   return (
-    <div className="rounded-lg border border-border bg-background px-3 py-2.5">
+    <div className="py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium">{title}</p>
-            <Badge variant="outline" className="text-[10px] capitalize">
-              {request.type}{request.position != null ? ` ${request.position + 1}` : ""}
+            <Badge variant="outline" className="text-[10px]">
+              {request.type === "cover" ? "Cover" : "Inline"}{request.position != null ? ` ${request.position + 1}` : ""}
             </Badge>
-            <Badge variant={request.status === "processing" ? "default" : "outline"} className={`text-[10px] capitalize ${statusBadgeClass(request.status)}`}>
-              {request.status}
-            </Badge>
+            <StatusBadge status={requestStatusType(request.status)} label={requestStatusLabel(request.status)} showIcon={false} />
             {request.completed_via && (
               <Badge variant="secondary" className="text-[10px]">
                 via {request.completed_via}
@@ -199,12 +212,12 @@ function ImageRequestCard({
             {isAiQueue ? ` · retries: ${request.retry_count || 0}` : request.retry_count ? ` · retries: ${request.retry_count}` : ""}
           </p>
           {isFailed && (
-            <p className="mt-1 line-clamp-2 text-xs text-destructive">
+            <p className="mt-1 line-clamp-2 text-xs text-status-error">
               Failure reason: {request.last_error || "Provider returned no image."} {isAiQueue ? "Retry this request or change the model in Settings." : "Check the stock provider and try again."}
             </p>
           )}
           {!isFailed && request.last_error && (
-            <p className="mt-1 line-clamp-2 text-xs text-destructive">Last error: {request.last_error}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-status-error">Last error: {request.last_error}</p>
           )}
           {request.prompt && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{request.prompt}</p>}
           {isAiQueue && request.model_id && (
@@ -226,13 +239,13 @@ function ImageRequestCard({
           </Button>
         )}
         {canRestart && (
-          <Button size="sm" variant={isFailed ? "default" : "outline"} onClick={() => onRetry(request.id)} disabled={retrying}>
+          <Button size="sm" variant="outline" onClick={() => onRetry(request.id)} disabled={retrying}>
             {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {restartLabel}
           </Button>
         )}
         {canProcess && (
-          <Button size="sm" onClick={onProcess} disabled={processing}>
+          <Button size="sm" variant="outline" onClick={onProcess} disabled={processing}>
             {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             Process
           </Button>
@@ -256,7 +269,7 @@ function ImageRequestCard({
                 event.currentTarget.value = "";
               }}
             />
-            <Button variant="default" size="sm" asChild disabled={importing}>
+            <Button variant="outline" size="sm" asChild disabled={importing}>
               <label htmlFor={fileInputId}>
                 <Upload className="h-4 w-4" />
                 Import
@@ -299,7 +312,7 @@ function ManualImportGroupCard({
 
   return (
     <div
-      className={`rounded-lg border bg-background px-3 py-3 transition-calm ${dragging ? "border-primary bg-primary/5" : "border-border"}`}
+      className={`rounded-sm py-3 transition-calm ${dragging ? "bg-byword-blue-soft/60 outline outline-1 outline-byword-blue/40" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         if (!uploading) onDragStateChange(true);
@@ -319,9 +332,7 @@ function ManualImportGroupCard({
               {liveDone}/{group.totalCount} imported
             </Badge>
             {liveDone === group.totalCount && (
-              <Badge variant="outline" className={`text-[10px] ${statusBadgeClass("done")}`}>
-                Done
-              </Badge>
+              <StatusBadge status="success" label="Done" showIcon={false} />
             )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -329,13 +340,12 @@ function ManualImportGroupCard({
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {sortSlotRequests(group.requests).map((request) => (
-              <Badge
+              <StatusBadge
                 key={request.id}
-                variant="outline"
-                className={`text-[10px] ${request.status === "done" ? statusBadgeClass("done") : statusBadgeClass("pending")}`}
-              >
-                {slotLabel(request)} · {request.status === "done" ? "Done" : "Pending"}
-              </Badge>
+                status={request.status === "done" ? "success" : "pending"}
+                label={`${slotLabel(request)} · ${request.status === "done" ? "Done" : "Pending"}`}
+                showIcon={false}
+              />
             ))}
           </div>
         </div>
@@ -362,7 +372,7 @@ function ManualImportGroupCard({
               event.currentTarget.value = "";
             }}
           />
-          <Button variant="default" size="sm" asChild disabled={uploading || group.importableRequests.length === 0}>
+          <Button variant="outline" size="sm" asChild disabled={uploading || group.importableRequests.length === 0}>
             <label htmlFor={fileInputId}>
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {uploading ? "Uploading" : importLabel}
@@ -377,7 +387,7 @@ function ManualImportGroupCard({
         </div>
         <Progress value={progressValue} className="h-2" />
         {progress?.failed ? (
-          <p className="text-xs text-destructive">{progress.failed} upload{progress.failed === 1 ? "" : "s"} failed. Try those slots again.</p>
+          <p className="text-xs text-status-error">{progress.failed} upload{progress.failed === 1 ? "" : "s"} failed. Try those slots again.</p>
         ) : null}
       </div>
     </div>
@@ -670,7 +680,6 @@ export default function ImageGallery() {
             <Button
               variant="outline"
               size="sm"
-              className="border-destructive/30 text-destructive"
               onClick={() => updateGalleryFilters({ ...filters, status: "orphaned" })}
             >
               <Trash2 className="h-4 w-4" />
@@ -715,10 +724,10 @@ export default function ImageGallery() {
           />
           <div className="p-4">
             {requestPostId && (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+              <Alert variant="info" role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className="border-primary/30 text-primary">Post scoped</Badge>
+                    <Badge variant="outline">Post scoped</Badge>
                     <span className="truncate text-sm font-medium text-foreground">{scopedPostTitle}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -728,15 +737,15 @@ export default function ImageGallery() {
                 <Button variant="outline" size="sm" onClick={clearRequestFilters}>
                   View all requests
                 </Button>
-              </div>
+              </Alert>
             )}
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {(["queued", "processing", "failed", "done"] as const).map((status) => (
                     <button key={status} type="button" onClick={() => setRequestStatusFilter(status === "queued" ? "pending" : status)}>
-                      <Badge variant="outline" className={`text-[10px] capitalize ${statusBadgeClass(status)}`}>
-                        {status} {requestPanelCounts[status]}
+                      <Badge variant="outline" className="text-[10px]">
+                        {requestStatusLabel(status)} {requestPanelCounts[status]}
                       </Badge>
                     </button>
                   ))}
@@ -795,7 +804,7 @@ export default function ImageGallery() {
               </span>
             </div>
             {manualImportGroups.length > 0 && (
-              <div className="mt-3 grid gap-2 border-t border-border pt-3">
+              <div className="mt-3 divide-y divide-byword-border border-t border-border">
                 {paginatedManualImportGroups.map((group) => (
                   <ManualImportGroupCard
                     key={group.id}
@@ -807,7 +816,7 @@ export default function ImageGallery() {
                   />
                 ))}
                 {manualGroupPageCount > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-3">
                     <p className="text-xs text-muted-foreground">
                       Showing {manualGroupRangeStart}-{manualGroupRangeEnd} of {manualImportGroups.length} manual prompt sets
                     </p>
@@ -836,7 +845,7 @@ export default function ImageGallery() {
                 )}
               </div>
             )}
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 divide-y divide-byword-border border-t border-border">
               {paginatedRequests.length ? paginatedRequests.map((request) => (
                 <ImageRequestCard
                   key={request.id}
@@ -851,56 +860,46 @@ export default function ImageGallery() {
                   retrying={retryRequest.isPending}
                 />
               )) : (
-                <div className="rounded-lg border border-dashed border-border bg-background px-3 py-8 text-center text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">
-                    {manualImportGroups.length
-                      ? "Manual set is shown above"
-                      : missingScopedImagePrompts
-                        ? "No image prompts exist for this post"
-                        : hiddenScopedImagePrompts
-                          ? "Image prompts exist, but the current filters hide them"
-                          : requestSearch || requestPostId
-                            ? "No image prompts match this view"
-                            : "No image requests match these filters"}
-                  </p>
-                  <p className="mx-auto mt-1 max-w-xl">
-                    {missingScopedImagePrompts
-                      ? "The article draft exists, but the image prompt step did not create request rows. This can happen when the text job timed out near the end."
+                <EmptyState
+                  size="row"
+                  tone={missingScopedImagePrompts || manualImportGroups.length ? "empty" : "filtered"}
+                  title={manualImportGroups.length
+                    ? "Manual set is shown above"
+                    : missingScopedImagePrompts
+                      ? "No image prompts exist for this post"
                       : hiddenScopedImagePrompts
-                        ? "Switch back to all statuses and all types to reveal the existing prompt requests for this post."
-                        : manualImportGroups.length
-                          ? "Individual manual slots are grouped so cover and inline imports stay together."
-                          : "Adjust the request filters or clear the post scope to browse the full request queue."}
-                  </p>
-                  {missingScopedImagePrompts && (
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      onClick={() => createManualPrompts.mutate(requestPostId)}
-                      disabled={createManualPrompts.isPending}
-                    >
-                      {createManualPrompts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      Create image prompts
-                    </Button>
-                  )}
-                  {hiddenScopedImagePrompts && (
-                    <Button
-                      className="mt-3"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setRequestStatusFilter("all");
-                        setRequestTypeFilter("all");
-                      }}
-                    >
-                      Show existing prompts
-                    </Button>
-                  )}
-                </div>
+                        ? "Image prompts exist, but the current filters hide them"
+                        : requestSearch || requestPostId
+                          ? "No image prompts match this view"
+                          : "No image requests match these filters"}
+                  description={missingScopedImagePrompts
+                    ? "The article draft exists, but the image prompt step did not create request rows. This can happen when the text job timed out near the end."
+                    : hiddenScopedImagePrompts
+                      ? "Switch back to all statuses and all types to reveal the existing prompt requests for this post."
+                      : manualImportGroups.length
+                        ? "Individual manual slots are grouped so cover and inline imports stay together."
+                        : "Adjust the request filters or clear the post scope to browse the full request queue."}
+                  primaryAction={missingScopedImagePrompts
+                    ? {
+                        label: createManualPrompts.isPending ? "Creating image prompts…" : "Create image prompts",
+                        onClick: () => {
+                          if (!createManualPrompts.isPending) createManualPrompts.mutate(requestPostId);
+                        },
+                      }
+                    : hiddenScopedImagePrompts
+                      ? {
+                          label: "Show existing prompts",
+                          onClick: () => {
+                            setRequestStatusFilter("all");
+                            setRequestTypeFilter("all");
+                          },
+                        }
+                      : undefined}
+                />
               )}
             </div>
             {requestPageCount > 1 && individualRequests.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                 <p className="text-xs text-muted-foreground">
                   Showing {requestRangeStart}-{requestRangeEnd} of {individualRequests.length} individual requests
                 </p>

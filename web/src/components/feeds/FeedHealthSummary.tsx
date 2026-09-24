@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { AlertTriangle, CheckCircle2, Clock, BarChart3 } from "lucide-react";
 import type { PreviewFeedItem } from "./FeedPreviewItem";
 
@@ -31,14 +32,10 @@ export function FeedHealthSummary({ items, fetchedAt }: FeedHealthSummaryProps) 
           <span className="font-medium">{total} fetched</span>
         </div>
         {newCount > 0 && (
-          <Badge variant="outline" className="bg-status-success/15 text-status-success border-status-success/30 text-xs">
-            {newCount} new
-          </Badge>
+          <StatusBadge status="success" label={`${newCount} new`} showIcon={false} />
         )}
         {dupCount > 0 && (
-          <Badge variant="outline" className="bg-status-warning/15 text-status-warning border-status-warning/30 text-xs">
-            {dupCount} duplicate
-          </Badge>
+          <StatusBadge status="warning" label={`${dupCount} duplicate`} showIcon={false} />
         )}
         {filteredCount > 0 && (
           <Badge variant="outline" className="text-xs">

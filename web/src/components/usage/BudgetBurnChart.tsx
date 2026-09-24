@@ -89,7 +89,7 @@ export function BudgetBurnChart({
         {budget && (
           <>
             <span className="font-mono text-2xl text-muted-foreground">/ {formatCurrency(budget)}</span>
-            <span className={cn("font-mono text-xs font-semibold", overBy > 0 ? "text-destructive" : "text-[hsl(var(--status-success))]")}>
+            <span className={cn("font-mono text-xs font-semibold", overBy > 0 ? "text-status-error" : "text-status-success")}>
               {Math.round((spent / budget) * 100)}% used
             </span>
           </>
@@ -179,14 +179,14 @@ export function BudgetBurnChart({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-byword-border pt-3">
         <span className="font-mono text-[11px] text-muted-foreground">
-          projected <span className={cn("font-semibold", overBy > 0 ? "text-destructive" : "text-foreground")}>{formatCurrency(projected)}</span>
+          projected <span className={cn("font-semibold", overBy > 0 ? "text-status-error" : "text-foreground")}>{formatCurrency(projected)}</span>
         </span>
         {budget && (
           <span className="font-mono text-[11px] text-muted-foreground">
             {overBy > 0 ? (
-              <>over by <span className="font-semibold text-destructive">{formatCurrency(overBy)}</span></>
+              <>over by <span className="font-semibold text-status-error">{formatCurrency(overBy)}</span></>
             ) : (
-              <>headroom <span className="font-semibold text-[hsl(var(--status-success))]">{formatCurrency(-overBy)}</span></>
+              <>headroom <span className="font-semibold text-status-success">{formatCurrency(-overBy)}</span></>
             )}
           </span>
         )}

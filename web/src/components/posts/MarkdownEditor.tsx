@@ -138,7 +138,7 @@ const toolbarActions: ToolbarAction[] = [
   },
   {
     icon: Code,
-    label: "Inline Code",
+    label: "Inline code",
     shortcut: "Ctrl+`",
     action: (t, v, o) => wrapSelection(t, v, o, "`", "`", "code"),
     separator: true,
@@ -161,17 +161,17 @@ const toolbarActions: ToolbarAction[] = [
   },
   {
     icon: List,
-    label: "Bullet List",
+    label: "Bullet list",
     action: (t, v, o) => insertAtLineStart(t, v, o, "- "),
   },
   {
     icon: ListOrdered,
-    label: "Numbered List",
+    label: "Numbered list",
     action: (t, v, o) => insertAtLineStart(t, v, o, "1. "),
   },
   {
     icon: CheckSquare,
-    label: "Task List",
+    label: "Task list",
     action: (t, v, o) => insertAtLineStart(t, v, o, "- [ ] "),
   },
   {
@@ -193,7 +193,7 @@ const toolbarActions: ToolbarAction[] = [
   },
   {
     icon: Minus,
-    label: "Horizontal Rule",
+    label: "Horizontal rule",
     action: (t, v, o) => insertBlock(t, v, o, "\n---\n", 5),
     separator: true,
   },
@@ -277,7 +277,7 @@ export function MarkdownEditor({
         toolbarActions.find(a => a.label === "Link")?.action(textareaRef.current, value, onChange);
       } else if ((e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
-        toolbarActions.find(a => a.label === "Inline Code")?.action(textareaRef.current, value, onChange);
+        toolbarActions.find(a => a.label === "Inline code")?.action(textareaRef.current, value, onChange);
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         if (e.shiftKey) {
           e.preventDefault();
@@ -437,7 +437,7 @@ export function MarkdownEditor({
                 <Edit3 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Edit Only</TooltipContent>
+            <TooltipContent side="bottom">Edit only</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -450,7 +450,7 @@ export function MarkdownEditor({
                 <Columns2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Split View</TooltipContent>
+            <TooltipContent side="bottom">Split view</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -463,7 +463,7 @@ export function MarkdownEditor({
                 <Eye className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Preview Only</TooltipContent>
+            <TooltipContent side="bottom">Preview only</TooltipContent>
           </Tooltip>
         </div>
 
@@ -475,7 +475,7 @@ export function MarkdownEditor({
               <Copy className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Copy Content</TooltipContent>
+          <TooltipContent side="bottom">Copy content</TooltipContent>
         </Tooltip>
 
         <Tooltip>

@@ -9,22 +9,22 @@ export const FREQUENCIES = [
 ];
 
 export const PLATFORMS: Array<{ id: SourcePlatform; name: string; description: string }> = [
-  { id: "rss", name: "RSS Feed", description: "Standard RSS/Atom feed" },
-  { id: "youtube", name: "YouTube Channel", description: "Monitor channel for new videos" },
+  { id: "rss", name: "RSS feed", description: "Standard RSS/Atom feed" },
+  { id: "youtube", name: "YouTube channel", description: "Monitor channel for new videos" },
   { id: "reddit", name: "Reddit", description: "Subreddit posts with score filtering" },
   { id: "hackernews", name: "Hacker News", description: "Tech news from Y Combinator" },
-  { id: "github", name: "GitHub Trending", description: "Trending repositories by language" },
+  { id: "github", name: "GitHub trending", description: "Trending repositories by language" },
 ];
 
 export const FILTER_TYPES = [
-  { id: "none", name: "No Filter", description: "Include all posts" },
-  { id: "score", name: "Minimum Score", description: "Filter by minimum upvote score" },
-  { id: "threshold", name: "Score Threshold %", description: "Filter by percentage of average score" },
-  { id: "posts_per_day", name: "Posts Per Run", description: "Limit how many fetched items continue" },
+  { id: "none", name: "No filter", description: "Include all posts" },
+  { id: "score", name: "Minimum score", description: "Filter by minimum upvote score" },
+  { id: "threshold", name: "Score threshold %", description: "Filter by percentage of average score" },
+  { id: "posts_per_day", name: "Posts per run", description: "Limit how many fetched items continue" },
 ];
 
 export const HN_TYPES = [
-  { id: "front_page", name: "Front Page" },
+  { id: "front_page", name: "Front page" },
   { id: "best", name: "Best" },
   { id: "new", name: "New" },
   { id: "ask", name: "Ask HN" },
@@ -33,8 +33,8 @@ export const HN_TYPES = [
 
 export const GITHUB_PERIODS = [
   { id: "daily", name: "Today" },
-  { id: "weekly", name: "This Week" },
-  { id: "monthly", name: "This Month" },
+  { id: "weekly", name: "This week" },
+  { id: "monthly", name: "This month" },
 ];
 
 export function sourceTypeForPlatform(platform?: string) {

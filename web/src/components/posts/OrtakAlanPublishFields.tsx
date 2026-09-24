@@ -103,7 +103,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
         </div>
         <ToggleRow label="AI görsel" description="Caption içinde AI destekli temsili görsel olarak açıklanır." checked={metadata.image.aiGenerated} onCheckedChange={(checked) => update("image", { ...metadata.image, aiGenerated: checked })} />
         {metadata.inlineImages.length > 0 && <div className="space-y-3 border-t border-byword-border pt-3">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wide text-foreground">Yazı içi görseller</p>
+          <p className="font-mono text-xs font-semibold uppercase text-foreground">Yazı içi görseller</p>
           {metadata.inlineImages.map((image, index) => <div key={image.url} className="space-y-2">
             <Label>{index + 1}. görsel alt metni · {image.alt.length}/12–180</Label>
             <div className="break-all text-[11px] text-muted-foreground">{image.url}</div>
@@ -116,7 +116,7 @@ export function OrtakAlanPublishFields({ metadata, onChange, authors, authorsLoa
 }
 
 function FieldGroup({ label, description, children }: { label: string; description: string; children: React.ReactNode }) {
-  return <section className="space-y-3 rounded-sm border border-byword-border bg-muted/15 p-4"><div><p className="font-mono text-xs font-semibold uppercase tracking-wide text-foreground">{label}</p><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>{children}</section>;
+  return <section className="space-y-3 rounded-sm border border-byword-border bg-muted/15 p-4"><div><p className="font-mono text-xs font-semibold uppercase text-foreground">{label}</p><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>{children}</section>;
 }
 
 function ToggleRow({ label, description, checked, onCheckedChange }: { label: string; description: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {

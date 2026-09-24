@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -119,9 +120,10 @@ export function SearchConsoleDialog({
               </>
             ) : (
               <div className="mt-4 space-y-4">
-                <div className="rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm leading-6 text-status-warning">
-                  <strong>Google OAuth is not configured on this server.</strong> If you run this instance, complete the one-time setup below. If someone else runs it, send them this guide.
-                </div>
+                <Alert variant="warning">
+                  <AlertTitle>Google OAuth is not configured on this server.</AlertTitle>
+                  <AlertDescription>If you run this instance, complete the one-time setup below. If someone else runs it, send them this guide.</AlertDescription>
+                </Alert>
                 <ol className="space-y-3 text-sm leading-6">
                   <li><strong>1. Enable the API.</strong> Open the <a className="font-semibold text-byword-blue underline underline-offset-2" href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noreferrer">Search Console API in Google Cloud</a> and enable it for your project.</li>
                   <li><strong>2. Configure consent.</strong> Set up the OAuth consent screen for the Google accounts that will connect.</li>

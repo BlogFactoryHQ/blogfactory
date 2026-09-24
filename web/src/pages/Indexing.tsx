@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -163,7 +165,7 @@ export function IndexingPanel() {
             ["Failed", String(articleStats.failed)],
           ].map(([label, value]) => (
             <div key={label} className="border-b border-byword-border p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+              <p className="type-kicker">{label}</p>
               <p className="mt-2 truncate text-2xl font-semibold text-foreground">{value}</p>
             </div>
           ))}
@@ -196,19 +198,19 @@ export function IndexingPanel() {
 
         <BywordCard>
           <SectionHeader icon={CheckCircle2} title="Providers" description="Use Bing Webmaster for Bing-only article submissions, or IndexNow for multi-engine article discovery." />
-          <div className="grid gap-4 p-6 lg:grid-cols-2">
+          <div className="grid divide-y divide-byword-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
             {providers.map((provider) => {
               const details = providerDetails[provider];
               const integration = byProvider.get(provider);
               return (
-                <div key={provider} className="rounded-lg border border-byword-border bg-card p-5">
+                <div key={provider} className="p-5 sm:p-6">
                   <div className="flex items-start gap-4">
                     <IconTile icon={details.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-foreground">{details.name}</h3>
-                        <Badge variant="secondary" className="bg-byword-blue-soft text-byword-blue">{details.badge}</Badge>
-                        {integration && <Badge variant={connectionReady(integration) ? "default" : "destructive"}>{displayConnectionStatus(integration)}</Badge>}
+                        <Badge variant="outline">{details.badge}</Badge>
+                        {integration ? <StatusBadge status={connectionReady(integration) ? "success" : "error"} label={displayConnectionStatus(integration)} /> : <StatusBadge status="pending" label="Not connected" />}
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground">{integration?.credentialHint ? `Credential: ${integration.credentialHint}` : details.description}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -232,10 +234,10 @@ export function IndexingPanel() {
                         />
                         <span>
                           Auto-submit on publish
-                          <span className="block text-xs">Off still keeps this provider available for Bulk Submit.</span>
+                          <span className="block text-xs">Off still keeps this provider available for bulk submit.</span>
                         </span>
                       </label>
-                    ) : <span className="text-sm text-muted-foreground">Not connected</span>}
+                    ) : <span className="text-sm text-muted-foreground">Connect to submit article URLs.</span>}
 
                     <div className="flex flex-wrap gap-2">
                       {integration ? (
@@ -254,7 +256,7 @@ export function IndexingPanel() {
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" onClick={() => setProviderToConnect(provider)}>
+                        <Button variant="outline" size="sm" onClick={() => setProviderToConnect(provider)}>
                           Connect <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -267,7 +269,7 @@ export function IndexingPanel() {
         </BywordCard>
 
         <BywordCard>
-          <SectionHeader icon={Send} title="Bulk Submit" description="Paste URLs from the active site, one per line." />
+          <SectionHeader icon={Send} title="Bulk submit" description="Paste URLs from the active site, one per line." />
           <div className="space-y-4 p-6">
             <Textarea
               value={bulkUrls}
@@ -286,17 +288,14 @@ export function IndexingPanel() {
         </BywordCard>
 
         <BywordCard>
-          <SectionHeader icon={Search} title="Sitemap Health" description="Read-only processing status from the selected Search Console property." action={<Button variant="outline" size="sm" onClick={() => sitemaps.refetch()} disabled={sitemaps.isFetching || !searchConsoleIntegration}>{sitemaps.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh</Button>} />
-          {!searchConsoleIntegration ? <EmptyState size="row" title="Search Console not connected" description="Connect the property in Optimize to load sitemap health." primaryAction={{ label: "Open Optimize", href: "/overview/growth?tab=optimize" }} /> : sitemaps.isLoading ? <div className="flex items-center justify-center p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading sitemaps</div> : sitemaps.isError ? <div className="p-8 text-center text-sm text-destructive">{sitemaps.error.message}</div> : !sitemaps.data?.items.length ? <EmptyState size="row" title="No submitted sitemaps" description="Submit a sitemap in Search Console and its health appears here." /> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Sitemap</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Last submitted</TableHead><TableHead>Last downloaded</TableHead><TableHead className="text-right">Errors</TableHead><TableHead className="text-right">Warnings</TableHead><TableHead className="text-right">Discovered</TableHead></TableRow></TableHeader><TableBody>{sitemaps.data.items.map((item) => <TableRow key={item.path}><TableCell className="max-w-[360px] truncate font-medium" title={item.path}>{item.path}</TableCell><TableCell>{item.type}</TableCell><TableCell><Badge variant={item.isPending ? "secondary" : "outline"}>{item.isPending ? "Pending" : "Processed"}</Badge></TableCell><TableCell>{item.lastSubmitted ? new Date(item.lastSubmitted).toLocaleString() : "—"}</TableCell><TableCell>{item.lastDownloaded ? new Date(item.lastDownloaded).toLocaleString() : "—"}</TableCell><TableCell className="text-right text-destructive">{item.errors}</TableCell><TableCell className="text-right text-status-warning">{item.warnings}</TableCell><TableCell className="text-right">{item.contents.reduce((sum, content) => sum + Number(content.submitted || 0), 0)}</TableCell></TableRow>)}</TableBody></Table></div>}
+          <SectionHeader icon={Search} title="Sitemap health" description="Read-only processing status from the selected Search Console property." action={<Button variant="outline" size="sm" onClick={() => sitemaps.refetch()} disabled={sitemaps.isFetching || !searchConsoleIntegration}>{sitemaps.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh</Button>} />
+          {!searchConsoleIntegration ? <EmptyState size="row" title="Search Console not connected" description="Connect the property in Optimize to load sitemap health." primaryAction={{ label: "Open Optimize", href: "/overview/growth?tab=optimize" }} /> : sitemaps.isLoading ? <TableSkeleton rows={3} columns={8} /> : sitemaps.isError ? <EmptyState size="row" tone="error" title="Sitemaps could not be loaded" description={`${sitemaps.error.message} Nothing was changed.`} primaryAction={{ label: "Retry", onClick: () => sitemaps.refetch() }} /> : !sitemaps.data?.items.length ? <EmptyState size="row" title="No submitted sitemaps" description="Submit a sitemap in Search Console and its health appears here." /> : <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Sitemap</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Last submitted</TableHead><TableHead>Last downloaded</TableHead><TableHead className="text-right">Errors</TableHead><TableHead className="text-right">Warnings</TableHead><TableHead className="text-right">Discovered</TableHead></TableRow></TableHeader><TableBody>{sitemaps.data.items.map((item) => <TableRow key={item.path}><TableCell className="max-w-[360px] truncate font-medium" title={item.path}>{item.path}</TableCell><TableCell>{item.type}</TableCell><TableCell><StatusBadge status={item.isPending ? "pending" : "success"} label={item.isPending ? "Pending" : "Processed"} /></TableCell><TableCell>{item.lastSubmitted ? new Date(item.lastSubmitted).toLocaleString() : "—"}</TableCell><TableCell>{item.lastDownloaded ? new Date(item.lastDownloaded).toLocaleString() : "—"}</TableCell><TableCell className="text-right text-destructive">{item.errors}</TableCell><TableCell className="text-right text-status-warning">{item.warnings}</TableCell><TableCell className="text-right">{item.contents.reduce((sum, content) => sum + Number(content.submitted || 0), 0)}</TableCell></TableRow>)}</TableBody></Table></div>}
         </BywordCard>
 
         <BywordCard>
-          <SectionHeader icon={SearchCheck} title="Recent Submissions" description="Submission status from connected providers." />
+          <SectionHeader icon={SearchCheck} title="Recent submissions" description="Submission status from connected providers." />
           {isLoading ? (
-            <div className="flex items-center justify-center p-12 text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading submissions
-            </div>
+            <TableSkeleton rows={4} columns={7} />
           ) : articleSubmissions.length === 0 ? (
             <EmptyState
               title="No indexing submissions yet"
@@ -320,8 +319,8 @@ export function IndexingPanel() {
                   <TableRow key={submission.id}>
                     <TableCell className="font-medium">{providerLabel(submission.provider)}</TableCell>
                     <TableCell className="max-w-[340px] truncate">{submission.url}</TableCell>
-                    <TableCell><StatusBadge status={submission.status} /></TableCell>
-                    <TableCell>{submission.source}</TableCell>
+                    <TableCell><SubmissionStatus status={submission.status} /></TableCell>
+                    <TableCell>{sentenceCase(submission.source)}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {new Date(submission.createdAt || submission.created_at).toLocaleString()}
                     </TableCell>
@@ -488,7 +487,7 @@ function IndexingSetupDialog({
           <label className="flex items-center justify-between gap-3 rounded-md border border-byword-border p-3 text-sm">
             <span>
               Auto-submit on live publish
-              <span className="block text-xs text-muted-foreground">Turn off to submit manually from Bulk Submit.</span>
+              <span className="block text-xs text-muted-foreground">Turn off to submit manually from bulk submit.</span>
             </span>
             <Switch checked={autoSubmit} onCheckedChange={setAutoSubmit} />
           </label>
@@ -659,7 +658,13 @@ function providerLabel(provider: string) {
   return "IndexNow";
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const variant = status === "failed" ? "destructive" : status === "accepted" ? "default" : "secondary";
-  return <Badge variant={variant}>{status}</Badge>;
+function sentenceCase(value: string | null | undefined) {
+  if (!value) return "—";
+  const words = value.replace(/[_-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function SubmissionStatus({ status }: { status: string }) {
+  const type: StatusType = status === "failed" ? "error" : status === "accepted" ? "success" : status === "queued" ? "running" : "pending";
+  return <StatusBadge status={type} label={sentenceCase(status)} />;
 }

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { MarkdownEditor } from "@/components/posts/MarkdownEditor";
 import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
 import { EditorialSafetyPanel, type EditorialState, type PostRevision } from "@/components/posts/EditorialSafetyPanel";
@@ -32,6 +32,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Save, Loader2, Trash2, ExternalLink } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatSourceType } from "@/lib/source-labels";
 
 interface Post {
   id: string;
@@ -73,6 +75,22 @@ interface Post {
     attribution_url: string | null;
   }>;
   personas?: { name: string } | null;
+}
+
+const PROVIDER_NAMES: Record<string, string> = { ghost: "Ghost", wordpress: "WordPress", wix: "Wix", framer: "Framer" };
+
+function formatProviderName(provider: string) {
+  return PROVIDER_NAMES[provider?.toLowerCase()] || formatSourceType(provider);
+}
+
+function publicationStatusBadge(status: string): { status: StatusType; label: string } {
+  const value = (status || "").toLowerCase();
+  if (value === "published") return { status: "success", label: "Published" };
+  if (value === "draft") return { status: "draft", label: "CMS draft" };
+  if (value === "failed" || value === "error") return { status: "error", label: "Failed" };
+  if (value === "processing") return { status: "running", label: "Processing" };
+  if (value === "reconciliation_required") return { status: "warning", label: "Needs reconciliation" };
+  return { status: "pending", label: formatSourceType(value) };
 }
 
 function placeMissingInlineImages(markdown: string, images: string[]) {
@@ -288,7 +306,7 @@ export default function PostEditorPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Button variant="ghost" size="sm" onClick={handleBack}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Posts
+              Back to Content
             </Button>
             <div className="hidden h-6 w-px bg-border sm:block" />
             <StatusBadge
@@ -299,10 +317,7 @@ export default function PostEditorPage() {
             {post?.site_name && <Badge variant="outline">{post.site_name}</Badge>}
             {post?.feed_name && <Badge variant="secondary">{post.feed_name}</Badge>}
             {hasChanges && (
-              <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                Unsaved
-              </span>
+              <StatusBadge status="pending" label="Unsaved" showIcon={false} />
             )}
           </div>
 
@@ -310,7 +325,7 @@ export default function PostEditorPage() {
           <div className="flex flex-wrap items-center gap-2">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete post">
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-status-error" aria-label="Delete post">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
@@ -439,9 +454,11 @@ export default function PostEditorPage() {
               <StatusBadge status={seoPresentation.status} label={seoPresentation.label} />
             </div>
             {hasChanges && (
-              <p className="mt-4 rounded-sm border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs leading-relaxed text-status-warning">
-                Save article changes first. SEO will then be checked against the new saved version and regenerated when needed.
-              </p>
+              <Alert variant="warning" className="mt-4">
+                <AlertDescription>
+                  Save article changes first. SEO will then be checked against the new saved version and regenerated when needed.
+                </AlertDescription>
+              </Alert>
             )}
             {post.seo_metadata ? (
               <div className="mt-5 space-y-3 border-t border-byword-border pt-4">
@@ -474,14 +491,14 @@ export default function PostEditorPage() {
               {publicationData?.publications && publicationData.publications.length > 0 && (
                 <div className="mb-8">
                   <p className="section-label mb-4">Publishing</p>
-                  <div className="space-y-2">
+                  <div className="divide-y divide-byword-border border-y border-byword-border">
                     {publicationData.publications.slice(0, 5).map((publication) => (
-                      <div key={publication.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-sm">
-                        <div>
-                          <span className="font-medium capitalize">{publication.provider}</span>
-                          <span className="ml-2 text-muted-foreground">{publication.status}</span>
+                      <div key={publication.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="font-medium">{formatProviderName(publication.provider)}</span>
+                          <StatusBadge {...publicationStatusBadge(publication.status)} showIcon={false} />
                           {(publication.errorMessage || publication.error_message) && (
-                            <span className="ml-2 text-destructive">{publication.errorMessage || publication.error_message}</span>
+                            <span className="text-muted-foreground">{publication.errorMessage || publication.error_message}</span>
                           )}
                         </div>
                         {(publication.externalUrl || publication.external_url || publication.externalEditUrl || publication.external_edit_url) ? (
@@ -499,11 +516,11 @@ export default function PostEditorPage() {
                   </div>
                 </div>
               )}
-              <p className="section-label mb-4">Post Metadata</p>
+              <p className="section-label mb-4">Post metadata</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Source</p>
-                  <p className="font-medium capitalize">{post.source_type?.replace("_", " ")}</p>
+                  <p className="font-medium">{formatSourceType(post.source_type)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Persona</p>
