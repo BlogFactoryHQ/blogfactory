@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { userApiKeys, users } from "../db/schema.js";
+import { jobs, schedulerLogs, searchConsoleIntegrations, userApiKeys, users } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
 import { accountCredentialStatus } from "../services/api-keys.js";
 
@@ -55,6 +55,38 @@ adminRoutes.get("/users", async (c) => {
     .orderBy(desc(users.createdAt));
 
   return c.json(rows.map(userRow));
+});
+
+adminRoutes.get("/status", async (c) => {
+  const staleBefore = new Date(Date.now() - 60 * 60 * 1000);
+  const [jobCounts, [latestScheduler], [staleJobs], searchConsole] = await Promise.all([
+    db.select({ status: jobs.status, count: count() }).from(jobs).groupBy(jobs.status),
+    db.select({ triggeredAt: schedulerLogs.triggeredAt }).from(schedulerLogs).orderBy(desc(schedulerLogs.triggeredAt)).limit(1),
+    db.select({ count: count() }).from(jobs).where(and(eq(jobs.status, "running"), lt(jobs.createdAt, staleBefore))),
+    db.select({
+      propertyUrl: searchConsoleIntegrations.propertyUrl,
+      status: searchConsoleIntegrations.status,
+      lastSyncAt: searchConsoleIntegrations.lastSyncAt,
+      lastTestResult: searchConsoleIntegrations.lastTestResult,
+    }).from(searchConsoleIntegrations).orderBy(searchConsoleIntegrations.propertyUrl),
+  ]);
+
+  const schedulerAge = latestScheduler ? Date.now() - latestScheduler.triggeredAt.getTime() : Infinity;
+  const hasIssue = Number(staleJobs?.count || 0) > 0
+    || schedulerAge > 30 * 60 * 60 * 1000
+    || searchConsole.some((integration) => integration.status !== "connected");
+
+  return c.json({
+    status: hasIssue ? "needs_attention" : "operational",
+    checkedAt: new Date().toISOString(),
+    jobs: Object.fromEntries(jobCounts.map((row) => [row.status, Number(row.count)])),
+    staleRunningJobs: Number(staleJobs?.count || 0),
+    scheduler: { lastRunAt: latestScheduler?.triggeredAt?.toISOString() || null },
+    searchConsole: searchConsole.map((integration) => ({
+      ...integration,
+      lastSyncAt: integration.lastSyncAt?.toISOString() || null,
+    })),
+  });
 });
 
 adminRoutes.post("/users/:id/approve", async (c) => {

@@ -32,6 +32,7 @@ const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
 const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
+const AdminStatus = lazy(() => import("@/pages/AdminStatus"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Sites = lazy(() => import("@/pages/Sites"));
 const McpOAuthLogin = lazy(() => import("@/pages/McpOAuthLogin"));
@@ -91,7 +92,11 @@ const App = () => (
                           <Route path="article-settings" element={<Settings />} />
                           <Route path="usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                         </Route>
-                        <Route path="/admin/users" element={<AdminUsers />} />
+                        <Route path="/admin" element={<SectionTabs label="Admin" items={[{ label: "Status", to: "/admin/status" }, { label: "Users", to: "/admin/users" }]} />}>
+                          <Route index element={<Navigate to="/admin/status" replace />} />
+                          <Route path="status" element={<AdminStatus />} />
+                          <Route path="users" element={<AdminUsers />} />
+                        </Route>
                       </Route>
                     </Route>
                   </Route>

@@ -49,7 +49,7 @@ Application rollback is redeploying the previous approved image digests. Full-ho
 
 ## Background work
 
-The persistent worker runs bounded campaign, SEO, and deferred-image drains every five seconds. GitHub Actions runs RSS every six hours, the full background matrix daily, and a campaign drain on manual dispatch; the Cloudflare Worker remains a six-hour protected fallback trigger. Search Console refresh is manual. Every external trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
+The persistent worker runs bounded campaign, SEO, and deferred-image drains every five seconds. GitHub Actions runs RSS every six hours, the full background matrix (including Search Console) daily, and a campaign drain on manual dispatch; the Cloudflare Worker remains a six-hour protected fallback trigger. Every external trigger calls the existing protected cron endpoint and shares `CRON_SECRET`; see the [RSS scheduler guide](rss-scheduler.md).
 
 The API runs `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker runs `BACKGROUND_EXECUTION_MODE=worker` (`server/src/worker.ts`). `BACKGROUND_WORKER_POLL_MS` and the `BACKGROUND_WORKER_CAMPAIGN_ITEMS`/`SEO_JOBS`/`IMAGE_JOBS` bounds default to the 5-second 1/2/1 cycle above. PostgreSQL atomic claims, stale recovery, retries, and feed leases prevent duplicate ownership. Do not run more than one persistent worker until claim and stale-recovery checks pass for that topology.
 

@@ -326,9 +326,9 @@ export function AppSidebar() {
                 Runs &amp; activity
               </DropdownMenuItem>
               {user?.role === "admin" && (
-                <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/users")}>
+                <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/status")}>
                   <Shield />
-                  Manage users
+                  Admin panel
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
