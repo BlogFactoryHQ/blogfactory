@@ -109,15 +109,16 @@ Object storage holds generated/imported image assets. Database rows retain owner
 
 Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The worker runs `server/src/worker.ts` with `BACKGROUND_EXECUTION_MODE=worker`; the API runs `inline`. No Redis or external queue is involved.
 
-Thin scheduled triggers remain for feed processing, daily fallback work, and manual recovery:
+The worker also owns periodic work; one thin external trigger remains as a fallback:
 
 | Trigger | Schedule | Work |
 | --- | --- | --- |
 | Persistent worker | Every 5 seconds | Campaigns, SEO metadata, deferred images |
+| Persistent worker | Every 6 hours and on start | Due RSS feeds |
+| Persistent worker | Daily and on start | Google indexing, Search Console, expired operation events |
 | Cloudflare Worker | Every 6 hours | Protected bounded fallback drain |
-| GitHub `rss-cron.yml` | Every 6 hours | Due RSS feeds |
-| GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
-| GitHub `campaign-cron.yml` | Manual | Bounded campaign drain |
+
+Self-hosted Compose and Dokploy installs keep their own `scheduler` container calling the all-task drain.
 
 The backend decides eligibility and claims work. Schedulers must stay thin; do not create a second queue or duplicate job classification in a Worker or workflow.
 
@@ -129,7 +130,7 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 | Private `BlogFactoryHQ/blogfactory-cloud` | Cloud-only Compose, Caddy, image-build, and deployment ownership |
 | Hetzner Nuremberg | PostgreSQL 18, API, worker, backup, and web container runtime |
 | Cloudflare R2 EU | Private production image/object storage and encrypted portable backup |
-| GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA |
+| GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA; no scheduled production drains |
 | Vercel project `editorial-flow-main` | Last clean serverless deployment retained as the DNS rollback target |
 
 The pre-cutover Neon database and manual snapshot remain available only as a

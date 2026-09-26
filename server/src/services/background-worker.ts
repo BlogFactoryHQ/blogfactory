@@ -9,6 +9,16 @@ export type BackgroundWorkerConfig = {
   heartbeatUrl?: string;
 };
 
+// Feed ticks stay on the fixed six-hour cadence; retention and Search Console work is daily.
+export const FEEDS_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const DAILY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+export type PeriodicTask = {
+  name: string;
+  intervalMs: number;
+  run(): Promise<unknown>;
+};
+
 type WorkerDrains = {
   campaigns(maxCampaigns: number, maxItemsPerCampaign: number): Promise<unknown>;
   seo(userId: undefined, limit: number): Promise<unknown>;
@@ -54,6 +64,73 @@ export async function runBackgroundWorkerCycle(config: BackgroundWorkerConfig, d
   };
 }
 
+// Starts due periodic tasks without blocking the five-second drain cycle.
+// Tasks are due on worker start; the backend's own due checks and claims keep that safe.
+export function createPeriodicScheduler(tasks: PeriodicTask[], now: () => number = Date.now) {
+  const state = tasks.map((task) => ({ task, lastStartedAt: Number.NEGATIVE_INFINITY, running: false }));
+  return {
+    tick() {
+      const started: string[] = [];
+      for (const entry of state) {
+        if (entry.running || now() - entry.lastStartedAt < entry.task.intervalMs) continue;
+        entry.running = true;
+        entry.lastStartedAt = now();
+        started.push(entry.task.name);
+        void entry.task.run()
+          .catch(() => console.error("[worker] Scheduled task failed", { task: entry.task.name }))
+          .finally(() => { entry.running = false; });
+      }
+      return started;
+    },
+  };
+}
+
+async function loadPeriodicTasks(env: Record<string, string | undefined>): Promise<PeriodicTask[]> {
+  const [
+    { runScheduler },
+    { drainQueuedGoogleIndexing },
+    { drainSearchConsoleSync },
+    { purgeExpiredOperationEvents },
+    { readCronDrainConfig },
+  ] = await Promise.all([
+    import("./scheduler.js"),
+    import("./indexing.js"),
+    import("./search-console.js"),
+    import("./operation-events.js"),
+    import("../routes/cron.js"),
+  ]);
+  const config = readCronDrainConfig(() => undefined, env);
+  const daily = async (name: string, run: () => Promise<unknown>) => {
+    await run().catch((error) => {
+      console.error("[worker] Daily drain failed", { task: name });
+      throw error;
+    });
+  };
+  return [
+    {
+      name: "feeds",
+      intervalMs: FEEDS_INTERVAL_MS,
+      run: () => runScheduler(undefined, {
+        awaitGeneration: true,
+        maxFeeds: config.feeds.maxFeeds,
+        maxPostsPerFeed: config.feeds.maxPostsPerFeed,
+      }),
+    },
+    {
+      name: "daily",
+      intervalMs: DAILY_INTERVAL_MS,
+      run: async () => {
+        const results = await Promise.allSettled([
+          daily("indexing", () => drainQueuedGoogleIndexing(config.indexing.limit)),
+          daily("search-console", () => drainSearchConsoleSync(config.searchConsole.limit)),
+          daily("operation-events", () => purgeExpiredOperationEvents()),
+        ]);
+        if (results.some((result) => result.status === "rejected")) throw new Error("Daily drain failed");
+      },
+    },
+  ];
+}
+
 async function pingHeartbeat(url: string) {
   const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -71,7 +148,11 @@ export async function runBackgroundWorker(
     imageJobs: config.imageJobs,
   });
 
+  const periodic = createPeriodicScheduler(await loadPeriodicTasks(env));
+
   while (!signal?.aborted) {
+    const started = periodic.tick();
+    if (started.length) console.info("[worker] Scheduled tasks started", { tasks: started });
     const cycle = await runBackgroundWorkerCycle(config);
     await writeFile(config.heartbeatFile, new Date().toISOString());
     if (!cycle.ok) console.error("[worker] Drain failed", { tasks: cycle.failed });
