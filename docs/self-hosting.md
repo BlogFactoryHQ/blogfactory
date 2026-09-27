@@ -157,6 +157,10 @@ docker compose up -d
 
 If the older application is incompatible with the migrated schema, restore the pre-upgrade PostgreSQL dump and matching MinIO copy instead of trying to reverse migrations.
 
+### MinIO image source
+
+Upstream MinIO no longer publishes pullable images: `quay.io/minio/minio` and Docker Hub `minio/minio` return `unauthorized`, and the `minio/minio` repository is archived. Compose, Dokploy, and Railway pin the AGPL-3.0 community fork [`pgsty/minio`](https://github.com/pgsty/minio) by digest. It is the same server and bundled `mc` client with the same environment variables, health endpoint, and on-disk format, so an existing `minio-data` volume starts unchanged. After a verified backup, pick up the new pin with `docker compose pull minio && docker compose up -d`.
+
 ## Dokploy runbook
 
 The upstream-compatible blueprint is in [`deploy/dokploy/blueprints/blogfactory`](../deploy/dokploy/blueprints/blogfactory). It creates web, API, scheduler, PostgreSQL, and MinIO services with persistent database and object-storage volumes. Only web receives a Dokploy domain. The API initializes the S3 bucket and runs locked additive migrations before serving.
