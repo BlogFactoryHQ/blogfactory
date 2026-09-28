@@ -10,6 +10,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 - `docs/mcp.md` is the current MCP catalog, OAuth, Review Card, and safety boundary.
 - `docs/operations.md` covers migrations, deployment, background work, and production verification.
 - `UI_UX.md` defines the white Device Console system and current information architecture.
+- `docs/design-system/` holds the design system's decisions: `DIRECTION.md` (goals, principles in the order they win, scope) first, then `DESIGN.md`, `PATTERNS.md`, `CONTENT.md`. Its README says which file answers which question and lists decisions not made yet; flag those instead of assuming.
 - Historical plans are decision records, not current requirements. Prefer code and current docs when they disagree.
 - Prefer existing app patterns over new abstractions. Keep diffs small and preserve unrelated worktree changes.
 - When the user asks to push, ship, merge, or finish GitHub work, complete that chain directly. Stop only for missing credentials, failing checks that need product judgment, or unrequested destructive operations.
