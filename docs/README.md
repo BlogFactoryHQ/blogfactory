@@ -14,6 +14,7 @@
 - [Research plan](research-plan.md): forward plan for per-article research, business profiles, topic plans, and mobile review; not shipped.
 - [RSS scheduler](rss-scheduler.md): protected scheduled feed processing.
 - [UI system](../UI_UX.md): Device Console rules, current information architecture, and responsive behavior.
+- [Design system](design-system/README.md): goals, principles, scope, patterns, content guide, and which file answers which question.
 - [Agent context](../AGENTS.md): repository-specific implementation and release rules.
 
 New developers should read the README, feature plan, architecture map, and AGENTS context first. Unchecked roadmap items are not existing product capabilities.
