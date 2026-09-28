@@ -1,5 +1,7 @@
 # BlogFactory UI/UX Notes
 
+The design system's goals, principles, patterns and content rules live in `docs/design-system/` (start with `DIRECTION.md`). This file owns the information architecture and workflow rules.
+
 ## Direction
 
 BlogFactory uses a white Device Console theme inspired by technical music hardware and product-grid SaaS, adapted for content operations. The app should feel like a clean blog factory control surface: precise, dense, fast, and slightly mechanical without becoming decorative.
