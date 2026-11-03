@@ -79,7 +79,7 @@ export function nextInternalLinkRefreshAt(lastSyncedAt: string | Date | null | u
   return new Date(new Date(lastSyncedAt).getTime() + INTERNAL_LINK_REFRESH_COOLDOWN_MS);
 }
 
-function isPrivateHost(hostname: string): boolean {
+export function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
   if (host.endsWith(".local") || host.endsWith(".internal")) return true;
@@ -429,7 +429,7 @@ function pageEmbeddingInput(page: CrawledPage) {
   return `${page.title}\n${page.description || ""}\n${page.path}\n${page.text}`.slice(0, 7000);
 }
 
-async function embedTexts(texts: string[], openAiKey: string) {
+export async function embedTexts(texts: string[], openAiKey: string) {
   if (texts.length === 0) return [];
 
   const response = await fetch("https://api.openai.com/v1/embeddings", {
@@ -444,6 +444,7 @@ async function embedTexts(texts: string[], openAiKey: string) {
       dimensions: EMBEDDING_DIMENSIONS,
       encoding_format: "float",
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {

@@ -83,13 +83,21 @@ const list = await post(
 );
 assert.equal(list.status, 200);
 const listedTools = (await list.json() as any).result.tools;
-assert.equal(listedTools.length, 22);
+assert.equal(listedTools.length, 26);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
 assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
 assert.ok(listedTools.find((tool: any) => tool.name === "get_workspace_digest").outputSchema.properties.data.properties.workspace.properties.connections.properties.generation);
 assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.list_action_items.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.review_post.requiredScope, "content:read");
+for (const name of ["analyze_post", "discover_topics", "research_keyword", "find_content_gaps"] as const) {
+  assert.equal(MCP_TOOL_REGISTRY[name].requiredScope, "content:read", `${name} stays read scope`);
+  assert.equal(MCP_TOOL_REGISTRY[name].annotations.readOnlyHint, true, `${name} is read-only`);
+  assert.equal(MCP_TOOL_REGISTRY[name].annotations.destructiveHint, false);
+  assert.equal(MCP_TOOL_REGISTRY[name].siteBound, true);
+}
+assert.equal(MCP_TOOL_REGISTRY.analyze_post.annotations.openWorldHint, false);
+assert.equal(MCP_TOOL_REGISTRY.research_keyword.annotations.openWorldHint, true);
 assert.equal(MCP_TOOL_REGISTRY.create_draft.requiredScope, "drafts:write");
 assert.equal(MCP_TOOL_REGISTRY.import_drafts.requiredScope, "drafts:write");
 assert.equal(MCP_BATCH_DRAFT_LIMIT, 20);
@@ -110,6 +118,10 @@ for (const tool of listedTools) {
     refresh_search_console: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     push_to_cms_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    // Read-only research tools that call fixed public sources, so they honestly declare open-world access.
+    discover_topics: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    research_keyword: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    find_content_gaps: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   };
   assert.deepEqual(tool.annotations, mutationAnnotations[tool.name] || {
     readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
@@ -356,8 +368,8 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 22);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 22);
+assert.equal(MCP_TOOL_NAMES.length, 26);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 26);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
 assert.equal(new Set(MCP_ERROR_CODES).size, 13);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);

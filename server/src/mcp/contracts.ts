@@ -1,5 +1,5 @@
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
-export const MCP_SERVER_VERSION = "0.4.3";
+export const MCP_SERVER_VERSION = "0.5.0";
 
 export const MCP_SCOPES = [
   "content:read",
@@ -31,6 +31,10 @@ export const MCP_TOOL_NAMES = [
   "batch_inspect_search_console_urls",
   "list_search_console_sitemaps",
   "query_search_console_analytics",
+  "analyze_post",
+  "discover_topics",
+  "research_keyword",
+  "find_content_gaps",
 ] as const;
 
 export const ACTIVE_MCP_TOOL_NAMES = [
@@ -56,6 +60,10 @@ export const ACTIVE_MCP_TOOL_NAMES = [
   "batch_inspect_search_console_urls",
   "list_search_console_sitemaps",
   "query_search_console_analytics",
+  "analyze_post",
+  "discover_topics",
+  "research_keyword",
+  "find_content_gaps",
 ] as const satisfies readonly (typeof MCP_TOOL_NAMES[number])[];
 
 export const MCP_ERROR_CODES = [

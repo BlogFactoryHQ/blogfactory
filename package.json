@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck --workspace=web",
     "test:server": "npm run test:self --workspace=server",
     "test:postgres": "npm run test:postgres --workspace=server",
+    "test:postgres:product-seo": "npm run test:postgres:product-seo --workspace=server",
     "test:mcp:pilot": "npm run test:mcp:pilot --workspace=server",
     "billing:catalog": "bun --env-file=.env run server/src/scripts/provision-polar-catalog.ts",
     "billing:webhook": "bun --env-file=.env run server/src/scripts/provision-polar-webhook.ts",

@@ -323,6 +323,12 @@ export const sites = pgTable("sites", {
   editorialTopics: text("editorial_topics").array(),
   language: text("language"),
   cta: text("cta"),
+  productProfile: jsonb("product_profile"),
+  productProfileUpdatedAt: timestamp("product_profile_updated_at", { withTimezone: true }),
+  topicSuggestions: jsonb("topic_suggestions"),
+  topicSuggestionsCheckedAt: timestamp("topic_suggestions_checked_at", { withTimezone: true }),
+  aiVisibility: jsonb("ai_visibility"),
+  aiVisibilityCheckedAt: timestamp("ai_visibility_checked_at", { withTimezone: true }),
   internalLinkIndex: jsonb("internal_link_index"),
   internalLinkLastSyncedAt: timestamp("internal_link_last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -736,4 +742,16 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   attempts: integer("attempts").default(0).notNull(),
   windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const rankKeywords = pgTable("rank_keywords", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  keyword: text("keyword").notNull(),
+  position: integer("position"),
+  rankingUrl: text("ranking_url"),
+  history: jsonb("history").notNull().default([]),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

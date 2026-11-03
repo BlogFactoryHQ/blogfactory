@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { faqJsonLdHead } from "./structured-data.js";
 import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
@@ -1404,6 +1405,8 @@ export function ghostPostFields(article: ArticlePayload, mode: PublishMode, feat
     meta_description: article.metaDescription,
     tags: article.tags.map((name) => ({ name })),
     ...(article.authorId ? { authors: [{ id: article.authorId }] } : {}),
+    // Ghost themes already emit Article markup; FAQPage is additive and lives in the draft's code injection.
+    ...(faqJsonLdHead(article.markdown) ? { codeinjection_head: faqJsonLdHead(article.markdown) } : {}),
     ...(featureImage ? { feature_image: featureImage } : {}),
     ...(featureImage && article.coverAltText ? { feature_image_alt: article.coverAltText } : {}),
     ...(featureImage && article.coverCaption ? { feature_image_caption: article.coverCaption } : {}),

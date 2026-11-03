@@ -415,6 +415,11 @@ export async function analyzeOptimizePage(input: {
   }
 
   const suggestions = await aiSuggestions(input.userId, targetQuery, own, competitors) || fallbackSuggestions(own, competitors);
+  // Dynamic import keeps this module out of the product-seo import cycle.
+  const questionExtras = await import("./refresh-questions.js")
+    .then((module) => module.questionSuggestions({ pageUrl, targetQuery, language: site.language }))
+    .catch(() => []);
+  suggestions.push(...questionExtras);
 
   const [page] = await db
     .insert(optimizePages)
