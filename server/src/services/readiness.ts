@@ -5,10 +5,12 @@ import { assertManagedCatalogReady } from "./managed-openrouter.js";
 
 export function assertCloudLaunchConfigured(env: NodeJS.ProcessEnv = process.env) {
   if (env.BLOGFACTORY_CLOUD === "true") {
-    for (const key of ["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD", "WORKOS_REDIRECT_URI", "WORKOS_AUTHKIT_ISSUER", "MCP_RESOURCE_URL"] as const) {
-      if (!env[key]?.trim()) throw new Error(`${key} is required for hosted Cloud authentication`);
+    for (const key of ["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD", "WORKOS_REDIRECT_URI", "WORKOS_AUTHKIT_ISSUER", "MCP_RESOURCE_URL", "API_KEY_ENCRYPTION_SECRET"] as const) {
+      if (!env[key]?.trim()) throw new Error(`${key} is required for hosted Cloud`);
     }
     if (env.WORKOS_COOKIE_PASSWORD!.trim().length < 32) throw new Error("WORKOS_COOKIE_PASSWORD must be at least 32 characters");
+    if (env.API_KEY_ENCRYPTION_SECRET!.trim().length < 32) throw new Error("API_KEY_ENCRYPTION_SECRET must be at least 32 characters");
+    if (env.API_KEY_ENCRYPTION_SECRET === env.JWT_SECRET) throw new Error("API_KEY_ENCRYPTION_SECRET must be separate from JWT_SECRET");
     if (new URL(env.WORKOS_REDIRECT_URI!).protocol !== "https:") throw new Error("WORKOS_REDIRECT_URI must use HTTPS");
     if (new URL(env.WORKOS_AUTHKIT_ISSUER!).protocol !== "https:") throw new Error("WORKOS_AUTHKIT_ISSUER must use HTTPS");
     if (new URL(env.MCP_RESOURCE_URL!).protocol !== "https:") throw new Error("MCP_RESOURCE_URL must use HTTPS");

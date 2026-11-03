@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
 import { safeError } from "../http/error-contract.js";
+import { evaluateDailyGuardrails } from "./generation-guardrails.js";
 import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, sites, siteIntegrations } from "../db/schema.js";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
 import { extractContent } from "./extract-content.js";
 import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult } from "./low-cost-images.js";
@@ -23,6 +24,7 @@ import { enqueueSeoMetadata, kickSeoMetadataWorker } from "./seo-metadata.js";
 import { withDraftQuota, type DraftOrigin } from "./plan-usage.js";
 import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { claimGenerationSlot } from "./cloud-limits.js";
+import { safeFetch } from "./safe-fetch.js";
 import type { GenerateOpts, GenerationSettings, SourceArticle } from "./generation-types.js";
 export type { GenerateOpts } from "./generation-types.js";
 import {
@@ -691,6 +693,30 @@ export async function generateContent(opts: GenerateOpts) {
         await updateGlobalSettings(userId, { budgetPaused: true });
         await db.update(jobs).set({ status: "failed", errorMessage: "Monthly budget exceeded — generation paused", completedAt: new Date() }).where(eq(jobs.id, jobId));
         return { jobId, status: "failed", error: "Budget exceeded" };
+      }
+    }
+
+    // Daily ceilings do not latch budget_paused: they clear themselves at UTC midnight.
+    if (accountSettings?.dailyCostLimit || accountSettings?.dailyRequestLimit) {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const [todayUsage] = await db.select({
+        spend: sql<number>`COALESCE(SUM(${generationLogs.cost}), 0)::float8`,
+        requests: sql<number>`COUNT(*)::int`,
+        failures: sql<number>`COUNT(*) FILTER (WHERE ${generationLogs.status} IS NOT NULL AND ${generationLogs.status} <> 'success')::int`,
+      })
+        .from(generationLogs)
+        .where(and(eq(generationLogs.userId, userId), gte(generationLogs.createdAt, startOfDay)));
+
+      const blocked = evaluateDailyGuardrails(accountSettings, {
+        monthSpend: 0,
+        todaySpend: Number(todayUsage?.spend || 0),
+        todayRequests: Number(todayUsage?.requests || 0),
+        todayFailures: Number(todayUsage?.failures || 0),
+      });
+      if (blocked) {
+        await db.update(jobs).set({ status: "failed", errorMessage: blocked.message, completedAt: new Date() }).where(eq(jobs.id, jobId));
+        return { jobId, status: "failed", error: blocked.message };
       }
     }
     const promptSettings = applyGenerationOverrides((opts.settingsSnapshot || settings) as GenerationSettings | undefined, opts);
@@ -1855,7 +1881,7 @@ async function generateSingleImage(
   if (base64Image) {
     imageBuffer = Buffer.from(base64Image, "base64");
   } else if (imageUrl) {
-    const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
+    const imgResp = await safeFetch(imageUrl, { timeoutMs: IMAGE_REQUEST_TIMEOUT_MS, maxResponseBytes: 20 * 1024 * 1024 });
     if (imgResp.ok) {
       imageBuffer = Buffer.from(await imgResp.arrayBuffer());
     }

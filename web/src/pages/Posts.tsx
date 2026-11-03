@@ -18,16 +18,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, FileText, Loader2, Send } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
 import { BulkActionsBar } from "@/components/posts/BulkActionsBar";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { TablePagination } from "@/components/patterns/TablePagination";
 import { PostFilters, SortField, SortDirection, StatusFilter } from "@/components/posts/PostFilters";
 import { PostTableRow } from "@/components/posts/PostTableRow";
 import { useBulkPostActions } from "@/hooks/useBulkPostActions";
@@ -45,6 +41,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatCompactNumber } from "@/lib/search-insights";
+import { formatSourceType } from "@/lib/source-labels";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { connectionReady, credentialUsable } from "@/lib/credential-status";
 import { postListPath, type ListPagination } from "@/lib/list-query";
 
@@ -213,7 +211,7 @@ export default function Posts() {
     [integrations],
   );
 
-  const { data: postList, isLoading: isLoadingPosts, error: postsError } = useQuery({
+  const { data: postList, isLoading: isLoadingPosts, error: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ["posts", currentPage, postsPerPage, deferredSearchQuery, statusFilter, sourceFilter, modelFilter, personaFilter, campaignFilter, sortField, sortDirection],
     queryFn: async () => {
       return api.get<PostListResponse>(postListPath({
@@ -434,6 +432,14 @@ export default function Posts() {
     clearSelection();
   };
 
+  const hasActiveQuery = activeFiltersCount > 0 || statusFilter !== "all" || Boolean(searchQuery.trim());
+
+  const handleClearAllFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+    handleClearFilters();
+  };
+
   const handleSortChange = (field: SortField, direction: SortDirection) => {
     setSortField(field);
     setSortDirection(direction);
@@ -536,8 +542,8 @@ export default function Posts() {
               </div>
             </div>
           </TableCell>
-          <TableCell className="capitalize text-sm text-muted-foreground">
-            {row.post.source_type?.replace("_", " ")}
+          <TableCell className="text-sm text-muted-foreground">
+            {formatSourceType(row.post.source_type)}
           </TableCell>
           <TableCell>{row.post.personas?.name || "—"}</TableCell>
           <TableCell>
@@ -561,10 +567,8 @@ export default function Posts() {
             isSelected={selectedIds.has(post.id)}
             onSelect={(checked) => handleRowSelect(post.id, checked)}
             onClick={() => openPostInNewTab(post.id)}
-            onQuickDelete={(e) => {
-              e.stopPropagation();
-              setQuickDeletePost(post);
-            }}
+            onQuickDelete={() => setQuickDeletePost(post)}
+            onPreview={() => window.open(`/library/posts/${post.id}/preview`, "_blank", "noopener,noreferrer")}
             onOpenImagePrompts={(e) => handleImagePromptAction(post, e)}
             isImagePromptActionPending={creatingImagePromptPostId === post.id}
             formatModelName={formatModelName}
@@ -575,13 +579,13 @@ export default function Posts() {
         ))}
 
         {isExpanded && failedDrafts.map((draft) => (
-          <TableRow key={`${row.key}-failed-${draft.index}`} className="bg-destructive/5">
+          <TableRow key={`${row.key}-failed-${draft.index}`} >
             <TableCell />
             <TableCell className="font-medium">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <AlertCircle className="h-4 w-4 mt-1 text-status-error" />
                 <div>
-                  <div className="text-destructive">Draft {draft.index + 1} failed</div>
+                  <div>Draft {draft.index + 1} failed</div>
                   <div className="text-xs font-normal text-muted-foreground line-clamp-2">
                     {draft.error || "Not enough information returned for this draft."}
                   </div>
@@ -600,13 +604,13 @@ export default function Posts() {
         ))}
 
         {isExpanded && missingDraftIndexes.map((draftIndex) => (
-          <TableRow key={`${row.key}-missing-${draftIndex}`} className="bg-destructive/5">
+          <TableRow key={`${row.key}-missing-${draftIndex}`} >
             <TableCell />
             <TableCell className="font-medium">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-1 text-destructive" />
+                <AlertCircle className="h-4 w-4 mt-1 text-status-error" />
                 <div>
-                  <div className="text-destructive">Draft {draftIndex + 1} failed to finish</div>
+                  <div>Draft {draftIndex + 1} failed to finish</div>
                   <div className="text-xs font-normal text-muted-foreground line-clamp-2">
                     No failure detail was recorded for this draft. The job may have timed out before writing the reason.
                   </div>
@@ -640,21 +644,21 @@ export default function Posts() {
       </PageHeader>
 
       {brokenIntegrations.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="font-medium text-destructive">CMS credentials need to be re-saved</p>
-              <p className="text-sm text-muted-foreground">
+              <AlertTitle>CMS credentials need to be re-saved</AlertTitle>
+              <AlertDescription>
                 {brokenIntegrations.map((integration) => integration.provider === "ghost" ? "Ghost" : integration.provider === "wordpress" ? "WordPress" : integration.provider === "wix" ? "Wix" : "Framer").join(", ")} credentials cannot be decrypted, so drafts cannot be sent to the CMS.
-              </p>
+              </AlertDescription>
             </div>
+            <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
           </div>
-          <Button variant="outline" onClick={() => navigate("/control/integrations")} className="shrink-0">Fix credentials</Button>
-        </div>
+        </Alert>
       )}
 
-      <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_hsl(210_5%_20%/0.06)] backdrop-blur sm:mx-0">
+      <div className="sticky top-0 z-20 -mx-2 rounded-md border border-byword-border bg-background/92 p-2 shadow-[0_10px_24px_var(--panel-lift)] backdrop-blur sm:mx-0">
         <PostFilters
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
@@ -711,14 +715,14 @@ export default function Posts() {
             </div>
             <Progress value={cmsPushProgress.total ? (cmsPushProgress.completed / cmsPushProgress.total) * 100 : 0} className="h-2" />
             {cmsPushProgress.failures.length > 0 && (
-              <div className="mt-3 rounded border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                <p className="font-semibold text-destructive">{cmsPushProgress.failures.length} failed</p>
+              <Alert variant="destructive" className="mt-3">
+                <AlertTitle>{cmsPushProgress.failures.length} failed</AlertTitle>
                 <ul className="mt-2 space-y-1">
                   {cmsPushProgress.failures.map((failure) => (
                     <li key={failure.id} className="break-words"><span className="font-medium">{failure.title}:</span> {failure.error}</li>
                   ))}
                 </ul>
-              </div>
+              </Alert>
             )}
           </div>
         )}
@@ -752,21 +756,43 @@ export default function Posts() {
           </TableHeader>
           <TableBody>
             {isLoadingPosts ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  <TableSkeleton rows={6} columns={6} />
                 </TableCell>
               </TableRow>
             ) : postsError ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-destructive">
-                  {postsError instanceof Error ? postsError.message : "Posts could not be loaded."}
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    size="row"
+                    tone="error"
+                    title="Content could not be loaded"
+                    description={postsError instanceof Error ? postsError.message : "The request failed."}
+                    primaryAction={{ label: "Try again", onClick: () => refetchPosts() }}
+                  />
                 </TableCell>
               </TableRow>
             ) : paginatedRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  No posts yet. Generate one from Content Creator or add an RSS feed.
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-0">
+                  {hasActiveQuery ? (
+                    <EmptyState
+                      size="row"
+                      tone="filtered"
+                      title="No content matches these filters"
+                      description="Widen the search or clear the filters to see the full inventory."
+                      primaryAction={{ label: "Clear filters", onClick: handleClearAllFilters }}
+                    />
+                  ) : (
+                    <EmptyState
+                      size="row"
+                      title="No content yet"
+                      description="Generate an article from Create Content, or connect an RSS source to produce drafts automatically."
+                      primaryAction={{ label: "Create content", href: "/create" }}
+                      secondaryAction={{ label: "Add a source", href: "/sources/rss" }}
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -777,10 +803,8 @@ export default function Posts() {
                   isSelected={selectedIds.has(row.post.id)}
                   onSelect={(checked) => handleRowSelect(row.post.id, checked)}
                   onClick={() => openPostInNewTab(row.post.id)}
-                  onQuickDelete={(e) => {
-                    e.stopPropagation();
-                    setQuickDeletePost(row.post);
-                  }}
+                  onQuickDelete={() => setQuickDeletePost(row.post)}
+                  onPreview={() => window.open(`/library/posts/${row.post.id}/preview`, "_blank", "noopener,noreferrer")}
                   onOpenImagePrompts={(e) => handleImagePromptAction(row.post, e)}
                   isImagePromptActionPending={creatingImagePromptPostId === row.post.id}
                   formatModelName={formatModelName}
@@ -790,54 +814,19 @@ export default function Posts() {
           </TableBody>
         </Table>
 
-        {/* Pagination */}
-        {(postPagination?.total || 0) > 0 && (
-          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {(currentPage - 1) * postsPerPage + 1} to{" "}
-              {(currentPage - 1) * postsPerPage + enrichedPosts.length} of{" "}
-              {postPagination?.total || 0} posts
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={String(postsPerPage)}
-                onValueChange={(value) => {
-                  setPostsPerPage(Number(value));
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="h-9 w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map((count) => (
-                    <SelectItem key={count} value={String(count)}>
-                      {count} / page
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <TablePagination
+          page={currentPage}
+          pages={totalPages}
+          total={postPagination?.total || 0}
+          rendered={enrichedPosts.length}
+          pageSize={postsPerPage}
+          noun="posts"
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPostsPerPage(size);
+            setCurrentPage(1);
+          }}
+        />
       </BywordCard>
 
       {/* Quick Delete Confirmation */}

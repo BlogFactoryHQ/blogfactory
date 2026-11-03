@@ -11,7 +11,7 @@ import {
   siteIntegrations,
   sites,
 } from "../db/schema.js";
-import { readySeoMetadataForArticle, seoStatusForArticle } from "./seo-metadata.js";
+import { readySeoMetadataForArticle, seoMetadata, seoStatusForArticle } from "./seo-metadata.js";
 import { getSearchConsoleInsights } from "./search-console.js";
 import { listOperationEvents } from "./operation-events.js";
 import { postRevisionSnapshot, type PostRevisionSnapshot } from "./post-revisions.js";
@@ -30,6 +30,16 @@ export const ACTION_KINDS = [
   "stale_draft",
 ] as const;
 export const ACTION_SEVERITIES = ["blocker", "review", "warning"] as const;
+
+type SearchGrowthInsights = {
+  integration: unknown;
+  segments: unknown;
+  totals: unknown;
+  opportunity_scope: unknown;
+  provenance: unknown;
+  unavailable: string | null;
+};
+type SeoGrowthPlan = Awaited<ReturnType<typeof getSeoGrowthPlan>>;
 
 export function generationReadiness(credentialStatus: CredentialStatus) {
   return { ready: credentialStatus === "usable", credential_status: credentialStatus };
@@ -70,7 +80,8 @@ type DraftActionInput = {
   id: string;
   siteId: string;
   title: string;
-  content: string;
+  content?: string;
+  seoStatus?: string;
   summary: string | null;
   sourceType: string;
   seoMetadata: unknown;
@@ -102,7 +113,10 @@ export function classifyDraftAction(input: DraftActionInput): ActionItem | null 
   );
   const destinationReady = preferredRoutingReady || Boolean(input.usableDestinationCount);
   if (!input.revision) reasons.push({ kind: "missing_revision", severity: "blocker", label: "Saved revision", message: "No saved revision exists." });
-  if (!readySeoMetadataForArticle(input.seoMetadata, input.title, input.content)) {
+  const seoReady = input.seoStatus
+    ? input.seoStatus === "ready"
+    : readySeoMetadataForArticle(input.seoMetadata, input.title, input.content || "");
+  if (!seoReady) {
     reasons.push({ kind: "seo_not_ready", severity: "blocker", label: "SEO", message: "SEO metadata is missing, stale, or invalid." });
   }
   if (!destinationReady) reasons.push({ kind: "destination_not_ready", severity: "blocker", label: "CMS destination", message: "Connect a CMS destination for this site." });
@@ -153,7 +167,6 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     id: posts.id,
     siteId: posts.siteId,
     title: posts.title,
-    content: posts.content,
     summary: posts.summary,
     sourceType: posts.sourceType,
     seoMetadata: posts.seoMetadata,
@@ -196,6 +209,7 @@ async function draftActionItems(userId: string, siteId: string, now = new Date()
     const item = classifyDraftAction({
       ...row,
       siteId: row.siteId,
+      seoStatus: seoMetadata(row.seoMetadata)?.status || "missing",
       integrationReady: testedConnectionReady({
         status: row.integrationStatus,
         lastTestedAt: row.integrationLastTestedAt,
@@ -355,6 +369,28 @@ export async function getReviewPacket(input: { userId: string; postId: string; a
   };
 }
 
+export function searchGrowthDigest(insights: SearchGrowthInsights, plan: SeoGrowthPlan) {
+  return {
+    connected: Boolean(insights.integration),
+    status: insights.unavailable ? "unavailable" as const : "ok" as const,
+    segments: insights.segments,
+    totals: insights.totals,
+    opportunity_scope: insights.opportunity_scope,
+    provenance: insights.provenance,
+    plan: plan ? {
+      summary: plan.summary,
+      next_items: plan.items.filter((item) => item.stage === "planned").slice(0, 3).map((item) => ({
+        id: item.id,
+        planned_for: item.plannedFor,
+        action_type: item.actionType,
+        target_query: item.keyword,
+        page_url: item.pageUrl,
+      })),
+      data_through: plan.freshness.dataThrough,
+    } : null,
+  };
+}
+
 export async function getWorkspaceDigest(input: { userId: string; siteId: string; now?: Date }) {
   const site = await ownedSite(input.userId, input.siteId);
   if (!site) return null;
@@ -395,6 +431,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       .from(siteIntegrations).where(and(eq(siteIntegrations.userId, input.userId), eq(siteIntegrations.siteId, input.siteId))),
     getApiKeyMetadata(input.userId),
   ]);
+  const searchGrowthSection = searchGrowthDigest(searchGrowth, seoPlan);
   const [cmsDrafts] = await db.select({ count: count() }).from(postPublications).where(and(
     eq(postPublications.userId, input.userId),
     eq(postPublications.siteId, input.siteId),
@@ -418,24 +455,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
       cost: Number(cost?.total || 0),
       window_days: 30,
     },
-    search_growth: {
-      connected: Boolean(searchGrowth.integration),
-      segments: searchGrowth.segments,
-      totals: searchGrowth.totals,
-      opportunity_scope: searchGrowth.opportunity_scope,
-      provenance: searchGrowth.provenance,
-      plan: seoPlan ? {
-        summary: seoPlan.summary,
-        next_items: seoPlan.items.filter((item) => item.stage === "planned").slice(0, 3).map((item) => ({
-          id: item.id,
-          planned_for: item.plannedFor,
-          action_type: item.actionType,
-          target_query: item.keyword,
-          page_url: item.pageUrl,
-        })),
-        data_through: seoPlan.freshness.dataThrough,
-      } : null,
-    },
+    search_growth: searchGrowthSection,
     recent_outputs: recentOutputs.map((post) => ({ ...post, updated_at: post.updated_at.toISOString() })),
     connections: {
       generation: generationReadiness(apiKeys.openrouterCredentialStatus),
@@ -445,7 +465,7 @@ export async function getWorkspaceDigest(input: { userId: string; siteId: string
         connected: cmsConnections.filter(testedConnectionReady).length,
         attention: cmsConnections.filter((connection) => !testedConnectionReady(connection)).length,
       },
-      search_console: { connected: Boolean(searchGrowth.integration) },
+      search_console: { connected: searchGrowthSection.connected, status: searchGrowthSection.status },
     },
     activity,
   };

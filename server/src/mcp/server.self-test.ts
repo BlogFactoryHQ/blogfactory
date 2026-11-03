@@ -19,6 +19,7 @@ import {
   reviewPostNextAction,
   safeMcpJobError,
 } from "./tools.js";
+import { ApiError } from "../http/error-contract.js";
 
 assert.equal(mcpDraftModelId("x-ai/grok-4.3"), "x-ai/grok-4.3");
 assert.equal(mcpDraftModelId(null), "openai/gpt-4o");
@@ -158,6 +159,50 @@ assert.deepEqual((await call.json() as any).result.structuredContent, {
 assert.equal(startedOperations.length, 1);
 assert.equal(finishedOperations.length, 1);
 assert.equal((finishedOperations[0] as any).status, "succeeded");
+
+const originalWhoamiHandler = MCP_TOOL_REGISTRY.whoami.handler;
+const callWhoamiWithError = async (error: ApiError, id: string) => {
+  MCP_TOOL_REGISTRY.whoami.handler = async () => { throw error; };
+  const response = await post(
+    {
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { name: "whoami", arguments: {} },
+    },
+    { "mcp-protocol-version": MCP_PROTOCOL_VERSION },
+  );
+  return (await response.json() as any).result;
+};
+const quotaExceededResult = await callWhoamiWithError(
+  new ApiError(429, "plan_quota_reached", "Monthly draft quota of 150 reached"),
+  "quota-exceeded",
+);
+assert.equal(quotaExceededResult.structuredContent.error.code, "quota_exceeded");
+assert.equal(quotaExceededResult.structuredContent.error.retryable, false);
+assert.match(quotaExceededResult.structuredContent.error.message, /150/);
+assert.match(quotaExceededResult.structuredContent.error.message, /resets on \d{4}-\d{2}-01/);
+assert.match(quotaExceededResult.structuredContent.next_action, /\/billing/);
+assert.equal((finishedOperations.at(-1) as any).errorCode, "quota_exceeded");
+for (const message of [
+  "Site limit reached for this plan",
+  "Active RSS limit reached for this plan",
+  "Storage limit reached for this plan",
+  "Concurrent generation limit reached for this plan",
+]) {
+  const result = await callWhoamiWithError(new ApiError(429, "plan_quota_reached", message), `quota-${message}`);
+  assert.equal(result.structuredContent.error.code, "quota_exceeded");
+  assert.equal(result.structuredContent.error.retryable, false);
+  assert.match(result.structuredContent.next_action, /\/billing/);
+}
+const planRequiredResult = await callWhoamiWithError(
+  new ApiError(403, "forbidden", "An active BlogFactory Cloud plan is required for this action"),
+  "plan-required",
+);
+assert.equal(planRequiredResult.structuredContent.error.code, "forbidden");
+assert.equal(planRequiredResult.structuredContent.error.retryable, false);
+assert.match(planRequiredResult.structuredContent.next_action, /\/billing/);
+MCP_TOOL_REGISTRY.whoami.handler = originalWhoamiHandler;
 
 const denied = await postAs(
   {
@@ -371,7 +416,7 @@ assert.equal(forbiddenOrigin.status, 403);
 assert.equal(MCP_TOOL_NAMES.length, 26);
 assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 26);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
-assert.equal(new Set(MCP_ERROR_CODES).size, 13);
+assert.equal(new Set(MCP_ERROR_CODES).size, 14);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);
 assert.doesNotThrow(assertMcpToolRegistry);
 assert.deepEqual(capMcpPostContent("short"), { content: "short", content_truncated: false });

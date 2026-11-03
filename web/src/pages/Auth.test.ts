@@ -76,4 +76,49 @@ describe("authReturnTo", () => {
     expect(apiGetMock).toHaveBeenCalledWith("/auth/config");
     await act(async () => root.unmount());
   });
+
+  it("opens signup mode from a ?mode=signup link once runtime signup is confirmed", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Back to sign in"));
+    });
+    expect(container).toHaveTextContent("Verify your email, then choose a Cloud plan.");
+    await act(async () => root.unmount());
+  });
+
+  it("falls back to sign in when a signup link reaches a build without signup", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: false });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Access your BlogFactory workspace."));
+    });
+    expect(container).not.toHaveTextContent("Create account");
+    await act(async () => root.unmount());
+  });
+
+  it("returns a WorkOS user without a local account to the create-account step", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true, auth_provider: "workos" });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup&error=signup_required"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Continue to create account"));
+    });
+    expect(container).toHaveTextContent("I accept the BlogFactory Terms of Service and Privacy Policy.");
+    await act(async () => root.unmount());
+  });
 });

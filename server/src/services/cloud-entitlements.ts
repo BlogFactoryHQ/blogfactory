@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { billingEntitlements, billingSubscriptions } from "../db/schema.js";
+import { billingEntitlements, billingSubscriptions, users } from "../db/schema.js";
+import { isSuspended } from "./access-control.js";
 import { PAST_DUE_GRACE_MS, PLAN_LIMITS, type PlanCode } from "./billing-config.js";
 
 export function cloudEnforcementEnabled(env: NodeJS.ProcessEnv = process.env) {
@@ -8,6 +9,10 @@ export function cloudEnforcementEnabled(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export async function getCloudAccess(userId: string, now = new Date(), force = false) {
+  if (process.env.BLOGFACTORY_CLOUD === "true") {
+    const account = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { role: true, suspendedAt: true } });
+    if (account && isSuspended(account)) return { allowed: false, plan: "none" as PlanCode, limits: PLAN_LIMITS.none, reason: "account_suspended" };
+  }
   if (process.env.BLOGFACTORY_CLOUD !== "true" || (!force && !cloudEnforcementEnabled())) return { allowed: true, plan: "internal" as PlanCode, limits: PLAN_LIMITS.internal, reason: null };
   const [entitlement, subscription] = await Promise.all([
     db.query.billingEntitlements.findFirst({ where: eq(billingEntitlements.userId, userId) }),

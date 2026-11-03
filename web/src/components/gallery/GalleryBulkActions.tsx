@@ -123,7 +123,7 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
         <div className="h-5 w-px bg-border" />
         <Button variant="outline" size="sm" onClick={handleBulkDownload} disabled={isDownloading}>
           {isDownloading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
-          {isDownloading ? "Zipping..." : "Download"}
+          {isDownloading ? "Zipping…" : "Download"}
         </Button>
         <Button
           variant="destructive"
@@ -134,7 +134,7 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
           <Trash2 className="h-4 w-4 mr-1.5" />
           Delete
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClear}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClear} aria-label="Clear selection">
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -146,8 +146,8 @@ export function GalleryBulkActions({ selectedImages, onClear, onDelete, isDeleti
             <AlertDialogDescription>
               This will permanently remove the selected images from storage.
               {publishedCount > 0 && (
-                <span className="block mt-2 text-destructive font-medium">
-                  ⚠️ {publishedCount} image{publishedCount > 1 ? "s are" : " is"} used in published posts.
+                <span className="block mt-2 text-status-error font-medium">
+                  {publishedCount} image{publishedCount > 1 ? "s are" : " is"} used in published posts.
                   Deleting them will break those posts.
                 </span>
               )}

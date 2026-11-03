@@ -17,7 +17,7 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: docker.io/pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:

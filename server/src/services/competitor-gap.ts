@@ -1,5 +1,6 @@
 // Competitor content gap from a public sitemap. Reads URLs only (no page fetches), so it is cheap and polite.
-import { isBlockedHostname, isPrivateAddress, publicFetchText } from "./public-fetch.js";
+import { publicFetchText } from "./public-fetch.js";
+import { validatePublicUrl } from "./safe-fetch.js";
 import {
   classifyIntent, clusterKeywords, existingSiteTitles, ownedSiteRow, productFit, topicSimilarity,
   type ProductProfile, type TopicIntent,
@@ -34,11 +35,11 @@ export interface CompetitorGap {
 export function normalizeCompetitorDomain(input: string) {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("Competitor domain is required");
-  const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Only http and https competitors are allowed");
-  const host = parsed.hostname.replace(/^\[|\]$/g, "");
-  if (isBlockedHostname(host) || !host.includes(".") || (/^[\d.]+$|:/.test(host) && isPrivateAddress(host))) throw new Error("Competitor must be a public domain");
-  return parsed.origin;
+  try {
+    return validatePublicUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).origin;
+  } catch {
+    throw new Error("Competitor must be a public domain");
+  }
 }
 
 export function parseSitemapXml(xml: string) {

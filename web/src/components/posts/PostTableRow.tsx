@@ -1,4 +1,4 @@
-import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Megaphone, ImageIcon, Loader2 } from "lucide-react";
+import { FileText, Rss, Link as LinkIcon, FileUp, Youtube, Trash2, Megaphone, ImageIcon, Loader2, Eye, Pencil } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -6,13 +6,16 @@ import {
   TableCell,
   TableRow,
 } from "@/components/ui/table";
+import { RowActions } from "@/components/patterns/RowActions";
 import { cn } from "@/lib/utils";
 import { safeFormatDate } from "@/lib/date-format";
+import { formatSourceType } from "@/lib/source-labels";
 import { seoStatusPresentation } from "@/lib/seo-metadata";
 
 const sourceIcons: Record<string, typeof FileText> = {
   article_keyword: FileText,
   article_title: FileText,
+  rss: Rss,
   rss_feed: Rss,
   url: LinkIcon,
   pdf: FileUp,
@@ -51,7 +54,8 @@ interface PostTableRowProps {
   isSelected: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
-  onQuickDelete: (e: React.MouseEvent) => void;
+  onQuickDelete: () => void;
+  onPreview?: () => void;
   onOpenImagePrompts: (e: React.MouseEvent) => void;
   isImagePromptActionPending?: boolean;
   formatModelName: (modelId: string) => string;
@@ -66,6 +70,7 @@ export function PostTableRow({
   onSelect,
   onClick,
   onQuickDelete,
+  onPreview,
   onOpenImagePrompts,
   isImagePromptActionPending = false,
   formatModelName,
@@ -90,7 +95,7 @@ export function PostTableRow({
     <TableRow
       className={cn(
         "table-row-calm cursor-pointer group",
-        isSelected && "bg-primary/5",
+        isSelected && "bg-byword-blue-soft/60",
         className
       )}
       onClick={onClick}
@@ -113,7 +118,7 @@ export function PostTableRow({
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2 text-muted-foreground">
             <SourceIcon className="h-4 w-4 flex-shrink-0" />
-            <span className="capitalize text-sm">{post.source_type?.replace("_", " ")}</span>
+            <span className="text-sm">{formatSourceType(post.source_type)}</span>
           </div>
           {post.feeds?.name && (
             <span className="text-xs text-muted-foreground/70 truncate max-w-[150px]" title={post.feeds.name}>
@@ -152,14 +157,9 @@ export function PostTableRow({
       <TableCell className="w-32">
         <div className="flex items-center gap-1">
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
-            className={cn(
-              "h-7 w-7 border",
-              hasImageWork
-                ? "border-[hsl(var(--status-success)/0.30)] bg-[hsl(var(--status-success)/0.10)] text-[hsl(var(--status-success))] hover:bg-[hsl(var(--status-success)/0.16)] hover:text-[hsl(var(--status-success))]"
-                : "border-destructive/25 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            )}
+            className={cn("h-7 w-7", hasImageWork ? "text-foreground" : "text-muted-foreground")}
             onClick={onOpenImagePrompts}
             disabled={isImagePromptActionPending}
             title={hasImageWork ? "Open image prompts" : "Create image prompts"}
@@ -167,16 +167,15 @@ export function PostTableRow({
           >
             {isImagePromptActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={onQuickDelete}
-            title="Quick delete"
-            aria-label={`Delete ${post.title}`}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <RowActions
+            triggerLabel={`Actions for ${displayTitle || post.title}`}
+            label={displayTitle || post.title}
+            actions={[
+              { label: "Open editor", icon: Pencil, onSelect: onClick },
+              ...(onPreview ? [{ label: "Open preview", icon: Eye, onSelect: onPreview }] : []),
+              { label: "Delete draft", icon: Trash2, onSelect: onQuickDelete, destructive: true, separatorBefore: true },
+            ]}
+          />
         </div>
       </TableCell>
     </TableRow>

@@ -4,9 +4,18 @@ This is the canonical forward plan for BlogFactory. It records intended work, no
 
 ## Product decision
 
-BlogFactory launches open source and self-hosted first. BlogFactory Cloud is a later managed service and must be described as **coming soon** until its release gates are complete.
+BlogFactory launched open source and self-hosted first. BlogFactory Cloud is the managed service built on this core.
 
-Cloud packaging is fixed at $5/$49 Cloud, $15/$149 Advanced, and a $20 prepaid 14,000-credit Managed AI top-up. The implementation is staged behind disabled launch flags; availability remains **coming soon** until the sandbox, provider-approval, legal, and production gates in [`docs/billing.md`](docs/billing.md) pass.
+BlogFactory Cloud has been live since 2026-09-15 with public signup and Polar checkout. Its packaging:
+
+| Plan | Price | Sites | Storage | Concurrent generations | Active RSS feeds | Drafts per UTC month |
+|---|---|---|---|---|---|---|
+| Cloud | $5 monthly or $49 yearly | 3 | 1 GB | 1 | 3 | 150 successful drafts |
+| Advanced | $15 monthly or $149 yearly | 10 | 10 GB | 3 | 20 | unlimited manual, up to 600 automated |
+
+Plans include no AI credits; generation uses the customer's own OpenRouter key. A $20 Managed AI Credits pack (14,000 credits, valid 365 days) is defined but not on sale until Managed AI is enabled.
+
+Polar is the payment layer. The private Cloud PostgreSQL database is authoritative for entitlements, quotas, and spendable credits. Checkout, subscriptions, entitlement enforcement, and billing webhooks live in the private `BlogFactoryHQ/blogfactory-cloud` repository, not in this open-source core, and never gate self-hosted instances.
 
 ## Phase 0 — open-source release
 
@@ -46,26 +55,30 @@ Netlify is not a full BlogFactory deployment target because it does not provisio
 
 ## Phase 2 — BlogFactory Cloud
 
-- [ ] Replace process-local background continuation with PostgreSQL-backed jobs, leases, retries, and worker heartbeats.
-- [ ] Complete production acceptance for WorkOS AuthKit login, verification/reset mail, Turnstile, rate limits, existing-user migration, and logout/session revocation.
-- [ ] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation.
-- [ ] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority.
-- [ ] Choose a billing provider and implement idempotent webhooks outside MCP authority.
-- [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies.
+- [x] Run private Cloud heavy jobs in a persistent worker using the existing PostgreSQL-backed claims, retries, stale recovery, terminal states, and heartbeat health.
+- [x] Deploy the private Cloud stack to Hetzner Nuremberg with immutable GHCR image digests, local PostgreSQL 18, age-encrypted database backups in private EU R2 storage, Cloudflare routing, and a clean Vercel application rollback deployment.
+- [x] Migrate the existing production database and objects, verify row/object counts, encrypted backup readback, the 22-tool MCP catalog, and tenant/site isolation.
+- [x] Merge the validated worker-mode core changes into the public `main` branch.
+- [x] Implement verified email, password recovery delivery, abuse controls, and production login acceptance (hosted auth is WorkOS AuthKit in the private Cloud repository; lifecycle email beyond authentication is still open there).
+- [x] Add authoritative usage counters for sites, storage, scheduled work, and concurrent generation (private Cloud repository).
+- [x] Decide managed Cloud packaging and add server-side entitlements. The web may display them but is not the authority (private Cloud repository).
+- [x] Choose a billing provider and implement idempotent webhooks outside MCP authority (private Cloud repository).
+- [ ] Add export, cancellation, retention, backup/restore, spend caps, and support policies (cancellation, backup/restore, and credit spend caps exist privately; export, retention, and support policy remain open).
 - [ ] Run a bounded private pilot and measure real infrastructure and support cost before public checkout.
-- [ ] Pass the Polar sandbox acceptance in `docs/billing.md`.
-- [ ] Obtain written Polar and OpenRouter acceptance plus human legal approval.
-- [ ] Verify a production purchase/refund and live checkout, portal, webhook, and entitlement readback before public signup or marketing availability.
+- [ ] Run a real production purchase, refund, and chargeback-debt test with live webhook readback for every plan SKU.
+- [x] Complete human legal review of the terms and privacy policy (signed off by counsel, 2026-09-21).
+- [ ] Obtain written Polar acceptance for the AI-content use case and written OpenRouter confirmation before selling Managed AI Credits.
+- [x] Publish marketing pricing, terms, and privacy pages that match the live packaging above (Managed AI Credits intentionally not offered until the Polar and OpenRouter confirmations above).
 
 ## Release language
 
-Until Phase 0 is complete:
+Historical pre-release language, before Phase 0 was completed:
 
 - Say: “Open-source release candidate. BlogFactory Cloud is coming soon.”
 - Do not say: “Open source available now,” “one-click deploy,” or “hosted for $5” on a live public surface.
 
-After Phase 0 is complete:
+Current release language:
 
-- Say: “Self-host BlogFactory for free. BlogFactory Cloud is coming soon.”
+- Say: “Self-host BlogFactory for free.” Describe BlogFactory Cloud only as far as the published marketing, pricing, and legal pages already go.
 - Link the primary CTA to the public source repository.
-- Keep Cloud pricing informational until checkout and entitlements are actually live.
+- Do not state Cloud prices, limits, or launch status in this repository; the private Cloud and marketing repositories own that copy.

@@ -141,6 +141,7 @@ export async function findMcpAccessToken(tokenHash: string) {
       displayName: users.displayName,
       role: users.role,
       approvalStatus: users.approvalStatus,
+      suspendedAt: users.suspendedAt,
     })
     .from(mcpAccessTokens)
     .innerJoin(users, eq(users.id, mcpAccessTokens.userId))

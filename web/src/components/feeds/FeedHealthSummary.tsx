@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { AlertTriangle, CheckCircle2, Clock, BarChart3 } from "lucide-react";
 import type { PreviewFeedItem } from "./FeedPreviewItem";
 
@@ -31,14 +32,10 @@ export function FeedHealthSummary({ items, fetchedAt }: FeedHealthSummaryProps) 
           <span className="font-medium">{total} fetched</span>
         </div>
         {newCount > 0 && (
-          <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 text-xs">
-            {newCount} new
-          </Badge>
+          <StatusBadge status="success" label={`${newCount} new`} showIcon={false} />
         )}
         {dupCount > 0 && (
-          <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-xs">
-            {dupCount} duplicate
-          </Badge>
+          <StatusBadge status="warning" label={`${dupCount} duplicate`} showIcon={false} />
         )}
         {filteredCount > 0 && (
           <Badge variant="outline" className="text-xs">
@@ -46,7 +43,7 @@ export function FeedHealthSummary({ items, fetchedAt }: FeedHealthSummaryProps) 
           </Badge>
         )}
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-status-success" />
           <span>{eligible} eligible for generation</span>
         </div>
       </div>
@@ -61,7 +58,7 @@ export function FeedHealthSummary({ items, fetchedAt }: FeedHealthSummaryProps) 
 
       {/* Warnings */}
       {warnings.map((w, i) => (
-        <div key={i} className="flex items-start gap-1.5 text-xs text-amber-600">
+        <div key={i} className="flex items-start gap-1.5 text-xs text-status-warning">
           <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
           <span>{w}</span>
         </div>

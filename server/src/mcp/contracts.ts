@@ -79,5 +79,6 @@ export const MCP_ERROR_CODES = [
   "destination_not_ready",
   "provider_error",
   "rate_limited",
+  "quota_exceeded",
   "internal_error",
 ] as const;

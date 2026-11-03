@@ -77,7 +77,7 @@ Each connection is site-scoped. Clients discover the active catalog from the ser
 | --- | --- | --- | --- |
 | Sources, content inventory, revisions, review queue, runs, and image workflows | Search Console diagnostics, optimization, growth plans, indexing, and internal links | Site-scoped access, MCP connections, integrations, brand voice, settings, usage, and audit history | Preflight, explicit destination selection, optimistic locking, idempotent CMS **draft** delivery |
 
-Self-host BlogFactory for free. BlogFactory Cloud is coming soon; pricing, subscriptions, checkout, and hosted public account creation are not implemented. Read the [release plan](FEATURE_PLAN.md) for the distribution roadmap.
+Self-host BlogFactory for free. BlogFactory Cloud is the managed service operated from the private `BlogFactoryHQ/blogfactory-cloud` repository; its pricing, subscriptions, checkout, and entitlement code is not part of this open-source core and never gates self-hosted instances. Read the [release plan](FEATURE_PLAN.md) for the distribution roadmap.
 
 ## Companion projects
 
@@ -117,6 +117,12 @@ docker compose up -d
 ```
 
 The verified topology includes the web app, API, PostgreSQL, MinIO, migrations, persistent volumes, and the bounded scheduler. Follow the full [self-hosting guide](docs/self-hosting.md) before exposing an instance to the internet.
+
+## Hosted production
+
+The managed service uses Cloudflare in front of an immutable Docker Compose deployment on Hetzner in Nuremberg. PostgreSQL 18, the Bun/Hono API, the persistent worker, the backup scheduler, and the web app run in that stack; private EU Cloudflare R2 stores images and age-encrypted database backups. GitHub Actions builds immutable images in GHCR; Vercel retains the last clean deployment as a DNS rollback target rather than serving current production traffic.
+
+This hosted topology and the Cloud-only billing/authentication overlay are maintained in the private `BlogFactoryHQ/blogfactory-cloud` repository. Shared product changes originate in this public core and sync one way into Cloud; the hosted topology does not change the community self-host contract above.
 
 ## How the system is shaped
 

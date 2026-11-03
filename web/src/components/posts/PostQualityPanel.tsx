@@ -4,7 +4,11 @@ import { AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, Loader2, Swords
 import { BywordCard } from "@/components/layout/BywordSurface";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { InlineError, Tag, type TagTone } from "@/components/search-growth/shared";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { InlineError } from "@/components/search-growth/shared";
 import { api } from "@/lib/api";
 
 interface QualityAnalysis {
@@ -24,7 +28,7 @@ type TermResult =
   | { available: false; reason: string }
   | { available: true; keyword: string; coverage: number; covered: string[]; missing: Array<{ term: string; docs: number }>; total: number };
 
-function scoreTone(score: number): TagTone {
+function scoreStatus(score: number): StatusType {
   return score >= 80 ? "success" : score >= 50 ? "warning" : "error";
 }
 
@@ -40,11 +44,9 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
   const terms = useMutation({ mutationFn: () => api.get<TermResult>(`/product-seo/posts/${postId}/term-coverage`) });
   const result = terms.data;
 
-  if (isLoading) {
-    return <BywordCard className="mb-6 flex items-center gap-2 p-4 type-body sm:p-5"><span role="status" className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Checking quality</span></BywordCard>;
-  }
+  if (isLoading) return <BywordCard className="mb-6"><ListSkeleton rows={1} /></BywordCard>;
   if (isError || !data) {
-    return <BywordCard className="mb-6 p-4 sm:p-5"><InlineError message="The quality check could not run." onRetry={() => refetch()} /></BywordCard>;
+    return <BywordCard className="mb-6"><EmptyState size="row" tone="error" title="Could not run the quality check" description="Your draft was not changed." primaryAction={{ label: "Retry", onClick: () => refetch() }} /></BywordCard>;
   }
 
   const flagCount = data.flags.length;
@@ -55,7 +57,7 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
           <span className="min-w-0">
             <span className="type-object-title block">Quality check</span>
             <span className="type-body mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Tag tone={scoreTone(data.seoQa.score)} className="type-data">{data.seoQa.score}/100</Tag>
+              <StatusBadge status={scoreStatus(data.seoQa.score)} label={`${data.seoQa.score}/100`} showIcon={false} />
               <span>{flagCount ? `${flagCount} thing${flagCount === 1 ? "" : "s"} to fix` : "No flags"} in the saved version{data.usedKeyword ? ` · keyword “${data.usedKeyword}”` : ""}</span>
             </span>
           </span>
@@ -64,7 +66,7 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
         <CollapsibleContent className="space-y-4 border-t border-byword-border p-4 text-sm sm:p-5">
           {flagCount > 0 && (
             <ul className="space-y-1.5" aria-label="Things to fix">
-              {data.flags.map((flag) => <li key={flag} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--status-warning))]" aria-hidden="true" /><span>{flag}</span></li>)}
+              {data.flags.map((flag) => <li key={flag} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" aria-hidden="true" /><span>{flag}</span></li>)}
             </ul>
           )}
           <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2" aria-label="Checks">
@@ -73,8 +75,8 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
                 {check.ok === null
                   ? <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   : check.ok
-                    ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--status-success))]" aria-hidden="true" />
-                    : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--status-warning))]" aria-hidden="true" />}
+                    ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-status-success" aria-hidden="true" />
+                    : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" aria-hidden="true" />}
                 <span className="min-w-0">
                   <span className="font-medium">{check.label}</span>
                   <span className="sr-only">: {check.ok === null ? "not applicable" : check.ok ? "passed" : "needs work"}.</span>
@@ -84,12 +86,12 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
             ))}
           </ul>
           <ul className="flex flex-wrap gap-1.5" aria-label="Measurements">
-            <li><Tag>{data.words} words</Tag></li>
-            <li><Tag>Readability: {data.readability.level}{data.readability.fleschReadingEase !== null ? ` (${data.readability.fleschReadingEase})` : ""}</Tag></li>
-            <li><Tag>{data.avgSentenceWords} words per sentence</Tag></li>
-            <li><Tag>{data.structure.h2} H2 · {data.structure.h3} H3</Tag></li>
-            {data.keyword && <li><Tag>Keyword density {data.keyword.density}%</Tag></li>}
-            {data.aiPatterns.count > 0 && <li><Tag tone="warning">Stock phrases: {data.aiPatterns.phrases.join(", ")}</Tag></li>}
+            <li><Badge variant="outline">{data.words} words</Badge></li>
+            <li><Badge variant="outline">Readability: {data.readability.level}{data.readability.fleschReadingEase !== null ? ` (${data.readability.fleschReadingEase})` : ""}</Badge></li>
+            <li><Badge variant="outline">{data.avgSentenceWords} words per sentence</Badge></li>
+            <li><Badge variant="outline">{data.structure.h2} H2 · {data.structure.h3} H3</Badge></li>
+            {data.keyword && <li><Badge variant="outline">Keyword density {data.keyword.density}%</Badge></li>}
+            {data.aiPatterns.count > 0 && <li><StatusBadge status="warning" label={`Stock phrases: ${data.aiPatterns.phrases.join(", ")}`} /></li>}
           </ul>
 
           <div className="space-y-2 border-t border-byword-border pt-4">
@@ -97,7 +99,7 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
               {terms.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Swords className="mr-2 h-4 w-4" aria-hidden="true" />}Compare with top results
             </Button>
             <div aria-live="polite" className="space-y-1.5">
-              {terms.isError && <InlineError message={terms.error instanceof Error ? terms.error.message : "The comparison failed."} onRetry={() => terms.mutate()} />}
+              {terms.isError && <InlineError message={terms.error instanceof Error ? terms.error.message : "Could not compare with the top results. Try again."} />}
               {result && result.available === false && <p className="type-body">{result.reason}</p>}
               {result && result.available === true && (
                 <>
@@ -105,7 +107,7 @@ export function PostQualityPanel({ postId, updatedAt }: { postId: string; update
                   {result.missing.length > 0 && (
                     <>
                       <p className="type-kicker">Missing terms</p>
-                      <ul className="flex flex-wrap gap-1.5">{result.missing.slice(0, 15).map((item) => <li key={item.term}><Tag title={`${item.docs} top pages use it`}>{item.term}</Tag></li>)}</ul>
+                      <ul className="flex flex-wrap gap-1.5">{result.missing.slice(0, 15).map((item) => <li key={item.term}><Badge variant="outline" title={`${item.docs} top pages use it`}>{item.term}</Badge></li>)}</ul>
                     </>
                   )}
                 </>

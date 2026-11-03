@@ -6,21 +6,38 @@ import { userApiKeys } from "../db/schema.js";
 export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay";
 export type CredentialStatus = "usable" | "missing" | "undecryptable";
 
-function encryptionKey(): Buffer {
-  const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
-  if (!secret || secret === "dev-secret") {
+function encryptionSecrets() {
+  const active = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
+  if (!active || active === "dev-secret") {
     throw new Error("API key encryption secret is not configured");
   }
+  const previous = (process.env.API_KEY_ENCRYPTION_PREVIOUS_SECRETS || "").split(",").map((secret) => secret.trim()).filter(Boolean);
+  return [...new Set([active, ...previous])];
+}
+
+function encryptionKey(secret: string) {
   return createHash("sha256").update(secret).digest();
 }
 
+function encryptionKeyId(secret: string) {
+  return createHash("sha256").update(secret).digest("hex").slice(0, 12);
+}
+
+function decryptWith(secret: string, iv: string, tag: string, encrypted: string) {
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(secret), Buffer.from(iv, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
+}
+
 export function encryptSecret(value: string): string {
+  const [secret] = encryptionSecrets();
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [
-    "v1",
+    "v2",
+    encryptionKeyId(secret),
     iv.toString("base64url"),
     tag.toString("base64url"),
     encrypted.toString("base64url"),
@@ -28,16 +45,30 @@ export function encryptSecret(value: string): string {
 }
 
 export function decryptSecret(value: string): string {
-  const [version, iv, tag, encrypted] = value.split(":");
-  if (version !== "v1" || !iv || !tag || !encrypted) {
-    throw new Error("Invalid encrypted API key format");
+  const parts = value.split(":");
+  const secrets = encryptionSecrets();
+  if (parts[0] === "v2" && parts.length === 5) {
+    const [, keyId, iv, tag, encrypted] = parts;
+    const secret = secrets.find((candidate) => encryptionKeyId(candidate) === keyId);
+    if (!secret) throw new Error("Encrypted API key uses an unavailable key");
+    return decryptWith(secret, iv, tag, encrypted);
   }
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encrypted, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
+  if (parts[0] === "v1" && parts.length === 4) {
+    const [, iv, tag, encrypted] = parts;
+    for (const secret of secrets) {
+      try { return decryptWith(secret, iv, tag, encrypted); } catch { /* try the next configured key */ }
+    }
+  }
+  throw new Error("Invalid encrypted API key format");
+}
+
+export function secretNeedsReencryption(value: string) {
+  const [active] = encryptionSecrets();
+  return !value.startsWith(`v2:${encryptionKeyId(active)}:`);
+}
+
+export function reencryptSecret(value: string) {
+  return secretNeedsReencryption(value) ? encryptSecret(decryptSecret(value)) : value;
 }
 
 function decryptStoredSecret(value?: string | null, warn = true): string | null {

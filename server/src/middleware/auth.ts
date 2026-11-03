@@ -3,7 +3,7 @@ import { jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { users } from "../db/schema.js";
-import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
+import { SUSPENDED_ALLOWED_PATHS, bootstrapUserAccess, isApproved, isSuspended } from "../services/access-control.js";
 import { isPlaceholderValue } from "../config/runtime.js";
 import { authenticateWorkosSession } from "../services/workos-auth.js";
 
@@ -34,11 +34,12 @@ const PUBLIC_AUTH_PATHS = new Set([
   "/api/auth/workos/callback",
 ]);
 
-async function authorizeUser(c: Context, next: Next, user: { id: string; role: string; approvalStatus: string }) {
+async function authorizeUser(c: Context, next: Next, user: { id: string; role: string; approvalStatus: string; suspendedAt?: Date | null }) {
   c.set("userId", user.id);
   c.set("userRole", user.role);
   c.set("approvalStatus", user.approvalStatus);
   if (c.req.path.startsWith("/api/admin/") && user.role !== "admin") return c.json({ error: "Admin access required" }, 403);
+  if (isSuspended(user) && !SUSPENDED_ALLOWED_PATHS.has(c.req.path)) return c.json({ error: "This account is suspended", code: "account_suspended" }, 403);
   const pendingAllowed = c.req.path === "/api/auth/me" || c.req.path === "/api/settings/api-keys";
   if (!isApproved(user.role, user.approvalStatus) && !pendingAllowed) return c.json({ error: "Account approval required", approvalStatus: user.approvalStatus }, 403);
   return next();
@@ -80,6 +81,7 @@ export async function authMiddleware(c: Context, next: Next) {
         role: users.role,
         approvalStatus: users.approvalStatus,
         sessionVersion: users.sessionVersion,
+        suspendedAt: users.suspendedAt,
       })
       .from(users)
       .where(eq(users.id, userId))

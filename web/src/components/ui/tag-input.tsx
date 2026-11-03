@@ -39,7 +39,7 @@ export function TagInput({ id, value, onChange, placeholder, maxItems, described
   };
 
   return (
-    <div className={cn("flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-sm border border-input bg-card px-2 py-1.5 text-sm shadow-[inset_0_1px_2px_hsl(210_5%_20%/0.07)] transition-calm", "hover:border-foreground/30 focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/35 focus-within:ring-offset-1", limitReached && "bg-muted/30")}>
+    <div className={cn("flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-sm border border-input bg-card px-2 py-1.5 text-sm shadow-[inset_0_1px_2px_var(--field-inset)] transition-calm", "hover:border-foreground/30 focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/35 focus-within:ring-offset-1", limitReached && "bg-muted/30")}>
       {value.map((tag) => (
         <Badge key={tag} variant="secondary" className="h-6 gap-1 rounded-sm px-2">
           <span className="max-w-48 truncate">{tag}</span>

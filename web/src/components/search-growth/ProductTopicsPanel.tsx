@@ -2,13 +2,18 @@ import { useState } from "react";
 import { CalendarPlus, Loader2, Pencil, Plus, ScanSearch, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { TagInput } from "@/components/ui/tag-input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ConfirmDialog, EmptyNote, InlineError, PanelSkeleton, Tag } from "@/components/search-growth/shared";
-import { useToastAction } from "@/hooks/useToastAction";
+import { ConfirmDialog, InlineError } from "@/components/search-growth/shared";
+import { useAction } from "@/hooks/useAction";
 import { type TopicIntent, useProductTopics } from "@/hooks/useProductTopics";
 
 const intentLabel: Record<TopicIntent, string> = {
@@ -21,7 +26,7 @@ const intentLabel: Record<TopicIntent, string> = {
 
 export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) {
   const { activeSiteId, profile, generateProfile, saveProfile, discover, addToPlan, fillPlan, enableKnowledge } = useProductTopics();
-  const act = useToastAction();
+  const { act, error } = useAction();
   const [editing, setEditing] = useState(false);
   const [seeds, setSeeds] = useState<string[]>([]);
   const [rivals, setRivals] = useState<string[]>([]);
@@ -36,6 +41,7 @@ export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) 
 
   if (!activeSiteId) return null;
 
+  const analyze = () => act(() => generateProfile.mutateAsync(), { success: "Product profile updated", failure: "Could not read the site. Check that it is public and try again." });
   const toggle = (keyword: string, checked: boolean) => setSelected((current) => {
     const next = new Set(current);
     if (checked) next.add(keyword); else next.delete(keyword);
@@ -48,16 +54,16 @@ export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) 
   };
   const saveEdit = async () => {
     if (!data) return;
-    const result = await act(() => saveProfile.mutateAsync({ ...data, seedTopics: seeds, competitors: rivals }), { success: "Seeds and rivals saved", failure: "Could not save the profile" });
+    const result = await act(() => saveProfile.mutateAsync({ ...data, seedTopics: seeds, competitors: rivals }), { success: "Seeds and rivals saved", failure: "Could not save the profile. Try again." });
     if (result.ok) setEditing(false);
   };
   const addSelected = async () => {
     const count = selected.size;
-    const result = await act(() => addToPlan.mutateAsync({ keywords: [...selected] }), { success: `${count} topic${count === 1 ? "" : "s"} added to the plan`, failure: "Could not add topics", action: planAction });
+    const result = await act(() => addToPlan.mutateAsync({ keywords: [...selected] }), { success: `${count} topic${count === 1 ? "" : "s"} added to the plan`, failure: "Could not add topics to the plan. Try again.", action: planAction });
     if (result.ok) setSelected(new Set());
   };
   const fillMonth = async () => {
-    const result = await act(() => fillPlan.mutateAsync(), { failure: "Could not fill the plan" });
+    const result = await act(() => fillPlan.mutateAsync(), { failure: "Could not fill the plan. Try again." });
     if (!result.ok) return;
     const count = result.value.items.length;
     if (count) toast.success(`${count} topics scheduled, one per day`, planAction ? { action: planAction } : undefined);
@@ -70,89 +76,74 @@ export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) 
         icon={Sparkles}
         title="Product-led topics"
         description="Read your product site, then find what customers search before they know you."
-        action={(
-          <Button type="button" variant={data ? "outline" : "default"} onClick={() => act(() => generateProfile.mutateAsync(), { success: "Product profile updated", failure: "Could not read the site" })} disabled={generateProfile.isPending}>
-            {generateProfile.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <ScanSearch className="mr-2 h-4 w-4" aria-hidden="true" />}
-            {data ? "Re-read site" : "Analyze product"}
+        action={data && (
+          <Button type="button" variant="outline" onClick={analyze} disabled={generateProfile.isPending}>
+            {generateProfile.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <ScanSearch className="mr-2 h-4 w-4" aria-hidden="true" />}Re-read site
           </Button>
         )}
       />
-      <div className="space-y-4 border-t border-byword-border p-4 sm:p-5">
-        {profile.isLoading && <PanelSkeleton label="Loading product profile" rows={2} />}
-        {profile.isError && <InlineError message="The product profile could not be loaded." onRetry={() => profile.refetch()} />}
-        {!profile.isLoading && !profile.isError && !data && (
-          <EmptyNote title="No product profile yet">Analyze your site to get seed topics, rivals and a call to action. No Search Console data needed.</EmptyNote>
-        )}
 
-        {data && (
-          <>
-            <div className="space-y-3">
-              <p className="text-sm leading-6 text-foreground">{data.summary}</p>
+      {profile.isLoading && <ListSkeleton rows={2} className="border-t border-byword-border" />}
+      {profile.isError && (
+        <EmptyState tone="error" title="Could not load the product profile" description="Nothing was lost." primaryAction={{ label: "Retry", onClick: () => profile.refetch() }} className="border-t border-byword-border" />
+      )}
+      {!profile.isLoading && !profile.isError && !data && (
+        <EmptyState
+          title="No product profile yet"
+          description="Analyze your site to get seed topics, rivals and a call to action. No Search Console data needed."
+          primaryAction={{ label: generateProfile.isPending ? "Analyzing…" : "Analyze product", onClick: analyze }}
+          className="border-t border-byword-border"
+        />
+      )}
+      {error && <div className="border-t border-byword-border px-4 py-3 sm:px-5"><InlineError message={error} /></div>}
+
+      {data && (
+        <div className="space-y-4 border-t border-byword-border p-4 sm:p-5">
+          <div className="space-y-3">
+            <p className="text-sm leading-6 text-foreground">{data.summary}</p>
+            <div>
+              <p className="type-kicker">Seed topics</p>
+              <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Seed topics">
+                {data.seedTopics.map((topic) => <li key={topic}><Badge variant="outline">{topic}</Badge></li>)}
+              </ul>
+            </div>
+            {data.competitors.length > 0 && (
               <div>
-                <p className="type-kicker">Seed topics</p>
-                <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Seed topics">
-                  {data.seedTopics.map((topic) => <li key={topic}><Tag>{topic}</Tag></li>)}
+                <p className="type-kicker">Rivals</p>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Rivals">
+                  {data.competitors.map((name) => <li key={name}><Badge variant="outline">{name}</Badge></li>)}
                 </ul>
               </div>
-              {data.competitors.length > 0 && (
-                <div>
-                  <p className="type-kicker">Rivals</p>
-                  <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Rivals">
-                    {data.competitors.map((name) => <li key={name}><Tag>{name}</Tag></li>)}
-                  </ul>
-                </div>
+            )}
+            <p className="type-meta">
+              {data.source === "ai" ? "AI profile" : "Basic profile. Add an AI key for a deeper one."} · {data.pagesRead.length} page{data.pagesRead.length === 1 ? "" : "s"} read
+            </p>
+          </div>
+
+          {knowledge?.saved && (
+            <p className="rounded-sm border border-byword-border bg-muted/40 px-3 py-2 text-sm leading-6">
+              {knowledge.enabled
+                ? "Product facts are in this site's knowledge base and are used when drafts are written."
+                : "Product facts are saved to this site's knowledge base, but it is switched off, so drafts will not use them."}
+              {!knowledge.enabled && (
+                <Button type="button" variant="link" size="sm" className="ml-1 h-auto p-0 text-sm" disabled={enableKnowledge.isPending} onClick={() => act(() => enableKnowledge.mutateAsync(), { success: "Drafts for this site now use your product facts", failure: "Could not switch on the knowledge base. Try again." })}>
+                  Use product facts in drafts
+                </Button>
               )}
-              <p className="type-meta">
-                {data.source === "ai" ? "AI profile" : "Basic profile. Add an AI key for a deeper one."} · {data.pagesRead.length} page{data.pagesRead.length === 1 ? "" : "s"} read
-              </p>
-            </div>
+            </p>
+          )}
 
-            {knowledge?.saved && (
-              <p className="rounded-sm border border-byword-border bg-muted/40 px-3 py-2 text-sm leading-6">
-                {knowledge.enabled
-                  ? "Product facts are in this site's knowledge base and are used when drafts are written."
-                  : "Product facts are saved to this site's knowledge base, but it is switched off, so drafts will not use them."}
-                {!knowledge.enabled && (
-                  <Button type="button" variant="link" size="sm" className="ml-1 h-auto p-0 text-sm" disabled={enableKnowledge.isPending} onClick={() => act(() => enableKnowledge.mutateAsync(), { success: "Drafts for this site will now use your product facts", failure: "Could not switch on the knowledge base" })}>
-                    Use product facts in drafts
-                  </Button>
-                )}
-              </p>
-            )}
-
-            {editing && (
-              <form className="grid gap-4 rounded-sm border border-byword-border p-4 lg:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void saveEdit(); }}>
-                <div className="space-y-1.5">
-                  <Label htmlFor="seed-topics">Seed topics</Label>
-                  <TagInput id="seed-topics" value={seeds} onChange={setSeeds} maxItems={10} placeholder="hair growth tracker" describedBy="seed-help" />
-                  <p id="seed-help" className="type-meta">Searches a customer would type. Press Enter or comma to add.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rival-names">Rivals</Label>
-                  <TagInput id="rival-names" value={rivals} onChange={setRivals} maxItems={8} placeholder="Hairmetric" describedBy="rival-help" />
-                  <p id="rival-help" className="type-meta">Used for alternatives and versus topics.</p>
-                </div>
-                <div className="flex flex-wrap gap-2 lg:col-span-2">
-                  <Button type="submit" disabled={saveProfile.isPending || seeds.length === 0}>{saveProfile.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}Save changes</Button>
-                  <Button type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-                </div>
-              </form>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => act(() => discover.mutateAsync(), { success: "Topics found", failure: "Could not find topics" })} disabled={discover.isPending}>
-                {discover.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />}Find topics
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setConfirmFill(true)} disabled={fillPlan.isPending}>
-                {fillPlan.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />}Fill my month
-              </Button>
-              {!editing && <Button type="button" variant="outline" onClick={startEdit}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />Edit seeds and rivals</Button>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {discover.isError && <div className="border-t border-byword-border p-4 sm:p-5"><InlineError message={discover.error instanceof Error ? discover.error.message : "Topics could not be found."} onRetry={() => discover.mutate()} /></div>}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => act(() => discover.mutateAsync(), { success: "Topics found", failure: "Could not find topics. Try again." })} disabled={discover.isPending}>
+              {discover.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />}Find topics
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setConfirmFill(true)} disabled={fillPlan.isPending}>
+              {fillPlan.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <CalendarPlus className="mr-2 h-4 w-4" aria-hidden="true" />}Fill my month
+            </Button>
+            <Button type="button" variant="outline" onClick={startEdit}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />Edit seeds and rivals</Button>
+          </div>
+        </div>
+      )}
 
       {topics.length > 0 && (
         <div className="border-t border-byword-border">
@@ -182,16 +173,16 @@ export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) 
                   <TableRow key={topic.keyword} data-state={selected.has(topic.keyword) ? "selected" : undefined}>
                     <TableCell><Checkbox aria-label={`Select ${topic.keyword}`} checked={selected.has(topic.keyword)} onCheckedChange={(checked) => toggle(topic.keyword, checked === true)} /></TableCell>
                     <TableCell className="min-w-[14rem]">
-                      <span className="type-object-title">{topic.keyword}</span>
+                      <div className="type-object-title">{topic.keyword}</div>
                       {(topic.question || topic.template || topic.overlap) && (
-                        <span className="mt-1 flex flex-wrap gap-1">
-                          {topic.question && <Tag>FAQ idea</Tag>}
-                          {topic.template && <Tag>Template</Tag>}
-                          {topic.overlap && <Tag tone="warning" title={`Similar to: ${topic.overlap.title}`}>Already covered</Tag>}
-                        </span>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {topic.question && <Badge variant="outline">FAQ idea</Badge>}
+                          {topic.template && <Badge variant="outline">Template</Badge>}
+                          {topic.overlap && <span title={`Similar to: ${topic.overlap.title}`}><StatusBadge status="warning" label="Already covered" /></span>}
+                        </div>
                       )}
                     </TableCell>
-                    <TableCell><Tag>{intentLabel[topic.intent]}</Tag></TableCell>
+                    <TableCell><Badge variant="outline">{intentLabel[topic.intent]}</Badge></TableCell>
                     <TableCell className="hidden text-sm text-muted-foreground md:table-cell">{topic.cluster === topic.keyword ? <span aria-label="Not clustered">—</span> : topic.cluster}</TableCell>
                     {showVolume && <TableCell className="type-data text-right">{topic.volume != null ? topic.volume.toLocaleString() : <span aria-label="No data">—</span>}</TableCell>}
                     <TableCell className="type-data text-right">{topic.score}</TableCell>
@@ -202,6 +193,34 @@ export function ProductTopicsPanel({ onOpenPlan }: { onOpenPlan?: () => void }) 
           </div>
         </div>
       )}
+
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Seeds and rivals</DialogTitle>
+            <DialogDescription>Topic discovery and the alternatives and versus topics start from these.</DialogDescription>
+          </DialogHeader>
+          <form id="seeds-rivals-form" className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveEdit(); }}>
+            <div className="space-y-1.5">
+              <Label htmlFor="seed-topics">Seed topics</Label>
+              <TagInput id="seed-topics" value={seeds} onChange={setSeeds} maxItems={10} placeholder="hair growth tracker" describedBy="seed-help" />
+              <p id="seed-help" className="type-meta">Searches a customer would type. Press Enter or comma to add.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rival-names">Rivals</Label>
+              <TagInput id="rival-names" value={rivals} onChange={setRivals} maxItems={8} placeholder="Hairmetric" describedBy="rival-help" />
+              <p id="rival-help" className="type-meta">Names of competing products.</p>
+            </div>
+            {error && <InlineError message={error} />}
+          </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button type="submit" form="seeds-rivals-form" disabled={saveProfile.isPending || seeds.length === 0}>
+              {saveProfile.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmFill}

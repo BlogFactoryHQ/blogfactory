@@ -1,6 +1,6 @@
 FROM postgres:18-alpine
 
-RUN apk add --no-cache age aws-cli
+RUN apk add --no-cache age aws-cli curl
 
 COPY backup-lib.sh backup.sh restore-check.sh scheduler.sh /usr/local/bin/
 

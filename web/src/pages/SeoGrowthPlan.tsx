@@ -3,19 +3,20 @@ import { Link, useSearchParams } from "react-router-dom";
 import { CalendarDays, FilePlus2, List, Loader2, Plus, RefreshCw, Target } from "lucide-react";
 import { toast } from "sonner";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
-import { KeywordResearchPanel } from "@/components/search-growth/KeywordResearchPanel";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { GrowthToolsPanel } from "@/components/search-growth/GrowthToolsPanel";
-import { TopicalMapPanel } from "@/components/search-growth/TopicalMapPanel";
+import { KeywordResearchPanel } from "@/components/search-growth/KeywordResearchPanel";
 import { ProductExtrasPanel } from "@/components/search-growth/ProductExtrasPanel";
 import { ProductTopicsPanel } from "@/components/search-growth/ProductTopicsPanel";
-import { Badge } from "@/components/ui/badge";
+import { TopicalMapPanel } from "@/components/search-growth/TopicalMapPanel";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import { type SeoActionType, type SeoPlanItem, useSeoGrowthPlan } from "@/hooks/useSeoGrowthPlan";
 
 const actionLabels: Record<SeoActionType, string> = {
@@ -26,16 +27,31 @@ const actionLabels: Record<SeoActionType, string> = {
   indexing_investigation: "Indexing check",
 };
 
-const stageTone: Record<SeoPlanItem["stage"], string> = {
-  planned: "border-slate-300 text-slate-700",
-  drafting: "border-blue-300 bg-blue-50 text-blue-700",
-  review: "border-amber-300 bg-amber-50 text-amber-700",
-  delivered: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  blocked: "border-red-300 bg-red-50 text-red-700",
-  measuring: "border-violet-300 bg-violet-50 text-violet-700",
+const stageBadge: Record<SeoPlanItem["stage"], { status: StatusType; label: string }> = {
+  planned: { status: "pending", label: "Planned" },
+  drafting: { status: "running", label: "Drafting" },
+  review: { status: "warning", label: "In review" },
+  delivered: { status: "success", label: "Delivered" },
+  blocked: { status: "error", label: "Blocked" },
+  measuring: { status: "active", label: "Measuring" },
 };
 
-function PlanView() {
+const summaryLabels: Record<string, string> = {
+  total: "Total",
+  planned: "Planned",
+  drafting: "Drafting",
+  review: "Review",
+  delivered: "Delivered",
+  blocked: "Blocked",
+  measuring: "Measuring",
+};
+
+function StageBadge({ stage }: { stage: SeoPlanItem["stage"] }) {
+  const badge = stageBadge[stage] || { status: "pending" as StatusType, label: stage };
+  return <StatusBadge status={badge.status} label={badge.label} />;
+}
+
+function PlanView({ onOpenTopics }: { onOpenTopics: () => void }) {
   const { activeSiteId, plan, generate, addItem, updateItem } = useSeoGrowthPlan();
   const [view, setView] = useState<"list" | "calendar">("list");
   const [targetQuery, setTargetQuery] = useState("");
@@ -69,8 +85,8 @@ function PlanView() {
   };
 
   if (!activeSiteId) return <PlanState title="Select a site" description="Choose an active site before creating an SEO plan." />;
-  if (plan.isLoading) return <PlanState title="Loading SEO plan" description="Reading planned work and outcomes." loading />;
-  if (plan.isError) return <PlanState title="SEO plan unavailable" description={plan.error.message} />;
+  if (plan.isLoading) return <BywordCard><ListSkeleton rows={4} /></BywordCard>;
+  if (plan.isError) return <BywordCard><EmptyState size="panel" tone="error" title="SEO plan unavailable" description={`${plan.error.message} Nothing was changed.`} primaryAction={{ label: "Retry", onClick: () => plan.refetch() }} /></BywordCard>;
 
   return (
     <div className="space-y-6">
@@ -83,7 +99,7 @@ function PlanView() {
         />
         <div className="grid gap-3 border-t border-byword-border p-4 sm:grid-cols-3 lg:grid-cols-7">
           {(["total", "planned", "drafting", "review", "delivered", "blocked", "measuring"] as const).map((key) => (
-            <div key={key} className="rounded-md border border-byword-border bg-muted/20 p-3"><p className="font-mono text-[10px] uppercase text-muted-foreground">{key}</p><p className="mt-1 text-xl font-semibold">{plan.data?.summary[key] || 0}</p></div>
+            <div key={key} className="rounded-sm border border-border bg-muted/40 p-3"><p className="type-kicker">{summaryLabels[key]}</p><p className="mt-1 text-xl font-semibold">{plan.data?.summary[key] || 0}</p></div>
           ))}
         </div>
         <p className="border-t border-byword-border px-4 py-3 font-mono text-[10px] uppercase text-muted-foreground">GSC data through {plan.data?.freshness.dataThrough || "not synced"} · Regeneration preserves active and completed work</p>
@@ -96,7 +112,7 @@ function PlanView() {
           <div className="space-y-1.5"><Label>Action</Label><Select value={actionType} onValueChange={(value) => setActionType(value as SeoActionType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(actionLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-1.5"><Label>Page URL {actionType === "new_content" && "(optional)"}</Label><Input value={pageUrl} onChange={(event) => setPageUrl(event.target.value)} placeholder="https://example.com/page" /></div>
           <div className="space-y-1.5"><Label>Planned date</Label><Input type="date" value={plannedFor} onChange={(event) => setPlannedFor(event.target.value)} /></div>
-          <div className="flex items-end"><Button className="w-full" onClick={submitItem} disabled={!targetQuery.trim() || addItem.isPending || (actionType !== "new_content" && !pageUrl.trim())}>{addItem.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Add</Button></div>
+          <div className="flex items-end"><Button variant="outline" className="w-full" onClick={submitItem} disabled={!targetQuery.trim() || addItem.isPending || (actionType !== "new_content" && !pageUrl.trim())}>{addItem.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Add</Button></div>
         </div>
       </BywordCard>
 
@@ -105,14 +121,14 @@ function PlanView() {
           <div><h3 className="font-semibold">Planned work</h3><p className="text-sm text-muted-foreground">Evidence, blockers, dates, and handoff state.</p></div>
           <div className="flex rounded-md border border-byword-border p-1"><Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")}><List className="mr-1.5 h-4 w-4" />List</Button><Button variant={view === "calendar" ? "secondary" : "ghost"} size="sm" onClick={() => setView("calendar")}><CalendarDays className="mr-1.5 h-4 w-4" />Calendar</Button></div>
         </div>
-        {!items.length ? <div className="border-t border-byword-border p-10 text-center"><Target className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">No planned work yet</p><p className="mt-1 text-sm text-muted-foreground">Add topics from the Topics or Research views, or sync Search Console and generate an evidence-backed plan.</p></div> : view === "list" ? (
+        {!items.length ? <EmptyState icon={Target} title="No planned work yet" description="Find topics from your product site, or sync Search Console and generate an evidence-backed 30-day plan." primaryAction={{ label: "Find topics", onClick: onOpenTopics }} className="border-t border-byword-border" /> : view === "list" ? (
           <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Work</TableHead><TableHead>Evidence</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <PlanRow key={item.id} item={item} siteId={activeSiteId} campaignId={plan.data!.campaign!.id} onUpdate={(input) => updateItem.mutate({ id: item.id, ...input })} />)}</TableBody></Table></div>
         ) : (
-          <div className="grid gap-px border-t border-byword-border bg-byword-border sm:grid-cols-2 lg:grid-cols-4">{grouped.map(([date, dateItems]) => <div key={date} className="min-h-40 bg-card p-3"><p className="font-mono text-[11px] font-semibold uppercase">{date}</p><div className="mt-3 space-y-2">{dateItems.map((item) => <div key={item.id} className="rounded-md border border-byword-border p-3"><Badge variant="outline" className={stageTone[item.stage]}>{item.stage}</Badge><p className="mt-2 text-sm font-medium">{item.keyword}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}</p></div>)}</div></div>)}</div>
+          <div className="grid gap-px border-t border-byword-border bg-byword-border sm:grid-cols-2 lg:grid-cols-4">{grouped.map(([date, dateItems]) => <div key={date} className="min-h-40 bg-card p-3"><p className="font-mono text-[11px] font-semibold uppercase">{date}</p><div className="mt-3 space-y-2">{dateItems.map((item) => <div key={item.id} className="rounded-md border border-byword-border p-3"><StageBadge stage={item.stage} /><p className="mt-2 text-sm font-medium">{item.keyword}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}</p></div>)}</div></div>)}</div>
         )}
       </BywordCard>
 
-      <TopicalMapPanel />
+      <TopicalMapPanel onOpenTopics={onOpenTopics} />
     </div>
   );
 }
@@ -130,7 +146,6 @@ export function SeoGrowthPlanPanel() {
     if (next === "plan") nextParams.delete("view"); else nextParams.set("view", next);
     setParams(nextParams, { replace: true });
   };
-  const openPlan = () => setView("plan");
 
   return (
     <Tabs value={view} onValueChange={setView} className="space-y-6">
@@ -140,12 +155,12 @@ export function SeoGrowthPlanPanel() {
         <TabsTrigger value="research">Research</TabsTrigger>
         <TabsTrigger value="monitor">Monitor</TabsTrigger>
       </TabsList>
-      <TabsContent value="plan" className="mt-0"><PlanView /></TabsContent>
+      <TabsContent value="plan" className="mt-0"><PlanView onOpenTopics={() => setView("topics")} /></TabsContent>
       <TabsContent value="topics" className="mt-0 space-y-6">
-        <ProductTopicsPanel onOpenPlan={openPlan} />
-        <ProductExtrasPanel onOpenPlan={openPlan} />
+        <ProductTopicsPanel onOpenPlan={() => setView("plan")} />
+        <ProductExtrasPanel onOpenPlan={() => setView("plan")} />
       </TabsContent>
-      <TabsContent value="research" className="mt-0"><KeywordResearchPanel onOpenPlan={openPlan} /></TabsContent>
+      <TabsContent value="research" className="mt-0"><KeywordResearchPanel onOpenPlan={() => setView("plan")} /></TabsContent>
       <TabsContent value="monitor" className="mt-0"><GrowthToolsPanel /></TabsContent>
     </Tabs>
   );
@@ -159,11 +174,11 @@ function PlanRow({ item, siteId, campaignId, onUpdate }: { item: SeoPlanItem; si
     <TableCell><Input aria-label={`Planned date for ${item.keyword || "item"}`} className="w-36" type="date" value={item.plannedFor || ""} onChange={(event) => onUpdate({ plannedFor: event.target.value })} /></TableCell>
     <TableCell className="max-w-[300px]"><p className="font-medium">{item.keyword || item.title}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}{item.pageUrl ? ` · ${item.pageUrl}` : ""}</p>{item.blocker && <p className="mt-1 text-xs text-destructive">{item.blocker}</p>}</TableCell>
     <TableCell className="max-w-[320px]"><p className="text-sm">{item.evidence?.recommendation || item.input}</p><p className="mt-1 font-mono text-[10px] uppercase text-muted-foreground">{item.evidence?.source || "manual"}{item.evidence?.baseline_date ? ` · baseline ${item.evidence.baseline_date}` : ""}</p></TableCell>
-    <TableCell><Badge variant="outline" className={cn("capitalize", stageTone[item.stage])}>{item.stage}</Badge></TableCell>
-    <TableCell className="text-right"><div className="flex justify-end gap-2">{canCreate && <Button size="sm" asChild><Link to={`/create?${createParams.toString()}`}><FilePlus2 className="mr-1.5 h-4 w-4" />Create draft</Link></Button>}{item.postId && <Button size="sm" variant="outline" asChild><Link to={`/library/posts/${item.postId}/preview`}>Review</Link></Button>}{item.actionType === "indexing_investigation" && item.planningStatus !== "completed" && <Button size="sm" variant="outline" onClick={() => onUpdate({ planningStatus: "in_progress" })}>Start check</Button>}{item.planningStatus === "in_progress" && <Button size="sm" variant="outline" onClick={() => onUpdate({ planningStatus: "completed" })}>Mark done</Button>}</div></TableCell>
+    <TableCell><StageBadge stage={item.stage} /></TableCell>
+    <TableCell className="text-right"><div className="flex justify-end gap-2">{canCreate && <Button size="sm" variant="outline" asChild><Link to={`/create?${createParams.toString()}`}><FilePlus2 className="mr-1.5 h-4 w-4" />Create draft</Link></Button>}{item.postId && <Button size="sm" variant="outline" asChild><Link to={`/library/posts/${item.postId}/preview`}>Review</Link></Button>}{item.actionType === "indexing_investigation" && item.planningStatus !== "completed" && <Button size="sm" variant="outline" onClick={() => onUpdate({ planningStatus: "in_progress" })}>Start check</Button>}{item.planningStatus === "in_progress" && <Button size="sm" variant="outline" onClick={() => onUpdate({ planningStatus: "completed" })}>Mark done</Button>}</div></TableCell>
   </TableRow>;
 }
 
-function PlanState({ title, description, loading = false }: { title: string; description: string; loading?: boolean }) {
-  return <BywordCard><div className="flex items-center gap-3 p-6">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarDays className="h-5 w-5 text-muted-foreground" />}<div><h3 className="font-semibold">{title}</h3><p className="text-sm text-muted-foreground">{description}</p></div></div></BywordCard>;
+function PlanState({ title, description }: { title: string; description: string }) {
+  return <BywordCard><div className="flex items-center gap-3 p-6"><CalendarDays className="h-5 w-5 text-muted-foreground" /><div><h3 className="font-semibold">{title}</h3><p className="text-sm text-muted-foreground">{description}</p></div></div></BywordCard>;
 }

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { campaignItems, campaigns, jobs, userSettings } from "../db/schema.js";
+import { campaignItems, campaigns, jobs, posts, userSettings } from "../db/schema.js";
 import { generateContent } from "./generate-content.js";
 import type { CampaignMode, OutlineHeading } from "./campaign-parser.js";
 import { programmaticSeoContext, renderProgrammaticArticle, type ProgrammaticTemplate, type ProgrammaticRow } from "./programmatic.js";
@@ -14,6 +14,11 @@ const STALE_CAMPAIGN_ITEM_MESSAGE =
 
 type Campaign = typeof campaigns.$inferSelect;
 type CampaignItem = typeof campaignItems.$inferSelect;
+
+export function recoveredCampaignPostId(resultPostIds: string[] | null, existingPostIds: ReadonlySet<string>) {
+  const postId = Array.isArray(resultPostIds) ? resultPostIds[0] : null;
+  return postId && existingPostIds.has(postId) ? postId : null;
+}
 
 function imageConfigFromSettings(settings: typeof userSettings.$inferSelect | undefined) {
   const imageConfig: Record<string, unknown> = {};
@@ -149,13 +154,17 @@ export async function reconcileStaleCampaignItems(campaignId: string, userId?: s
       .from(jobs)
       .where(inArray(jobs.id, jobIds))
     : [];
+  const candidatePostIds = [...new Set(itemJobs.flatMap((job) => job.resultPostIds?.slice(0, 1) || []))];
+  const existingPostIds = new Set(candidatePostIds.length
+    ? (await db.select({ id: posts.id }).from(posts).where(inArray(posts.id, candidatePostIds))).map((post) => post.id)
+    : []);
   const jobById = new Map(itemJobs.map((job) => [job.id, job]));
   let completed = 0;
   let failed = 0;
 
   for (const item of staleItems) {
     const job = item.jobId ? jobById.get(item.jobId) : null;
-    const postId = Array.isArray(job?.resultPostIds) ? job.resultPostIds[0] : null;
+    const postId = recoveredCampaignPostId(job?.resultPostIds || null, existingPostIds);
 
     if (postId) {
       if (job && job.status === "running") {

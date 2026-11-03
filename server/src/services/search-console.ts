@@ -259,31 +259,47 @@ export async function getSearchConsoleInsights(userId: string, siteId: string) {
     .where(and(eq(searchConsoleIntegrations.userId, userId), eq(searchConsoleIntegrations.siteId, siteId)))
     .limit(1);
 
-  if (!integration) return buildSearchConsoleInsights({ metrics: [] });
+  if (!integration) return { ...buildSearchConsoleInsights({ metrics: [] }), unavailable: null as string | null };
 
-  const cached = await cachedSearchConsoleQuery(userId, siteId, "stored_insights", {
-    lastSyncAt: integration.lastSyncAt?.toISOString() || null,
-  }, async () => {
-    const performance = await getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput());
-    const range = storedSearchConsoleMetricRange(performance.range);
-    const metrics = await db.select({
-      date: searchConsoleMetrics.date,
-      pageUrl: searchConsoleMetrics.pageUrl,
-      query: searchConsoleMetrics.query,
-      clicks: searchConsoleMetrics.clicks,
-      impressions: searchConsoleMetrics.impressions,
-      ctr: searchConsoleMetrics.ctr,
-      position: searchConsoleMetrics.position,
-    }).from(searchConsoleMetrics).where(and(
-      eq(searchConsoleMetrics.userId, userId),
-      eq(searchConsoleMetrics.siteId, siteId),
-      gte(searchConsoleMetrics.date, range.startDate),
-      lte(searchConsoleMetrics.date, range.endDate),
-    ));
-    return buildSearchConsoleInsights({ integration: serializeSearchConsoleIntegration(integration), performance, metrics });
-  }, false, STORED_INSIGHTS_CACHE_MS);
-  const { cached: _cached, fetchedAt: _fetchedAt, stale: _stale, ...insights } = cached;
-  return insights;
+  try {
+    const cached = await cachedSearchConsoleQuery(userId, siteId, "stored_insights", {
+      lastSyncAt: integration.lastSyncAt?.toISOString() || null,
+    }, async () => {
+      const performance = await getCanonicalSearchConsolePerformance(userId, siteId, defaultCanonicalInput());
+      const metrics = await storedSearchConsoleMetrics(userId, siteId, storedSearchConsoleMetricRange(performance.range));
+      return buildSearchConsoleInsights({ integration: serializeSearchConsoleIntegration(integration), performance, metrics });
+    }, false, STORED_INSIGHTS_CACHE_MS);
+    const { cached: _cached, fetchedAt: _fetchedAt, stale: _stale, ...insights } = cached;
+    return { ...insights, unavailable: null as string | null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Search Console request failed";
+    console.warn("[search-console] Live insights unavailable; serving stored metrics", { siteId, error: message });
+    const metrics = await storedSearchConsoleMetrics(userId, siteId, storedInsightsFallbackRange(searchConsoleDate(), integration.lastSyncAt));
+    return { ...buildSearchConsoleInsights({ integration: serializeSearchConsoleIntegration(integration), metrics }), unavailable: message };
+  }
+}
+
+function storedSearchConsoleMetrics(userId: string, siteId: string, range: { startDate: string; endDate: string }) {
+  return db.select({
+    date: searchConsoleMetrics.date,
+    pageUrl: searchConsoleMetrics.pageUrl,
+    query: searchConsoleMetrics.query,
+    clicks: searchConsoleMetrics.clicks,
+    impressions: searchConsoleMetrics.impressions,
+    ctr: searchConsoleMetrics.ctr,
+    position: searchConsoleMetrics.position,
+  }).from(searchConsoleMetrics).where(and(
+    eq(searchConsoleMetrics.userId, userId),
+    eq(searchConsoleMetrics.siteId, siteId),
+    gte(searchConsoleMetrics.date, range.startDate),
+    lte(searchConsoleMetrics.date, range.endDate),
+  ));
+}
+
+export function storedInsightsFallbackRange(asOf: string, lastSyncAt: Date | string | null, days = 56) {
+  const synced = lastSyncAt ? isoDate(new Date(lastSyncAt)) : null;
+  const anchor = synced && synced < asOf ? synced : asOf;
+  return { startDate: shiftDate(anchor, -(days - 1)), endDate: asOf };
 }
 
 export function storedSearchConsoleMetricRange(range: CanonicalSearchPerformance["range"]) {
@@ -1214,7 +1230,7 @@ async function googleAccessToken(credentials: GoogleCredentials) {
     return refreshOAuthAccessToken(credentials);
   }
 
-  const tokenUri = credentials.token_uri || GOOGLE_TOKEN_URI;
+  const tokenUri = GOOGLE_TOKEN_URI;
   const assertion = await new SignJWT({ scope: SEARCH_CONSOLE_SCOPE })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(credentials.client_email)
@@ -1239,7 +1255,7 @@ async function googleAccessToken(credentials: GoogleCredentials) {
 }
 
 async function refreshOAuthAccessToken(credentials: OAuthCredentials) {
-  const response = await fetch(credentials.token_uri || GOOGLE_TOKEN_URI, {
+  const response = await fetch(GOOGLE_TOKEN_URI, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

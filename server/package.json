@@ -14,6 +14,7 @@
     "test:postgres:product-seo": "bun run src/run-product-seo-integration.ts",
     "test:mcp:pilot": "bun run src/run-mcp-pilot-smoke.ts",
     "credentials:check": "bun run src/credentials-check.ts",
+    "credentials:reencrypt": "bun run src/scripts/reencrypt-credentials.ts",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "billing:catalog": "bun run src/scripts/provision-polar-catalog.ts",

@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { SiteProvider } from "@/hooks/useSites";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { AdminRoute, ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { RequireSites } from "@/components/layout/RequireSites";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { SectionTabs } from "@/components/layout/SectionTabs";
@@ -31,6 +32,9 @@ const SearchGrowth = lazy(() => import("@/pages/SearchGrowth"));
 const UsageAnalytics = lazy(() => import("@/pages/UsageAnalytics"));
 const ImageGallery = lazy(() => import("@/pages/ImageGallery"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
+const AdminCustomers = lazy(() => import("@/pages/AdminCustomers"));
+const AdminCustomerDetail = lazy(() => import("@/pages/AdminCustomerDetail"));
+const AdminStatus = lazy(() => import("@/pages/AdminStatus"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Sites = lazy(() => import("@/pages/Sites"));
 const McpOAuthLogin = lazy(() => import("@/pages/McpOAuthLogin"));
@@ -43,6 +47,7 @@ const PageFallback = () => <div className="min-h-screen bg-background" />;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange storageKey="blogfactory-theme">
     <AuthProvider>
       <SiteProvider>
         <TooltipProvider>
@@ -55,7 +60,15 @@ const App = () => (
                   <Route element={<ProtectedRoute />}>
                     <Route path="/mcp/oauth" element={<McpOAuthLogin />} />
                     <Route path="/onboarding" element={<Onboarding />} />
-                    <Route element={<AppLayout />}><Route path="/billing" element={<Billing />} /></Route>
+                    <Route element={<AppLayout />}>
+                      <Route path="/billing" element={<Billing />} />
+                      <Route element={<AdminRoute />}>
+                        <Route path="/admin/status" element={<AdminStatus />} />
+                        <Route path="/admin/users" element={<AdminUsers />} />
+                        <Route path="/admin/customers" element={<AdminCustomers />} />
+                        <Route path="/admin/customers/:id" element={<AdminCustomerDetail />} />
+                      </Route>
+                    </Route>
                     <Route element={<RequireSites />}>
                       <Route path="/library/posts/:id/preview" element={<PostPreviewPage />} />
                       <Route element={<AppLayout />}>
@@ -91,7 +104,6 @@ const App = () => (
                           <Route path="article-settings" element={<Settings />} />
                           <Route path="usage" element={<ErrorBoundary><UsageAnalytics /></ErrorBoundary>} />
                         </Route>
-                        <Route path="/admin/users" element={<AdminUsers />} />
                       </Route>
                     </Route>
                   </Route>
@@ -103,6 +115,7 @@ const App = () => (
         </TooltipProvider>
       </SiteProvider>
     </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

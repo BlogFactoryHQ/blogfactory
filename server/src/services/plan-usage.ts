@@ -20,7 +20,7 @@ async function reserveWith(executor: QuotaExecutor, userId: string, origin: Draf
   const used = plan === "cloud"
     ? Number(usage.manual_completed) + Number(usage.manual_reserved) + Number(usage.automated_completed) + Number(usage.automated_reserved)
     : Number(usage.automated_completed) + Number(usage.automated_reserved);
-  if (used >= limit) throw new ApiError(429, "plan_quota_reached", "Monthly draft quota reached");
+  if (used >= limit) throw new ApiError(429, "plan_quota_reached", `Monthly draft quota of ${limit} reached`);
   const [reservation] = await executor.insert(planUsageReservations).values({ userId, operationKey, periodStart, origin, amount: 1 }).returning({ id: planUsageReservations.id });
   const column = origin === "manual" ? sql.raw("manual_reserved") : sql.raw("automated_reserved");
   await executor.execute(sql`UPDATE plan_usage_monthly SET ${column} = ${column} + 1, updated_at = NOW() WHERE user_id = ${userId} AND period_start = ${periodStart}`);

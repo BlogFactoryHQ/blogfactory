@@ -8,7 +8,20 @@ The Docker Compose self-host contract is documented separately in [self-hosting.
 
 Self-hosted production sets `BLOGFACTORY_SELF_HOSTED=true`, which rejects missing and placeholder database, JWT, encryption, cron, administrator, origin, and S3 configuration before serving. `/api/health` remains liveness; `/api/ready` checks PostgreSQL plus S3 bucket access and redacts failure details.
 
-OAuth is fail-closed: configure `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together or leave all three unset. `MCP_RESOURCE_URL` must be an HTTPS URL ending in `/mcp`. When MCP OAuth uses a different WorkOS environment than hosted browser sign-in, set `MCP_WORKOS_API_KEY` to that environment's key; MCP OAuth prefers it over `WORKOS_API_KEY`.
+Cloud requires a dedicated `API_KEY_ENCRYPTION_SECRET` that differs from
+`JWT_SECRET`. To rotate it, set the new active secret, put the old secret in
+`API_KEY_ENCRYPTION_PREVIOUS_SECRETS`, deploy, and run the dry-run first:
+
+```bash
+npm run credentials:reencrypt --workspace=server
+API_KEY_REENCRYPT_ALLOW_WRITES=1 npm run credentials:reencrypt --workspace=server -- --write
+```
+
+Run the dry-run again until it reports zero, verify stored connections, then
+remove `API_KEY_ENCRYPTION_PREVIOUS_SECRETS`. The command reports counts only;
+it never prints decrypted credentials.
+
+OAuth is fail-closed: configure `WORKOS_AUTHKIT_ISSUER`, `MCP_RESOURCE_URL`, and `WORKOS_API_KEY` together or leave all three unset. `MCP_RESOURCE_URL` must be an HTTPS URL ending in `/mcp`. When MCP OAuth uses a different WorkOS environment than hosted browser sign-in, set `MCP_WORKOS_API_KEY` to that environment's key; MCP OAuth prefers it over `WORKOS_API_KEY`. `MCP_LEGACY_RESOURCE_URLS` is an optional, comma-separated transition-only allowlist of prior `/mcp` token audiences; it never changes advertised metadata and should be removed after clients reconnect and old tokens expire.
 
 ## Database migrations
 
@@ -16,26 +29,27 @@ Run `npm run db:migrate` against the target database before using code that requ
 
 For an existing database that predates the migration ledger, first confirm its schema contains every checked-in migration. Then use `MIGRATION_BASELINE_EXISTING=true` once to record the baseline without replaying historical SQL.
 
-Never run PostgreSQL integration tests against shared production Neon. Use a disposable database.
+Never run PostgreSQL integration tests against the shared production database.
+Use a disposable database.
 
 ## Production delivery
 
-The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core
-through a fail-closed sync workflow, validates it, and publishes API, web, and
-backup images to GHCR. Production runs those images by immutable digest on the
-Hetzner CX23 Compose stack. GitHub Actions does not SSH-deploy or automatically
-deploy production to Vercel.
+The private `BlogFactoryHQ/blogfactory-cloud` repository merges this public core through a fail-closed sync workflow, validates it, and builds API and web images in GHCR. Production pins those images by SHA-256 digest in a Docker Compose stack on the Hetzner Nuremberg host:
 
-Caddy and Nginx route these backend surfaces to the private Hono container:
+- PostgreSQL 18 on a named host volume, private to the Compose network;
+- one-shot role initialization and migration using the local owner role;
+- Bun/Hono API using the local least-privilege runtime role;
+- persistent Bun worker for campaigns, SEO metadata, and deferred images;
+- six-hour age-encrypted backup scheduler writing to private EU R2;
+- Nginx web container, the only Compose service bound to the host loopback interface.
 
-- `/api/*`
-- `/mcp`
-- `/.well-known/oauth-protected-resource`
+Caddy terminates origin TLS and forwards `app.blogfactory.io` to the loopback
+web port. Cloudflare proxies the public hostname to Hetzner. Production data is
+stored in the private PostgreSQL service; images and encrypted database backups
+are stored in a private EU Cloudflare R2 bucket. No MinIO, Redis, or external
+queue runs in the managed Cloud stack.
 
-The private `BlogFactoryHQ/blogfactory-marketing` repository owns the
-Cloudflare-fronted public apex. This repository owns the open-source core, while
-private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API
-deployment on Hetzner. The production host split is:
+The private `BlogFactoryHQ/blogfactory-marketing` repository owns the Cloudflare Pages public apex. This repository owns the open-source core, while private `BlogFactoryHQ/blogfactory-cloud` owns the authenticated app/API deployment. The production host split is:
 
 - [blogfactory.io](https://blogfactory.io) serves the marketing one-pager; `www` redirects there.
 - [app.blogfactory.io](https://app.blogfactory.io) serves the React application and same-origin `/api/*`.
@@ -47,29 +61,24 @@ Release flow:
 1. Preserve unrelated worktree changes and inspect the intended diff.
 2. Run checks proportional to the change.
 3. Commit and push `main` when shipping is authorized.
-4. Verify that the private Cloud repository contains the public commit, then wait for its `Publish Cloud images` run.
-5. Copy all three `ghcr.io/...@sha256:...` values from the workflow summary and update the host only through the private manual runbook.
-6. Verify PostgreSQL migration/runtime role separation and the exact app/API/MCP routes affected by the change.
+4. Verify that the private Cloud repository contains the public commit and that its GHCR build completes.
+5. Resolve the image tags to immutable digests, update the private Compose deployment, and let the one-shot migration finish before API startup.
+6. Confirm PostgreSQL, API, worker, backup, and web are healthy with zero
+   unexpected restarts, then verify the public one-pager and exact app/API/MCP
+   routes affected by the change.
 
-Application rollback selects the previous API, web, and backup digests. Database
-rollback restores a verified encrypted R2 dump. Vercel is not a stateful
-rollback target because its database view may be stale. Keep migrations additive
-so image rollback remains possible.
+Application rollback is redeploying the previous approved image digests.
+Full-host recovery points Cloudflare DNS to the last clean Ready Vercel
+deployment and restores a verified encrypted R2 backup into a clean database
+target. Keep database changes additive so either rollback remains possible.
 
 ## Background work
 
-The Cloud API uses `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker uses
-`BACKGROUND_EXECUTION_MODE=worker` with a 60-second poll and the existing 1/2/1
-campaign/SEO/image bounds. A local scheduler checks due RSS feeds every 30
-minutes. A local maintenance scheduler runs the full protected drain every six
-hours. Cloudflare and GitHub keep their existing six-hour protected drains as
-external fallbacks. PostgreSQL atomic claims, stale recovery, retries, and feed
-leases prevent duplicate ownership; see the [RSS scheduler guide](rss-scheduler.md).
+The persistent worker runs bounded campaign, SEO, and deferred-image drains every five seconds. The same worker starts the due-RSS-feed tick every six hours and the daily indexing, Search Console, and expired operation-event drain; both also run once when the worker starts, and the backend's due checks and claims keep that safe. The Cloudflare Worker remains a six-hour protected fallback trigger for campaign, SEO, and image drains through the existing cron endpoint and `CRON_SECRET`. The public repository has no scheduled production workflows. See the [RSS scheduler guide](rss-scheduler.md).
 
-Do not enable more than one persistent worker until the domain claim and
-stale-recovery checks have passed for that topology.
+The API runs `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker runs `BACKGROUND_EXECUTION_MODE=worker` (`server/src/worker.ts`). `BACKGROUND_WORKER_POLL_MS` and the `BACKGROUND_WORKER_CAMPAIGN_ITEMS`/`SEO_JOBS`/`IMAGE_JOBS` bounds default to the 5-second 1/2/1 cycle above. PostgreSQL atomic claims, stale recovery, retries, and feed leases prevent duplicate ownership. Do not run more than one persistent worker until claim and stale-recovery checks pass for that topology.
 
-The existing all-task drain also removes expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
+The worker's daily drain and the existing all-task drain remove expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
 The all-task drain also runs a bounded weekly topic check (`task=topics`, default 2 sites per run, max 5 via `topicsLimit`): sites with a saved product profile get fresh uncovered topic suggestions stored in `sites.topic_suggestions` (migrations 0040 and 0041). It uses the cached autocomplete lookups and never writes to the SEO plan.
 
@@ -123,6 +132,6 @@ Expected results:
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
 - Authenticated capability response: exactly 26 tools from the server catalog.
 - No live-publish or delete tool in discovery.
-- Relevant production deployment SHA equals `origin/main`.
+- Running API and web image digests resolve to the intended private Cloud commit.
 
 Full product acceptance also requires OAuth and tool discovery in Codex and ChatGPT plus the authenticated `generate_draft → get_job → review_post → push_to_cms_draft` workflow. A green build alone is not proof of that client flow.

@@ -11,6 +11,7 @@ import {
   normalizeInspectionUrl,
   normalizeSearchConsoleProperty,
   searchConsoleOAuthEnabled,
+  storedInsightsFallbackRange,
   storedSearchConsoleMetricRange,
 } from "./search-console.js";
 
@@ -152,5 +153,9 @@ assert.equal(oauthUrl.searchParams.get("client_id"), "client-id");
 assert.equal(oauthUrl.searchParams.get("redirect_uri"), "https://app.example.com/api/search-console/oauth/callback");
 assert.equal(oauthUrl.searchParams.get("scope"), "https://www.googleapis.com/auth/webmasters.readonly");
 assert.ok(oauthUrl.searchParams.get("state"));
+
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", null), { startDate: "2026-07-29", endDate: "2026-09-22" });
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", new Date("2026-08-28T15:29:39.821Z")), { startDate: "2026-07-04", endDate: "2026-09-22" });
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", new Date("2026-09-22T06:00:00.000Z")), { startDate: "2026-07-29", endDate: "2026-09-22" });
 
 console.log("search-console self-test ok");

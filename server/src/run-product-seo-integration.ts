@@ -141,7 +141,7 @@ try {
   // 6. SERP brief and term list through a stubbed Brave API plus stubbed result pages
   section("SERP brief through the Brave request shape");
   process.env.BRAVE_SEARCH_API_KEY = "brave-test-key";
-  // Real, resolvable hostnames: the SSRF guard resolves DNS before fetch, and only fetch itself is stubbed.
+  // Result pages are served from fixtures; the hostnames only need to look like real result pages.
   const page = (headings: string[], extra: string) => `<html><body><h1>T</h1>${headings.map((heading) => `<h2>${heading}</h2><p>${"minoxidil dermatologist progress photos routine ".repeat(30)}${extra}</p>`).join("")}</body></html>`;
   const serpPages: Record<string, string> = {
     "https://example.com/serp-a": page(["What is a hair tracker", "Best hair trackers"], "alpha"),
@@ -150,8 +150,14 @@ try {
   };
   stubs = [
     { match: (url) => url.startsWith("https://api.search.brave.com/"), respond: () => json({ web: { results: Object.keys(serpPages).map((url, index) => ({ title: `Result ${index + 1}`, url, description: "d" })) } }) },
-    { match: (url) => url in serpPages, respond: (url) => new Response(serpPages[url], { headers: { "content-type": "text/html" } }) },
   ];
+  // Result pages are fetched through the SSRF-safe fetcher (raw sockets), so fixtures go in through its test seam.
+  const { setPublicFetcherForTests } = await import("./services/public-fetch.js");
+  const { safeFetch } = await import("./services/safe-fetch.js");
+  setPublicFetcherForTests(async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return url in serpPages ? new Response(serpPages[url], { headers: { "content-type": "text/html" } }) : safeFetch(input, init);
+  });
   calls.length = 0;
   r = await call("POST", "/keyword-research", { siteId: siteA, keyword: "hair growth tracker" });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -223,6 +229,7 @@ try {
   assert.equal(r.body.available, true, JSON.stringify(r.body));
   assert.ok(r.body.coverage > 0 && r.body.total > 0);
   assert.ok(r.body.covered.includes("minoxidil"));
+  setPublicFetcherForTests(null);
   delete process.env.BRAVE_SEARCH_API_KEY;
   r = await call("GET", `/posts/${postId}/term-coverage`);
   assert.equal(r.body.available, false);

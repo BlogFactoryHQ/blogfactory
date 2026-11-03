@@ -24,7 +24,19 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Plus, Trash2, Wrench, Code } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RowActions } from "@/components/patterns/RowActions";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { Pencil, Plus, Trash2, Wrench, Code } from "lucide-react";
 import { toast } from "sonner";
 
 interface ToolDefinition {
@@ -69,6 +81,7 @@ export function PersonaToolsTab({
 }: PersonaToolsTabProps) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<ToolDefinition | null>(null);
+  const [pendingDeleteTool, setPendingDeleteTool] = useState<ToolDefinition | null>(null);
   const [newTool, setNewTool] = useState<Omit<ToolDefinition, "id">>({ ...DEFAULT_TOOL });
   const [parametersJson, setParametersJson] = useState("{}");
 
@@ -147,21 +160,21 @@ export function PersonaToolsTab({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">Function Calling Tools</h3>
+          <h3 className="text-lg font-medium">Function calling tools</h3>
           <p className="text-sm text-muted-foreground">
             Define tools the LLM can call during generation
           </p>
         </div>
-        <Button onClick={() => setIsAddOpen(true)} size="sm">
+        <Button variant="outline" onClick={() => setIsAddOpen(true)} size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          Add Tool
+          Add tool
         </Button>
       </div>
 
       {/* Tool Policy Settings */}
-      <div className="grid grid-cols-2 gap-6 p-4 rounded-lg border border-border bg-muted/30">
+      <div className="grid grid-cols-2 gap-6 p-4 rounded-sm border border-border bg-muted/40">
         <div className="space-y-2">
-          <Label className="section-label">Tool Choice Policy</Label>
+          <Label className="section-label">Tool choice policy</Label>
           <Select value={toolChoice} onValueChange={(v) => onChange({ tool_choice: v })}>
             <SelectTrigger>
               <SelectValue />
@@ -177,9 +190,9 @@ export function PersonaToolsTab({
           </p>
         </div>
 
-        <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-background">
+        <div className="flex items-center justify-between p-4 rounded-sm border border-border bg-background">
           <div>
-            <p className="font-medium">Parallel Tool Calls</p>
+            <p className="font-medium">Parallel tool calls</p>
             <p className="text-sm text-muted-foreground">
               Allow multiple tools to run simultaneously
             </p>
@@ -193,18 +206,19 @@ export function PersonaToolsTab({
 
       {/* Tools List */}
       {toolsConfig.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
-          <Wrench className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No tools configured yet</p>
-          <p className="text-sm">Add a tool to enable function calling</p>
-        </div>
+        <EmptyState
+          icon={Wrench}
+          title="No tools configured yet"
+          description="Add a tool to enable function calling."
+          secondaryAction={{ label: "Add tool", onClick: () => setIsAddOpen(true) }}
+        />
       ) : (
-        <Accordion type="multiple" className="space-y-2">
+        <Accordion type="multiple" className="divide-y divide-byword-border border-y border-byword-border">
           {toolsConfig.map((tool) => (
             <AccordionItem
               key={tool.id}
               value={tool.id}
-              className="border border-border rounded-lg px-4"
+              className="border-b-0 px-1"
             >
               <AccordionTrigger className="hover:no-underline">
                 <div className="flex items-center gap-3">
@@ -222,7 +236,7 @@ export function PersonaToolsTab({
               <AccordionContent className="pt-2 pb-4">
                 <p className="text-sm text-muted-foreground mb-3">{tool.description}</p>
                 <div className="bg-muted rounded-md p-3">
-                  <p className="text-xs font-medium mb-1">Parameters Schema:</p>
+                  <p className="text-xs font-medium mb-1">Parameters schema</p>
                   <pre className="text-xs overflow-auto max-h-32">
                     {JSON.stringify(tool.parameters, null, 2)}
                   </pre>
@@ -235,14 +249,14 @@ export function PersonaToolsTab({
                   >
                     Edit
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleDeleteTool(tool.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <RowActions
+                    triggerLabel={`Actions for ${tool.name}`}
+                    label={tool.name}
+                    actions={[
+                      { label: "Edit tool", icon: Pencil, onSelect: () => openEditDialog(tool) },
+                      { label: "Delete tool", icon: Trash2, destructive: true, separatorBefore: true, onSelect: () => setPendingDeleteTool(tool) },
+                    ]}
+                  />
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -254,11 +268,11 @@ export function PersonaToolsTab({
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Add Tool Definition</DialogTitle>
+            <DialogTitle>Add tool definition</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Function Name</Label>
+              <Label>Function name</Label>
               <Input
                 value={newTool.name}
                 onChange={(e) => setNewTool({ ...newTool, name: e.target.value })}
@@ -275,7 +289,7 @@ export function PersonaToolsTab({
               />
             </div>
             <div className="space-y-2">
-              <Label>Parameters Schema (JSON)</Label>
+              <Label>Parameters schema (JSON)</Label>
               <Textarea
                 value={parametersJson}
                 onChange={(e) => setParametersJson(e.target.value)}
@@ -291,7 +305,7 @@ export function PersonaToolsTab({
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddTool}>Add Tool</Button>
+            <Button onClick={handleAddTool}>Add tool</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -300,12 +314,12 @@ export function PersonaToolsTab({
       <Dialog open={!!editingTool} onOpenChange={(open) => !open && setEditingTool(null)}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Edit Tool</DialogTitle>
+            <DialogTitle>Edit tool</DialogTitle>
           </DialogHeader>
           {editingTool && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Function Name</Label>
+                <Label>Function name</Label>
                 <Input
                   value={editingTool.name}
                   onChange={(e) =>
@@ -324,7 +338,7 @@ export function PersonaToolsTab({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Parameters Schema (JSON)</Label>
+                <Label>Parameters schema (JSON)</Label>
                 <Textarea
                   value={parametersJson}
                   onChange={(e) => setParametersJson(e.target.value)}
@@ -337,10 +351,33 @@ export function PersonaToolsTab({
             <Button variant="outline" onClick={() => setEditingTool(null)}>
               Cancel
             </Button>
-            <Button onClick={handleUpdateTool}>Update Tool</Button>
+            <Button onClick={handleUpdateTool}>Update tool</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(pendingDeleteTool)} onOpenChange={(open) => !open && setPendingDeleteTool(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this tool?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{pendingDeleteTool?.name}" is removed from this profile when you save it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDeleteTool) handleDeleteTool(pendingDeleteTool.id);
+                setPendingDeleteTool(null);
+              }}
+            >
+              Delete tool
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

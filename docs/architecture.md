@@ -21,7 +21,7 @@ React control app                                      MCP auth + tools
                               |
                    shared tenant-scoped services
                               |
-             PostgreSQL + S3-compatible object storage
+      Hetzner PostgreSQL + Cloudflare R2 object storage
                               |
        CMS drafts / Search Console / configured AI providers
 ```
@@ -66,10 +66,7 @@ The MCP surface is site-scoped and draft-only. `generate_draft` is asynchronous.
 CORS -> request logger -> normalized errors -> auth -> operation ledger -> routes
 ```
 
-`server/src/index.ts` runs the Hono app as the long-lived Cloud API. `api/index.js`
-remains a serverless compatibility entrypoint, but it is not the stateful Cloud
-rollback target. Route files own HTTP validation and response shape; business
-logic should live under `server/src/services/`.
+Production runs the Hono app with Bun in the API container. `api/index.js` remains the compatible Vercel serverless entrypoint used by the ready rollback deployment. Route files own HTTP validation and response shape; business logic should live under `server/src/services/`.
 
 ## Service ownership
 
@@ -111,20 +108,18 @@ Object storage holds generated/imported image assets. Database rows retain owner
 
 ## Background work
 
-Background work is split across bounded triggers and one persistent worker. The
-worker polls PostgreSQL every 60 seconds for campaign, SEO metadata, and deferred
-image recovery. User-triggered work still starts inline in the API. Schedulers
-call the protected `/api/cron/drain` endpoint:
+Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The worker runs `server/src/worker.ts` with `BACKGROUND_EXECUTION_MODE=worker`; the API runs `inline`. No Redis or external queue is involved.
+
+The worker also owns periodic work; one thin external trigger remains as a fallback:
 
 | Trigger | Schedule | Work |
 | --- | --- | --- |
-| Hetzner worker container | Every 60 seconds | Campaign, SEO metadata, and deferred-image recovery |
-| Hetzner RSS scheduler | Every 30 minutes | Due RSS feeds |
-| Hetzner maintenance scheduler | Every 6 hours | Retention, stale reservations, credit expiry, and billing reconciliation |
-| Cloudflare Worker | Every 6 hours | External campaign, SEO metadata, and deferred-image fallback |
-| GitHub `rss-cron.yml` | Every 6 hours | External due-feed fallback |
-| GitHub `full-cron.yml` | Daily | Campaigns, indexing, feeds, images |
-| GitHub `campaign-cron.yml` | Manual | Bounded campaign drain |
+| Persistent worker | Every 5 seconds | Campaigns, SEO metadata, deferred images |
+| Persistent worker | Every 6 hours and on start | Due RSS feeds |
+| Persistent worker | Daily and on start | Google indexing, Search Console, expired operation events |
+| Cloudflare Worker | Every 6 hours | Protected bounded fallback drain |
+
+Self-hosted Compose and Dokploy installs keep their own `scheduler` container calling the all-task drain.
 
 The backend decides eligibility and claims work. Schedulers must stay thin; do not create a second queue or duplicate job classification in a Worker or workflow.
 
@@ -132,15 +127,20 @@ The backend decides eligibility and claims work. Schedulers must stay thin; do n
 
 | Layer | Current responsibility |
 | --- | --- |
-| Cloudflare | Public front door, proxy/DNS, R2 object storage, and six-hour fallback Worker |
-| Private `BlogFactoryHQ/blogfactory-cloud` | Validated Cloud overlay, Compose, backup image, and Hetzner runbook |
-| Hetzner CX23 | Caddy, web/Nginx, API, worker, RSS and maintenance schedulers, PostgreSQL 18, and backup scheduler |
-| GHCR | Commit-SHA-tagged API, web, and backup images deployed by immutable digest |
-| GitHub Actions | Validation, image publication, and protected external fallback drains |
+| Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
+| Private `BlogFactoryHQ/blogfactory-cloud` | Cloud-only Compose, Caddy, image-build, and deployment ownership |
+| Hetzner Nuremberg | PostgreSQL 18, API, worker, backup, and web container runtime |
+| Cloudflare R2 EU | Private production image/object storage and encrypted portable backup |
+| GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA; no scheduled production drains |
+| Vercel project `editorial-flow-main` | Last clean serverless deployment retained as the DNS rollback target |
+
+The pre-cutover Neon database and manual snapshot remain available only as a
+short-term rollback source. Current writes go to the private Hetzner Compose
+PostgreSQL service; encrypted R2 backups are the durable recovery source.
 
 For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
 
-This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual domain aliases and proxy behavior during every release; do not infer live routing from configuration alone.
+This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Cloudflare proxies `app.blogfactory.io` to Caddy on Hetzner; Caddy forwards to the loopback-bound Nginx web container, which proxies API and MCP traffic to the private Hono container. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual DNS, image digests, and proxy behavior during every release; do not infer live routing from configuration alone.
 
 ## Authentication and authority
 
@@ -153,7 +153,7 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Pricing boundary
 
-Cloud billing is implemented behind disabled launch flags. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md); do not enable checkout/public signup or market availability until its acceptance gates pass.
+Cloud billing is live: public signup, Polar checkout, and entitlement enforcement have been on since 2026-09-15, while Managed AI credits stay disabled. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md) for the remaining acceptance gates.
 
 ## Where to make a change
 
@@ -168,7 +168,7 @@ Cloud billing is implemented behind disabled launch flags. Polar owns payment/su
 | MCP tool | `contracts.ts`, `tools.ts`, exact catalog assertions, `docs/mcp.md` |
 | Review/preflight behavior | `server/src/services/control-plane.ts` or `publishing.ts` |
 | Scheduled work | `server/src/routes/cron.ts`, existing drain service, current trigger config |
-| Production routing | private Cloud Compose/Caddy, hosting control plane, `docs/operations.md` |
+| Production routing | private Cloud Compose/Caddy, Cloudflare, `docs/operations.md` |
 
 ## Developer reading order
 

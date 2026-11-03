@@ -6,7 +6,7 @@ import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "d
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
 import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
-import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
+import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
@@ -29,6 +29,8 @@ import {
 import { getReviewPacket } from "../services/control-plane.js";
 import { withDraftQuota } from "../services/plan-usage.js";
 import { randomUUID } from "node:crypto";
+import { scoreRevisions } from "../services/post-scorecard.js";
+import { getEffectiveSettings } from "../services/user-settings.js";
 
 export const postsRoutes = new Hono();
 
@@ -59,7 +61,6 @@ postsRoutes.get("/", async (c) => {
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
-      seo_source_content: posts.content,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -138,9 +139,10 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_content, ...post }) => {
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => {
     const storedSeo = seoMetadata(post.seo_metadata);
-    const seoStatus = storedSeo?.status === "ready" && !seoSourceHashMatches(storedSeo.sourceHash, post.title, seo_source_content || "") ? "needs_review" : storedSeo?.status || "missing";
+    // Content edits always requeue SEO metadata; list reads must not transfer every article body.
+    const seoStatus = storedSeo?.status || "missing";
     return {
       ...post,
       seo_status: seoStatus,
@@ -201,6 +203,36 @@ postsRoutes.get("/:id/revisions", async (c) => {
   try {
     const rows = await listPostRevisions(userId, c.req.param("id"), Number(c.req.query("limit") || 50));
     return c.json({ revisions: rows.map(serializePostRevision) });
+  } catch (error) {
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.get("/:id/revisions/scorecard", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
+  if (!post) return c.json({ error: "Post not found" }, 404);
+  try {
+    const rows = await listPostRevisions(userId, id, Number(c.req.query("limit") || 20));
+    const settings = await getEffectiveSettings(userId, post.siteId);
+    // The originating job carries the keyword the draft was written for; without it the
+    // keyword check reports "not applicable" rather than guessing one from the title.
+    const [job] = post.jobId
+      ? await db.select({ sourceValue: jobs.sourceValue }).from(jobs).where(and(eq(jobs.id, post.jobId), eq(jobs.userId, userId))).limit(1)
+      : [];
+    const keyword = job?.sourceValue || "";
+    const revisions = scoreRevisions(
+      rows.map((row) => ({
+        id: row.id,
+        revisionNumber: row.revisionNumber,
+        createdAt: row.createdAt,
+        content: serializePostRevision(row).snapshot.content || "",
+      })),
+      { keyword, settings },
+    );
+    return c.json({ keyword, revisions });
   } catch (error) {
     if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
     throw error;

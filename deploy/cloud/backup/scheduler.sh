@@ -24,6 +24,10 @@ while true; do
     fi
   fi
 
+  if [ ! -f "$state_dir/restore-failed" ] && [ -n "${BACKUP_HEARTBEAT_URL:-}" ]; then
+    curl --fail --silent --show-error --max-time 10 "$BACKUP_HEARTBEAT_URL" >/dev/null || echo "backup_heartbeat_failed"
+  fi
+
   sleep "${BACKUP_INTERVAL_SECONDS:-21600}" &
   wait "$!"
 done

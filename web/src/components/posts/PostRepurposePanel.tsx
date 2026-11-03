@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Copy, Loader2 } from "lucide-react";
+import { ChevronDown, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { BywordCard } from "@/components/layout/BywordSurface";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { InlineError } from "@/components/search-growth/shared";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { api } from "@/lib/api";
 
 interface Repurposed {
@@ -43,8 +44,8 @@ export function PostRepurposePanel({ postId, updatedAt }: { postId: string; upda
           <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" aria-hidden="true" />
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-5 border-t border-byword-border p-4 text-sm sm:p-5">
-          {isLoading && <p role="status" className="type-body flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Building copy</p>}
-          {isError && <InlineError message="The copy could not be built." onRetry={() => refetch()} />}
+          {isLoading && <ListSkeleton rows={2} />}
+          {isError && <EmptyState size="row" tone="error" title="Could not build the copy" description="Your draft was not changed." primaryAction={{ label: "Retry", onClick: () => refetch() }} />}
           {data && (
             <>
               {!data.publishedUrl && <p className="type-meta">No published link yet, so links use a placeholder. Run this again after publishing.</p>}

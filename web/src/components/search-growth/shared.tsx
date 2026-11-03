@@ -1,49 +1,14 @@
-import { useRef, type HTMLAttributes, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { AlertCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 
-export type TagTone = "success" | "warning" | "error" | "neutral";
-
-const toneClass: Record<TagTone, string> = {
-  success: "status-badge-success",
-  warning: "status-badge-warning",
-  error: "status-badge-error",
-  neutral: "border-border bg-card text-foreground",
-};
-
-// A span (not the div-based Badge) so it can sit inside paragraphs and list items. Meaning always travels in the text, never in color alone.
-export function Tag({ tone = "neutral", className, ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: TagTone }) {
-  return <span className={cn("status-badge max-w-full", toneClass[tone], className)} {...props} />;
-}
-
-export function InlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+// A status-error line: where an action failed, say so beside the control and name the way forward.
+export function InlineError({ message }: { message: string }) {
   return (
-    <div role="alert" className="status-badge-error flex flex-wrap items-center gap-3 rounded-sm border px-3 py-2 text-sm">
-      <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 flex-1 break-words">{message}</span>
-      {onRetry && <Button type="button" size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
-    </div>
-  );
-}
-
-export function PanelSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
-  return (
-    <div role="status" aria-label={label} className="space-y-2">
-      {Array.from({ length: rows }, (_, index) => <Skeleton key={index} className="h-9 w-full" />)}
-      <span className="sr-only">{label}</span>
-    </div>
-  );
-}
-
-export function EmptyNote({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="rounded-sm border border-dashed border-byword-border px-4 py-6 text-center">
-      <p className="type-object-title">{title}</p>
-      {children && <p className="type-body mx-auto mt-1 max-w-prose">{children}</p>}
-    </div>
+    <p role="alert" className="flex items-start gap-2 text-sm text-status-error">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 break-words">{message}</span>
+    </p>
   );
 }
 

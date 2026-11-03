@@ -1,7 +1,7 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConfirmDialog, InlineError, Tag } from "@/components/search-growth/shared";
+import { ConfirmDialog, InlineError } from "@/components/search-growth/shared";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
@@ -34,29 +34,12 @@ function Harness({ onConfirm }: { onConfirm: () => void }) {
   );
 }
 
-describe("Tag", () => {
-  it("is a span so it can sit inside text, and carries the tone class", async () => {
-    await render(<p><Tag tone="warning">Already covered</Tag></p>);
-    const tag = container!.querySelector("span.status-badge");
-    expect(tag?.textContent).toBe("Already covered");
-    expect(tag?.className).toContain("status-badge-warning");
-    expect(container!.querySelector("p div")).toBeNull();
-  });
-});
-
 describe("InlineError", () => {
-  it("announces the problem and offers a retry", async () => {
-    const retry = vi.fn();
-    await render(<InlineError message="The topical map could not be loaded." onRetry={retry} />);
+  it("announces the problem as a status-error line", async () => {
+    await render(<InlineError message="Could not compare the sitemap. Check the domain and try again." />);
     const alert = container!.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain("The topical map could not be loaded.");
-    await act(async () => { (Array.from(alert!.querySelectorAll("button")).find((button) => button.textContent === "Try again") as HTMLButtonElement).click(); });
-    expect(retry).toHaveBeenCalledTimes(1);
-  });
-
-  it("has no retry button when there is nothing to retry", async () => {
-    await render(<InlineError message="Nope." />);
-    expect(container!.querySelector("button")).toBeNull();
+    expect(alert?.textContent).toContain("Could not compare the sitemap.");
+    expect(alert?.className).toContain("text-status-error");
   });
 });
 
