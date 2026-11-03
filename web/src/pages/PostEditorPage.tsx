@@ -11,6 +11,8 @@ import { GeneratedImagesPanel } from "@/components/posts/GeneratedImagesPanel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { PublishDialog } from "@/components/posts/PublishDialog";
+import { PostQualityPanel } from "@/components/posts/PostQualityPanel";
+import { PostRepurposePanel } from "@/components/posts/PostRepurposePanel";
 import { EditorialSafetyPanel, type EditorialState, type PostRevision } from "@/components/posts/EditorialSafetyPanel";
 import type { OrtakAlanMetadata } from "@/components/posts/ortak-alan-publishing";
 import { BywordCard, WorkspaceBackground } from "@/components/layout/BywordSurface";
@@ -409,6 +411,9 @@ export default function PostEditorPage() {
               serverImagesRef.current = { cover: restored.coverImageUrl, inline: restored.inlineImages || [] };
             }}
           />
+
+          <PostQualityPanel postId={post.id} updatedAt={post.updated_at} />
+          <PostRepurposePanel postId={post.id} updatedAt={post.updated_at} />
 
           {/* Markdown Editor */}
           <BywordCard className="mb-8 p-4 sm:p-5">

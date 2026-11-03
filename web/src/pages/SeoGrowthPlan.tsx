@@ -1,14 +1,20 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CalendarDays, FilePlus2, List, Loader2, Plus, RefreshCw, Target } from "lucide-react";
 import { toast } from "sonner";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
+import { KeywordResearchPanel } from "@/components/search-growth/KeywordResearchPanel";
+import { GrowthToolsPanel } from "@/components/search-growth/GrowthToolsPanel";
+import { TopicalMapPanel } from "@/components/search-growth/TopicalMapPanel";
+import { ProductExtrasPanel } from "@/components/search-growth/ProductExtrasPanel";
+import { ProductTopicsPanel } from "@/components/search-growth/ProductTopicsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { type SeoActionType, type SeoPlanItem, useSeoGrowthPlan } from "@/hooks/useSeoGrowthPlan";
 
@@ -29,7 +35,7 @@ const stageTone: Record<SeoPlanItem["stage"], string> = {
   measuring: "border-violet-300 bg-violet-50 text-violet-700",
 };
 
-export function SeoGrowthPlanPanel() {
+function PlanView() {
   const { activeSiteId, plan, generate, addItem, updateItem } = useSeoGrowthPlan();
   const [view, setView] = useState<"list" | "calendar">("list");
   const [targetQuery, setTargetQuery] = useState("");
@@ -99,13 +105,49 @@ export function SeoGrowthPlanPanel() {
           <div><h3 className="font-semibold">Planned work</h3><p className="text-sm text-muted-foreground">Evidence, blockers, dates, and handoff state.</p></div>
           <div className="flex rounded-md border border-byword-border p-1"><Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")}><List className="mr-1.5 h-4 w-4" />List</Button><Button variant={view === "calendar" ? "secondary" : "ghost"} size="sm" onClick={() => setView("calendar")}><CalendarDays className="mr-1.5 h-4 w-4" />Calendar</Button></div>
         </div>
-        {!items.length ? <div className="border-t border-byword-border p-10 text-center"><Target className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">No planned work yet</p><p className="mt-1 text-sm text-muted-foreground">Sync Search Console, then generate an evidence-backed plan.</p></div> : view === "list" ? (
+        {!items.length ? <div className="border-t border-byword-border p-10 text-center"><Target className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">No planned work yet</p><p className="mt-1 text-sm text-muted-foreground">Add topics from the Topics or Research views, or sync Search Console and generate an evidence-backed plan.</p></div> : view === "list" ? (
           <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Work</TableHead><TableHead>Evidence</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <PlanRow key={item.id} item={item} siteId={activeSiteId} campaignId={plan.data!.campaign!.id} onUpdate={(input) => updateItem.mutate({ id: item.id, ...input })} />)}</TableBody></Table></div>
         ) : (
           <div className="grid gap-px border-t border-byword-border bg-byword-border sm:grid-cols-2 lg:grid-cols-4">{grouped.map(([date, dateItems]) => <div key={date} className="min-h-40 bg-card p-3"><p className="font-mono text-[11px] font-semibold uppercase">{date}</p><div className="mt-3 space-y-2">{dateItems.map((item) => <div key={item.id} className="rounded-md border border-byword-border p-3"><Badge variant="outline" className={stageTone[item.stage]}>{item.stage}</Badge><p className="mt-2 text-sm font-medium">{item.keyword}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}</p></div>)}</div></div>)}</div>
         )}
       </BywordCard>
+
+      <TopicalMapPanel />
     </div>
+  );
+}
+
+const PLAN_VIEWS = ["plan", "topics", "research", "monitor"] as const;
+type PlanViewName = typeof PLAN_VIEWS[number];
+
+// Four focused views instead of one long page: the plan stays first, and each tool has a place of its own.
+export function SeoGrowthPlanPanel() {
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("view") as PlanViewName | null;
+  const view: PlanViewName = requested && PLAN_VIEWS.includes(requested) ? requested : "plan";
+  const setView = (next: string) => {
+    const nextParams = new URLSearchParams(params);
+    if (next === "plan") nextParams.delete("view"); else nextParams.set("view", next);
+    setParams(nextParams, { replace: true });
+  };
+  const openPlan = () => setView("plan");
+
+  return (
+    <Tabs value={view} onValueChange={setView} className="space-y-6">
+      <TabsList className="h-auto flex-wrap justify-start" aria-label="Growth plan views">
+        <TabsTrigger value="plan">Plan</TabsTrigger>
+        <TabsTrigger value="topics">Topics</TabsTrigger>
+        <TabsTrigger value="research">Research</TabsTrigger>
+        <TabsTrigger value="monitor">Monitor</TabsTrigger>
+      </TabsList>
+      <TabsContent value="plan" className="mt-0"><PlanView /></TabsContent>
+      <TabsContent value="topics" className="mt-0 space-y-6">
+        <ProductTopicsPanel onOpenPlan={openPlan} />
+        <ProductExtrasPanel onOpenPlan={openPlan} />
+      </TabsContent>
+      <TabsContent value="research" className="mt-0"><KeywordResearchPanel onOpenPlan={openPlan} /></TabsContent>
+      <TabsContent value="monitor" className="mt-0"><GrowthToolsPanel /></TabsContent>
+    </Tabs>
   );
 }
 

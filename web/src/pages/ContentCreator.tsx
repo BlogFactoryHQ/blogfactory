@@ -426,6 +426,7 @@ export default function ContentCreator() {
 
   const refetchPostsRef = useRef<(() => void) | null>(null);
   const userSelectedModelRef = useRef(false);
+  const briefLoadedForRef = useRef<string | null>(null);
 
   const {
     activeJobs,
@@ -451,12 +452,25 @@ export default function ContentCreator() {
     if (action === "new_content") {
       setSourceType("article_keyword");
       setArticleKeyword(targetQuery);
+      const briefSiteId = seoPlanParams.get("siteId") || activeSiteId;
+      if (briefSiteId && briefLoadedForRef.current !== itemId) {
+        briefLoadedForRef.current = itemId;
+        // A saved research brief prefills the outline, length and FAQ; anything the writer already typed wins.
+        api.get<{ brief: { targetWords: number | null } | null; outlineText: string }>(`/product-seo/plan-items/${encodeURIComponent(itemId)}/brief?siteId=${encodeURIComponent(briefSiteId)}`)
+          .then(({ brief, outlineText }) => {
+            if (!brief) return;
+            if (outlineText) setArticleOutline((current) => current || outlineText);
+            if (brief.targetWords) setArticleWordCount((current) => current || String(brief.targetWords));
+            toast.success("Outline and length prefilled from your research brief.");
+          })
+          .catch(() => undefined);
+      }
     } else {
       setSourceType("url");
       setSourceUrl(stripHttpProtocol(pageUrl));
       setArticleDirection(seoActionInstruction(action, targetQuery));
     }
-  }, [location.search, seoPlanParams]);
+  }, [location.search, seoPlanParams, activeSiteId]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
