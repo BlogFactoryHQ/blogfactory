@@ -58,6 +58,106 @@ try {
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${restrictedSiteId}, ${userId}, 'Restricted MCP test', 'restricted-mcp-test.example.com')`;
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${otherSiteId}, ${otherUserId}, 'Other user MCP test', 'other-mcp-test.example.com')`;
 
+  await sql`INSERT INTO billing_entitlements (user_id, plan_code, source, status, effective_at, limits) VALUES (${userId}, 'cloud', 'admin', 'active', NOW(), ${sql.json({ sites: 3, storageBytes: 1_000_000_000, concurrency: 1, activeFeeds: 3, feedMinimumMinutes: 360, monthlyDrafts: 150, monthlyAutomatedDrafts: null })})`;
+  await sql`INSERT INTO ai_credit_accounts (user_id, available_credits) VALUES (${userId}, 1000)`;
+  await sql`INSERT INTO ai_credit_grants (user_id, source, source_ref, granted_credits, remaining_credits, expires_at) VALUES (${userId}, 'admin', 'postgres-integration', 1000, 1000, NOW() + INTERVAL '1 year')`;
+  const oldCloud = process.env.BLOGFACTORY_CLOUD;
+  const oldEnforcement = process.env.CLOUD_BILLING_ENFORCEMENT;
+  const oldCloudProduct = process.env.POLAR_PRODUCT_CLOUD_MONTHLY;
+  const oldCreditProduct = process.env.POLAR_PRODUCT_AI_CREDITS_14000;
+  process.env.BLOGFACTORY_CLOUD = "true";
+  process.env.CLOUD_BILLING_ENFORCEMENT = "true";
+  process.env.POLAR_PRODUCT_CLOUD_MONTHLY = "polar_cloud_test";
+  process.env.POLAR_PRODUCT_AI_CREDITS_14000 = "polar_credits_test";
+  const { feeds, imageAssets, posts, sites } = await import("./db/schema.js");
+  const {
+    assertCanActivateFeed,
+    assertCanCreateSite,
+    assertStorageAvailable,
+    withCloudLimitLock,
+  } = await import("./services/cloud-limits.js");
+  const siteAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertCanCreateSite(userId, tx);
+    await tx.insert(sites).values({ userId, name: `Concurrent site ${index}`, domain: `concurrent-site-${index}.example.com` });
+  })));
+  assert.equal(siteAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent site creation exceeded the plan limit");
+
+  await sql`INSERT INTO feeds (user_id, name, source_url) VALUES (${userId}, 'Second feed', 'https://example.com/feed-2.xml')`;
+  const feedAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertCanActivateFeed(userId, undefined, tx);
+    await tx.insert(feeds).values({ userId, name: `Concurrent feed ${index}`, sourceUrl: `https://example.com/feed-concurrent-${index}.xml` });
+  })));
+  assert.equal(feedAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent feed activation exceeded the plan limit");
+
+  await sql`INSERT INTO image_assets (user_id, storage_path, file_size_bytes) VALUES (${userId}, 'integration/existing.bin', 999999850)`;
+  const storageAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertStorageAvailable(userId, 100, tx);
+    await tx.insert(imageAssets).values({ userId, storagePath: `integration/concurrent-${index}.bin`, fileSizeBytes: 100 });
+  })));
+  assert.equal(storageAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent storage writes exceeded the plan limit");
+
+  const { releaseAiCredits, reserveAiCredits } = await import("./services/ai-credits.js");
+  const creditAttempts = await Promise.allSettled([
+    reserveAiCredits(userId, `credit-${randomUUID()}`, 800),
+    reserveAiCredits(userId, `credit-${randomUUID()}`, 800),
+  ]);
+  assert.equal(creditAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent Managed AI reservations overspent the wallet");
+  const creditWinner = creditAttempts.find((result) => result.status === "fulfilled");
+  assert.ok(creditWinner && creditWinner.status === "fulfilled");
+  await releaseAiCredits(creditWinner.value.id);
+  await sql`INSERT INTO plan_usage_monthly (user_id, period_start, manual_completed) VALUES (${userId}, ${new Date().toISOString().slice(0, 7) + "-01"}, 149)`;
+  const { reserveDraftQuota, settleDraftQuota, withDraftQuota } = await import("./services/plan-usage.js");
+  const quotaAttempts = await Promise.allSettled([
+    reserveDraftQuota(userId, "manual", `quota-${randomUUID()}`),
+    reserveDraftQuota(userId, "automated", `quota-${randomUUID()}`),
+  ]);
+  assert.equal(quotaAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent Cloud draft reservations exceeded 150");
+  const quotaWinner = quotaAttempts.find((result) => result.status === "fulfilled");
+  assert.ok(quotaWinner && quotaWinner.status === "fulfilled");
+  await settleDraftQuota(quotaWinner.value, false);
+  const rolledBackPostId = randomUUID();
+  await assert.rejects(() => withDraftQuota(userId, "manual", `rollback-${randomUUID()}`, async (tx) => {
+    await tx.insert(posts).values({
+      id: rolledBackPostId,
+      userId,
+      siteId,
+      title: "Must roll back",
+      content: "Must roll back",
+      status: "draft",
+      sourceType: "raw_text",
+      modelId: "integration/model",
+    });
+    throw new Error("forced draft transaction rollback");
+  }), /forced draft transaction rollback/);
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM posts WHERE id = ${rolledBackPostId}`)[0]?.count, 0, "failed draft transaction left a post behind");
+  assert.deepEqual((await sql<{ manual_completed: number; manual_reserved: number }[]>`SELECT manual_completed, manual_reserved FROM plan_usage_monthly WHERE user_id = ${userId} AND period_start = ${new Date().toISOString().slice(0, 7) + "-01"}`)[0], { manual_completed: 149, manual_reserved: 0 }, "failed draft transaction changed quota counters");
+
+  const { drainPolarWebhookEvents, enqueuePolarWebhook } = await import("./services/billing-webhooks.js");
+  await enqueuePolarWebhook("stale-processing", { type: "unknown", timestamp: "2026-09-15T11:00:00Z", data: {} });
+  await sql`UPDATE billing_webhook_events SET status = 'processing', processing_started_at = NOW() - INTERVAL '10 minutes' WHERE event_id = 'stale-processing'`;
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ status: string }[]>`SELECT status FROM billing_webhook_events WHERE event_id = 'stale-processing'`)[0]?.status, "processed", "stale webhook processing claim was not recovered");
+  const subscriptionData = { id: "sub_integration", productId: "polar_cloud_test", customerId: "customer_integration", customer: { id: "customer_integration", externalId: userId }, currentPeriodStart: "2026-09-01T00:00:00Z", currentPeriodEnd: "2026-10-01T00:00:00Z" };
+  await enqueuePolarWebhook("event-active", { type: "subscription.active", timestamp: "2026-09-15T12:00:00Z", data: { ...subscriptionData, status: "active", modifiedAt: "2026-09-15T12:00:00Z" } });
+  await enqueuePolarWebhook("event-old-revoke", { type: "subscription.revoked", timestamp: "2026-09-14T12:00:00Z", data: { ...subscriptionData, status: "revoked", modifiedAt: "2026-09-14T12:00:00Z" } });
+  await enqueuePolarWebhook("event-active", { type: "subscription.active", timestamp: "2026-09-15T12:00:00Z", data: subscriptionData });
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ status: string }[]>`SELECT status FROM billing_subscriptions WHERE polar_subscription_id = 'sub_integration'`)[0]?.status, "active", "out-of-order subscription event regressed access");
+  const creditOrder = { id: "order_integration", productId: "polar_credits_test", totalAmount: 2000, customer: { id: "customer_other", externalId: otherUserId } };
+  await enqueuePolarWebhook("credit-order-1", { type: "order.paid", timestamp: "2026-09-15T12:00:00Z", data: creditOrder });
+  await enqueuePolarWebhook("credit-order-2", { type: "order.paid", timestamp: "2026-09-15T12:00:01Z", data: creditOrder });
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM ai_credit_grants WHERE source_ref = 'order_integration'`)[0]?.count, 1, "duplicate order granted credits twice");
+  await sql`UPDATE ai_credit_grants SET remaining_credits = 3000 WHERE source_ref = 'order_integration'`;
+  await sql`UPDATE ai_credit_accounts SET available_credits = 3000 WHERE user_id = ${otherUserId}`;
+  await enqueuePolarWebhook("credit-refund", { type: "order.refunded", timestamp: "2026-09-15T13:00:00Z", data: { ...creditOrder, refundedAmount: 2000 } });
+  await drainPolarWebhookEvents();
+  assert.deepEqual((await sql<{ available_credits: number; debt_credits: number }[]>`SELECT available_credits, debt_credits FROM ai_credit_accounts WHERE user_id = ${otherUserId}`)[0], { available_credits: 0, debt_credits: 11000 }, "consumed-credit refund did not create wallet debt");
+  if (oldCloud === undefined) delete process.env.BLOGFACTORY_CLOUD; else process.env.BLOGFACTORY_CLOUD = oldCloud;
+  if (oldEnforcement === undefined) delete process.env.CLOUD_BILLING_ENFORCEMENT; else process.env.CLOUD_BILLING_ENFORCEMENT = oldEnforcement;
+  if (oldCloudProduct === undefined) delete process.env.POLAR_PRODUCT_CLOUD_MONTHLY; else process.env.POLAR_PRODUCT_CLOUD_MONTHLY = oldCloudProduct;
+  if (oldCreditProduct === undefined) delete process.env.POLAR_PRODUCT_AI_CREDITS_14000; else process.env.POLAR_PRODUCT_AI_CREDITS_14000 = oldCreditProduct;
+
   const revisionPostId = randomUUID();
   await sql`
     INSERT INTO posts (id, user_id, site_id, title, content, status, source_type, model_id)

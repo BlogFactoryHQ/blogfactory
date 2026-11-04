@@ -5,7 +5,7 @@ const { app } = await import("./index.js");
 
 const authConfig = await app.request("/api/auth/config");
 assert.equal(authConfig.status, 200);
-assert.deepEqual(await authConfig.json(), { signup_enabled: true });
+assert.deepEqual(await authConfig.json(), { signup_enabled: true, auth_provider: "local" });
 
 const malformed = await app.request("/api/auth/login", {
   method: "POST",
@@ -39,5 +39,32 @@ assert.deepEqual(await forbidden.json(), {
   code: "forbidden",
   message: "Google sign-in is disabled during the private beta",
 });
+
+const previousCloud = process.env.BLOGFACTORY_CLOUD;
+process.env.BLOGFACTORY_CLOUD = "true";
+const hostedConfig = await app.request("/api/auth/config");
+assert.deepEqual(await hostedConfig.json(), { signup_enabled: false, auth_provider: "workos", cloud: true, managed_ai_enabled: false });
+const hostedLocalLogin = await app.request("/api/auth/login", { method: "POST" });
+assert.equal(hostedLocalLogin.status, 404);
+if (previousCloud === undefined) delete process.env.BLOGFACTORY_CLOUD;
+else process.env.BLOGFACTORY_CLOUD = previousCloud;
+
+const previousWebhookSecret = process.env.POLAR_WEBHOOK_SECRET;
+process.env.POLAR_WEBHOOK_SECRET = "test-webhook-secret";
+const missingWebhookId = await app.request("/api/webhooks/polar", { method: "POST", body: "{}" });
+assert.equal(missingWebhookId.status, 400);
+const invalidWebhookSignature = await app.request("/api/webhooks/polar", {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    "webhook-id": "test-event",
+    "webhook-timestamp": String(Math.floor(Date.now() / 1000)),
+    "webhook-signature": "v1,invalid",
+  },
+  body: "{}",
+});
+assert.equal(invalidWebhookSignature.status, 403);
+if (previousWebhookSecret === undefined) delete process.env.POLAR_WEBHOOK_SECRET;
+else process.env.POLAR_WEBHOOK_SECRET = previousWebhookSecret;
 
 console.log("API route error contract self-check passed");

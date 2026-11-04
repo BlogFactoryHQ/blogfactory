@@ -112,6 +112,7 @@ describe("CommandPalette", () => {
     state.role = "admin";
     await open();
     expect(itemByText("Manage users")).toBeTruthy();
+    expect(itemByText("System status")).toBeTruthy();
   });
 
   it("does not search content until the query is long enough to be useful", async () => {

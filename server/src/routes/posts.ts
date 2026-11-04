@@ -27,6 +27,8 @@ import {
   type EditorialState,
 } from "../services/post-revisions.js";
 import { getReviewPacket } from "../services/control-plane.js";
+import { withDraftQuota } from "../services/plan-usage.js";
+import { randomUUID } from "node:crypto";
 import { scoreRevisions } from "../services/post-scorecard.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
 
@@ -365,9 +367,7 @@ postsRoutes.post("/import-md", async (c) => {
   const title = cleanPostTitle(extractMarkdownTitle(body) || meta.metaTitle || folder.replace(/[-_]+/g, " "));
   const summary = (meta.metaDescription || plainText(body)).slice(0, 220);
 
-  const [post] = await db
-    .insert(posts)
-    .values({
+  const [post] = await withDraftQuota(userId, "manual", `draft:manual-import:${randomUUID()}`, (tx) => tx.insert(posts).values({
       userId,
       title,
       content,
@@ -376,8 +376,7 @@ postsRoutes.post("/import-md", async (c) => {
       sourceType: "batch_import",
       sourceRefId: folder,
       modelId: "manual/import",
-    } as any)
-    .returning();
+    } as any).returning());
 
   if (meta.slug || meta.metaTitle || meta.metaDescription) {
     const manual = await saveManualSeoMetadata(userId, post.id, {

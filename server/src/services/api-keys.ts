@@ -3,24 +3,41 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
-export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay";
+export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay" | "brave" | "dataforseo";
 export type CredentialStatus = "usable" | "missing" | "undecryptable";
 
-function encryptionKey(): Buffer {
-  const secret = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
-  if (!secret || secret === "dev-secret") {
+function encryptionSecrets() {
+  const active = process.env.API_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET;
+  if (!active || active === "dev-secret") {
     throw new Error("API key encryption secret is not configured");
   }
+  const previous = (process.env.API_KEY_ENCRYPTION_PREVIOUS_SECRETS || "").split(",").map((secret) => secret.trim()).filter(Boolean);
+  return [...new Set([active, ...previous])];
+}
+
+function encryptionKey(secret: string) {
   return createHash("sha256").update(secret).digest();
 }
 
+function encryptionKeyId(secret: string) {
+  return createHash("sha256").update(secret).digest("hex").slice(0, 12);
+}
+
+function decryptWith(secret: string, iv: string, tag: string, encrypted: string) {
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(secret), Buffer.from(iv, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
+}
+
 export function encryptSecret(value: string): string {
+  const [secret] = encryptionSecrets();
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [
-    "v1",
+    "v2",
+    encryptionKeyId(secret),
     iv.toString("base64url"),
     tag.toString("base64url"),
     encrypted.toString("base64url"),
@@ -28,16 +45,30 @@ export function encryptSecret(value: string): string {
 }
 
 export function decryptSecret(value: string): string {
-  const [version, iv, tag, encrypted] = value.split(":");
-  if (version !== "v1" || !iv || !tag || !encrypted) {
-    throw new Error("Invalid encrypted API key format");
+  const parts = value.split(":");
+  const secrets = encryptionSecrets();
+  if (parts[0] === "v2" && parts.length === 5) {
+    const [, keyId, iv, tag, encrypted] = parts;
+    const secret = secrets.find((candidate) => encryptionKeyId(candidate) === keyId);
+    if (!secret) throw new Error("Encrypted API key uses an unavailable key");
+    return decryptWith(secret, iv, tag, encrypted);
   }
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encrypted, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
+  if (parts[0] === "v1" && parts.length === 4) {
+    const [, iv, tag, encrypted] = parts;
+    for (const secret of secrets) {
+      try { return decryptWith(secret, iv, tag, encrypted); } catch { /* try the next configured key */ }
+    }
+  }
+  throw new Error("Invalid encrypted API key format");
+}
+
+export function secretNeedsReencryption(value: string) {
+  const [active] = encryptionSecrets();
+  return !value.startsWith(`v2:${encryptionKeyId(active)}:`);
+}
+
+export function reencryptSecret(value: string) {
+  return secretNeedsReencryption(value) ? encryptSecret(decryptSecret(value)) : value;
 }
 
 function decryptStoredSecret(value?: string | null, warn = true): string | null {
@@ -84,6 +115,8 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
   const openaiStatus = encryptedCredentialStatus(row?.openaiApiKeyEncrypted);
   const pexelsStatus = encryptedCredentialStatus(row?.pexelsApiKeyEncrypted);
   const pixabayStatus = encryptedCredentialStatus(row?.pixabayApiKeyEncrypted);
+  const braveStatus = encryptedCredentialStatus(row?.braveApiKeyEncrypted);
+  const dataforseoStatus = encryptedCredentialStatus(row?.dataforseoCredentialsEncrypted);
 
   return {
     hasOpenrouterKey: openrouterStatus === "usable",
@@ -106,6 +139,12 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
     pixabayKeyLast4: pixabayStatus === "usable" ? row?.pixabayKeyLast4 || null : null,
     pixabayCredentialStatus: pixabayStatus,
     pixabay_credential_status: pixabayStatus,
+    hasBraveKey: braveStatus === "usable",
+    braveKeyLast4: braveStatus === "usable" ? row?.braveKeyLast4 || null : null,
+    braveCredentialStatus: braveStatus,
+    hasDataforseoKey: dataforseoStatus === "usable",
+    dataforseoKeyLast4: dataforseoStatus === "usable" ? row?.dataforseoKeyLast4 || null : null,
+    dataforseoCredentialStatus: dataforseoStatus,
     updatedAt: row?.updatedAt || null,
   };
 }
@@ -129,6 +168,12 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
   if ((provider === "pexels" || provider === "pixabay") && trimmed.length < 10) {
     throw new Error("Stock photo API key looks too short");
   }
+  if (provider === "brave" && trimmed.length < 10) {
+    throw new Error("Brave Search API key looks too short");
+  }
+  if (provider === "dataforseo" && parseDataForSeoCredentials(trimmed) === null) {
+    throw new Error("DataForSEO credentials should look like login:password");
+  }
 
   const values =
     provider === "openrouter"
@@ -150,6 +195,20 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
           userId,
           openaiApiKeyEncrypted: encryptSecret(trimmed),
           openaiKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "brave"
+      ? {
+          userId,
+          braveApiKeyEncrypted: encryptSecret(trimmed),
+          braveKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "dataforseo"
+      ? {
+          userId,
+          dataforseoCredentialsEncrypted: encryptSecret(trimmed),
+          dataforseoKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
       : provider === "pexels"
@@ -197,6 +256,18 @@ export async function deleteApiKey(userId: string, provider: Provider) {
           openaiKeyLast4: null,
           updatedAt: new Date(),
         }
+      : provider === "brave"
+      ? {
+          braveApiKeyEncrypted: null,
+          braveKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : provider === "dataforseo"
+      ? {
+          dataforseoCredentialsEncrypted: null,
+          dataforseoKeyLast4: null,
+          updatedAt: new Date(),
+        }
       : provider === "pexels"
       ? {
           pexelsApiKeyEncrypted: null,
@@ -238,6 +309,33 @@ export async function getOpenAiKey(userId: string): Promise<string | null> {
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
   return decryptStoredSecret(row?.key);
+}
+
+export async function getBraveKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.braveApiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return decryptStoredSecret(row?.key);
+}
+
+/** DataForSEO uses a login and a password. They are saved as one "login:password" secret; the login never contains a colon. */
+export function parseDataForSeoCredentials(value: string): { login: string; password: string } | null {
+  const index = value.indexOf(":");
+  const login = value.slice(0, index).trim();
+  const password = value.slice(index + 1).trim();
+  return index > 0 && login && password ? { login, password } : null;
+}
+
+export async function getDataForSeoCredentials(userId: string): Promise<{ login: string; password: string } | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.dataforseoCredentialsEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  const value = decryptStoredSecret(row?.key);
+  return value ? parseDataForSeoCredentials(value) : null;
 }
 
 export async function getPexelsKey(userId: string): Promise<string | null> {

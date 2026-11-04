@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError as ClientApiError } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import { SourceType } from "@/components/content/GenerationProgress";
 import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import {
@@ -255,6 +256,7 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
       <p className="mt-2 text-xs text-muted-foreground">
         {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">Managed AI reserve ceiling: {Math.ceil(estimate.totalHigh * 1_000 * 1.2).toLocaleString()} credits. Actual provider cost is settled after each call.</p>
     </div>
   );
 }
@@ -380,6 +382,14 @@ export default function ContentCreator() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  const { managedAiEnabled } = useDeploymentConfig();
+  const openRouterKeyStatus = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => api.get<{ hasOpenrouterKey: boolean; openrouterCredentialStatus?: string }>("/settings/api-keys"),
+    staleTime: 60_000,
+  });
+  const needsOpenRouterKey = !managedAiEnabled && Boolean(openRouterKeyStatus.data)
+    && (!openRouterKeyStatus.data!.hasOpenrouterKey || openRouterKeyStatus.data!.openrouterCredentialStatus === "undecryptable");
   const seoPlanParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
@@ -423,6 +433,7 @@ export default function ContentCreator() {
 
   const refetchPostsRef = useRef<(() => void) | null>(null);
   const userSelectedModelRef = useRef(false);
+  const briefLoadedForRef = useRef<string | null>(null);
 
   const {
     activeJobs,
@@ -448,12 +459,25 @@ export default function ContentCreator() {
     if (action === "new_content") {
       setSourceType("article_keyword");
       setArticleKeyword(targetQuery);
+      const briefSiteId = seoPlanParams.get("siteId") || activeSiteId;
+      if (briefSiteId && briefLoadedForRef.current !== itemId) {
+        briefLoadedForRef.current = itemId;
+        // A saved research brief prefills the outline, length and FAQ; anything the writer already typed wins.
+        api.get<{ brief: { targetWords: number | null } | null; outlineText: string }>(`/product-seo/plan-items/${encodeURIComponent(itemId)}/brief?siteId=${encodeURIComponent(briefSiteId)}`)
+          .then(({ brief, outlineText }) => {
+            if (!brief) return;
+            if (outlineText) setArticleOutline((current) => current || outlineText);
+            if (brief.targetWords) setArticleWordCount((current) => current || String(brief.targetWords));
+            toast.success("Outline and length prefilled from your research brief.");
+          })
+          .catch(() => undefined);
+      }
     } else {
       setSourceType("url");
       setSourceUrl(stripHttpProtocol(pageUrl));
       setArticleDirection(seoActionInstruction(action, targetQuery));
     }
-  }, [location.search, seoPlanParams]);
+  }, [location.search, seoPlanParams, activeSiteId]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
@@ -540,6 +564,24 @@ export default function ContentCreator() {
   const handleModelChange = (nextModelId: string) => {
     userSelectedModelRef.current = true;
     setModelId(nextModelId);
+  };
+
+  const showGenerationError = (error: unknown, fallback: string) => {
+    if (error instanceof ClientApiError && error.code === "ai_key_required") {
+      toast.error(error.message, { action: { label: "Add OpenRouter key", onClick: () => navigate("/control/article-settings?section=api-keys") } });
+      return;
+    }
+    // Plan-required responses already raise the app-wide "See plans" prompt.
+    if (error instanceof ClientApiError && error.billingUrl) return;
+    if (error instanceof ClientApiError && error.code === "managed_ai_credits_required") {
+      toast.error("Managed AI credits are required. You can buy credits or switch to your own OpenRouter key.", { action: { label: "Buy credits", onClick: () => navigate("/billing") } });
+      return;
+    }
+    if (error instanceof ClientApiError && (error.code === "plan_quota_reached" || error.status === 403)) {
+      toast.error(error.message, { action: { label: "View billing", onClick: () => navigate("/billing") } });
+      return;
+    }
+    toast.error(error instanceof Error ? error.message : fallback);
   };
 
   const handleCampaignPersonaChange = (nextPersonaId: string) => {
@@ -806,7 +848,8 @@ export default function ContentCreator() {
           Array.from({ length: variations }, (_, index) => startOneDraft(index + 1))
         );
         const failed = results.filter((result) => result.status === "rejected").length;
-        if (failed) throw new Error(`${failed}/${variations} drafts failed to start.`);
+        const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (failed) throw firstFailure?.reason || new Error(`${failed}/${variations} drafts failed to start.`);
         toast.info(`${variations} separate draft jobs started.`);
       } else {
         await startOneDraft();
@@ -814,8 +857,7 @@ export default function ContentCreator() {
       }
     } catch (err) {
       console.error("Generation error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate content";
-      toast.error(errorMessage);
+      showGenerationError(err, "Failed to generate content");
     }
   };
 
@@ -877,8 +919,7 @@ export default function ContentCreator() {
       setArticleOutline(plan.outline);
       toast.success("Title and outline ready.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to generate article plan";
-      toast.error(message);
+      showGenerationError(err, "Failed to generate article plan");
     } finally {
       setIsPlanningArticle(false);
     }
@@ -911,7 +952,7 @@ export default function ContentCreator() {
       toast.success(campaignStartNow ? "Campaign started" : "Campaign created");
       navigate(`/sources/campaigns/${campaign.id}`);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
+    onError: (error) => showGenerationError(error, "Could not create campaign"),
   });
 
   const handleCreateCampaign = () => {
@@ -964,6 +1005,13 @@ export default function ContentCreator() {
         title="Create Content"
         description="Create one article draft, a batch campaign, or programmatic drafts from a template."
       />
+
+      {needsOpenRouterKey && (
+        <div role="alert" className="mx-auto mb-8 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm text-foreground">
+          <p><strong>Add your OpenRouter key to generate drafts.</strong> BlogFactory uses your own OpenRouter account for AI generation.</p>
+          <Button asChild size="sm" variant="outline"><Link to="/control/article-settings?section=api-keys">Add OpenRouter key</Link></Button>
+        </div>
+      )}
 
       <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
         <div className="type-kicker flex items-center gap-4 text-center">

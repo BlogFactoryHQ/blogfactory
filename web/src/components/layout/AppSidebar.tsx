@@ -18,8 +18,10 @@ import {
   LayoutDashboard,
   LifeBuoy,
   Loader2,
+  CreditCard,
   MessageSquarePlus,
   BookOpen,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -66,6 +68,7 @@ const monitorNavigation = [
   { name: "Sources", href: "/sources", icon: Rss },
   { name: "Content", href: "/library", icon: ImageIcon },
   { name: "Control", href: "/control", icon: Settings },
+  { name: "Billing", href: "/billing", icon: CreditCard },
 ];
 
 export function AppSidebar() {
@@ -326,10 +329,16 @@ export function AppSidebar() {
                 Runs &amp; activity
               </DropdownMenuItem>
               {user?.role === "admin" && (
-                <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/status")}>
-                  <Shield />
-                  Admin panel
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/customers")}>
+                    <Shield />
+                    Admin Console
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer" onClick={() => navigate("/admin/status")}>
+                    <Activity />
+                    System status
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="type-kicker px-2 py-1.5">Appearance</DropdownMenuLabel>

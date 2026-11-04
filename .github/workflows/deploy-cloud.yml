@@ -1,0 +1,21 @@
+name: Publish Cloud images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-cloud-images
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    uses: ./.github/workflows/build-shadow-images.yml
+    permissions:
+      contents: read
+      packages: write

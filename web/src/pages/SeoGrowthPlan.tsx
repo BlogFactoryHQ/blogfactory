@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CalendarDays, FilePlus2, List, Loader2, Plus, RefreshCw, Target } from "lucide-react";
 import { toast } from "sonner";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { GrowthToolsPanel } from "@/components/search-growth/GrowthToolsPanel";
+import { KeywordResearchPanel } from "@/components/search-growth/KeywordResearchPanel";
+import { ProductExtrasPanel } from "@/components/search-growth/ProductExtrasPanel";
+import { ProductTopicsPanel } from "@/components/search-growth/ProductTopicsPanel";
+import { TopicalMapPanel } from "@/components/search-growth/TopicalMapPanel";
 import { ListSkeleton } from "@/components/patterns/PageSkeleton";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type SeoActionType, type SeoPlanItem, useSeoGrowthPlan } from "@/hooks/useSeoGrowthPlan";
 
 const actionLabels: Record<SeoActionType, string> = {
@@ -45,7 +51,7 @@ function StageBadge({ stage }: { stage: SeoPlanItem["stage"] }) {
   return <StatusBadge status={badge.status} label={badge.label} />;
 }
 
-export function SeoGrowthPlanPanel() {
+function PlanView({ onOpenTopics }: { onOpenTopics: () => void }) {
   const { activeSiteId, plan, generate, addItem, updateItem } = useSeoGrowthPlan();
   const [view, setView] = useState<"list" | "calendar">("list");
   const [targetQuery, setTargetQuery] = useState("");
@@ -115,13 +121,48 @@ export function SeoGrowthPlanPanel() {
           <div><h3 className="font-semibold">Planned work</h3><p className="text-sm text-muted-foreground">Evidence, blockers, dates, and handoff state.</p></div>
           <div className="flex rounded-md border border-byword-border p-1"><Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")}><List className="mr-1.5 h-4 w-4" />List</Button><Button variant={view === "calendar" ? "secondary" : "ghost"} size="sm" onClick={() => setView("calendar")}><CalendarDays className="mr-1.5 h-4 w-4" />Calendar</Button></div>
         </div>
-        {!items.length ? <EmptyState icon={Target} title="No planned work yet" description="Sync Search Console, then generate an evidence-backed 30-day plan." className="border-t border-byword-border" /> : view === "list" ? (
+        {!items.length ? <EmptyState icon={Target} title="No planned work yet" description="Find topics from your product site, or sync Search Console and generate an evidence-backed 30-day plan." primaryAction={{ label: "Find topics", onClick: onOpenTopics }} className="border-t border-byword-border" /> : view === "list" ? (
           <div className="overflow-x-auto border-t border-byword-border"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Work</TableHead><TableHead>Evidence</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <PlanRow key={item.id} item={item} siteId={activeSiteId} campaignId={plan.data!.campaign!.id} onUpdate={(input) => updateItem.mutate({ id: item.id, ...input })} />)}</TableBody></Table></div>
         ) : (
           <div className="grid gap-px border-t border-byword-border bg-byword-border sm:grid-cols-2 lg:grid-cols-4">{grouped.map(([date, dateItems]) => <div key={date} className="min-h-40 bg-card p-3"><p className="font-mono text-[11px] font-semibold uppercase">{date}</p><div className="mt-3 space-y-2">{dateItems.map((item) => <div key={item.id} className="rounded-md border border-byword-border p-3"><StageBadge stage={item.stage} /><p className="mt-2 text-sm font-medium">{item.keyword}</p><p className="mt-1 text-xs text-muted-foreground">{actionLabels[item.actionType]}</p></div>)}</div></div>)}</div>
         )}
       </BywordCard>
+
+      <TopicalMapPanel onOpenTopics={onOpenTopics} />
     </div>
+  );
+}
+
+const PLAN_VIEWS = ["plan", "topics", "research", "monitor"] as const;
+type PlanViewName = typeof PLAN_VIEWS[number];
+
+// Four focused views instead of one long page: the plan stays first, and each tool has a place of its own.
+export function SeoGrowthPlanPanel() {
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("view") as PlanViewName | null;
+  const view: PlanViewName = requested && PLAN_VIEWS.includes(requested) ? requested : "plan";
+  const setView = (next: string) => {
+    const nextParams = new URLSearchParams(params);
+    if (next === "plan") nextParams.delete("view"); else nextParams.set("view", next);
+    setParams(nextParams, { replace: true });
+  };
+
+  return (
+    <Tabs value={view} onValueChange={setView} className="space-y-6">
+      <TabsList className="h-auto flex-wrap justify-start" aria-label="Growth plan views">
+        <TabsTrigger value="plan">Plan</TabsTrigger>
+        <TabsTrigger value="topics">Topics</TabsTrigger>
+        <TabsTrigger value="research">Research</TabsTrigger>
+        <TabsTrigger value="monitor">Monitor</TabsTrigger>
+      </TabsList>
+      <TabsContent value="plan" className="mt-0"><PlanView onOpenTopics={() => setView("topics")} /></TabsContent>
+      <TabsContent value="topics" className="mt-0 space-y-6">
+        <ProductTopicsPanel onOpenPlan={() => setView("plan")} />
+        <ProductExtrasPanel onOpenPlan={() => setView("plan")} />
+      </TabsContent>
+      <TabsContent value="research" className="mt-0"><KeywordResearchPanel onOpenPlan={() => setView("plan")} /></TabsContent>
+      <TabsContent value="monitor" className="mt-0"><GrowthToolsPanel /></TabsContent>
+    </Tabs>
   );
 }
 

@@ -6,6 +6,8 @@ import { getUserId } from "../middleware/auth.js";
 import { buildInternalLinkIndex, sanitizeInternalLinkIndex, type InternalLinkIndex } from "../services/internal-linking.js";
 import { validatePublicUrl } from "../services/safe-fetch.js";
 import { getActiveSiteId, getGlobalSettings, updateGlobalSettings, updateSiteSettings } from "../services/user-settings.js";
+import { assertCanCreateSite, withCloudLimitLock } from "../services/cloud-limits.js";
+import { ApiError } from "../http/error-contract.js";
 
 export const sitesRoutes = new Hono();
 
@@ -225,9 +227,9 @@ sitesRoutes.post("/", async (c) => {
       });
     }
 
-    const [site] = await db
-      .insert(sites)
-      .values({
+    const site = await withCloudLimitLock(userId, async (tx) => {
+      await assertCanCreateSite(userId, tx);
+      const [created] = await tx.insert(sites).values({
         userId,
         name: requestedName || titleCaseDomain(domain),
         domain,
@@ -240,8 +242,9 @@ sitesRoutes.post("/", async (c) => {
         internalLinkIndex: index as never,
         internalLinkLastSyncedAt: index ? now : null,
         updatedAt: now,
-      } as never)
-      .returning();
+      } as never).returning();
+      return created;
+    });
 
     await syncActiveSite(userId, site);
 
@@ -253,6 +256,7 @@ sitesRoutes.post("/", async (c) => {
       indexingError,
     }, 201);
   } catch (err: any) {
+    if (err instanceof ApiError) return c.json({ error: err.message, code: err.code, message: err.message }, err.status);
     return c.json({ error: err.message || "Failed to connect site" }, 400);
   }
 });

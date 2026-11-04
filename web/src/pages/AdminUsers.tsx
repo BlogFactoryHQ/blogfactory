@@ -92,7 +92,7 @@ export default function AdminUsers() {
     <BywordPageShell>
       <PageHeader
         title="Users"
-        description="Approve beta testers, manage admin access, and review API key setup status."
+        description="Approve accounts, manage admin access, and review API key setup status."
       />
 
       <BywordCard>

@@ -23,6 +23,8 @@ async function main() {
       ["openai", row.openaiApiKeyEncrypted],
       ["pexels", row.pexelsApiKeyEncrypted],
       ["pixabay", row.pixabayApiKeyEncrypted],
+      ["brave", row.braveApiKeyEncrypted],
+      ["dataforseo", row.dataforseoCredentialsEncrypted],
     ] as Array<[Provider, string | null]>) {
       rows.push({ family: "user_api_keys", provider, status: accountCredentialStatus(provider, value), connected: Boolean(value) });
     }

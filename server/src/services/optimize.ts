@@ -2,7 +2,7 @@ import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { getEffectiveSettings } from "./user-settings.js";
 import { safeFetch } from "./safe-fetch.js";
 
@@ -416,6 +416,11 @@ export async function analyzeOptimizePage(input: {
   }
 
   const suggestions = await aiSuggestions(input.userId, targetQuery, own, competitors) || fallbackSuggestions(own, competitors);
+  // Dynamic import keeps this module out of the product-seo import cycle.
+  const questionExtras = await import("./refresh-questions.js")
+    .then((module) => module.questionSuggestions({ pageUrl, targetQuery, language: site.language }))
+    .catch(() => []);
+  suggestions.push(...questionExtras);
 
   const [page] = await db
     .insert(optimizePages)
@@ -577,11 +582,10 @@ function actionPlan(opportunities: Opportunity[]): ActionPlanItem[] {
 }
 
 async function aiActionPlan(userId: string, insight: PageInsight, fallback: ActionPlanItem[]) {
-  const key = await getOpenRouterKey(userId);
-  if (!key) return null;
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try { await resolveOpenRouterAccess(userId); } catch { return null; }
+  const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "openai/gpt-5-mini",
       messages: [{
@@ -760,11 +764,10 @@ async function fetchHtml(url: string) {
 }
 
 async function aiSuggestions(userId: string, targetQuery: string, own: ContentSnapshot, competitors: ContentSnapshot[]) {
-  const key = await getOpenRouterKey(userId);
-  if (!key) return null;
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try { await resolveOpenRouterAccess(userId); } catch { return null; }
+  const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "openai/gpt-5-mini",
       messages: [{

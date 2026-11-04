@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,8 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const searchParams = new URLSearchParams(location.search);
   const returnTo = authReturnTo(location.state, searchParams.get("returnTo"));
   const { login, devLogin, signup } = useAuth();
-  const [mode, setMode] = useState<"login" | "signup">(searchParams.get("mode") === "signup" ? "signup" : "login");
+  const resetToken = searchParams.get("reset");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">(resetToken ? "reset" : searchParams.get("mode") === "signup" ? "signup" : "login");
   const [isLoading, setIsLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
 
@@ -53,6 +54,10 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   const [rememberMe, setRememberMe] = useState(false);
   // null while /auth/config loads, so a ?mode=signup link is not reset to login early.
   const [signupEnabled, setSignupEnabled] = useState<boolean | null>(selfHosted ?? null);
+  const [workosEnabled, setWorkosEnabled] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileHost = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (selfHosted !== undefined) {
@@ -60,8 +65,8 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
       return;
     }
     let active = true;
-    api.get<{ signup_enabled: boolean }>("/auth/config")
-      .then((config) => { if (active) setSignupEnabled(config.signup_enabled); })
+    api.get<{ signup_enabled: boolean; auth_provider?: "local" | "workos"; turnstile_site_key?: string | null }>("/auth/config")
+      .then((config) => { if (active) { setSignupEnabled(config.signup_enabled); setWorkosEnabled(config.auth_provider === "workos"); setTurnstileSiteKey(config.turnstile_site_key || null); } })
       .catch(() => { if (active) setSignupEnabled(false); });
     return () => { active = false; };
   }, [selfHosted]);
@@ -69,6 +74,35 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
   useEffect(() => {
     if (signupEnabled === false && mode === "signup") setMode("login");
   }, [mode, signupEnabled]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const verify = params.get("verify");
+    if (!verify) return;
+    api.post("/auth/verify-email", { token: verify })
+      .then(() => { toast.success("Email verified. You can sign in."); navigate("/auth", { replace: true }); })
+      .catch((error: Error) => toast.error(error.message));
+  }, [location.search, navigate]);
+
+  useEffect(() => {
+    const error = new URLSearchParams(location.search).get("error");
+    if (error === "auth_failed") toast.error("Sign in could not be completed. Please try again.");
+    if (error === "signup_required") toast.info("Accept the terms to finish creating your BlogFactory account.");
+  }, [location.search]);
+
+  useEffect(() => {
+    if (mode !== "signup" || !turnstileSiteKey || !turnstileHost.current) return;
+    const render = () => {
+      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => void } }).turnstile;
+      if (turnstile && turnstileHost.current) turnstile.render(turnstileHost.current, { sitekey: turnstileSiteKey, callback: (token: string) => setTurnstileToken(token), "expired-callback": () => setTurnstileToken("") });
+    };
+    const existing = document.querySelector<HTMLScriptElement>('script[src*="challenges.cloudflare.com/turnstile"]');
+    if (existing) { render(); return; }
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true; script.defer = true; script.onload = render;
+    document.head.appendChild(script);
+  }, [mode, turnstileSiteKey]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,9 +122,14 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await signup(email, password, displayName, consent, false);
-      toast.success("Account created");
-      navigate(returnTo, { replace: true });
+      const result = await signup(email, password, displayName, consent, false, turnstileToken);
+      if (result === "verification_sent") {
+        toast.success("Check your email to verify your account");
+        setMode("login");
+      } else {
+        toast.success("Account created");
+        navigate(returnTo, { replace: true });
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
@@ -111,10 +150,79 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
     }
   };
 
+  const handleWorkos = async (screenHint: "sign-in" | "sign-up") => {
+    setIsLoading(true);
+    try {
+      const { url } = await api.post<{ url: string }>("/auth/workos/start", {
+        screenHint,
+        returnTo: screenHint === "sign-up" ? "/billing" : returnTo,
+        consent: screenHint === "sign-up" ? consent : false,
+        turnstileToken: screenHint === "sign-up" ? turnstileToken : undefined,
+      });
+      window.location.href = url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Authentication could not be started");
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault(); setIsLoading(true);
+    try {
+      await api.post("/auth/forgot-password", { email });
+      toast.success("If that account exists, a reset link has been sent.");
+      setMode("login");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Request failed"); }
+    finally { setIsLoading(false); }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault(); setIsLoading(true);
+    try {
+      await api.post("/auth/reset-password", { token: resetToken, password });
+      toast.success("Password reset. You can sign in.");
+      navigate("/auth", { replace: true }); setMode("login"); setPassword("");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Reset failed"); }
+    finally { setIsLoading(false); }
+  };
+
+  if (workosEnabled) return (
+    <AuthShell>
+      <h1 className="type-panel-title mb-1 text-lg">{mode === "signup" ? "Create account" : "Sign in"}</h1>
+      <p className="type-body mb-6">{mode === "signup" ? "Verify your email in AuthKit, then choose a Cloud plan." : "Continue securely with BlogFactory AuthKit."}</p>
+      <div className="space-y-5">
+        {mode === "signup" && <div className="flex items-start space-x-2">
+          <Checkbox id="workos-consent" checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} />
+          <Label htmlFor="workos-consent" className="cursor-pointer text-xs leading-5 text-muted-foreground">I accept the BlogFactory Terms of Service and Privacy Policy.</Label>
+        </div>}
+        {mode === "signup" && turnstileSiteKey && <div ref={turnstileHost} />}
+        <Button className="h-10 w-full" disabled={isLoading || (mode === "signup" && (!consent || Boolean(turnstileSiteKey && !turnstileToken)))} onClick={() => handleWorkos(mode === "signup" ? "sign-up" : "sign-in")}>
+          {isLoading ? "Redirecting..." : mode === "signup" ? "Continue to create account" : "Continue to sign in"}
+        </Button>
+        {signupEnabled && <Button type="button" variant="ghost" className="w-full" onClick={() => setMode(mode === "login" ? "signup" : "login")} disabled={isLoading}>
+          {mode === "login" ? "Create account" : "Back to sign in"}
+        </Button>}
+      </div>
+    </AuthShell>
+  );
+
+  if (mode === "forgot" || mode === "reset") return (
+    <AuthShell>
+      <h1 className="type-panel-title mb-1 text-lg">{mode === "forgot" ? "Reset password" : "Choose a new password"}</h1>
+      <p className="type-body mb-6">{mode === "forgot" ? "We will send a one-time reset link if the account exists." : "This link can be used once and expires after one hour."}</p>
+      <form onSubmit={mode === "forgot" ? handleForgotPassword : handleResetPassword} className="space-y-5">
+        {mode === "forgot" ? <div className="space-y-1.5"><Label htmlFor="reset-email">Email</Label><Input id="reset-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
+          : <div className="space-y-1.5"><Label htmlFor="reset-password">New password</Label><Input id="reset-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} required /></div>}
+        <Button className="w-full" type="submit" disabled={isLoading}>{isLoading ? "Working..." : mode === "forgot" ? "Send reset link" : "Reset password"}</Button>
+        <Button className="w-full" type="button" variant="ghost" onClick={() => setMode("login")}>Back to sign in</Button>
+      </form>
+    </AuthShell>
+  );
+
   return (
     <AuthShell>
         <h1 className="type-panel-title mb-1 text-lg">{mode === "login" ? "Sign in" : "Create account"}</h1>
-        <p className="type-body mb-6">{mode === "login" ? "Access your BlogFactory workspace." : "Administrator emails are approved immediately. Other accounts wait for administrator approval."}</p>
+        <p className="type-body mb-6">{mode === "login" ? "Access your BlogFactory workspace." : selfHosted ? "Administrator emails are approved immediately. Other accounts wait for administrator approval." : "Verify your email, then choose a Cloud plan."}</p>
         <form onSubmit={mode === "login" ? handleSignIn : handleSignUp} className="space-y-5">
               {mode === "signup" && (
                 <div className="space-y-1.5">
@@ -174,9 +282,13 @@ export default function Auth({ selfHosted }: { selfHosted?: boolean }) {
                 </Label>
               </div>}
 
-              <Button type="submit" className="w-full h-10" disabled={isLoading || (mode === "signup" && !consent)}>
+              {mode === "signup" && turnstileSiteKey && <div ref={turnstileHost} />}
+
+              <Button type="submit" className="w-full h-10" disabled={isLoading || (mode === "signup" && (!consent || Boolean(turnstileSiteKey && !turnstileToken)))}>
                 {isLoading ? "Working..." : mode === "login" ? "Sign in" : "Create account"}
               </Button>
+
+              {mode === "login" && <Button type="button" variant="ghost" className="w-full" onClick={() => setMode("forgot")}>Forgot password?</Button>}
 
               {signupEnabled && (
                 <Button

@@ -4,10 +4,10 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
-import { getOpenRouterKey } from "../services/api-keys.js";
+import { resolveOpenRouterAccess } from "../services/managed-openrouter.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
-import { readJsonObject, requiredString, safeError } from "../http/error-contract.js";
+import { ApiError, readJsonObject, requiredString, safeError } from "../http/error-contract.js";
 import type { GenerateOpts } from "../services/generation-types.js";
 import type { ExtractOpts } from "../services/extract-content.js";
 import type { FetchOpts } from "../services/fetch-social-content.js";
@@ -70,8 +70,7 @@ contentRoutes.post("/generate", async (c) => {
       )).limit(1);
       if (!planItem) return c.json({ error: "SEO plan item not found" }, 404);
     }
-    const openRouterKey = await getOpenRouterKey(userId);
-    if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
+    const openRouterKey = (await resolveOpenRouterAccess(userId)).apiKey;
     const modelId = await resolveOpenRouterTextModel(openRouterKey, body.modelId || "openai/gpt-4o");
     const feedId = body.feedId || body.feed_id || null;
     const requestedFeedRunToken = body.feedRunToken || body.feed_run_token;
@@ -99,7 +98,7 @@ contentRoutes.post("/generate", async (c) => {
       personaId: body.personaId || null,
       campaignId,
       campaignItemId,
-      status: "running",
+      status: "pending",
       currentStep: "starting",
     }).returning();
 
@@ -135,6 +134,7 @@ contentRoutes.post("/generate", async (c) => {
       });
     }
     console.error("generate error", safeError(err));
+    if (err instanceof ApiError) throw err;
     return c.json({ error: "Content generation failed" }, 500);
   }
 });
@@ -148,6 +148,7 @@ contentRoutes.post("/article-plan", async (c) => {
     const result = await generateArticlePlan({ ...body, userId });
     return c.json(result);
   } catch (err: any) {
+    if (err instanceof ApiError) throw err;
     const message = err.message || "Article planning failed";
     if (message.includes("only supports") || message.includes("is required")) {
       return c.json({ error: message }, 400);
@@ -172,6 +173,7 @@ contentRoutes.post("/extract", async (c) => {
     return c.json(result);
   } catch (err: any) {
     console.error("extract error", safeError(err));
+    if (err instanceof ApiError) throw err;
     return c.json({ error: "Content extraction failed" }, 500);
   }
 });

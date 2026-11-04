@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { useMcpCapabilities } from "@/hooks/useMcpCapabilities";
 import { useOpenRouterSetup } from "@/hooks/useOpenRouterSetup";
 import { useSearchConsole } from "@/hooks/useSearchConsole";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
   const [openRouterKey, setOpenRouterKey] = useState("");
   const openRouter = useOpenRouterSetup({ siteId: digest.site.id });
   const { oauthEnabled } = useSearchConsole(digest.site.id);
+  const { cloud } = useDeploymentConfig();
   const mcpCapabilitiesQuery = useMcpCapabilities();
 
   useEffect(() => {
@@ -197,6 +199,11 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                       <InstructionList items={["Open the connection screen.", "Choose the Google account that can read this Search Console property.", "Approve read-only access and select the property."]} />
                       <Button asChild className="mt-5" onClick={() => onOpenChange(false)}><Link to="/overview/growth?tab=optimize&connect=search-console">Continue with Google <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
                     </>
+                  ) : cloud ? (
+                    <>
+                      <InstructionList items={["Open the connection screen.", "Create a Google service account and give its email read access to this Search Console property.", "Paste the service account JSON. BlogFactory stores it encrypted and uses read-only access."]} />
+                      <Button asChild className="mt-5" onClick={() => onOpenChange(false)}><Link to="/overview/growth?tab=optimize&connect=search-console">Open connection screen <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
+                    </>
                   ) : (
                     <div className="space-y-5">
                       <Alert variant="warning">
@@ -224,7 +231,7 @@ export function WorkspaceSetupGuide({ open, onOpenChange, digest, initialStep }:
                       <p className="text-sm leading-6 text-muted-foreground"><strong className="text-foreground">No OAuth?</strong> The connection screen also explains the service-account alternative and what its JSON file contains.</p>
                     </div>
                   )}
-                  {!searchReady && <Button type="button" variant="outline" className="mt-5" onClick={refreshReadiness}>Check server setup</Button>}
+                  {!searchReady && <Button type="button" variant="outline" className="mt-5" onClick={refreshReadiness}>{cloud ? "Check connection" : "Check server setup"}</Button>}
                 </SetupSection>
               )}
 

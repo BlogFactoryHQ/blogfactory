@@ -10,6 +10,11 @@ export const MCP_OAUTH_USER_ID_CLAIM = "urn:blogfactory:user_id";
 export const MCP_OAUTH_SITE_ID_CLAIM = "urn:blogfactory:site_id";
 export const MCP_OAUTH_SITE_IDS_CLAIM = "urn:blogfactory:site_ids";
 export const MCP_OAUTH_READ_SCOPE = "content:read";
+
+// MCP OAuth may live in a different WorkOS environment than hosted browser sign-in.
+export function mcpWorkosApiKey(env: Record<string, string | undefined> = process.env) {
+  return env.MCP_WORKOS_API_KEY?.trim() || env.WORKOS_API_KEY?.trim() || undefined;
+}
 // AuthKit issues these standard OAuth scopes. BlogFactory authorizes its
 // draft-only capabilities from the site-bound consent claims after token verification.
 export const MCP_OAUTH_SCOPES = ["openid", "profile", "email", "offline_access"];
@@ -64,7 +69,7 @@ export function getMcpOAuthConfig(
   const issuerValue = env.WORKOS_AUTHKIT_ISSUER?.trim();
   const resourceValue = env.MCP_RESOURCE_URL?.trim();
   const legacyResourceValue = env.MCP_LEGACY_RESOURCE_URLS?.trim();
-  const apiKey = env.WORKOS_API_KEY?.trim();
+  const apiKey = mcpWorkosApiKey(env);
   if (!issuerValue && !resourceValue && !legacyResourceValue && !apiKey) return null;
   if (!issuerValue || !resourceValue || !apiKey) {
     throw new Error("MCP OAuth requires WORKOS_AUTHKIT_ISSUER, MCP_RESOURCE_URL, and WORKOS_API_KEY");

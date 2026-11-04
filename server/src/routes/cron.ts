@@ -4,14 +4,31 @@ import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
 import { drainDeferredImages } from "../services/low-cost-images.js";
+import { drainTopicRefresh } from "../services/topic-refresh.js";
+import { drainRankChecks } from "../services/rank-tracking.js";
 import { drainSeoMetadata, enqueueUntrackedDraftSeoMetadata } from "../services/seo-metadata.js";
 import { safeError } from "../http/error-contract.js";
 import { purgeExpiredOperationEvents } from "../services/operation-events.js";
+import { drainPolarWebhookEvents, reconcilePolarCustomers } from "../services/billing-webhooks.js";
+import { purgeStalePlanReservations } from "../services/plan-usage.js";
+import { expireAiCredits, purgeStaleAiCreditReservations } from "../services/ai-credits.js";
+import { reconcileManagedAiReservations } from "../services/managed-openrouter.js";
+import { purgeExpiredAuthRateLimits } from "../services/auth-security.js";
 
 export const cronRoutes = new Hono();
 
 export function isCronAuthorized(header: string | undefined, secret = process.env.CRON_SECRET) {
   return Boolean(secret) && header === `Bearer ${secret}`;
+}
+
+type IdleTimeoutServer = { timeout?: (request: Request, seconds: number) => void };
+
+// Synchronous drains can outlast Bun's idleTimeout cap; the caller's --max-time and proxy timeouts bound them instead.
+export function disableRequestIdleTimeout(server: unknown, request: Request) {
+  const timeout = (server as IdleTimeoutServer | undefined)?.timeout;
+  if (typeof timeout !== "function") return false;
+  timeout.call(server, request, 0);
+  return true;
 }
 
 function positiveInt(value: unknown, fallback: number, max?: number) {
@@ -50,6 +67,12 @@ export function readCronDrainConfig(query: (name: string) => string | undefined,
     searchConsole: {
       limit: queryInt(query, ["searchConsoleLimit", "maxSites", "limit"], env.GSC_CRON_MAX_SITES, 10, 10),
     },
+    topics: {
+      limit: queryInt(query, ["topicsLimit"], undefined, 2, 5),
+    },
+    rank: {
+      limit: queryInt(query, ["rankLimit"], undefined, 10, 25),
+    },
     seo: {
       limit: queryInt(query, ["seoLimit", "limit"], undefined, 5, 10),
       discoveryLimit: queryInt(query, ["seoDiscoveryLimit"], undefined, 100, 500),
@@ -61,6 +84,7 @@ cronRoutes.get("/drain", async (c) => {
   if (!isCronAuthorized(c.req.header("Authorization"))) {
     return c.json({ error: "Unauthorized" }, 401);
   }
+  disableRequestIdleTimeout(c.env, c.req.raw);
 
   const task = c.req.query("task") || "all";
   const workerUserId = c.req.query("userId");
@@ -106,8 +130,10 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(config.searchConsole.limit) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });
   if (task === "seo") return c.json({ ok: true, seo: await runSeo() });
+  if (task === "rank") return c.json({ ok: true, rank: await drainRankChecks(config.rank.limit) });
+  if (task === "topics") return c.json({ ok: true, topics: await drainTopicRefresh(config.topics.limit) });
 
-  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations] = await Promise.all([
+  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation, topicRefresh, rankChecks] = await Promise.all([
     drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
     drainQueuedGoogleIndexing(config.indexing.limit),
     drainSearchConsoleSync(config.searchConsole.limit),
@@ -115,7 +141,16 @@ cronRoutes.get("/drain", async (c) => {
     runImages(),
     runSeo(),
     purgeExpiredOperationEvents(),
+    drainPolarWebhookEvents(),
+    purgeStalePlanReservations(),
+    expireAiCredits(),
+    purgeStaleAiCreditReservations(),
+    purgeExpiredAuthRateLimits(),
+    reconcilePolarCustomers(),
+    reconcileManagedAiReservations(),
+    drainTopicRefresh(config.topics.limit).catch(() => []),
+    drainRankChecks(config.rank.limit).catch(() => ({ checked: 0 })),
   ]);
 
-  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations });
+  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation, topicRefresh, rankChecks });
 });

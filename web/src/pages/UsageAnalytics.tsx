@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { StatCard, type StatTone } from "@/components/patterns/StatCard";
 import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
@@ -40,6 +41,7 @@ import { GuardrailRules } from "@/components/usage/GuardrailRules";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { safeFormatDate, safeFormatIsoDate } from "@/lib/date-format";
+import { api } from "@/lib/api";
 import {
   formatCompactCurrency,
   formatCompactNumber,
@@ -51,6 +53,7 @@ import {
 export default function UsageAnalytics() {
   const [days, setDays] = useState(30);
   const { summary, modelBreakdown, dailyUsage, isLoading, error, refetch, costs, openRouterUsage } = useUsageAnalytics(days);
+  const { data: billing } = useQuery({ queryKey: ["billing-state"], queryFn: () => api.get<{ credits: { available: number; reserved: number; debt: number } }>("/billing/state"), retry: false });
   const currentMonthSpend = costs?.monthToDateSpend || 0;
 
   const formatCurrency = (amount: number) =>
@@ -257,9 +260,9 @@ export default function UsageAnalytics() {
             </BywordCard>
           </div>
 
-          <div className="mb-8 grid gap-4 lg:grid-cols-3">
+          <div className="mb-8 grid gap-4 lg:grid-cols-4">
             <BywordCard>
-              <SectionHeader icon={Zap} title="OpenRouter key" />
+              <SectionHeader icon={Zap} title="BYO OpenRouter" />
               <div className="grid gap-3 p-4 text-sm sm:p-5">
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Remaining</span>
@@ -273,6 +276,14 @@ export default function UsageAnalytics() {
                   <span className="text-muted-foreground">Monthly usage</span>
                   <span className="font-medium">{formatCurrency(Number(openRouterData.usage_monthly || 0))}</span>
                 </div>
+              </div>
+            </BywordCard>
+            <BywordCard>
+              <SectionHeader icon={Zap} title="BlogFactory AI Credits" />
+              <div className="grid gap-3 p-4 text-sm sm:p-5">
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Available</span><span className="font-medium">{billing?.credits.available.toLocaleString() ?? "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Reserved</span><span className="font-medium">{billing?.credits.reserved.toLocaleString() ?? "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Debt</span><span className="font-medium">{billing?.credits.debt.toLocaleString() ?? "—"}</span></div>
               </div>
             </BywordCard>
             <BywordCard>

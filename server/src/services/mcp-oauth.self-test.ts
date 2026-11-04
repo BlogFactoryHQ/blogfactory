@@ -79,4 +79,15 @@ await assert.rejects(
   (error: unknown) => error instanceof ApiError && error.status === 403,
 );
 
+let authorizationHeader: string | undefined;
+await completeMcpOAuthLogin(userId, "ext_auth_01K0BLOGFACTORY", [siteId], {
+  ...dependencies,
+  env: { ...dependencies.env, MCP_WORKOS_API_KEY: "sk_test_mcp_environment" },
+  request: async (_input: string | URL | Request, init?: RequestInit) => {
+    authorizationHeader = new Headers(init?.headers).get("authorization") || undefined;
+    return Response.json({ redirect_uri: "https://blogfactory-test.authkit.app/oauth2/authorize/continue" });
+  },
+});
+assert.equal(authorizationHeader, "Bearer sk_test_mcp_environment", "MCP OAuth must prefer MCP_WORKOS_API_KEY");
+
 console.log("MCP OAuth completion self-check passed");

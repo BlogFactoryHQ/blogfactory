@@ -20,23 +20,28 @@ import { contentRoutes } from "./routes/content.js";
 import { schedulerRoutes } from "./routes/scheduler.js";
 import { webhooksRoutes } from "./routes/webhooks.js";
 import { adminRoutes } from "./routes/admin.js";
+import { cloudAdminRoutes } from "./routes/cloud-admin.js";
 import { sitesRoutes } from "./routes/sites.js";
 import { integrationsRoutes } from "./routes/integrations.js";
 import { indexingRoutes } from "./routes/indexing.js";
 import { searchConsoleRoutes } from "./routes/search-console.js";
 import { optimizeRoutes } from "./routes/optimize.js";
 import { campaignsRoutes } from "./routes/campaigns.js";
+import { productSeoRoutes } from "./routes/product-seo.js";
 import { cronRoutes } from "./routes/cron.js";
 import { programmaticRoutes } from "./routes/programmatic.js";
 import { mcpTokenRoutes } from "./routes/mcp-tokens.js";
 import { mcpOAuthRoutes } from "./routes/mcp-oauth.js";
 import { controlPlaneRoutes } from "./routes/control-plane.js";
 import { operationsRoutes } from "./routes/operations.js";
+import { billingRoutes, polarWebhookRoute } from "./routes/billing.js";
 import { handleMcpHttpRequest } from "./mcp/server.js";
-import { handleMcpProtectedResourceMetadata } from "./mcp/oauth.js";
+import { handleMcpProtectedResourceMetadata, mcpWorkosApiKey } from "./mcp/oauth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_PROTOCOL_VERSION, MCP_SCOPES, MCP_SERVER_VERSION } from "./mcp/contracts.js";
 import { readinessStatus } from "./services/readiness.js";
-import { resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
+import { API_IDLE_TIMEOUT_SECONDS, resolveMcpEndpoint, resolvePort, validateSelfHostedConfig } from "./config/runtime.js";
+import { cloudEntitlementMiddleware } from "./middleware/cloud-entitlements.js";
+import { getCloudStatus } from "./services/cloud-status.js";
 
 validateSelfHostedConfig();
 
@@ -46,6 +51,7 @@ app.use("/api/*", cors());
 app.use("*", logger());
 app.use("/api/*", normalizeApiErrors);
 app.use("/api/*", authMiddleware);
+app.use("/api/*", cloudEntitlementMiddleware);
 app.use("/api/*", operationLedgerMiddleware);
 
 app.route("/api/auth", authRoutes);
@@ -62,6 +68,8 @@ app.route("/api/storage", storageRoutes);
 app.route("/api/content", contentRoutes);
 app.route("/api/scheduler", schedulerRoutes);
 app.route("/api/webhooks", webhooksRoutes);
+app.get("/api/admin/status", async (c) => c.json(await getCloudStatus()));
+app.route("/api/admin/customers", cloudAdminRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sites", sitesRoutes);
 app.route("/api/integrations", integrationsRoutes);
@@ -69,12 +77,15 @@ app.route("/api/indexing", indexingRoutes);
 app.route("/api/search-console", searchConsoleRoutes);
 app.route("/api/optimize", optimizeRoutes);
 app.route("/api/campaigns", campaignsRoutes);
+app.route("/api/product-seo", productSeoRoutes);
 app.route("/api/cron", cronRoutes);
 app.route("/api/programmatic", programmaticRoutes);
 app.route("/api/mcp/tokens", mcpTokenRoutes);
 app.route("/api/mcp/oauth", mcpOAuthRoutes);
 app.route("/api/control-plane", controlPlaneRoutes);
 app.route("/api/operations", operationsRoutes);
+app.route("/api/billing", billingRoutes);
+app.route("/api/webhooks", polarWebhookRoute);
 app.get("/api/mcp/capabilities", (c) => c.json({
   protocol_version: MCP_PROTOCOL_VERSION,
   server_version: MCP_SERVER_VERSION,
@@ -82,7 +93,7 @@ app.get("/api/mcp/capabilities", (c) => c.json({
   tools: ACTIVE_MCP_TOOL_NAMES,
   tool_count: ACTIVE_MCP_TOOL_NAMES.length,
   endpoint: resolveMcpEndpoint(process.env, c.req.url),
-  oauth_enabled: Boolean(process.env.WORKOS_AUTHKIT_ISSUER && process.env.WORKOS_API_KEY && process.env.MCP_RESOURCE_URL),
+  oauth_enabled: Boolean(process.env.WORKOS_AUTHKIT_ISSUER && mcpWorkosApiKey() && process.env.MCP_RESOURCE_URL),
 }));
 
 app.get("/.well-known/oauth-protected-resource", () => handleMcpProtectedResourceMetadata());
@@ -107,5 +118,6 @@ const port = resolvePort();
 if (import.meta.main) console.log(`Backend listening on port ${port}`);
 export default {
   port,
+  idleTimeout: API_IDLE_TIMEOUT_SECONDS,
   fetch: app.fetch,
 };

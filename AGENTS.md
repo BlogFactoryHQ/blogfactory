@@ -4,6 +4,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 
 ## Read First
 
+- `docs/handoff-2026-09-20.md` is the current session handoff: open PRs, the launch-review issues (tracking issue #27), and what is still unverified about production. Start there.
 - `README.md` describes the current product, architecture, setup, and acceptance checks.
 - `FEATURE_PLAN.md` is the canonical open-source-first, private-Cloud, and public-launch roadmap. Unchecked items are not shipped.
 - `docs/architecture.md` maps runtime surfaces, shared services, hosting, data boundaries, and change ownership.
@@ -109,10 +110,10 @@ The action queue contains only real work: editorial review states, requested cha
 ## MCP Status — 2026-09-15
 
 - Production endpoint: `https://blogfactory.io/mcp`.
-- Transport: Streamable HTTP; protocol `2025-11-25`; server `0.4.3`.
+- Transport: Streamable HTTP; protocol `2025-11-25`; server `0.5.0`.
 - Authentication: WorkOS browser OAuth or site-scoped personal `bf_mcp_` tokens. Tokens are hashed and shown once.
 - Scopes remain `content:read`, `drafts:write`, and `publish:draft`.
-- The exact active catalog has 22 tools. Control-plane additions are `get_workspace_digest`, `list_action_items`, and `review_post`.
+- The exact active catalog has 26 tools. Control-plane additions are `get_workspace_digest`, `list_action_items`, and `review_post`; read-only research additions are `analyze_post`, `discover_topics`, `research_keyword`, and `find_content_gaps`.
 - `review_post` links the standalone `ui://blogfactory/review-post.html` MCP App resource. Unsupported clients receive the same structured result as text.
 - `generate_draft` is asynchronous; `update_draft` requires `expected_updated_at`; `push_to_cms_draft` requires current version, explicit destination, valid preflight, and remains idempotent/draft-only.
 - Connections UI reads scope/tool counts from `/api/mcp/capabilities`; never hardcode catalog counts in product UI.

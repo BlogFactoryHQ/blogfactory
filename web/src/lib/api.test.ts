@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  PLAN_REQUIRED_EVENT,
   api,
   authRedirectHref,
   prepareImagePrompts,
@@ -15,6 +16,24 @@ beforeEach(() => {
 });
 
 describe("ApiClient errors", () => {
+  it("announces plan-required responses with their billing link", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: "An active BlogFactory Cloud plan is required for this action",
+      code: "subscription_required",
+      message: "An active BlogFactory Cloud plan is required for this action",
+      billing_url: "/billing",
+    }), { status: 403 }));
+    const listener = vi.fn();
+    window.addEventListener(PLAN_REQUIRED_EVENT, listener);
+
+    const error = await api.post("/sites", {}).catch((caught) => caught);
+    window.removeEventListener(PLAN_REQUIRED_EVENT, listener);
+
+    expect(error).toMatchObject({ status: 403, code: "subscription_required", billingUrl: "/billing" });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ billingUrl: "/billing" });
+  });
+
   it("preserves machine-readable error details", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       error: "Invalid status",

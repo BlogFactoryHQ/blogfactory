@@ -8,6 +8,8 @@ import {
   deleteApiKey,
   getApiKeyMetadata,
   getGoogleAiKey,
+  getBraveKey,
+  getDataForSeoCredentials,
   getOpenAiKey,
   getOpenRouterKey,
   setApiKey,
@@ -33,11 +35,12 @@ import {
   updateGlobalSettings,
   updateSiteSettings,
 } from "../services/user-settings.js";
+import { openRouterInferenceFetch } from "../services/managed-openrouter.js";
 
 export const settingsRoutes = new Hono();
-const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay"]);
-const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai"]);
-type TestableProvider = "openrouter" | "google" | "openai";
+const API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "pexels", "pixabay", "brave", "dataforseo"]);
+const TESTABLE_API_KEY_PROVIDERS = new Set(["openrouter", "google", "openai", "brave", "dataforseo"]);
+type TestableProvider = "openrouter" | "google" | "openai" | "brave" | "dataforseo";
 
 const asText = (value: unknown) => typeof value === "string" ? value : null;
 const asOptionalText = (value: unknown) => typeof value === "string" ? value : undefined;
@@ -146,12 +149,10 @@ async function extractKnowledgePdf(file: File, userId: string) {
     }
   }
 
-  const openRouterKey = await getOpenRouterKey(userId);
-  if (openRouterKey) {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try {
+    const resp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openRouterKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -169,7 +170,7 @@ async function extractKnowledgePdf(file: File, userId: string) {
       const text = firstTextFromOpenRouter(await resp.json());
       if (text) return text;
     }
-  }
+  } catch { /* provider availability is reported below */ }
 
   throw new Error("Add a Google AI or OpenRouter API key before importing PDF knowledge");
 }
@@ -489,6 +490,8 @@ settingsRoutes.post("/api-keys/test", async (c) => {
   const apiKey =
     testableProvider === "openrouter" ? await getOpenRouterKey(userId) :
     testableProvider === "google" ? await getGoogleAiKey(userId) :
+    testableProvider === "brave" ? await getBraveKey(userId) :
+    testableProvider === "dataforseo" ? await getDataForSeoCredentials(userId).then((credentials) => credentials && `${credentials.login}:${credentials.password}`) :
     await getOpenAiKey(userId);
 
   if (!apiKey) return c.json({ error: "No saved API key for this provider" }, 400);
@@ -500,6 +503,15 @@ settingsRoutes.post("/api-keys/test", async (c) => {
     google: () => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`),
     openai: () => fetch("https://api.openai.com/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+    brave: () => fetch("https://api.search.brave.com/res/v1/web/search?q=test&count=1", {
+      headers: { Accept: "application/json", "X-Subscription-Token": apiKey },
+      signal: AbortSignal.timeout(10_000),
+    }),
+    // The account endpoint is free and answers 401 for wrong credentials.
+    dataforseo: () => fetch("https://api.dataforseo.com/v3/appendix/user_data", {
+      headers: { Authorization: `Basic ${Buffer.from(apiKey).toString("base64")}` },
+      signal: AbortSignal.timeout(10_000),
     }),
   };
 

@@ -8,7 +8,7 @@ import {
   isMcpAccessTokenSecret,
   markMcpAccessTokenUsed,
 } from "../services/mcp-access-tokens.js";
-import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
+import { bootstrapUserAccess, isApproved, isSuspended } from "../services/access-control.js";
 import {
   type McpOAuthIdentity,
   verifyMcpOAuthAccessToken,
@@ -33,6 +33,7 @@ type OAuthUserSites = {
   displayName: string | null;
   role: string;
   approvalStatus: string;
+  suspendedAt?: Date | null;
   siteIds: string[];
 };
 type McpAuthDependencies = {
@@ -51,6 +52,7 @@ async function findOAuthUserSites(userId: string, siteIds: string[]) {
       displayName: users.displayName,
       role: users.role,
       approvalStatus: users.approvalStatus,
+      suspendedAt: users.suspendedAt,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -93,6 +95,7 @@ export async function authenticateMcpBearer(
       approvalStatus: token.approvalStatus,
     });
     if (!isApproved(user.role, user.approvalStatus)) return null;
+    if (isSuspended({ role: user.role, suspendedAt: token.suspendedAt })) return null;
 
     if (!await dependencies.touch(token.tokenId, now)) return null;
     return {
@@ -107,7 +110,8 @@ export async function authenticateMcpBearer(
     };
   }
 
-  const oauthIdentity = await (dependencies.verifyOAuth || verifyMcpOAuthAccessToken)(secret);
+  if (!dependencies.verifyOAuth) return null;
+  const oauthIdentity = await dependencies.verifyOAuth(secret);
   if (!oauthIdentity) return null;
   const oauthUser = await (dependencies.findOAuthUserSites || findOAuthUserSites)(
     oauthIdentity.userId,
@@ -121,6 +125,7 @@ export async function authenticateMcpBearer(
     approvalStatus: oauthUser.approvalStatus,
   });
   if (!isApproved(user.role, user.approvalStatus)) return null;
+  if (isSuspended({ role: user.role, suspendedAt: oauthUser.suspendedAt })) return null;
   const connection = await (dependencies.authorizeOAuth || authorizeMcpOAuthConnection)(
     oauthIdentity,
     now,

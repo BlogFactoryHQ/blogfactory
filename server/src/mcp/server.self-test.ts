@@ -19,6 +19,7 @@ import {
   reviewPostNextAction,
   safeMcpJobError,
 } from "./tools.js";
+import { ApiError } from "../http/error-contract.js";
 
 assert.equal(mcpDraftModelId("x-ai/grok-4.3"), "x-ai/grok-4.3");
 assert.equal(mcpDraftModelId(null), "openai/gpt-4o");
@@ -83,13 +84,21 @@ const list = await post(
 );
 assert.equal(list.status, 200);
 const listedTools = (await list.json() as any).result.tools;
-assert.equal(listedTools.length, 22);
+assert.equal(listedTools.length, 26);
 assert.deepEqual(listedTools.map((tool: any) => tool.name), ACTIVE_MCP_TOOL_NAMES);
 assert.equal(listedTools.find((tool: any) => tool.name === "review_post")._meta.ui.resourceUri, "ui://blogfactory/review-post.html");
 assert.ok(listedTools.find((tool: any) => tool.name === "get_workspace_digest").outputSchema.properties.data.properties.workspace.properties.connections.properties.generation);
 assert.equal(MCP_TOOL_REGISTRY.get_workspace_digest.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.list_action_items.requiredScope, "content:read");
 assert.equal(MCP_TOOL_REGISTRY.review_post.requiredScope, "content:read");
+for (const name of ["analyze_post", "discover_topics", "research_keyword", "find_content_gaps"] as const) {
+  assert.equal(MCP_TOOL_REGISTRY[name].requiredScope, "content:read", `${name} stays read scope`);
+  assert.equal(MCP_TOOL_REGISTRY[name].annotations.readOnlyHint, true, `${name} is read-only`);
+  assert.equal(MCP_TOOL_REGISTRY[name].annotations.destructiveHint, false);
+  assert.equal(MCP_TOOL_REGISTRY[name].siteBound, true);
+}
+assert.equal(MCP_TOOL_REGISTRY.analyze_post.annotations.openWorldHint, false);
+assert.equal(MCP_TOOL_REGISTRY.research_keyword.annotations.openWorldHint, true);
 assert.equal(MCP_TOOL_REGISTRY.create_draft.requiredScope, "drafts:write");
 assert.equal(MCP_TOOL_REGISTRY.import_drafts.requiredScope, "drafts:write");
 assert.equal(MCP_BATCH_DRAFT_LIMIT, 20);
@@ -110,6 +119,10 @@ for (const tool of listedTools) {
     refresh_search_console: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     push_to_cms_draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    // Read-only research tools that call fixed public sources, so they honestly declare open-world access.
+    discover_topics: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    research_keyword: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    find_content_gaps: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   };
   assert.deepEqual(tool.annotations, mutationAnnotations[tool.name] || {
     readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
@@ -146,6 +159,50 @@ assert.deepEqual((await call.json() as any).result.structuredContent, {
 assert.equal(startedOperations.length, 1);
 assert.equal(finishedOperations.length, 1);
 assert.equal((finishedOperations[0] as any).status, "succeeded");
+
+const originalWhoamiHandler = MCP_TOOL_REGISTRY.whoami.handler;
+const callWhoamiWithError = async (error: ApiError, id: string) => {
+  MCP_TOOL_REGISTRY.whoami.handler = async () => { throw error; };
+  const response = await post(
+    {
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { name: "whoami", arguments: {} },
+    },
+    { "mcp-protocol-version": MCP_PROTOCOL_VERSION },
+  );
+  return (await response.json() as any).result;
+};
+const quotaExceededResult = await callWhoamiWithError(
+  new ApiError(429, "plan_quota_reached", "Monthly draft quota of 150 reached"),
+  "quota-exceeded",
+);
+assert.equal(quotaExceededResult.structuredContent.error.code, "quota_exceeded");
+assert.equal(quotaExceededResult.structuredContent.error.retryable, false);
+assert.match(quotaExceededResult.structuredContent.error.message, /150/);
+assert.match(quotaExceededResult.structuredContent.error.message, /resets on \d{4}-\d{2}-01/);
+assert.match(quotaExceededResult.structuredContent.next_action, /\/billing/);
+assert.equal((finishedOperations.at(-1) as any).errorCode, "quota_exceeded");
+for (const message of [
+  "Site limit reached for this plan",
+  "Active RSS limit reached for this plan",
+  "Storage limit reached for this plan",
+  "Concurrent generation limit reached for this plan",
+]) {
+  const result = await callWhoamiWithError(new ApiError(429, "plan_quota_reached", message), `quota-${message}`);
+  assert.equal(result.structuredContent.error.code, "quota_exceeded");
+  assert.equal(result.structuredContent.error.retryable, false);
+  assert.match(result.structuredContent.next_action, /\/billing/);
+}
+const planRequiredResult = await callWhoamiWithError(
+  new ApiError(403, "forbidden", "An active BlogFactory Cloud plan is required for this action"),
+  "plan-required",
+);
+assert.equal(planRequiredResult.structuredContent.error.code, "forbidden");
+assert.equal(planRequiredResult.structuredContent.error.retryable, false);
+assert.match(planRequiredResult.structuredContent.next_action, /\/billing/);
+MCP_TOOL_REGISTRY.whoami.handler = originalWhoamiHandler;
 
 const denied = await postAs(
   {
@@ -271,6 +328,13 @@ const unsupportedMethod = await handleMcpHttpRequest(new Request("http://localho
 assert.equal(unsupportedMethod.status, 405);
 assert.equal(unsupportedMethod.headers.get("allow"), "POST");
 
+const baselineIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
+const baselineResource = process.env.MCP_RESOURCE_URL;
+const baselineApiKey = process.env.WORKOS_API_KEY;
+delete process.env.WORKOS_AUTHKIT_ISSUER;
+delete process.env.MCP_RESOURCE_URL;
+delete process.env.WORKOS_API_KEY;
+
 const unauthorized = await handleMcpHttpRequest(new Request("http://localhost/mcp", {
   method: "POST",
 }), async () => null);
@@ -283,6 +347,13 @@ const unauthorizedGet = await handleMcpHttpRequest(
 );
 assert.equal(unauthorizedGet.status, 401);
 assert.equal(unauthorizedGet.headers.get("www-authenticate"), "Bearer");
+
+if (baselineIssuer === undefined) delete process.env.WORKOS_AUTHKIT_ISSUER;
+else process.env.WORKOS_AUTHKIT_ISSUER = baselineIssuer;
+if (baselineResource === undefined) delete process.env.MCP_RESOURCE_URL;
+else process.env.MCP_RESOURCE_URL = baselineResource;
+if (baselineApiKey === undefined) delete process.env.WORKOS_API_KEY;
+else process.env.WORKOS_API_KEY = baselineApiKey;
 
 const previousIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
 const previousResource = process.env.MCP_RESOURCE_URL;
@@ -342,10 +413,10 @@ const forbiddenOrigin = await handleMcpHttpRequest(new Request("https://blogfact
 }), async () => principal);
 assert.equal(forbiddenOrigin.status, 403);
 
-assert.equal(MCP_TOOL_NAMES.length, 22);
-assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 22);
+assert.equal(MCP_TOOL_NAMES.length, 26);
+assert.equal(ACTIVE_MCP_TOOL_NAMES.length, 26);
 assert.deepEqual(MCP_SCOPES, ["content:read", "drafts:write", "publish:draft"]);
-assert.equal(new Set(MCP_ERROR_CODES).size, 13);
+assert.equal(new Set(MCP_ERROR_CODES).size, 14);
 assert.equal(MCP_POST_CONTENT_LIMIT, 100_000);
 assert.doesNotThrow(assertMcpToolRegistry);
 assert.deepEqual(capMcpPostContent("short"), { content: "short", content_truncated: false });

@@ -76,6 +76,7 @@ Production runs the Hono app with Bun in the API container. `api/index.js` remai
 | Revisions and optimistic locking | `server/src/services/post-revisions.ts` | Post routes, review, MCP updates |
 | CMS preflight and draft delivery | `server/src/services/publishing.ts` | Web approval and MCP Review Card |
 | Content generation | `server/src/services/generate-content.ts` | Content routes, campaigns, MCP |
+| Cloud plans, quota, Polar inbox, AI wallet | `cloud-entitlements.ts`, `billing-webhooks.ts`, `plan-usage.ts`, `ai-credits.ts`, `managed-openrouter.ts` | Billing HTTP, shared generation/services, worker |
 | Generation contracts and output cleanup | `generation-contracts.ts`, `generation-output.ts`, `post-cleanup.ts` | Generation and repair flows |
 | Search Console | `server/src/services/search-console.ts` | Search Growth, digest, MCP |
 | SEO growth plans | `server/src/services/seo-growth-plan.ts` | Search Growth and campaigns |
@@ -143,19 +144,16 @@ This repository is the canonical shared core for the authenticated app, public s
 
 ## Authentication and authority
 
-- Web sessions use application authentication and site membership.
+- Hosted Cloud web sessions use WorkOS AuthKit sealed HttpOnly cookies mapped to local PostgreSQL users; Community/self-hosted keeps application authentication.
 - MCP accepts WorkOS browser OAuth or hashed personal `bf_mcp_` tokens.
 - OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
 - MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
 - `publish:draft` means CMS draft delivery, never live publication.
-- Hosted public signup is disabled; self-hosted signup is an environment-gated administrator bootstrap path.
-- Password recovery UI is disabled until real email delivery is connected.
+- Hosted public signup remains flag-gated; WorkOS owns email verification, password recovery, and session lifecycle. Self-hosted signup remains an environment-gated administrator bootstrap path.
 
 ## Pricing boundary
 
-There is no BlogFactory customer billing system in this codebase. Existing “pricing” fields describe upstream AI model costs for bring-your-own-AI usage. The live Cloud packaging is summarized in [`FEATURE_PLAN.md`](../FEATURE_PLAN.md); checkout, subscriptions, and entitlements are implemented in the private Cloud repository.
-
-Do not add checkout to this core. Keep customer billing outside MCP tool authority, make billing webhooks idempotent, and do not treat model-cost analytics as subscription state.
+Cloud billing is live: public signup, Polar checkout, and entitlement enforcement have been on since 2026-09-15, while Managed AI credits stay disabled. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md) for the remaining acceptance gates.
 
 ## Where to make a change
 

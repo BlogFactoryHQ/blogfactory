@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
   Cable,
   CircleHelp,
   CloudCog,
+  CreditCard,
   ExternalLink,
   FileCheck2,
   Github,
@@ -20,6 +21,7 @@ const sourceUrl = "https://github.com/BlogFactoryHQ/blogfactory";
 const issuesUrl = `${sourceUrl}/issues`;
 
 type HelpArticle = {
+  audience?: "cloud" | "self-hosted";
   category: string;
   title: string;
   symptom: string;
@@ -39,6 +41,7 @@ const categoryId = (title: string) => title.toLowerCase().replace(/ /g, "-").rep
 
 const helpCategories: HelpCategory[] = [
   { title: "Getting Started", description: "Understand the workflow and prepare your first workspace.", icon: BookOpen },
+  { title: "BlogFactory Cloud", description: "Plans, activation, and your OpenRouter key on the hosted service.", icon: CreditCard },
   { title: "Self-hosting", description: "Install, configure, back up, and upgrade a Community instance.", icon: CloudCog },
   { title: "MCP & Connections", description: "Connect an MCP client with OAuth or a site-scoped token.", icon: Cable },
   { title: "Content & Review", description: "Create, revise, inspect, and approve work without losing context.", icon: FileCheck2 },
@@ -56,6 +59,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read the product model",
   },
   {
+    audience: "self-hosted",
     category: "Getting Started",
     title: "Create the first administrator account",
     symptom: "A new self-hosted instance has no user who can sign in.",
@@ -64,6 +68,43 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Follow self-host setup",
   },
   {
+    audience: "cloud",
+    category: "BlogFactory Cloud",
+    title: "Choose a plan and activate access",
+    symptom: "You signed up for BlogFactory Cloud and can look around, but cannot add a site or create drafts.",
+    solution: "Open Billing and choose Cloud or Advanced. Access activates as soon as Polar confirms the payment, usually within seconds, and the Billing page updates on its own. Then continue setup to connect your site.",
+    href: "https://app.blogfactory.io/billing",
+    linkLabel: "Open Billing",
+  },
+  {
+    audience: "cloud",
+    category: "BlogFactory Cloud",
+    title: "Add your OpenRouter key",
+    symptom: "Content generation asks for an OpenRouter key.",
+    solution: "BlogFactory Cloud uses your own OpenRouter account for AI generation. Create a key in OpenRouter, then add it in Article Settings → Keys or during setup. BlogFactory verifies the key and stores it encrypted.",
+    href: "https://openrouter.ai/settings/keys",
+    linkLabel: "Create an OpenRouter key",
+  },
+  {
+    audience: "cloud",
+    category: "BlogFactory Cloud",
+    title: "Change, cancel, or update payment details",
+    symptom: "You need to switch plans, update a card, or cancel a subscription.",
+    solution: "Use Manage in Polar on the Billing page. A cancelled plan keeps access until the end of the paid period; afterwards your content stays readable and exportable.",
+    href: "https://app.blogfactory.io/billing",
+    linkLabel: "Open Billing",
+  },
+  {
+    audience: "cloud",
+    category: "BlogFactory Cloud",
+    title: "Connect Search Console on Cloud",
+    symptom: "You need to connect or reconnect a Search Console property.",
+    solution: "Use Continue with Google, then choose the property for this site. If browser OAuth is unsuitable, use the service-account option and add its email to the property under Users and permissions. Access stays read-only.",
+    href: "https://support.google.com/webmasters/answer/7687615?hl=en",
+    linkLabel: "Add a Search Console user",
+  },
+  {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Check whether the instance is ready",
     symptom: "The app is running, but you are unsure whether PostgreSQL and object storage are available.",
@@ -72,6 +113,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read acceptance checks",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Back up or roll back safely",
     symptom: "You are preparing an upgrade or need to recover an older instance.",
@@ -80,6 +122,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read backup and rollback steps",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Choose a supported deployment target",
     symptom: "You are deciding whether to use Docker Compose, Railway, Vercel, or Netlify.",
@@ -88,6 +131,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Does a Community instance call blogfactory.io?",
     symptom: "You need to confirm where self-hosted content, credentials, and operation data travel.",
@@ -96,6 +140,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "Secure signup after the first administrator",
     symptom: "You have created the initial self-hosted administrator and want to prevent open signup.",
@@ -104,6 +149,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Open the self-hosting guide",
   },
   {
+    audience: "self-hosted",
     category: "Self-hosting",
     title: "A generation was interrupted by an API restart",
     symptom: "An in-flight generation stopped after the persistent API process restarted.",
@@ -176,6 +222,7 @@ const helpArticles: HelpArticle[] = [
     linkLabel: "Read the authority boundary",
   },
   {
+    audience: "self-hosted",
     category: "Search Growth & Troubleshooting",
     title: "Google OAuth is not configured",
     symptom: "The Search Console dialog says this self-hosted instance has no Google OAuth client.",
@@ -201,15 +248,15 @@ const helpArticles: HelpArticle[] = [
   },
 ];
 
-function filterHelpArticles(query: string) {
+function filterHelpArticles(query: string, articles = helpArticles) {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return helpArticles;
-  return helpArticles.filter((article) => [article.category, article.title, article.symptom, article.solution].join(" ").toLowerCase().includes(normalized));
+  if (!normalized) return articles;
+  return articles.filter((article) => [article.category, article.title, article.symptom, article.solution].join(" ").toLowerCase().includes(normalized));
 }
 
 const commonQuestions = [
-  ["Is BlogFactory Cloud available?", "No. BlogFactory Cloud is coming soon; the current release candidate is self-hosted first."],
-  ["Does BlogFactory include an AI model?", "No. You bring your own AI credentials and select the provider/model for generation."],
+  ["Is BlogFactory Cloud available?", "Yes. BlogFactory Cloud is the hosted service at app.blogfactory.io, with plans from $5/month. The self-hosted Community edition remains available."],
+  ["Does BlogFactory include an AI model?", "No. On Cloud you add your own OpenRouter key; self-hosted instances use your own AI credentials. You select the model for each generation."],
   ["Can an agent publish or delete content?", "No. The delivery ceiling is a CMS draft after explicit approval; live publishing and deletion are not available through MCP."],
   ["Which CMS destinations are supported?", "Approved drafts can be prepared for WordPress, Ghost, Wix, and Framer."],
   ["Are sites and operation records shared between users?", "No. Access is site-scoped. The operation ledger stores sanitized metadata, never prompts, article bodies, provider responses, or credentials."],
@@ -231,9 +278,19 @@ function PublicHeader() {
   );
 }
 
-export function Help() {
+export function Help({ cloudMode }: { cloudMode?: boolean }) {
   const [query, setQuery] = useState("");
-  const results = useMemo(() => filterHelpArticles(query), [query]);
+  const [cloud, setCloud] = useState<boolean | null>(cloudMode ?? null);
+  useEffect(() => {
+    if (cloudMode !== undefined) return;
+    fetch("/api/auth/config")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((config: { cloud?: boolean }) => setCloud(config.cloud === true))
+      .catch(() => setCloud(false));
+  }, [cloudMode]);
+  const visibleArticles = useMemo(() => helpArticles.filter((article) => !article.audience || (cloud === true ? article.audience === "cloud" : cloud === false ? article.audience === "self-hosted" : false)), [cloud]);
+  const visibleCategories = useMemo(() => helpCategories.filter((category) => visibleArticles.some((article) => article.category === category.title)), [visibleArticles]);
+  const results = useMemo(() => filterHelpArticles(query, visibleArticles), [query, visibleArticles]);
 
   return (
     <WorkspaceBackground className="overflow-hidden">
@@ -244,7 +301,7 @@ export function Help() {
           <div className="mx-auto max-w-3xl">
             <p className="type-kicker text-byword-blue">BlogFactory Help Center</p>
             <h1 className="mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Get your content operation unstuck.</h1>
-            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">Practical setup, connection, review, delivery, and troubleshooting guidance for self-hosted BlogFactory.</p>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">Practical setup, connection, review, delivery, and troubleshooting guidance for BlogFactory Cloud and self-hosted instances.</p>
             <label className="relative mx-auto mt-9 block max-w-2xl text-left">
               <span className="sr-only">Search help articles</span>
               <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -258,7 +315,7 @@ export function Help() {
             <p className="type-kicker text-byword-blue">Browse by topic</p>
             <h2 id="topics-title" className="mt-3 text-3xl font-semibold sm:text-4xl">Find the right part of the operation.</h2>
             <div className="mt-9 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {helpCategories.map(({ title, description, icon: Icon }) => (
+              {visibleCategories.map(({ title, description, icon: Icon }) => (
                 <a key={title} href={`#${categoryId(title)}`} className="group rounded-md border border-byword-border bg-card p-5 transition-calm hover:-translate-y-0.5 hover:border-byword-blue/60 hover:shadow-[0_12px_28px_var(--panel-lift)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
                   <h3 className="mt-6 text-lg font-semibold group-hover:text-byword-blue">{title}</h3>
@@ -280,7 +337,7 @@ export function Help() {
             </div>
             {results.length ? (
               <div className="mt-10 space-y-12">
-                {helpCategories.map((category) => {
+                {visibleCategories.map((category) => {
                   const articles = results.filter((article) => article.category === category.title);
                   if (!articles.length) return null;
                   return (

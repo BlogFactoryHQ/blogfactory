@@ -15,6 +15,7 @@
   <a href="https://blogfactory.io">Website</a> ·
   <a href="docs/self-hosting.md">Self-host</a> ·
   <a href="docs/mcp.md">MCP guide</a> ·
+  <a href="docs/billing.md">Cloud billing</a> ·
   <a href="FEATURE_PLAN.md">Release plan</a> ·
   <a href="LICENSE">AGPL-3.0-only</a>
 </p>
@@ -145,6 +146,7 @@ Web and MCP are transports over the same services. Queue classification, revisio
 - [Architecture and service ownership](docs/architecture.md)
 - [MCP, OAuth, tool catalog, and Review Card](docs/mcp.md)
 - [Operations, deployment, and production acceptance](docs/operations.md)
+- [Cloud billing, entitlements, and Managed AI](docs/billing.md)
 - [Self-hosting with Docker Compose](docs/self-hosting.md)
 - [Release plan and Cloud boundaries](FEATURE_PLAN.md)
 - [Documentation index](docs/README.md)
