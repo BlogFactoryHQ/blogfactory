@@ -37,7 +37,8 @@ export type CapabilityDef = {
 export const CAPABILITIES: CapabilityDef[] = [
   { id: "topics", title: "Find topics from your product", outcome: "Topics scored from your product URL, with the ones you already cover flagged.", href: "/overview/growth?view=topics", requires: [], enhancedBy: ["openai"], fallback: "Topics are matched by title. An OpenAI key adds matching by meaning." },
   { id: "questions", title: "Question research", outcome: "Real questions people ask, grouped into a tree.", href: "/overview/growth?view=research", requires: [], enhancedBy: ["volume"] },
-  { id: "serp-brief", title: "SERP brief and competitor gaps", outcome: "Headings and length of the top results, and what they cover that you do not.", href: "/overview/growth?view=research", requires: ["serp"], fallback: "Question research still works without it." },
+  { id: "gaps", title: "Competitor content gaps", outcome: "Topics a competitor's public sitemap covers that your site does not.", href: "/overview/growth?view=research", requires: [] },
+  { id: "serp-brief", title: "SERP brief and term coverage", outcome: "Headings, length and shared terms of the top results, and how much of that a draft covers.", href: "/overview/growth?view=research", requires: ["serp"], fallback: "Question research still works without it." },
   { id: "draft", title: "Write drafts", outcome: "Reviewable drafts from a topic or a plan brief.", href: "/create", requires: ["openrouter"] },
   { id: "quality", title: "Draft quality check", outcome: "Term coverage, structure and FAQ markup for each draft.", href: "/library", requires: [] },
   { id: "audit", title: "Technical audit and topical map", outcome: "Broken basics and a map of what your site covers.", href: "/overview/growth?view=monitor", requires: [] },
