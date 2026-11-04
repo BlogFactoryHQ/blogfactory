@@ -113,10 +113,17 @@ interface ApiKeyMetadata {
   hasPixabayKey: boolean;
   pixabayKeyLast4: string | null;
   pixabayCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
+  hasBraveKey?: boolean;
+  braveKeyLast4?: string | null;
+  braveCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
+  hasDataforseoKey?: boolean;
+  dataforseoKeyLast4?: string | null;
+  dataforseoCredentialStatus?: "usable" | "missing" | "undecryptable" | string;
   updatedAt: string | null;
 }
 
-type ApiKeyProvider = "openrouter" | "google" | "openai";
+type ApiKeyProvider = "openrouter" | "google" | "openai" | "brave" | "dataforseo";
+type StoredApiKeyProvider = ApiKeyProvider | "pexels" | "pixabay";
 
 interface ApiKeyTestResult {
   ok: boolean;
@@ -337,11 +344,14 @@ export default function Settings() {
   const [openaiKey, setOpenaiKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
+  const [braveKey, setBraveKey] = useState("");
+  const [dataforseoLogin, setDataforseoLogin] = useState("");
+  const [dataforseoPassword, setDataforseoPassword] = useState("");
   const [testingProvider, setTestingProvider] = useState<ApiKeyProvider | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [priceFilter, setPriceFilter] = useState<ModelPriceFilter>("all");
   const [activeSection, setActiveSection] = useState(() => searchParams.get("section") || "basics");
-  const [pendingKeyDelete, setPendingKeyDelete] = useState<{ provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay"; label: string } | null>(null);
+  const [pendingKeyDelete, setPendingKeyDelete] = useState<{ provider: StoredApiKeyProvider; label: string } | null>(null);
   const [articleWordCount, setArticleWordCount] = useState(1500);
   const [articleLanguage, setArticleLanguage] = useState("US English");
   const [articleVoice, setArticleVoice] = useState("Natural");
@@ -699,7 +709,7 @@ export default function Settings() {
   });
 
   const saveApiKeyMutation = useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay"; apiKey: string }) =>
+    mutationFn: ({ provider, apiKey }: { provider: StoredApiKeyProvider; apiKey: string }) =>
       api.put<ApiKeyMetadata>("/settings/api-keys", { provider, apiKey }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -710,17 +720,21 @@ export default function Settings() {
       if (variables.provider === "openai") setOpenaiKey("");
       if (variables.provider === "pexels") setPexelsKey("");
       if (variables.provider === "pixabay") setPixabayKey("");
+      if (variables.provider === "brave") setBraveKey("");
+      if (variables.provider === "dataforseo") { setDataforseoLogin(""); setDataforseoPassword(""); }
+      queryClient.invalidateQueries({ queryKey: ["product-seo-capabilities"] });
       toast.success("API key saved");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteApiKeyMutation = useMutation({
-    mutationFn: (provider: "openrouter" | "google" | "openai" | "pexels" | "pixabay") => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
+    mutationFn: (provider: StoredApiKeyProvider) => api.delete<ApiKeyMetadata>(`/settings/api-keys?provider=${provider}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       queryClient.invalidateQueries({ queryKey: ["image-models"] });
       queryClient.invalidateQueries({ queryKey: ["text-models"] });
+      queryClient.invalidateQueries({ queryKey: ["product-seo-capabilities"] });
       toast.success("API key deleted");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -1104,7 +1118,7 @@ export default function Settings() {
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional for semantic internal linking only. Not used for article text or AI image generation. {formatSavedAt(apiKeys?.updatedAt)}
+                    Optional. Used to match internal links and topics by meaning. Not used for article text or AI image generation. {formatSavedAt(apiKeys?.updatedAt)}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -1134,6 +1148,41 @@ export default function Settings() {
                       {testingProvider === "openai" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                       Test
                     </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="brave-key">Brave Search API (SEO research)</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasBraveKey, apiKeys?.braveCredentialStatus)} label={keyBadgeText(apiKeys?.hasBraveKey, apiKeys?.braveKeyLast4, apiKeys?.braveCredentialStatus)} showIcon={false} />
+                  </div>
+                  <Input id="brave-key" type="password" placeholder="Brave Search API key" value={braveKey} onChange={(e) => setBraveKey(e.target.value)} autoComplete="off" />
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Turns on SERP briefs, competitor gaps, rank tracking and draft term coverage. Brave has a free tier. Searches are billed to your Brave account.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => saveApiKeyMutation.mutate({ provider: "brave", apiKey: braveKey })} disabled={!braveKey || saveApiKeyMutation.isPending}><Save className="mr-2 h-4 w-4" />Save</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPendingKeyDelete({ provider: "brave", label: "Brave Search API" })} disabled={!apiKeys?.hasBraveKey || deleteApiKeyMutation.isPending}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
+                    <Button size="sm" variant="outline" onClick={() => testApiKeyMutation.mutate("brave")} disabled={!apiKeys?.hasBraveKey || testingProvider === "brave"}>{testingProvider === "brave" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Test</Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-sm border border-border bg-muted/40 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="dataforseo-login">DataForSEO (search volume)</Label>
+                    <StatusBadge status={keyBadgeStatus(apiKeys?.hasDataforseoKey, apiKeys?.dataforseoCredentialStatus)} label={keyBadgeText(apiKeys?.hasDataforseoKey, apiKeys?.dataforseoKeyLast4, apiKeys?.dataforseoCredentialStatus)} showIcon={false} />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input id="dataforseo-login" type="text" placeholder="API login (email)" value={dataforseoLogin} onChange={(e) => setDataforseoLogin(e.target.value)} autoComplete="off" spellCheck={false} />
+                    <Input id="dataforseo-password" type="password" aria-label="DataForSEO API password" placeholder="API password" value={dataforseoPassword} onChange={(e) => setDataforseoPassword(e.target.value)} autoComplete="off" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Adds monthly search volume to topics and keyword research. Use the API password from your DataForSEO dashboard, not your account password. Requests are billed to your DataForSEO account.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => saveApiKeyMutation.mutate({ provider: "dataforseo", apiKey: `${dataforseoLogin.trim()}:${dataforseoPassword.trim()}` })} disabled={!dataforseoLogin.trim() || !dataforseoPassword.trim() || saveApiKeyMutation.isPending}><Save className="mr-2 h-4 w-4" />Save</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPendingKeyDelete({ provider: "dataforseo", label: "DataForSEO" })} disabled={!apiKeys?.hasDataforseoKey || deleteApiKeyMutation.isPending}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
+                    <Button size="sm" variant="outline" onClick={() => testApiKeyMutation.mutate("dataforseo")} disabled={!apiKeys?.hasDataforseoKey || testingProvider === "dataforseo"}>{testingProvider === "dataforseo" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Test</Button>
                   </div>
                 </div>
 

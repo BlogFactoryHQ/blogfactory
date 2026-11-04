@@ -2,6 +2,7 @@
 // plus an optional SERP brief when a Brave Search API key is configured. No search-engine HTML scraping.
 import { createTtlCache } from "./ttl-cache.js";
 import { extractTerms, type SerpTerm } from "./term-coverage.js";
+import { withProviderKeys, activeBraveKey } from "./provider-keys.js";
 import { fetchKeywordMetrics, volumeProviderConfigured, type KeywordMetrics } from "./keyword-volume.js";
 import { QUESTION_START, fetchPage, ownedSiteRow, strip, suggestQueries, topicSimilarity } from "./product-seo.js";
 
@@ -117,11 +118,11 @@ export function buildSerpBrief(outlines: PageOutline[], questions: string[]): Se
 const serpCache = createTtlCache<SerpResult[]>(CACHE_TTL_MS, CACHE_MAX);
 
 export function serpProviderConfigured() {
-  return Boolean(process.env.BRAVE_SEARCH_API_KEY?.trim());
+  return Boolean(activeBraveKey());
 }
 
 export async function searchSerp(query: string, country: string, language: string, options: { count?: number; fresh?: boolean } = {}): Promise<SerpResult[]> {
-  const key = process.env.BRAVE_SEARCH_API_KEY?.trim();
+  const key = activeBraveKey();
   if (!key) return [];
   const count = Math.min(Math.max(options.count ?? 10, 1), 20);
   const cacheKey = `serp:${country}:${language}:${count}:${query.toLowerCase()}`;
@@ -206,7 +207,11 @@ export async function questionTree(keyword: string, language: string, maxRequest
   return { questions: groupQuestions(found, keyword), related: [...related].slice(0, 20) };
 }
 
-export async function researchKeyword(userId: string, siteId: string, keyword: string): Promise<KeywordResearch | null> {
+export function researchKeyword(userId: string, siteId: string, keyword: string): Promise<KeywordResearch | null> {
+  return withProviderKeys(userId, () => researchKeywordScoped(userId, siteId, keyword));
+}
+
+async function researchKeywordScoped(userId: string, siteId: string, keyword: string): Promise<KeywordResearch | null> {
   const site = await ownedSiteRow(userId, siteId);
   if (!site) return null;
   const term = keyword.replace(/\s+/g, " ").trim().toLowerCase();
@@ -227,7 +232,7 @@ export async function researchKeyword(userId: string, siteId: string, keyword: s
       notes.push(error instanceof Error ? error.message : "Search provider failed");
     }
   } else {
-    notes.push("SERP brief is off. Set BRAVE_SEARCH_API_KEY (Brave Search API) to read the top results' headings and length.");
+    notes.push("SERP brief is off. Add a Brave Search API key in Article Settings to read the top results' headings and length.");
   }
   let metrics: KeywordMetrics | null = null;
   if (volumeProviderConfigured()) {

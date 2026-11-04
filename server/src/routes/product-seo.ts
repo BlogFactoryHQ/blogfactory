@@ -3,7 +3,9 @@ import { getUserId } from "../middleware/auth.js";
 import { hasSiteAccess } from "../services/search-console.js";
 import { finishOperationEvent, startOperationEvent } from "../services/operation-events.js";
 import { findContentGaps } from "../services/competitor-gap.js";
-import { researchKeyword, serpProviderConfigured } from "../services/keyword-research.js";
+import { researchKeyword } from "../services/keyword-research.js";
+import { getOpenAiKey } from "../services/api-keys.js";
+import { loadProviderKeys } from "../services/provider-keys.js";
 import { outlineToText, toPlanBrief } from "../services/plan-brief.js";
 import { createProfileDatasets } from "../services/profile-datasets.js";
 import { refreshSiteTopics } from "../services/topic-refresh.js";
@@ -41,6 +43,13 @@ async function tracked<T>(userId: string, siteId: string, action: string, run: (
     return { error: error instanceof Error ? error.message : "Request failed" };
   }
 }
+
+// Which optional providers can run right now. Booleans only: no key, login or account detail leaves the server.
+productSeoRoutes.get("/capabilities", async (c) => {
+  const userId = getUserId(c);
+  const [openai, keys] = await Promise.all([getOpenAiKey(userId).then(Boolean).catch(() => false), loadProviderKeys(userId)]);
+  return c.json({ serp: Boolean(keys.brave), volume: Boolean(keys.dataforseo), openai });
+});
 
 productSeoRoutes.get("/profile", async (c) => {
   const userId = getUserId(c);
@@ -119,7 +128,7 @@ productSeoRoutes.post("/keyword-research", async (c) => {
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
   const { result, error } = await tracked(userId, siteId, "keyword.research", () => researchKeyword(userId, siteId, String(body.keyword || "")));
   if (error) return c.json({ error }, 400);
-  return result ? c.json({ ...result, planBrief: toPlanBrief(result), serpConfigured: serpProviderConfigured() }) : c.json({ error: "Site not found" }, 404);
+  return result ? c.json({ ...result, planBrief: toPlanBrief(result), serpConfigured: Boolean((await loadProviderKeys(userId)).brave) }) : c.json({ error: "Site not found" }, 404);
 });
 
 productSeoRoutes.post("/competitor-gaps", async (c) => {
@@ -231,7 +240,7 @@ productSeoRoutes.get("/rankings", async (c) => {
   const siteId = String(c.req.query("siteId") || "");
   if (!(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
   const rankings = await listRankings(userId, siteId);
-  return rankings ? c.json({ rankings, serpConfigured: serpProviderConfigured() }) : c.json({ error: "Site not found" }, 404);
+  return rankings ? c.json({ rankings, serpConfigured: Boolean((await loadProviderKeys(userId)).brave) }) : c.json({ error: "Site not found" }, 404);
 });
 
 productSeoRoutes.post("/rankings/track", async (c) => {

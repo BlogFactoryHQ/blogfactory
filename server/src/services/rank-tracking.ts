@@ -1,7 +1,8 @@
 // Rank tracking before there is any Search Console data: one Brave Search call per keyword, top 20 organic results.
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { rankKeywords, sites } from "../db/schema.js";
+import { rankKeywords, sites, userApiKeys } from "../db/schema.js";
+import { withProviderKeys } from "./provider-keys.js";
 import { countryFor, searchSerp, serpProviderConfigured, type SerpResult } from "./keyword-research.js";
 
 export const RANK_RECHECK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -83,10 +84,14 @@ async function checkOne(row: typeof rankKeywords.$inferSelect, site: { domain: s
 }
 
 // Manual checks are capped because every keyword spends one search-provider call.
-export async function checkRankings(userId: string, siteId: string, limit = 10, now = new Date()) {
+export function checkRankings(userId: string, siteId: string, limit = 10, now = new Date()) {
+  return withProviderKeys(userId, () => checkRankingsScoped(userId, siteId, limit, now));
+}
+
+async function checkRankingsScoped(userId: string, siteId: string, limit: number, now: Date) {
   const site = await ownedSite(userId, siteId);
   if (!site) return null;
-  if (!serpProviderConfigured()) throw new Error("Set BRAVE_SEARCH_API_KEY to check rankings.");
+  if (!serpProviderConfigured()) throw new Error("Add a Brave Search API key in Article Settings to check rankings.");
   const rows = await db.select().from(rankKeywords).where(and(eq(rankKeywords.userId, userId), eq(rankKeywords.siteId, siteId)))
     .orderBy(sql`${rankKeywords.lastCheckedAt} ASC NULLS FIRST`).limit(Math.min(limit, 25));
   let checked = 0;
@@ -95,15 +100,25 @@ export async function checkRankings(userId: string, siteId: string, limit = 10, 
 }
 
 // Weekly background pass: oldest keywords first, bounded per run so a large account cannot burn the provider quota.
+// Each keyword runs with its owner's Brave key, falling back to the operator key. Without an operator key only users who saved one are due.
 export async function drainRankChecks(limit = 10, now = new Date()) {
-  if (!serpProviderConfigured()) return { checked: 0, skipped: "no_provider" as const };
+  const operatorKey = Boolean(process.env.BRAVE_SEARCH_API_KEY?.trim());
+  const stale = or(isNull(rankKeywords.lastCheckedAt), lt(rankKeywords.lastCheckedAt, new Date(now.getTime() - RANK_RECHECK_MS)));
   const due = await db.select({ row: rankKeywords, domain: sites.domain, language: sites.language }).from(rankKeywords)
     .innerJoin(sites, eq(sites.id, rankKeywords.siteId))
-    .where(or(isNull(rankKeywords.lastCheckedAt), lt(rankKeywords.lastCheckedAt, new Date(now.getTime() - RANK_RECHECK_MS))))
+    .leftJoin(userApiKeys, eq(userApiKeys.userId, rankKeywords.userId))
+    .where(operatorKey ? stale : and(isNotNull(userApiKeys.braveApiKeyEncrypted), stale))
     .orderBy(sql`${rankKeywords.lastCheckedAt} ASC NULLS FIRST`).limit(limit);
+  if (!operatorKey && !due.length) return { checked: 0, skipped: "no_provider" as const };
   let checked = 0;
   for (const { row, domain, language } of due) {
-    try { await checkOne(row, { domain, language }, now); checked += 1; } catch { await db.update(rankKeywords).set({ lastCheckedAt: now }).where(eq(rankKeywords.id, row.id)); }
+    try {
+      await withProviderKeys(row.userId, async () => {
+        if (!serpProviderConfigured()) throw new Error("no search key");
+        await checkOne(row, { domain, language }, now);
+      });
+      checked += 1;
+    } catch { await db.update(rankKeywords).set({ lastCheckedAt: now }).where(eq(rankKeywords.id, row.id)); }
   }
   return { checked, skipped: null };
 }

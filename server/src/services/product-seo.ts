@@ -7,6 +7,7 @@ import { chunkKnowledgeContent } from "./knowledge.js";
 import { sanitizePlanBrief, type PlanBrief } from "./plan-brief.js";
 import { ensureSiteSettings, updateSiteSettings } from "./user-settings.js";
 import { embeddingOverlap } from "./topic-embeddings.js";
+import { withProviderKeys } from "./provider-keys.js";
 import { fetchKeywordMetrics, rescoreWithVolume, volumeProviderConfigured } from "./keyword-volume.js";
 import { buildArticleJsonLd, buildFaqJsonLd, buildLlmsTxt, extractFaq } from "./structured-data.js";
 import { extractMainText, type InternalLinkIndex } from "./internal-linking.js";
@@ -444,7 +445,11 @@ export async function existingSiteTitles(userId: string, siteId: string, site: {
   return [...postRows.map((row) => row.title), ...planRows.map((row) => row.keyword || ""), ...indexed].filter(Boolean);
 }
 
-export async function discoverTopics(userId: string, siteId: string) {
+export function discoverTopics(userId: string, siteId: string) {
+  return withProviderKeys(userId, () => discoverTopicsScoped(userId, siteId));
+}
+
+async function discoverTopicsScoped(userId: string, siteId: string) {
   const site = await ownedSiteRow(userId, siteId);
   if (!site) return null;
   const profile = site.productProfile as ProductProfile | null;

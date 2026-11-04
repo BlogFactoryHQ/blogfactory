@@ -17,7 +17,7 @@ See [agent-playbook.md](agent-playbook.md) for the recommended discover, researc
 
 ## Research tools boundary
 
-`analyze_post`, `discover_topics`, `research_keyword` and `find_content_gaps` are read-only, site-bound and need only `content:read`. The last three make outbound requests to fixed public sources (Google autocomplete, the operator's Brave Search API key, public pages and the competitor's public sitemap). Private and internal hosts are refused, nothing is written, and no provider credential is ever returned. They do not search-engine-scrape; without `BRAVE_SEARCH_API_KEY` research returns only the autocomplete question tree.
+`analyze_post`, `discover_topics`, `research_keyword` and `find_content_gaps` are read-only, site-bound and need only `content:read`. The last three make outbound requests to fixed public sources (Google autocomplete, the Brave Search API key saved by the user or set by the operator, public pages and the competitor's public sitemap). Private and internal hosts are refused, nothing is written, and no provider credential is ever returned. They do not search-engine-scrape; without a Brave key research returns only the autocomplete question tree.
 
 ## Tool catalog
 

@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
+import { CapabilityMap } from "@/components/setup/CapabilityMap";
 import { BywordCard, FactoryDivider, FactoryMark, IconTile, WorkspaceBackground } from "@/components/layout/BywordSurface";
 import { preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import { useJobTracker, type JobTerminalResult, type TrackedJob } from "@/hooks/useJobTracker";
@@ -474,6 +475,11 @@ export default function Onboarding() {
             </div>
           </BywordCard>
         )}
+
+        {step === "success" && site && result && digestQuery.data && <div className="mx-auto mt-6 max-w-3xl">
+          <p className="type-kicker mb-2 text-muted-foreground">Next · what else you can turn on</p>
+          <CapabilityMap digest={digestQuery.data} collapsedCount={3} />
+        </div>}
       </div>
     </WorkspaceBackground>
   );

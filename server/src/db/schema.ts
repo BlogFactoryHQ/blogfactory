@@ -610,6 +610,11 @@ export const userApiKeys = pgTable("user_api_keys", {
   pexelsKeyLast4: text("pexels_key_last4"),
   pixabayApiKeyEncrypted: text("pixabay_api_key_encrypted"),
   pixabayKeyLast4: text("pixabay_key_last4"),
+  braveApiKeyEncrypted: text("brave_api_key_encrypted"),
+  braveKeyLast4: text("brave_key_last4"),
+  // "login:password", encrypted as one secret.
+  dataforseoCredentialsEncrypted: text("dataforseo_credentials_encrypted"),
+  dataforseoKeyLast4: text("dataforseo_key_last4"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

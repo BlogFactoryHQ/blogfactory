@@ -3,6 +3,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, postPublications, posts } from "../db/schema.js";
 import { plainMarkdownText } from "./content-analysis.js";
+import { withProviderKeys } from "./provider-keys.js";
 import { getSerpTerms, serpProviderConfigured } from "./keyword-research.js";
 import { ownedSiteRow } from "./product-seo.js";
 import { buildRepurposed } from "./repurpose.js";
@@ -23,7 +24,11 @@ export async function postRepurpose(userId: string, postId: string) {
   return { ...buildRepurposed({ title: post.title, markdown: post.content, url: publication?.url }), publishedUrl: publication?.url ?? null };
 }
 
-export async function postTermCoverage(userId: string, postId: string, keyword?: string) {
+export function postTermCoverage(userId: string, postId: string, keyword?: string) {
+  return withProviderKeys(userId, () => postTermCoverageScoped(userId, postId, keyword));
+}
+
+async function postTermCoverageScoped(userId: string, postId: string, keyword?: string) {
   const post = await ownPost(userId, postId);
   if (!post) return null;
   let term = keyword?.replace(/\s+/g, " ").trim().toLowerCase() || "";
@@ -33,7 +38,7 @@ export async function postTermCoverage(userId: string, postId: string, keyword?:
     term = item?.keyword?.trim().toLowerCase() || "";
   }
   if (!term) return { available: false as const, reason: "Add a target keyword: create the draft from a plan item or pass one." };
-  if (!serpProviderConfigured()) return { available: false as const, reason: "Set BRAVE_SEARCH_API_KEY to compare with the top results." };
+  if (!serpProviderConfigured()) return { available: false as const, reason: "Add a Brave Search API key in Article Settings to compare with the top results." };
   const site = post.siteId ? await ownedSiteRow(userId, post.siteId) : null;
   const language = (site?.language || "en").slice(0, 2).toLowerCase();
   const terms = await getSerpTerms(term, language);

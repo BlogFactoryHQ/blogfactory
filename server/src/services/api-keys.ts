@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userApiKeys } from "../db/schema.js";
 
-export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay";
+export type Provider = "openrouter" | "google" | "openai" | "pexels" | "pixabay" | "brave" | "dataforseo";
 export type CredentialStatus = "usable" | "missing" | "undecryptable";
 
 function encryptionSecrets() {
@@ -115,6 +115,8 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
   const openaiStatus = encryptedCredentialStatus(row?.openaiApiKeyEncrypted);
   const pexelsStatus = encryptedCredentialStatus(row?.pexelsApiKeyEncrypted);
   const pixabayStatus = encryptedCredentialStatus(row?.pixabayApiKeyEncrypted);
+  const braveStatus = encryptedCredentialStatus(row?.braveApiKeyEncrypted);
+  const dataforseoStatus = encryptedCredentialStatus(row?.dataforseoCredentialsEncrypted);
 
   return {
     hasOpenrouterKey: openrouterStatus === "usable",
@@ -137,6 +139,12 @@ function metadata(row?: typeof userApiKeys.$inferSelect | null) {
     pixabayKeyLast4: pixabayStatus === "usable" ? row?.pixabayKeyLast4 || null : null,
     pixabayCredentialStatus: pixabayStatus,
     pixabay_credential_status: pixabayStatus,
+    hasBraveKey: braveStatus === "usable",
+    braveKeyLast4: braveStatus === "usable" ? row?.braveKeyLast4 || null : null,
+    braveCredentialStatus: braveStatus,
+    hasDataforseoKey: dataforseoStatus === "usable",
+    dataforseoKeyLast4: dataforseoStatus === "usable" ? row?.dataforseoKeyLast4 || null : null,
+    dataforseoCredentialStatus: dataforseoStatus,
     updatedAt: row?.updatedAt || null,
   };
 }
@@ -160,6 +168,12 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
   if ((provider === "pexels" || provider === "pixabay") && trimmed.length < 10) {
     throw new Error("Stock photo API key looks too short");
   }
+  if (provider === "brave" && trimmed.length < 10) {
+    throw new Error("Brave Search API key looks too short");
+  }
+  if (provider === "dataforseo" && parseDataForSeoCredentials(trimmed) === null) {
+    throw new Error("DataForSEO credentials should look like login:password");
+  }
 
   const values =
     provider === "openrouter"
@@ -181,6 +195,20 @@ export async function setApiKey(userId: string, provider: Provider, apiKey: stri
           userId,
           openaiApiKeyEncrypted: encryptSecret(trimmed),
           openaiKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "brave"
+      ? {
+          userId,
+          braveApiKeyEncrypted: encryptSecret(trimmed),
+          braveKeyLast4: last4(trimmed),
+          updatedAt: new Date(),
+        }
+      : provider === "dataforseo"
+      ? {
+          userId,
+          dataforseoCredentialsEncrypted: encryptSecret(trimmed),
+          dataforseoKeyLast4: last4(trimmed),
           updatedAt: new Date(),
         }
       : provider === "pexels"
@@ -228,6 +256,18 @@ export async function deleteApiKey(userId: string, provider: Provider) {
           openaiKeyLast4: null,
           updatedAt: new Date(),
         }
+      : provider === "brave"
+      ? {
+          braveApiKeyEncrypted: null,
+          braveKeyLast4: null,
+          updatedAt: new Date(),
+        }
+      : provider === "dataforseo"
+      ? {
+          dataforseoCredentialsEncrypted: null,
+          dataforseoKeyLast4: null,
+          updatedAt: new Date(),
+        }
       : provider === "pexels"
       ? {
           pexelsApiKeyEncrypted: null,
@@ -269,6 +309,33 @@ export async function getOpenAiKey(userId: string): Promise<string | null> {
     .where(eq(userApiKeys.userId, userId))
     .limit(1);
   return decryptStoredSecret(row?.key);
+}
+
+export async function getBraveKey(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.braveApiKeyEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  return decryptStoredSecret(row?.key);
+}
+
+/** DataForSEO uses a login and a password. They are saved as one "login:password" secret; the login never contains a colon. */
+export function parseDataForSeoCredentials(value: string): { login: string; password: string } | null {
+  const index = value.indexOf(":");
+  const login = value.slice(0, index).trim();
+  const password = value.slice(index + 1).trim();
+  return index > 0 && login && password ? { login, password } : null;
+}
+
+export async function getDataForSeoCredentials(userId: string): Promise<{ login: string; password: string } | null> {
+  const [row] = await db
+    .select({ key: userApiKeys.dataforseoCredentialsEncrypted })
+    .from(userApiKeys)
+    .where(eq(userApiKeys.userId, userId))
+    .limit(1);
+  const value = decryptStoredSecret(row?.key);
+  return value ? parseDataForSeoCredentials(value) : null;
 }
 
 export async function getPexelsKey(userId: string): Promise<string | null> {

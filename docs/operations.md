@@ -82,7 +82,7 @@ The worker's daily drain and the existing all-task drain remove expired `operati
 
 The all-task drain also runs a bounded weekly topic check (`task=topics`, default 2 sites per run, max 5 via `topicsLimit`): sites with a saved product profile get fresh uncovered topic suggestions stored in `sites.topic_suggestions` (migrations 0040 and 0041). It uses the cached autocomplete lookups and never writes to the SEO plan.
 
-The drain also runs a bounded weekly rank pass (`task=rank`, default 10 keywords per run, max 25 via `rankLimit`) for tracked keywords in `rank_keywords` (migration 0042), one Brave Search call each; it does nothing without `BRAVE_SEARCH_API_KEY`. The site audit, rank check and AI visibility check are user-triggered only.
+The drain also runs a bounded weekly rank pass (`task=rank`, default 10 keywords per run, max 25 via `rankLimit`) for tracked keywords in `rank_keywords` (migration 0042), one Brave Search call each; each keyword uses its owner's saved Brave key, then the operator `BRAVE_SEARCH_API_KEY`; with no operator key only users who saved their own are due, so keyless users cannot starve the queue. The site audit, rank check and AI visibility check are user-triggered only.
 
 Product-led SEO changes have their own database integration check, `npm run test:postgres:product-seo`, which like `npm run test:postgres` needs a disposable database and `POSTGRES_INTEGRATION_ALLOW_WRITES=1`.
 
@@ -135,3 +135,7 @@ Expected results:
 - Running API and web image digests resolve to the intended private Cloud commit.
 
 Full product acceptance also requires OAuth and tool discovery in Codex and ChatGPT plus the authenticated `generate_draft → get_job → review_post → push_to_cms_draft` workflow. A green build alone is not proof of that client flow.
+
+## Bring-your-own SEO provider keys
+
+Users can save their own Brave Search key and DataForSEO login/password in Article Settings (migration 0043, `user_api_keys`). They are encrypted like the other account keys, are part of `credentials:check` and secret rotation (`reencrypt-credentials`), and are never returned or logged: the API exposes only a saved flag and the last four characters. A saved key wins; the operator `BRAVE_SEARCH_API_KEY` and `DATAFORSEO_LOGIN`/`DATAFORSEO_PASSWORD` remain the fallback for every workspace. Provider usage on a user key is billed to that user's provider account.

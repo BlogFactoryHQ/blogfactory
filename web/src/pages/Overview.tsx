@@ -17,6 +17,7 @@ import type { WorkspaceDigest } from "@/lib/control-plane";
 import { useSites } from "@/hooks/useSites";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { EDITORIAL_STATE_BADGES } from "@/lib/editorial-state";
+import { CapabilityMap } from "@/components/setup/CapabilityMap";
 import { WorkspaceSetupGuide, type WorkspaceSetupStep } from "@/components/setup/WorkspaceSetupGuide";
 
 const editorialStates = EDITORIAL_STATE_BADGES;
@@ -111,6 +112,8 @@ export default function Overview() {
           <div className="grid grid-cols-2 gap-px bg-byword-border sm:grid-cols-4"><Outcome icon={FileText} label="Drafts" value={data.outcomes.drafts} /><Outcome icon={FileCheck2} label="CMS drafts" value={data.outcomes.cms_drafts} /><Outcome icon={CircleDollarSign} label="Cost" value={`$${data.outcomes.cost.toFixed(2)}`} /><Outcome icon={Bot} label="MCP connections" value={data.connections.active} /></div>
         </BywordCard>
       </div>
+
+      <CapabilityMap digest={data} collapsedCount={3} />
 
       <BywordCard>
         <SectionHeader icon={FileText} title="Recent outputs" description="Latest content created or updated for this site." action={<Button asChild variant="outline" size="sm"><Link to="/library">Open content</Link></Button>} />

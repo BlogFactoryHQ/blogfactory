@@ -30,6 +30,8 @@ const keyColumns = [
   "replicateApiKeyEncrypted",
   "pexelsApiKeyEncrypted",
   "pixabayApiKeyEncrypted",
+  "braveApiKeyEncrypted",
+  "dataforseoCredentialsEncrypted",
 ] as const;
 const keyRows = await db.select().from(userApiKeys);
 for (const row of keyRows) {

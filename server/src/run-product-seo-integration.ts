@@ -133,7 +133,7 @@ try {
   assert.ok(r.body.questions.length >= 5);
   assert.equal(r.body.serp, null);
   assert.equal(r.body.serpConfigured, false);
-  assert.ok(r.body.notes.some((note: string) => note.includes("BRAVE_SEARCH_API_KEY")));
+  assert.ok(r.body.notes.some((note: string) => note.includes("Brave Search API key")));
   assert.equal(r.body.planBrief.source, "questions");
   assert.ok(r.body.planBrief.outline.some((entry: any) => entry.text === "FAQ"));
   assert.equal((await call("POST", "/keyword-research", { siteId: siteA, keyword: "ab" })).status, 400);
@@ -233,7 +233,7 @@ try {
   delete process.env.BRAVE_SEARCH_API_KEY;
   r = await call("GET", `/posts/${postId}/term-coverage`);
   assert.equal(r.body.available, false);
-  assert.ok(r.body.reason.includes("BRAVE_SEARCH_API_KEY"));
+  assert.ok(r.body.reason.includes("Brave Search API key"));
 
   // 9. template datasets
   section("template datasets");
@@ -274,7 +274,7 @@ try {
   assert.equal((await call("POST", "/rankings/track", { siteId: siteA, keywords: ["nope nope"] }, userB)).status, 404);
   r = await call("POST", "/rankings/check", { siteId: siteA });
   assert.equal(r.status, 400, "checks need a provider");
-  assert.ok(r.body.error.includes("BRAVE_SEARCH_API_KEY"));
+  assert.ok(r.body.error.includes("Brave Search API key"));
   process.env.BRAVE_SEARCH_API_KEY = "brave-test-key";
   let rankResults = [
     { title: "a", url: "https://other.example/x", description: "" }, { title: "b", url: "https://rival.example/y", description: "" },
@@ -455,6 +455,55 @@ try {
   const gapped = await (MCP_TOOL_REGISTRY.find_content_gaps.handler as any)(principal, { site_id: siteA, competitor: "plausible.io" });
   assert.ok(gapped.gap.gaps.length > 0);
   await assert.rejects((MCP_TOOL_REGISTRY.find_content_gaps.handler as any)(principal, { site_id: siteA, competitor: "localhost" }), (error: unknown) => error instanceof McpToolError && error.code === "validation_error");
+
+  // 17b. bring-your-own provider keys: saved per user, encrypted, used instead of (or without) the operator environment
+  section("per-user Brave and DataForSEO keys");
+  delete process.env.BRAVE_SEARCH_API_KEY;
+  delete process.env.DATAFORSEO_LOGIN;
+  delete process.env.DATAFORSEO_PASSWORD;
+  const { getApiKeyMetadata, deleteApiKey } = await import("./services/api-keys.js");
+  await assert.rejects(setApiKey(userA, "dataforseo", "no-colon-here"), /login:password/);
+  await assert.rejects(setApiKey(userA, "brave", "short"), /too short/);
+  r = await call("GET", "/capabilities");
+  assert.deepEqual({ serp: r.body.serp, volume: r.body.volume }, { serp: false, volume: false }, "nothing is on without a key");
+  const meta = await setApiKey(userA, "brave", "user-brave-key-123456");
+  assert.equal(meta.hasBraveKey, true);
+  assert.equal(meta.braveKeyLast4, "3456");
+  await setApiKey(userA, "dataforseo", "me@example.com:s3cret:with:colons");
+  const [stored] = await sql`SELECT brave_api_key_encrypted AS b, dataforseo_credentials_encrypted AS d FROM user_api_keys WHERE user_id = ${userA}`;
+  assert.ok(stored.b.startsWith("v2:") && !stored.b.includes("user-brave-key") && stored.d.startsWith("v2:") && !stored.d.includes("s3cret"), "stored encrypted");
+  assert.equal((await getApiKeyMetadata(userB)).hasBraveKey, false, "keys are per user");
+  r = await call("GET", "/capabilities");
+  assert.deepEqual({ serp: r.body.serp, volume: r.body.volume }, { serp: true, volume: true });
+  r = await call("GET", "/capabilities", undefined, userB);
+  assert.deepEqual({ serp: r.body.serp, volume: r.body.volume }, { serp: false, volume: false }, "another user does not inherit them");
+  stubs = [
+    { match: (url) => url.startsWith("https://api.search.brave.com/"), respond: () => json({ web: { results: [{ title: "t", url: "https://rival.example/p", description: "d" }] } }) },
+    { match: (url) => url.startsWith("https://api.dataforseo.com/"), respond: (_url, init) => json({ status_code: 20000, tasks: [{ status_code: 20000, result: (JSON.parse(String(init?.body))[0].keywords as string[]).map((keyword) => ({ keyword, search_volume: 500, competition: "LOW", cpc: 0.2 })) }] }) },
+  ];
+  calls.length = 0;
+  r = await call("POST", "/keyword-research", { siteId: siteA, keyword: "byo key research check" });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.serpConfigured, true);
+  assert.ok(callsTo("api.search.brave.com").length >= 1, "the user's Brave key is used");
+  assert.ok(callsTo("api.search.brave.com").every((call) => (call.init?.headers as Record<string, string>)["X-Subscription-Token"] === "user-brave-key-123456"));
+  assert.equal(r.body.metrics?.volume, 500, "the user's DataForSEO credentials are used");
+  assert.equal((callsTo("api.dataforseo.com")[0].init!.headers as Record<string, string>).Authorization, `Basic ${Buffer.from("me@example.com:s3cret:with:colons").toString("base64")}`);
+  calls.length = 0;
+  r = await call("POST", "/keyword-research", { siteId: siteB, keyword: "byo key research check" }, userB);
+  assert.equal(r.body.serp, null, "a user without a key gets no SERP");
+  assert.equal(callsTo("api.search.brave.com").length, 0);
+  // the weekly drain uses each keyword owner's key, and users without any key are not due (so they cannot starve others)
+  await sql`UPDATE rank_keywords SET last_checked_at = now() - interval '8 days' WHERE user_id = ${userA}`;
+  await sql`INSERT INTO rank_keywords (user_id, site_id, keyword, last_checked_at) VALUES (${userB}, ${siteB}, 'stale keyword', NULL)`;
+  calls.length = 0;
+  const byoDrain = await drainRankChecks(25);
+  assert.ok(byoDrain.checked >= 1, "keywords of a user with a saved key are checked");
+  assert.ok(callsTo("api.search.brave.com").every((call) => (call.init?.headers as Record<string, string>)["X-Subscription-Token"] === "user-brave-key-123456"));
+  const [untouched] = await sql`SELECT last_checked_at FROM rank_keywords WHERE user_id = ${userB} AND keyword = 'stale keyword'`;
+  assert.equal(untouched.last_checked_at, null, "a user without a key is skipped, not marked checked");
+  await deleteApiKey(userA, "brave");
+  await deleteApiKey(userA, "dataforseo");
 
   // 18. operation ledger: web mutations are logged without bodies
   section("operation ledger");
