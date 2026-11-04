@@ -80,6 +80,12 @@ The API runs `BACKGROUND_EXECUTION_MODE=inline`; the persistent worker runs `BAC
 
 The worker's daily drain and the existing all-task drain remove expired `operation_events`. Do not create a separate retention cron. Operation events expire after 30 days.
 
+The all-task drain also runs a bounded weekly topic check (`task=topics`, default 2 sites per run, max 5 via `topicsLimit`): sites with a saved product profile get fresh uncovered topic suggestions stored in `sites.topic_suggestions` (migrations 0040 and 0041). It uses the cached autocomplete lookups and never writes to the SEO plan.
+
+The drain also runs a bounded weekly rank pass (`task=rank`, default 10 keywords per run, max 25 via `rankLimit`) for tracked keywords in `rank_keywords` (migration 0042), one Brave Search call each; it does nothing without `BRAVE_SEARCH_API_KEY`. The site audit, rank check and AI visibility check are user-triggered only.
+
+Product-led SEO changes have their own database integration check, `npm run test:postgres:product-seo`, which like `npm run test:postgres` needs a disposable database and `POSTGRES_INTEGRATION_ALLOW_WRITES=1`.
+
 The same worker/drain processes the Polar webhook inbox, releases stale plan reservations, expires AI grants, and reconciles Polar customer state. Billing flags, sandbox evidence, refunds, and production gates are in [billing.md](billing.md).
 
 Do not disable a failing scheduled workflow to make Actions appear clean. Confirm the affected task, timeout, and backend behavior before a narrow fix.
@@ -124,7 +130,7 @@ Expected results:
 - Host port 5432 is not published or reachable externally.
 - Unauthenticated `/mcp`: HTTP 401 with `WWW-Authenticate: Bearer`, never the React shell.
 - OAuth protected-resource metadata: HTTP 200 with resource `https://blogfactory.io/mcp` and all three supported scopes.
-- Authenticated capability response: exactly 22 tools from the server catalog.
+- Authenticated capability response: exactly 26 tools from the server catalog.
 - No live-publish or delete tool in discovery.
 - Running API and web image digests resolve to the intended private Cloud commit.
 

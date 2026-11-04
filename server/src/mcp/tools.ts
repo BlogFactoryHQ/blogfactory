@@ -39,6 +39,10 @@ import { getCloudAccess } from "../services/cloud-entitlements.js";
 import { withDraftQuota } from "../services/plan-usage.js";
 import { randomUUID } from "node:crypto";
 import { MANAGED_TEXT_MODELS, resolveOpenRouterAccess } from "../services/managed-openrouter.js";
+import { analyzePostContent, discoverTopics, postStructuredData } from "../services/product-seo.js";
+import { researchKeyword } from "../services/keyword-research.js";
+import { toPlanBrief } from "../services/plan-brief.js";
+import { findContentGaps } from "../services/competitor-gap.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
 
@@ -60,6 +64,13 @@ const READ_ONLY_ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
+} as const;
+
+const READ_ONLY_OPEN_WORLD_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
 } as const;
 
 const GENERATE_ANNOTATIONS = {
@@ -1136,6 +1147,60 @@ async function reviewPost(principal: McpPrincipal, input: { post_id: string }) {
   };
 }
 
+async function analyzePost(principal: McpPrincipal, input: { post_id: string; keyword?: string }) {
+  const [post] = await db.select({ siteId: posts.siteId }).from(posts)
+    .where(and(eq(posts.id, input.post_id), eq(posts.userId, principal.userId))).limit(1);
+  if (!post?.siteId || !principal.siteIds.has(post.siteId)) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+  const [analysis, structured] = await Promise.all([
+    analyzePostContent(principal.userId, input.post_id, input.keyword),
+    postStructuredData(principal.userId, input.post_id),
+  ]);
+  if (!analysis) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+  return {
+    site_id: post.siteId,
+    post_id: input.post_id,
+    analysis,
+    structured_data: structured,
+    next_action: analysis.flags.length ? "Fix the flagged issues with update_draft, then analyze again." : "No analysis flags. Continue with review_post.",
+  };
+}
+
+async function discoverSiteTopics(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const result = await discoverTopics(principal.userId, input.site_id);
+    if (!result) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, topics: result.topics, queries_run: result.queriesRun, next_action: "Pick fresh topics (overlap is null) and call research_keyword before drafting." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Topic discovery failed.", "Generate the product profile in BlogFactory first.");
+  }
+}
+
+async function researchSiteKeyword(principal: McpPrincipal, input: { site_id: string; keyword: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const research = await researchKeyword(principal.userId, input.site_id, input.keyword);
+    if (!research) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, research: { ...research, plan_brief: toPlanBrief(research) }, next_action: "Use plan_brief.outline and questions in generate_draft instructions, then review the draft." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Keyword research failed.", "Check the keyword and try again.");
+  }
+}
+
+async function competitorGaps(principal: McpPrincipal, input: { site_id: string; competitor: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const gap = await findContentGaps(principal.userId, input.site_id, input.competitor);
+    if (!gap) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, gap, next_action: gap.gaps.length ? "Call research_keyword for the top gap topics." : "No gaps found for this competitor." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Gap analysis failed.", "Use a public competitor domain with a sitemap.");
+  }
+}
+
 type ToolDefinition = {
   name: typeof ACTIVE_MCP_TOOL_NAMES[number];
   description: string;
@@ -1255,7 +1320,7 @@ const operationEventItem = z.object({
   status: z.enum(["started", "succeeded", "failed"]),
   duration_ms: z.number().int().nonnegative().nullable(),
   error_code: nullableText,
-  metadata: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
   created_at: z.string(),
 });
 const reviewPacket = z.object({
@@ -1535,7 +1600,7 @@ export const MCP_TOOL_REGISTRY = {
           recent: z.array(z.object({ id: uuid, status: z.string(), source_type: z.string(), current_step: z.string(), created_at: z.string() })),
         }),
         outcomes: z.object({ drafts: z.number().int(), published: z.number().int(), cms_drafts: z.number().int(), cost: z.number(), window_days: z.literal(30) }),
-        search_growth: z.object({ connected: z.boolean(), segments: z.record(z.unknown()), totals: z.record(z.unknown()) }),
+        search_growth: z.object({ connected: z.boolean(), segments: z.record(z.string(), z.unknown()), totals: z.record(z.string(), z.unknown()) }),
         recent_outputs: z.array(z.object({ id: uuid, title: z.string(), status: z.string(), editorial_state: z.string(), source_type: z.string(), updated_at: z.string() })),
         connections: z.object({
           generation: z.object({ ready: z.boolean(), credential_status: z.enum(["usable", "missing", "undecryptable"]) }),
@@ -1589,7 +1654,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "get_search_console_dashboard",
     description: "Read the connected Search Console status and synchronized performance totals for one allowed site.",
     inputSchema: { site_id: uuid },
-    outputSchema: successOutputSchema({ site_id: uuid, dashboard: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, dashboard: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1599,7 +1664,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "get_search_console_insights",
     description: "Read synchronized Search Console trends, opportunities, top pages, and top queries for one allowed site.",
     inputSchema: { site_id: uuid },
-    outputSchema: successOutputSchema({ site_id: uuid, insights: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, insights: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1609,7 +1674,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "refresh_search_console",
     description: "Refresh the canonical 28-day Search Console totals and the bounded page-query opportunity snapshot for one allowed site.",
     inputSchema: { site_id: uuid },
-    outputSchema: successOutputSchema({ site_id: uuid, refresh: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, refresh: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: REFRESH_ANNOTATIONS,
@@ -1670,7 +1735,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "inspect_search_console_url",
     description: "Read Google's indexed status, crawl details, canonical choice, and rich-result verdict for one allowed URL.",
     inputSchema: { site_id: uuid, url: z.string().url(), force: z.boolean().default(false) },
-    outputSchema: successOutputSchema({ site_id: uuid, inspection: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, inspection: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1680,7 +1745,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "batch_inspect_search_console_urls",
     description: "Inspect Google's indexed status for 1-10 URLs while preserving per-URL failures.",
     inputSchema: { site_id: uuid, urls: z.array(z.string().url()).min(1).max(10), force: z.boolean().default(false) },
-    outputSchema: successOutputSchema({ site_id: uuid, results: z.array(z.record(z.unknown())), inspected: z.number().int(), failed: z.number().int() }),
+    outputSchema: successOutputSchema({ site_id: uuid, results: z.array(z.record(z.string(), z.unknown())), inspected: z.number().int(), failed: z.number().int() }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1690,7 +1755,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "list_search_console_sitemaps",
     description: "List read-only Search Console sitemap health, processing state, errors, and warnings for one allowed site.",
     inputSchema: { site_id: uuid, sitemap_index: z.string().url().optional() },
-    outputSchema: successOutputSchema({ site_id: uuid, items: z.array(z.record(z.unknown())), cached: z.boolean() }),
+    outputSchema: successOutputSchema({ site_id: uuid, items: z.array(z.record(z.string(), z.unknown())), cached: z.boolean() }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1710,11 +1775,51 @@ export const MCP_TOOL_REGISTRY = {
       limit: z.number().int().min(1).max(100).default(20),
       include_preliminary: z.boolean().default(false),
     },
-    outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: searchConsoleAnalytics,
+  },
+  analyze_post: {
+    name: "analyze_post",
+    description: "Analyze one allowed draft without AI: readability, keyword density, structure, stock AI phrases, near-duplicates against the site's other posts, plus BlogPosting and FAQPage JSON-LD.",
+    inputSchema: { post_id: uuid, keyword: z.string().min(2).max(90).optional() },
+    outputSchema: successOutputSchema({ site_id: uuid, post_id: uuid, analysis: z.record(z.string(), z.unknown()), structured_data: z.record(z.string(), z.unknown()).nullable(), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: analyzePost,
+  },
+  discover_topics: {
+    name: "discover_topics",
+    description: "Suggest product-led article topics for one allowed site from its saved product profile, ranked by demand signal, product fit and intent, flagging topics the site already covers. Does not change the plan.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, topics: z.array(z.record(z.string(), z.unknown())), queries_run: z.number().int(), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: discoverSiteTopics,
+  },
+  research_keyword: {
+    name: "research_keyword",
+    description: "Research one keyword for an allowed site: a People-Also-Ask style question tree from autocomplete, related searches, and, when the operator configured a search provider, a SERP brief with shared headings and target length.",
+    inputSchema: { site_id: uuid, keyword: z.string().min(3).max(90) },
+    outputSchema: successOutputSchema({ site_id: uuid, research: z.record(z.string(), z.unknown()), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: researchSiteKeyword,
+  },
+  find_content_gaps: {
+    name: "find_content_gaps",
+    description: "Compare a public competitor sitemap with an allowed site's existing posts, plan and indexed pages and list the competitor topics the site does not cover, ranked by product fit.",
+    inputSchema: { site_id: uuid, competitor: z.string().min(3).max(200) },
+    outputSchema: successOutputSchema({ site_id: uuid, gap: z.record(z.string(), z.unknown()), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: competitorGaps,
   },
 } satisfies Record<typeof ACTIVE_MCP_TOOL_NAMES[number], ToolDefinition>;
 

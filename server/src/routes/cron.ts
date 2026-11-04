@@ -4,6 +4,8 @@ import { drainCampaignQueue } from "../services/campaign-runner.js";
 import { drainQueuedGoogleIndexing } from "../services/indexing.js";
 import { drainSearchConsoleSync } from "../services/search-console.js";
 import { drainDeferredImages } from "../services/low-cost-images.js";
+import { drainTopicRefresh } from "../services/topic-refresh.js";
+import { drainRankChecks } from "../services/rank-tracking.js";
 import { drainSeoMetadata, enqueueUntrackedDraftSeoMetadata } from "../services/seo-metadata.js";
 import { safeError } from "../http/error-contract.js";
 import { purgeExpiredOperationEvents } from "../services/operation-events.js";
@@ -65,6 +67,12 @@ export function readCronDrainConfig(query: (name: string) => string | undefined,
     searchConsole: {
       limit: queryInt(query, ["searchConsoleLimit", "maxSites", "limit"], env.GSC_CRON_MAX_SITES, 10, 10),
     },
+    topics: {
+      limit: queryInt(query, ["topicsLimit"], undefined, 2, 5),
+    },
+    rank: {
+      limit: queryInt(query, ["rankLimit"], undefined, 10, 25),
+    },
     seo: {
       limit: queryInt(query, ["seoLimit", "limit"], undefined, 5, 10),
       discoveryLimit: queryInt(query, ["seoDiscoveryLimit"], undefined, 100, 500),
@@ -122,8 +130,10 @@ cronRoutes.get("/drain", async (c) => {
   if (task === "search-console") return c.json({ ok: true, searchConsole: await drainSearchConsoleSync(config.searchConsole.limit) });
   if (task === "images") return c.json({ ok: true, images: await runImages() });
   if (task === "seo") return c.json({ ok: true, seo: await runSeo() });
+  if (task === "rank") return c.json({ ok: true, rank: await drainRankChecks(config.rank.limit) });
+  if (task === "topics") return c.json({ ok: true, topics: await drainTopicRefresh(config.topics.limit) });
 
-  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation] = await Promise.all([
+  const [campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation, topicRefresh, rankChecks] = await Promise.all([
     drainCampaignQueue(config.campaigns.maxCampaigns, config.campaigns.maxItemsPerCampaign),
     drainQueuedGoogleIndexing(config.indexing.limit),
     drainSearchConsoleSync(config.searchConsole.limit),
@@ -138,7 +148,9 @@ cronRoutes.get("/drain", async (c) => {
     purgeExpiredAuthRateLimits(),
     reconcilePolarCustomers(),
     reconcileManagedAiReservations(),
+    drainTopicRefresh(config.topics.limit).catch(() => []),
+    drainRankChecks(config.rank.limit).catch(() => ({ checked: 0 })),
   ]);
 
-  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation });
+  return c.json({ ok: true, campaigns, google, searchConsole, feeds, images, seo, expiredOperations, billing, staleUsage, expiredCredits, staleCredits, expiredAuthLimits, billingReconciliation, aiCreditReconciliation, topicRefresh, rankChecks });
 });

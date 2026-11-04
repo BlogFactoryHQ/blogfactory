@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck --workspace=web",
     "test:server": "npm run test:self --workspace=server",
     "test:postgres": "npm run test:postgres --workspace=server",
+    "test:postgres:product-seo": "npm run test:postgres:product-seo --workspace=server",
     "test:mcp:pilot": "npm run test:mcp:pilot --workspace=server",
     "billing:catalog": "bun --env-file=.env run server/src/scripts/provision-polar-catalog.ts",
     "billing:webhook": "bun --env-file=.env run server/src/scripts/provision-polar-webhook.ts",
@@ -30,6 +31,7 @@
     "concurrently": "^9.1.0"
   },
   "overrides": {
-    "@hono/node-server": "2.0.12"
+    "@hono/node-server": "2.1.5",
+    "zod": "4.6.7"
   }
 }

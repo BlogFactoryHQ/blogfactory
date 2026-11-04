@@ -403,7 +403,7 @@ function pageEmbeddingInput(page: CrawledPage) {
   return `${page.title}\n${page.description || ""}\n${page.path}\n${page.text}`.slice(0, 7000);
 }
 
-async function embedTexts(texts: string[], openAiKey: string) {
+export async function embedTexts(texts: string[], openAiKey: string) {
   if (texts.length === 0) return [];
 
   const response = await fetch("https://api.openai.com/v1/embeddings", {
@@ -418,6 +418,7 @@ async function embedTexts(texts: string[], openAiKey: string) {
       dimensions: EMBEDDING_DIMENSIONS,
       encoding_format: "float",
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {

@@ -10,8 +10,14 @@ Verified on 2026-08-22:
 - `GET /.well-known/oauth-protected-resource` returns HTTP 200 and advertises `https://blogfactory.io/mcp`.
 - WorkOS browser OAuth and personal `bf_mcp_` connection tokens are supported.
 - OAuth requests AuthKit's standard `openid`, `profile`, `email`, and `offline_access` scopes. BlogFactory then grants its site-bound draft-only capabilities (`content:read`, `drafts:write`, and `publish:draft`) from the approved consent.
-- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.4.3`.
-- The exact active catalog contains 22 tools and is asserted by server tests.
+- Protocol version is `2025-11-25`; BlogFactory MCP server version is `0.5.0`.
+- The exact active catalog contains 26 tools and is asserted by server tests.
+
+See [agent-playbook.md](agent-playbook.md) for the recommended discover, research, draft, analyze, review and approve loop.
+
+## Research tools boundary
+
+`analyze_post`, `discover_topics`, `research_keyword` and `find_content_gaps` are read-only, site-bound and need only `content:read`. The last three make outbound requests to fixed public sources (Google autocomplete, the operator's Brave Search API key, public pages and the competitor's public sitemap). Private and internal hosts are refused, nothing is written, and no provider credential is ever returned. They do not search-engine-scrape; without `BRAVE_SEARCH_API_KEY` research returns only the autocomplete question tree.
 
 ## Tool catalog
 
@@ -39,6 +45,10 @@ Verified on 2026-08-22:
 | `batch_inspect_search_console_urls` | `content:read` | Inspect a bounded URL batch |
 | `list_search_console_sitemaps` | `content:read` | Read Search Console sitemap health |
 | `query_search_console_analytics` | `content:read` | Query bounded analytics with complete data by default |
+| `analyze_post` | `content:read` | No-AI analysis of one draft (readability, keyword density, structure, stock-AI phrases, near-duplicates) plus BlogPosting and FAQPage JSON-LD |
+| `discover_topics` | `content:read` | Rank product-led topics from the saved product profile; flags topics the site already covers; does not change the plan |
+| `research_keyword` | `content:read` | Question tree from autocomplete and, when `BRAVE_SEARCH_API_KEY` is set, a SERP brief; includes a `plan_brief` (outline, target length, FAQ) for `generate_draft` |
+| `find_content_gaps` | `content:read` | Competitor sitemap topics the site does not cover |
 
 The web Connections surface reads this catalog from authenticated `GET /api/mcp/capabilities`; tool counts and scope lists must not be hardcoded in UI code.
 
@@ -121,6 +131,6 @@ MCP_PILOT_TOKEN=bf_mcp_REPLACE_WITH_SECRET \
 npm run test:mcp:pilot
 ```
 
-Required client acceptance covers OAuth, discovery of exactly 22 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
+Required client acceptance covers OAuth, discovery of exactly 26 tools, `review_post` rendering, version conflict handling, explicit approval, and idempotent CMS draft delivery in Codex and ChatGPT.
 
 The original research and implementation sequence remains in the [historical MCP roadmap](../BLOGFACTORY_MCP_ROADMAP.md).
