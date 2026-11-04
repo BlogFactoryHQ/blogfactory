@@ -10,6 +10,7 @@ import {
   HelpCircle,
   ImageIcon,
   LayoutDashboard,
+  Lightbulb,
   LifeBuoy,
   ListTodo,
   MessageSquarePlus,
@@ -124,6 +125,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const actions: CommandEntry[] = [
     { id: "create", label: "Create content", hint: "New generation run", icon: Plus, run: () => go("/create") },
+    { id: "find-topics", label: "Find topics from my product", hint: "Search Growth · Topics", icon: Lightbulb, run: () => go("/overview/growth?view=topics") },
+    { id: "research-keyword", label: "Research a keyword", hint: "Questions, SERP brief, volume", icon: Search, run: () => go("/overview/growth?view=research") },
+    { id: "run-audit", label: "Run a technical audit", hint: "Search Growth · Monitor", icon: Activity, run: () => go("/overview/growth?view=monitor") },
+    { id: "check-rankings", label: "Check rankings", hint: "Tracked keywords and AI visibility", icon: BarChart3, run: () => go("/overview/growth?view=monitor") },
     { id: "add-source", label: "Add a content source", hint: "RSS or news feed", icon: Rss, run: () => go("/sources/rss/new") },
     { id: "connect-cms", label: "Connect a CMS destination", hint: "WordPress, Ghost, Wix, Framer", icon: Plug, run: () => go("/control/integrations") },
     { id: "connect-agent", label: "Connect an MCP client", hint: "Site-scoped agent access", icon: Bot, run: () => go("/control/connections") },

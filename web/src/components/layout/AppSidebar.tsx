@@ -49,6 +49,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { FactoryMark } from "@/components/layout/BywordSurface";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ChecklistCard } from "@/components/patterns/ChecklistCard";
+import { useGrowthSignals } from "@/hooks/useGrowthSignals";
 import { useWorkspaceReadiness } from "@/hooks/useWorkspaceReadiness";
 import { useTheme } from "next-themes";
 import { DOCS_URL, FEEDBACK_URL, HELP_URL, openExternal } from "@/lib/external-links";
@@ -58,10 +59,10 @@ const setupChecklistKey = (siteId: string | null | undefined) => `blogfactory:se
 
 const primaryNavigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Search Growth", href: "/overview/growth", icon: Search },
   { name: "Create Content", href: "/create", icon: Plus },
   { name: "Review Queue", href: "/review", icon: FileText },
   { name: "Runs", href: "/runs", icon: ListTodo },
-  { name: "Search Growth", href: "/overview/growth", icon: Search },
 ];
 
 const monitorNavigation = [
@@ -119,6 +120,8 @@ export function AppSidebar() {
   }, []);
 
   const openSearch = () => setIsSearchOpen(true);
+  const { newTopics } = useGrowthSignals();
+  const operateNavigation = primaryNavigation.map((item) => item.href === "/overview/growth" && newTopics > 0 ? { ...item, badge: newTopics } : item);
 
   const openSetupStep = (step: string) => navigate(`/?setup=${step}`);
 
@@ -273,7 +276,7 @@ export function AppSidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3">
-          <SidebarSection title="Operate" items={primaryNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
+          <SidebarSection title="Operate" items={operateNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
           <SidebarSection title="Manage" items={monitorNavigation} locationPath={location.pathname} locationSearch={location.search} isCollapsed={effectiveCollapsed} />
         </nav>
 
@@ -291,7 +294,7 @@ export function AppSidebar() {
                 description: item.description,
                 done: item.done,
                 attention: item.broken,
-                onSelect: () => openSetupStep(item.step),
+                onSelect: () => item.href ? navigate(item.href) : openSetupStep(item.step),
               }))}
             />
           </div>
@@ -434,6 +437,8 @@ type NavItem = {
   href: string;
   icon: typeof FileText;
   exact?: boolean;
+  /** A short count shown next to the label, for example new topics found. */
+  badge?: number;
 };
 
 function SidebarSection({
@@ -476,9 +481,12 @@ function SidebarSection({
                 <item.icon className="h-4 w-4" strokeWidth={isActive ? 2 : 1.5} />
               </div>
               {!isCollapsed && (
-                <span className="shrink-0 whitespace-nowrap pr-2 text-[13px] font-medium">
-                  {item.name}
-                </span>
+                <>
+                  <span className="shrink-0 whitespace-nowrap pr-2 text-[13px] font-medium">
+                    {item.name}
+                  </span>
+                  {item.badge ? <span className="ml-auto mr-2 rounded-full bg-byword-blue px-1.5 py-px text-[10px] font-semibold leading-4 text-white">{item.badge > 9 ? "9+" : item.badge}<span className="sr-only"> new topics</span></span> : null}
+                </>
               )}
             </div>
           );

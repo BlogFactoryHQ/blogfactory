@@ -41,7 +41,7 @@ BlogFactory is an agent control plane for multi-site content operations. MCP cli
 
 Sidebar:
 
-- Operate: Overview `/`, Create Content `/create`, Review Queue `/review`, Runs `/runs`, Search Growth `/overview/growth`.
+- Operate: Overview `/`, Search Growth `/overview/growth` (badge = topics found since the last weekly check), Create Content `/create`, Review Queue `/review`, Runs `/runs`.
 - Manage: Sources `/sources`, Content `/library`, Control `/control`.
 
 Grouped surfaces:
