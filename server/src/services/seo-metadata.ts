@@ -58,6 +58,8 @@ const emptyProvenance = (): SeoMetadataV1["provenance"] => ({
 
 const SEO_MODEL_TIMEOUT_MS = 25_000;
 
+export const SEO_REQUEST_RESPONSE_FORMAT = { type: "json_object" } as const;
+
 export const SEO_RESPONSE_FORMAT = {
   type: "json_schema",
   json_schema: {
@@ -331,8 +333,9 @@ async function requestCandidate(userId: string, apiKey: string, modelId: string,
         { role: "system", content: "You are a rigorous multilingual SEO editor. Return only one valid JSON object and never copy or truncate the article opening." },
         { role: "user", content: prompt },
       ],
-      response_format: SEO_RESPONSE_FORMAT,
-      provider: { require_parameters: true },
+      // Strict json_schema with length/pattern keywords now returns HTTP 200 with empty content
+      // on OpenAI routes (verified 2026-11-08). json_object works; validation and repair enforce limits.
+      response_format: SEO_REQUEST_RESPONSE_FORMAT,
       max_tokens: 900,
     }),
   });
@@ -346,6 +349,13 @@ async function requestCandidate(userId: string, apiKey: string, modelId: string,
   const responseData = { id: payload.id, model: payload.model };
   const latencyMs = Date.now() - startedAt;
   const rawOutput = String(payload.choices?.[0]?.message?.content || "");
+  if (!rawOutput.trim()) {
+    const choice = payload.choices?.[0];
+    throw new SeoGenerationAttemptError(
+      `AI returned empty content (finish: ${choice?.finish_reason || "none"}, provider: ${payload.provider || "unknown"}${choice?.message?.refusal ? ", refusal" : ""})`,
+      usage, cost, latencyMs, responseData, rawOutput,
+    );
+  }
   let candidate: SeoCandidate;
   try {
     candidate = normalizeAiSeoCandidate(parseSeoCandidate(jsonFromModel(rawOutput)));

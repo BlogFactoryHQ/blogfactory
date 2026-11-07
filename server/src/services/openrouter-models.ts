@@ -17,6 +17,26 @@ export const PREFERRED_TEXT_MODEL_IDS = [
   "anthropic/claude-3.5-sonnet",
   "openai/gpt-4o-mini",
 ];
+// Picker shortlist. The full OpenRouter catalog (hundreds of models) is still
+// accepted for saved selections; only the dropdown is curated.
+export const BLOG_TEXT_MODEL_IDS = new Set([
+  ...PREFERRED_TEXT_MODEL_IDS,
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v3.2",
+  "mistralai/mistral-small-3.2-24b-instruct",
+  "mistralai/mistral-small-2603",
+  "openai/gpt-5-mini",
+  "openai/gpt-4.1-mini",
+  "openai/gpt-5",
+  "openai/gpt-5.1",
+  "openai/gpt-5.2",
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-pro",
+  "google/gemini-3-flash-preview",
+  "x-ai/grok-4.3",
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-opus-4.5",
+]);
 export const OPENROUTER_IMAGE_MODEL_ID = "x-ai/grok-imagine-image-quality";
 const OPENROUTER_IMAGE_MODEL_RESOLUTIONS: Record<string, string[]> = {
   "google/gemini-3.1-flash-image": ["512", "1K"],
@@ -145,6 +165,10 @@ function textModelScore(model: NormalizedOpenRouterModel) {
   if (/preview|experimental|free|lite|flash-lite/i.test(`${model.id} ${model.name}`)) score -= 25;
   if ((model.contextLength || 0) >= 128_000) score += 5;
   return score;
+}
+
+export function curatedTextModels<T extends { id: string }>(models: T[]): T[] {
+  return models.filter((model) => BLOG_TEXT_MODEL_IDS.has(model.id));
 }
 
 export function preferredTextModelId(models: NormalizedOpenRouterModel[]) {
