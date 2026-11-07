@@ -29,8 +29,8 @@ const match = findIndexedTopicDuplicate({
   },
 }, "saas content calendar");
 
-assert.equal(canAttemptArticleRepair(18_000), true);
-assert.equal(canAttemptArticleRepair(24_000), false);
+assert.equal(canAttemptArticleRepair(50_000), true);
+assert.equal(canAttemptArticleRepair(57_000), false);
 
 assert.equal(match?.path, "/blog/saas-content-calendar");
 assert.equal(findIndexedTopicDuplicate({ internalLinkIndex: { pages: [{ title: "Pricing", path: "/pricing" }] } }, "seo strategy"), null);
