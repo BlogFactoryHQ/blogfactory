@@ -98,7 +98,7 @@ with the same job as a primitive; install the primitive and use it.
 
 ## Information Architecture
 
-- Operate: Overview `/`, Create Content `/create`, Review Queue `/review`, Runs `/runs`, Search Growth `/overview/growth`.
+- Operate: Overview `/`, Search Growth `/overview/growth` (badge = topics found since the last weekly check), Create Content `/create`, Review Queue `/review`, Runs `/runs`.
 - Manage: Sources `/sources`, Content `/library`, Control `/control`.
 - Sources tabs: RSS, Campaigns, Batch Import.
 - Content tabs: Content, Image Gallery.

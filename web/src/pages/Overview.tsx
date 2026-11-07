@@ -17,6 +17,7 @@ import type { WorkspaceDigest } from "@/lib/control-plane";
 import { useSites } from "@/hooks/useSites";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { EDITORIAL_STATE_BADGES } from "@/lib/editorial-state";
+import { WriteNextCard } from "@/components/growth/WriteNextCard";
 import { CapabilityMap } from "@/components/setup/CapabilityMap";
 import { WorkspaceSetupGuide, type WorkspaceSetupStep } from "@/components/setup/WorkspaceSetupGuide";
 
@@ -90,6 +91,8 @@ export default function Overview() {
         <StatCard label="Editorial review" value={data.attention.review} tone="warning" href="/review?severity=review" />
         <StatCard label="Warnings" value={data.attention.warning} tone="neutral" href="/review?severity=warning" />
       </div>
+
+      <WriteNextCard digest={data} />
 
       <BywordCard>
         <SectionHeader icon={AlertTriangle} title="Needs attention" description="Only drafts with a real editorial or delivery action." action={<Button asChild variant="outline" size="sm"><Link to="/review">Open queue <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button>} />

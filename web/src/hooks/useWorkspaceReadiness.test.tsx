@@ -9,10 +9,15 @@ import { useWorkspaceReadiness, type WorkspaceReadiness } from "./useWorkspaceRe
 const state = vi.hoisted(() => ({
   digest: null as WorkspaceDigest | null,
   site: { id: "site-1", domain: "example.com" } as { id: string; domain: string } | null,
+  analyzed: false,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: state.digest, isLoading: false }),
+}));
+
+vi.mock("@/hooks/useGrowthSignals", () => ({
+  useGrowthSignals: () => ({ isLoading: false, analyzed: state.analyzed, suggestions: null, newTopics: 0 }),
 }));
 
 vi.mock("@/hooks/useSites", () => ({
@@ -56,6 +61,7 @@ async function readReadiness(): Promise<WorkspaceReadiness> {
 
 beforeEach(() => {
   state.site = { id: "site-1", domain: "example.com" };
+  state.analyzed = false;
 });
 
 afterEach(async () => {
@@ -67,12 +73,12 @@ afterEach(async () => {
 });
 
 describe("useWorkspaceReadiness", () => {
-  it("counts a connected site alone as one of six steps", async () => {
+  it("counts a connected site alone as one of seven steps", async () => {
     state.digest = digestWith({});
     const readiness = await readReadiness();
     expect(readiness.completed).toBe(1);
-    expect(readiness.total).toBe(6);
-    expect(readiness.percent).toBe(17);
+    expect(readiness.total).toBe(7);
+    expect(readiness.percent).toBe(14);
     expect(readiness.complete).toBe(false);
   });
 
@@ -93,6 +99,7 @@ describe("useWorkspaceReadiness", () => {
   });
 
   it("reports completion when every capability is connected", async () => {
+    state.analyzed = true;
     state.digest = digestWith({
       generation: { ready: true, credential_status: "usable" },
       active: 2,
@@ -104,6 +111,12 @@ describe("useWorkspaceReadiness", () => {
     expect(readiness.complete).toBe(true);
     expect(readiness.percent).toBe(100);
     expect(readiness.nextStep).toBeNull();
+  });
+
+  it("offers the product analysis as an optional step that opens Search Growth", async () => {
+    state.digest = digestWith({ generation: { ready: true, credential_status: "usable" }, drafts: 1 });
+    const step = (await readReadiness()).steps.find((item) => item.step === "analyze");
+    expect(step).toMatchObject({ done: false, required: false, href: "/overview/growth?view=topics" });
   });
 
   it("changes its fingerprint when a capability changes, so a dismissal does not stick", async () => {

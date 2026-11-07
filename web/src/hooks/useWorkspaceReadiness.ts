@@ -1,12 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { useGrowthSignals } from "@/hooks/useGrowthSignals";
 import { useSites } from "@/hooks/useSites";
 import { api } from "@/lib/api";
 import type { WorkspaceDigest } from "@/lib/control-plane";
 import type { WorkspaceSetupStep } from "@/components/setup/WorkspaceSetupGuide";
 
 export type ReadinessStep = {
-  step: WorkspaceSetupStep;
+  step: WorkspaceSetupStep | "analyze";
+  /** Opens this page instead of the setup dialog. */
+  href?: string;
   label: string;
   description: string;
   done: boolean;
@@ -45,6 +48,7 @@ export function useWorkspaceReadiness(): WorkspaceReadiness {
     staleTime: 30_000,
   });
 
+  const growth = useGrowthSignals();
   const generation = data?.connections.generation;
   const hasFirstDraft = Boolean(data && (data.outcomes.drafts > 0 || data.recent_outputs.length > 0));
 
@@ -70,6 +74,14 @@ export function useWorkspaceReadiness(): WorkspaceReadiness {
       description: "See a real article before changing any setting.",
       done: hasFirstDraft,
       required: true,
+    },
+    {
+      step: "analyze",
+      href: "/overview/growth?view=topics",
+      label: "Analyze your product",
+      description: "Find topics from your product URL. No Search Console needed.",
+      done: growth.analyzed,
+      required: false,
     },
     {
       step: "cms",
@@ -106,7 +118,7 @@ export function useWorkspaceReadiness(): WorkspaceReadiness {
     percent: total ? Math.round((completed / total) * 100) : 0,
     nextStep,
     complete: completed === total,
-    isLoading: isLoading && Boolean(activeSite?.id),
+    isLoading: (isLoading || growth.isLoading) && Boolean(activeSite?.id),
     digest: data,
     fingerprint: steps.map((item) => `${item.step}:${item.done ? 1 : 0}${item.broken ? "!" : ""}`).join("|"),
   };
