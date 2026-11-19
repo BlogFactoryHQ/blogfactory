@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { duplicateSeoSlugs, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_REQUEST_RESPONSE_FORMAT, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
+import { duplicateSeoSlugs, fitMetaDescription, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_REQUEST_RESPONSE_FORMAT, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
 
 assert.equal(SEO_MODEL_ID, "openai/gpt-4.1-mini");
 assert.equal(SEO_REQUEST_RESPONSE_FORMAT.type, "json_object");
 assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 48, maxLength: 56 });
-assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: 125, maxLength: 138 });
+assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: SEO_LIMITS.descriptionMin });
+assert.equal(SEO_LIMITS.descriptionMax, 155);
 
 const valid = parseSeoCandidate({
   slug: "twitter-yirmi-yil-memler-toplumsal-hareketler",
@@ -19,13 +20,29 @@ assert.equal(validateSeoMetadata(valid).length, 0);
 assert.equal(valid.metaDescription.length <= SEO_LIMITS.descriptionMax, true);
 assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: valid.metaDescription.slice(0, -1) }).metaDescription, valid.metaDescription);
 assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: `${valid.metaDescription.slice(0, -1)},` }).metaDescription, valid.metaDescription);
+
+// Turkish descriptions longer than 155 characters end at a sentence (>=90) or word boundary, never "reh." style fragments.
+const turkishSentences = "Ortak Alan'ın yeni rehberi, küçük ekiplerin içerik planını nasıl kuracağını adım adım anlatıyor. Ayrıca yayın takvimi, ölçüm ve ekip içi iş bölümü için 10 adımlı rehber sunuyor.";
+assert.equal(fitMetaDescription(turkishSentences), "Ortak Alan'ın yeni rehberi, küçük ekiplerin içerik planını nasıl kuracağını adım adım anlatıyor.");
+const turkishOneSentence = "Küçük işletmeler için içerik pazarlaması stratejisini, arama niyetini, yayın takvimini ve ölçüm araçlarını birlikte ele alan bu 10 adımlı rehber ekiplerin işini ortaya koyduğu sonuçlarla anlatıyor";
+const fittedTurkish = fitMetaDescription(turkishOneSentence);
+assert.ok(turkishOneSentence.length > SEO_LIMITS.descriptionMax);
+assert.ok(fittedTurkish.length <= SEO_LIMITS.descriptionMax);
+assert.ok(turkishOneSentence.startsWith(`${fittedTurkish} `), "cut ends on a whole word");
+assert.ok(!fittedTurkish.endsWith("."), "no period appended after a cut");
+assert.equal(fittedTurkish, "Küçük işletmeler için içerik pazarlaması stratejisini, arama niyetini, yayın takvimini ve ölçüm araçlarını birlikte ele alan bu 10 adımlı rehber ekiplerin");
+const shortSentenceThenLong = `Kısa bir giriş. ${turkishOneSentence}`;
+assert.ok(!fitMetaDescription(shortSentenceThenLong).endsWith("giriş."), "a sentence boundary below 90 characters is not used");
+assert.equal(normalizeAiSeoCandidate({ ...valid, metaDescription: turkishOneSentence }).metaDescription, fittedTurkish);
+assert.equal(fitMetaDescription("a".repeat(200)).length, SEO_LIMITS.descriptionMax);
+
 assert.equal(normalizeSeoSlug("Twitter’ın 20. Yılı: Memler ve Öfke"), "twitter-in-20-yili-memler-ve-ofke");
 assert.equal(seoSourceHash("Title", "Body  copy"), seoSourceHash("Title", "Body copy"));
 assert.equal(seoSourceHash("Title", "Body copy"), seoSourceHash("Title", "Body copy\n\n![Article image](image.webp)"));
 
 const repeated = { ...valid, metaDescription: "Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi Twitter toplumsal hareket etkisi gündemi ve kullanıcıları dönüştürmeye devam ediyor." };
 assert.match(validateSeoMetadata(repeated).join(" "), /repeats/i);
-assert.match(validateSeoMetadata({ ...valid, metaDescription: valid.metaDescription.slice(0, 119) }).join(" "), /120-145/);
+assert.match(validateSeoMetadata({ ...valid, metaDescription: valid.metaDescription.slice(0, 119) }).join(" "), /120-155/);
 assert.equal(validateSeoMetadata({ ...valid, metaDescription: "Kısa ve bilinçli bir manuel açıklama." }, true).length, 0);
 assert.match(validateSeoMetadata({ ...valid, metaDescription: "" }, true).join(" "), /required/i);
 assert.equal(validateSeoMetadata({ ...valid, metaDescription: valid.metaDescription.slice(0, -1) }).length, 0);
@@ -92,7 +109,7 @@ const repaired = await generateValidatedCandidate(generationInput, async (_apiKe
 assert.equal(repaired.attempts, 2);
 assert.equal(repairCalls, 2);
 assert.match(repairPromptText, /Previous lengths: .*metaDescription 9\./);
-assert.match(repairPromptText, /Target 50-54 characters for metaTitle and 128-135 characters for metaDescription/);
+assert.match(repairPromptText, /Target 50-54 characters for metaTitle and 130-150 characters \(never more than 155\) for metaDescription/);
 let contextualPrompt = "";
 let contextualCalls = 0;
 const contextualResult = await generateValidatedCandidate({
