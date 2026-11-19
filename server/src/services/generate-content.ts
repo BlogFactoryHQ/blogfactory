@@ -1,9 +1,9 @@
 import { db } from "../db/index.js";
 import { safeError } from "../http/error-contract.js";
-import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, userSettings, sites, siteIntegrations } from "../db/schema.js";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { evaluateDailyGuardrails } from "./generation-guardrails.js";
+import { campaignItems, imageAssets, imageGenerationRequests, jobs, posts, feeds, generationLogs, personas, sites, siteIntegrations } from "../db/schema.js";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { saveImageBuffer } from "./image-storage.js";
-import { getOpenRouterKey } from "./api-keys.js";
 import { extractContent } from "./extract-content.js";
 import { kickDeferredImageWorker, resolveLowCostImages, type ImageResolutionResult } from "./low-cost-images.js";
 import {
@@ -14,7 +14,6 @@ import {
   resolveOpenRouterTextModel,
 } from "./openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "./post-cleanup.js";
-import { slugify } from "./slugify.js";
 import { getEffectiveSettings, getGlobalSettings, getPinnedSiteSettings, updateGlobalSettings } from "./user-settings.js";
 import { buildSportsNewsInstructions, classifySportsNews, sportsMatrixRowsFromSettings } from "./sports-news.js";
 import { fetchSocialContent } from "./fetch-social-content.js";
@@ -22,7 +21,11 @@ import { imageTargets } from "./image-slots.js";
 import { classifyEditorialTopics, inspectFeedRouting, mergeTopicTags, normalizeFeedEditorialDefaults, rssPublicationDate } from "./feed-routing.js";
 import { completeSentenceWithinLimit, isOrtakAlanProfile, normalizeOrtakAlanMetadata } from "./ortak-alan-publishing.js";
 import { enqueueSeoMetadata, kickSeoMetadataWorker } from "./seo-metadata.js";
-import type { GenerateOpts, GenerationSettings, SeoQaCheck, SourceArticle } from "./generation-types.js";
+import { withDraftQuota, type DraftOrigin } from "./plan-usage.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
+import { claimGenerationSlot } from "./cloud-limits.js";
+import { safeFetch } from "./safe-fetch.js";
+import type { GenerateOpts, GenerationSettings, SourceArticle } from "./generation-types.js";
 export type { GenerateOpts } from "./generation-types.js";
 import {
   expandDraftVariations,
@@ -46,16 +49,12 @@ import {
   buildSettingsInstructions,
   buildWriterSystemPrompt,
   findIndexedTopicDuplicate,
-  internalLinkTarget,
   normalizeList,
-  normalizeTopic,
   resolveGenerationContract,
   settingBool,
   settingNumber,
   settingValue,
-  tokenize,
   topicCoveredByText,
-  truncatePromptText,
   type GenerationContract,
 } from "./generation-contracts.js";
 export {
@@ -140,15 +139,20 @@ export function manualPromptImageResolutionSummary(requests: ManualPromptRequest
   };
 }
 
-const AI_REQUEST_TIMEOUT_MS = 35_000;
+const AI_REQUEST_TIMEOUT_MS = 60_000;
+const ARTICLE_REPAIR_TIMEOUT_MS = 20_000;
 const MANUAL_PROMPT_SYNC_TIMEOUT_MS = 12_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 45_000;
-const JOB_SYNC_BUDGET_MS = 52_000;
+const JOB_SYNC_BUDGET_MS = 85_000;
 const OPENROUTER_COST_LOOKUP_DELAY_MS = 900;
 const OPENROUTER_COST_LOOKUP_TIMEOUT_MS = 4_000;
 
 function hasJobSyncBudget(startedAt: number, requiredMs: number) {
   return JOB_SYNC_BUDGET_MS - (Date.now() - startedAt) >= requiredMs;
+}
+
+export function canAttemptArticleRepair(elapsedMs: number) {
+  return JOB_SYNC_BUDGET_MS - elapsedMs >= ARTICLE_REPAIR_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000;
 }
 
 export function openRouterImageModelId(modelId: string | null | undefined) {
@@ -398,6 +402,7 @@ function completionTokenBudget(contract: GenerationContract) {
 }
 
 async function repairShortArticle(opts: {
+  userId: string;
   content: string;
   contract: GenerationContract;
   draftSystemPrompt: string;
@@ -406,9 +411,9 @@ async function repairShortArticle(opts: {
 }) {
   if (!opts.contract.minWords || wordCount(opts.content) >= opts.contract.minWords) return null;
 
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await openRouterInferenceFetch(opts.userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(ARTICLE_REPAIR_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${opts.openRouterKey}`,
       "Content-Type": "application/json",
@@ -443,6 +448,7 @@ async function repairShortArticle(opts: {
 }
 
 async function repairArticleLanguage(opts: {
+  userId: string;
   content: string;
   language: string;
   draftSystemPrompt: string;
@@ -453,7 +459,7 @@ async function repairArticleLanguage(opts: {
   if (!opts.language || looksLikeRequestedLanguage(opts.content, opts.language)) return null;
 
   const instruction = outputLanguageInstruction(opts.language);
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await openRouterInferenceFetch(opts.userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     headers: {
@@ -524,8 +530,7 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
   const sourceValue = String(opts.sourceValue || "").trim();
   if (!sourceValue) throw new Error(opts.sourceType === "article_title" ? "Article title is required" : "Article keyword is required");
 
-  const openRouterKey = await getOpenRouterKey(userId);
-  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before planning articles");
+  const openRouterKey = (await resolveOpenRouterAccess(userId)).apiKey;
 
   let systemPrompt = "You are an SEO content strategist. Return only valid JSON.";
   let personaModel = opts.modelId || "openai/gpt-4o";
@@ -555,7 +560,7 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
     'Return JSON exactly like {"title":"...","outline":["H2: ...","H2: ...","H3: ..."]}. Use 5-8 outline lines.',
   ].filter(Boolean).join("\n");
 
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     headers: {
@@ -586,17 +591,17 @@ export async function generateArticlePlan(opts: Pick<GenerateOpts,
 
 export async function generateContent(opts: GenerateOpts) {
   const userId = opts.schedulerUserId || opts.userId;
-  const openRouterKey = await getOpenRouterKey(userId);
+  const openRouterAccess = await resolveOpenRouterAccess(userId);
+  const openRouterKey = openRouterAccess.apiKey;
   const startedAt = Date.now();
-
-  if (!openRouterKey) {
-    throw new Error("Add your OpenRouter API key in Settings before generating content");
-  }
 
   const [existingJob] = opts.jobId
     ? await db.select().from(jobs).where(and(eq(jobs.id, opts.jobId), eq(jobs.userId, userId))).limit(1)
     : [];
   if (opts.jobId && !existingJob) throw new Error("Job not found");
+  const jobPlan = existingJob?.generationPlan && typeof existingJob.generationPlan === "object" && !Array.isArray(existingJob.generationPlan)
+    ? existingJob.generationPlan as Record<string, unknown> : {};
+  const draftOrigin: DraftOrigin = opts.schedulerUserId || opts.feedId || opts.campaignId || jobPlan.origin === "mcp" ? "automated" : "manual";
 
   const requestedFeedId = existingJob?.feedId || opts.feedId;
   const [feedRecord] = requestedFeedId
@@ -644,7 +649,7 @@ export async function generateContent(opts: GenerateOpts) {
       personaId: opts.personaId || null,
       campaignId: opts.campaignId || null,
       campaignItemId: opts.campaignItemId || null,
-      status: "running",
+      status: "pending",
       currentStep: "starting",
     }).returning();
     jobId = job.id;
@@ -656,10 +661,14 @@ export async function generateContent(opts: GenerateOpts) {
       siteId: resolvedSiteId,
       feedId: feedRecord?.id || existingJob?.feedId || null,
       preferredIntegrationId: resolvedIntegrationId,
-      status: "running",
+      campaignId: opts.campaignId || existingJob?.campaignId || null,
+      campaignItemId: opts.campaignItemId || existingJob?.campaignItemId || null,
+      status: "pending",
       currentStep: "starting",
     }).where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)));
   }
+
+  await claimGenerationSlot(userId, jobId);
 
   try {
     // Budget is account-level; feed generation resolves defaults from its pinned site.
@@ -684,6 +693,30 @@ export async function generateContent(opts: GenerateOpts) {
         await updateGlobalSettings(userId, { budgetPaused: true });
         await db.update(jobs).set({ status: "failed", errorMessage: "Monthly budget exceeded — generation paused", completedAt: new Date() }).where(eq(jobs.id, jobId));
         return { jobId, status: "failed", error: "Budget exceeded" };
+      }
+    }
+
+    // Daily ceilings do not latch budget_paused: they clear themselves at UTC midnight.
+    if (accountSettings?.dailyCostLimit || accountSettings?.dailyRequestLimit) {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const [todayUsage] = await db.select({
+        spend: sql<number>`COALESCE(SUM(${generationLogs.cost}), 0)::float8`,
+        requests: sql<number>`COUNT(*)::int`,
+        failures: sql<number>`COUNT(*) FILTER (WHERE ${generationLogs.status} IS NOT NULL AND ${generationLogs.status} <> 'success')::int`,
+      })
+        .from(generationLogs)
+        .where(and(eq(generationLogs.userId, userId), gte(generationLogs.createdAt, startOfDay)));
+
+      const blocked = evaluateDailyGuardrails(accountSettings, {
+        monthSpend: 0,
+        todaySpend: Number(todayUsage?.spend || 0),
+        todayRequests: Number(todayUsage?.requests || 0),
+        todayFailures: Number(todayUsage?.failures || 0),
+      });
+      if (blocked) {
+        await db.update(jobs).set({ status: "failed", errorMessage: blocked.message, completedAt: new Date() }).where(eq(jobs.id, jobId));
+        return { jobId, status: "failed", error: blocked.message };
       }
     }
     const promptSettings = applyGenerationOverrides((opts.settingsSnapshot || settings) as GenerationSettings | undefined, opts);
@@ -971,22 +1004,28 @@ export async function generateContent(opts: GenerateOpts) {
         const baseUserMessage = buildDraftUserMessage(article, opts.sourceType, effectiveOpts);
         const userMessage = languageInstruction ? `${languageInstruction}\n\n${baseUserMessage}` : baseUserMessage;
 
-        const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
-          headers: {
-            Authorization: `Bearer ${openRouterKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              { role: "system", content: draftSystemPrompt },
-              { role: "user", content: userMessage },
-            ],
-            max_completion_tokens: completionTokenBudget(generationContract),
-          }),
-        });
+        const maxCompletionTokens = completionTokenBudget(generationContract);
+        let aiResp: Response;
+        try {
+          aiResp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+            headers: {
+              Authorization: `Bearer ${openRouterKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [
+                { role: "system", content: draftSystemPrompt },
+                { role: "user", content: userMessage },
+              ],
+              max_completion_tokens: maxCompletionTokens,
+            }),
+          });
+        } catch (error) {
+          throw error;
+        }
 
         if (!aiResp.ok) {
           const errText = await aiResp.text();
@@ -1019,6 +1058,7 @@ export async function generateContent(opts: GenerateOpts) {
             try {
               await db.update(jobs).set({ currentStep: `repairing_language_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
               const repairedLanguage = await repairArticleLanguage({
+                userId,
                 content: genContent,
                 language: draftLanguage,
                 draftSystemPrompt,
@@ -1049,10 +1089,11 @@ export async function generateContent(opts: GenerateOpts) {
         }
 
         if (isBlogDraftSource(opts.sourceType) && generationContract.minWords && wordCount(genContent) < generationContract.minWords) {
-          if (hasJobSyncBudget(startedAt, AI_REQUEST_TIMEOUT_MS + OPENROUTER_COST_LOOKUP_TIMEOUT_MS + 5_000)) {
+          if (canAttemptArticleRepair(Date.now() - startedAt)) {
             try {
               await db.update(jobs).set({ currentStep: `repairing_length_for_draft_${i + 1}` }).where(eq(jobs.id, jobId));
               const repaired = await repairShortArticle({
+                userId,
                 content: genContent,
                 contract: generationContract,
                 draftSystemPrompt,
@@ -1107,7 +1148,7 @@ export async function generateContent(opts: GenerateOpts) {
         const ortakAlan = Boolean(destinationIntegration && isOrtakAlanProfile(destinationIntegration.config));
         const editorialDefaults = normalizeFeedEditorialDefaults(feedRecord?.editorialDefaults, ortakAlan);
         const topicResult = feedRecord && editorialDefaults.aiTopicsEnabled && destinationSite?.editorialTopics?.length
-          ? await classifyEditorialTopics({ apiKey: openRouterKey, model: modelId, title: postTitle, content: genContent, vocabulary: destinationSite.editorialTopics })
+          ? await classifyEditorialTopics({ userId, apiKey: openRouterKey, model: modelId, title: postTitle, content: genContent, vocabulary: destinationSite.editorialTopics })
           : { topics: [] as string[], warning: null as string | null };
         const topicTags = mergeTopicTags(
           ortakAlan ? editorialDefaults.defaultTopicTags : editorialDefaults.defaultTags,
@@ -1153,25 +1194,28 @@ export async function generateContent(opts: GenerateOpts) {
           };
         }
 
-        const [post] = await db.insert(posts).values({
-          userId,
-          siteId: resolvedSiteId,
-          feedId: feedRecord?.id || null,
-          preferredIntegrationId: resolvedIntegrationId,
-          title: postTitle,
-          content: genContent,
-          status: "draft",
-          sourceType: opts.sourceType,
-          sourceRefId: opts.campaignId || article.url || (isArticleSource(opts.sourceType) ? opts.sourceValue : opts.feedId) || null,
-          sourceContentHash: contentHash,
-          jobId,
-          campaignId: opts.campaignId || null,
-          campaignItemId: opts.campaignItemId || null,
-          personaId: opts.personaId || null,
-          modelId,
-          summary: excerpt,
-          publishingMetadata,
-        }).returning();
+        const post = await withDraftQuota(userId, draftOrigin, `draft:${jobId}:${i}:${contentHash}`, async (tx) => {
+          const [created] = await tx.insert(posts).values({
+            userId,
+            siteId: resolvedSiteId,
+            feedId: feedRecord?.id || null,
+            preferredIntegrationId: resolvedIntegrationId,
+            title: postTitle,
+            content: genContent,
+            status: "draft",
+            sourceType: opts.sourceType,
+            sourceRefId: opts.campaignId || article.url || (isArticleSource(opts.sourceType) ? opts.sourceValue : opts.feedId) || null,
+            sourceContentHash: contentHash,
+            jobId,
+            campaignId: opts.campaignId || null,
+            campaignItemId: opts.campaignItemId || null,
+            personaId: opts.personaId || null,
+            modelId,
+            summary: excerpt,
+            publishingMetadata,
+          }).returning();
+          return created;
+        });
 
         const seoJob = await enqueueSeoMetadata({ userId, postId: post.id, trigger: "generation" });
         if (seoJob.queued) await kickSeoMetadataWorker(userId);
@@ -1325,6 +1369,10 @@ export async function generateContent(opts: GenerateOpts) {
         totalCost,
         completedAt: new Date(),
       }).where(eq(jobs.id, jobId));
+      if (opts.campaignItemId) {
+        await db.update(campaignItems).set({ status: "failed", planningStatus: "blocked", errorMessage: message, completedAt: new Date() })
+          .where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+      }
       return { jobId, status: "failed", error: message, postIds: [] };
     }
 
@@ -1345,6 +1393,15 @@ export async function generateContent(opts: GenerateOpts) {
       totalCost,
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
+    if (opts.campaignItemId) {
+      await db.update(campaignItems).set({
+        status: "completed",
+        planningStatus: "in_progress",
+        postId: createdPostIds[0] || null,
+        completedAt: new Date(),
+        errorMessage: null,
+      }).where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+    }
     if (imageResolutionResults.some((item) => (item.result?.queued || 0) > 0)) {
       await kickDeferredImageWorker(userId);
     }
@@ -1358,6 +1415,10 @@ export async function generateContent(opts: GenerateOpts) {
       errorMessage: err.message,
       completedAt: new Date(),
     }).where(eq(jobs.id, jobId));
+    if (opts.campaignItemId) {
+      await db.update(campaignItems).set({ status: "failed", planningStatus: "blocked", errorMessage: err.message, completedAt: new Date() })
+        .where(and(eq(campaignItems.id, opts.campaignItemId), eq(campaignItems.userId, userId)));
+    }
     return { jobId, status: "failed", error: err.message };
   }
 }
@@ -1433,7 +1494,7 @@ async function createManualImagePromptRequest(opts: {
     content: opts.content,
     stylePrompt: opts.stylePrompt,
   });
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await openRouterInferenceFetch(opts.userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(opts.timeoutMs || AI_REQUEST_TIMEOUT_MS),
     headers: {
@@ -1622,8 +1683,7 @@ export async function createManualImagePromptRequestsForPost(userId: string, pos
     };
   }
 
-  const openRouterKey = await getOpenRouterKey(userId);
-  if (!openRouterKey) throw new Error("Add your OpenRouter API key in Settings before generating image prompts");
+  const openRouterKey = (await resolveOpenRouterAccess(userId)).apiKey;
 
   const settings = await getEffectiveSettings(userId);
   const imageConfig = manualPromptImageConfigFromSettings(settings);
@@ -1690,7 +1750,7 @@ export async function createManualImagePromptRequestsForPost(userId: string, pos
 export async function generateQueuedImageRequest(request: typeof imageGenerationRequests.$inferSelect) {
   if (!request.jobId) throw new Error("Queued image request is missing job data");
 
-  const openRouterKey = await getOpenRouterKey(request.userId);
+  const openRouterKey = (await resolveOpenRouterAccess(request.userId)).apiKey;
   const modelId = await validateImageModelForRequest(openRouterKey, openRouterImageModelId(request.modelId), request.type);
 
   const result = await generateSingleImage(
@@ -1764,7 +1824,7 @@ async function generateSingleImage(
   const startedAt = Date.now();
   let resp: Response;
   try {
-    resp = await fetch("https://openrouter.ai/api/v1/images", {
+    resp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/images", {
       method: "POST",
       signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
       headers: {
@@ -1821,7 +1881,7 @@ async function generateSingleImage(
   if (base64Image) {
     imageBuffer = Buffer.from(base64Image, "base64");
   } else if (imageUrl) {
-    const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS) });
+    const imgResp = await safeFetch(imageUrl, { timeoutMs: IMAGE_REQUEST_TIMEOUT_MS, maxResponseBytes: 20 * 1024 * 1024 });
     if (imgResp.ok) {
       imageBuffer = Buffer.from(await imgResp.arrayBuffer());
     }

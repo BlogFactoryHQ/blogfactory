@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { personas } from "../db/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
 

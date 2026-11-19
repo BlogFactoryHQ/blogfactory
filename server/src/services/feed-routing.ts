@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { siteIntegrations, sites } from "../db/schema.js";
 import { isOrtakAlanProfile } from "./ortak-alan-publishing.js";
+import { openRouterInferenceFetch } from "./managed-openrouter.js";
 
 export interface FeedEditorialDefaults {
   profile: "ortak_alan_news" | "generic";
@@ -78,11 +79,11 @@ export function sanitizeClassifiedTopics(values: unknown[], vocabulary: string[]
     .slice(0, 3);
 }
 
-export async function classifyEditorialTopics(input: { apiKey: string; model: string; title: string; content: string; vocabulary: string[] }) {
+export async function classifyEditorialTopics(input: { userId: string; apiKey: string; model: string; title: string; content: string; vocabulary: string[] }) {
   const vocabulary = unique(input.vocabulary).slice(0, 50);
   if (!vocabulary.length) return { topics: [] as string[], warning: null as string | null };
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await openRouterInferenceFetch(input.userId, "https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       signal: AbortSignal.timeout(10_000),
       headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json" },

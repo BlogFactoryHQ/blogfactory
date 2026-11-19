@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   buildSearchConsoleInsights,
+  buildCanonicalSearchPerformance,
+  chunkSearchConsoleMetrics,
   chooseSearchConsoleProperty,
   createSearchConsoleOAuthUrl,
   mapSearchAnalyticsRows,
@@ -8,6 +10,9 @@ import {
   normalizeInspectionResult,
   normalizeInspectionUrl,
   normalizeSearchConsoleProperty,
+  searchConsoleOAuthEnabled,
+  storedInsightsFallbackRange,
+  storedSearchConsoleMetricRange,
 } from "./search-console.js";
 
 assert.equal(normalizeSearchConsoleProperty("sc-domain:WWW.Example.com"), "sc-domain:example.com");
@@ -52,6 +57,7 @@ assert.deepEqual(normalizeAnalyticsInput({ range: 28, compare: true, groupBy: "q
   searchType: "web",
   country: "tur",
   device: "MOBILE",
+  includePreliminary: false,
   limit: 250,
 });
 assert.throws(() => normalizeAnalyticsInput({ range: 12 as 28, compare: true, groupBy: "query", searchType: "web", limit: 20 }), /range/);
@@ -62,27 +68,68 @@ assert.deepEqual(mapSearchAnalyticsRows([
 ]), [
   { date: "2026-06-01", pageUrl: "https://example.com/a", query: "crm", clicks: 1, impressions: 10, ctr: 0.1, position: 12.5 },
 ]);
+assert.deepEqual(chunkSearchConsoleMetrics(Array.from({ length: 2501 }, (_, index) => ({
+  date: "2026-06-01",
+  pageUrl: `https://example.com/${index}`,
+  query: "query",
+  clicks: 1,
+  impressions: 1,
+  ctr: 1,
+  position: 1,
+}))).map((batch) => batch.length), [1000, 1000, 501]);
+
+assert.equal(searchConsoleOAuthEnabled({}), false);
+assert.equal(searchConsoleOAuthEnabled({ GOOGLE_SEARCH_CONSOLE_CLIENT_ID: "client-id" }), false);
+assert.deepEqual(storedSearchConsoleMetricRange({
+  startDate: "2026-08-01",
+  endDate: "2026-08-28",
+  baselineStart: "2026-07-04",
+  baselineEnd: "2026-07-31",
+}), { startDate: "2026-07-04", endDate: "2026-08-28" });
+assert.equal(searchConsoleOAuthEnabled({ GOOGLE_SEARCH_CONSOLE_CLIENT_ID: "client-id", GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET: "client-secret" }), true);
 
 const emptyInsights = buildSearchConsoleInsights({ metrics: [] });
 assert.equal(emptyInsights.totals.clicks.value, 0);
 assert.equal(emptyInsights.daily.length, 0);
 
+const canonical = buildCanonicalSearchPerformance([
+  { keys: ["2026-05-10"], clicks: 60, impressions: 1500, ctr: 0.04, position: 12 },
+  { keys: ["2026-06-14"], clicks: 75, impressions: 3300, ctr: 75 / 3300, position: 15.27 },
+  { keys: ["2026-06-15"], clicks: 3, impressions: 100, ctr: 0.03, position: 14 },
+], { first_incomplete_date: "2026-06-15" }, {
+  range: 28, compare: true, searchType: "web", includePreliminary: false,
+}, "2026-06-16", "sc-domain:example.com");
+assert.deepEqual(canonical.range, { startDate: "2026-05-18", endDate: "2026-06-14", baselineStart: "2026-04-20", baselineEnd: "2026-05-17" });
+assert.equal(canonical.totals.clicks.value, 75);
+assert.equal(canonical.totals.clicks.baseline, 60);
+assert.equal(canonical.provenance.complete_through, "2026-06-14");
+const preliminary = buildCanonicalSearchPerformance([
+  { keys: ["2026-06-15"], clicks: 3, impressions: 100, ctr: 0.03, position: 14 },
+], { first_incomplete_date: "2026-06-15" }, {
+  range: 28, compare: false, searchType: "web", includePreliminary: true,
+}, "2026-06-16", "sc-domain:example.com");
+assert.equal(preliminary.range.endDate, "2026-06-16");
+assert.equal(preliminary.totals.clicks.value, 3);
+assert.equal(preliminary.provenance.data_status, "preliminary");
+
 const insights = buildSearchConsoleInsights({
+  performance: canonical,
   metrics: [
-    { date: "2026-05-25", pageUrl: "https://example.com/risk", query: "risk query", clicks: 50, impressions: 500, ctr: 0.1, position: 4 },
+    { date: "2026-05-10", pageUrl: "https://example.com/risk", query: "risk query", clicks: 50, impressions: 500, ctr: 0.1, position: 4 },
     { date: "2026-06-14", pageUrl: "https://example.com/risk", query: "risk query", clicks: 20, impressions: 500, ctr: 0.04, position: 8 },
-    { date: "2026-05-25", pageUrl: "https://example.com/gain", query: "gain query", clicks: 10, impressions: 1000, ctr: 0.01, position: 20 },
+    { date: "2026-05-10", pageUrl: "https://example.com/gain", query: "gain query", clicks: 10, impressions: 1000, ctr: 0.01, position: 20 },
     { date: "2026-06-14", pageUrl: "https://example.com/gain", query: "gain query", clicks: 20, impressions: 1000, ctr: 0.02, position: 20 },
     { date: "2026-06-14", pageUrl: "https://example.com/ctr", query: "ctr query", clicks: 5, impressions: 1000, ctr: 0.005, position: 20 },
     { date: "2026-06-14", pageUrl: "https://example.com/lift", query: "lift query", clicks: 30, impressions: 800, ctr: 0.0375, position: 8 },
   ],
 });
-assert.equal(insights.range.latestStart, "2026-06-01");
-assert.equal(insights.range.baselineStart, "2026-05-18");
+assert.equal(insights.range.latestStart, "2026-05-18");
+assert.equal(insights.range.baselineStart, "2026-04-20");
 assert.equal(insights.totals.clicks.value, 75);
 assert.equal(insights.totals.clicks.delta, 15);
 assert.equal(insights.totals.ctr.value, 0.0227);
 assert.equal(insights.totals.position.value, 15.27);
+assert.equal(insights.opportunity_scope.scope, "page_query_rows");
 assert.equal(insights.segments.needsAttention, 1);
 assert.equal(insights.segments.ctrOpportunities, 1);
 assert.equal(insights.segments.strikingDistance, 1);
@@ -106,5 +153,9 @@ assert.equal(oauthUrl.searchParams.get("client_id"), "client-id");
 assert.equal(oauthUrl.searchParams.get("redirect_uri"), "https://app.example.com/api/search-console/oauth/callback");
 assert.equal(oauthUrl.searchParams.get("scope"), "https://www.googleapis.com/auth/webmasters.readonly");
 assert.ok(oauthUrl.searchParams.get("state"));
+
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", null), { startDate: "2026-07-29", endDate: "2026-09-22" });
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", new Date("2026-08-28T15:29:39.821Z")), { startDate: "2026-07-04", endDate: "2026-09-22" });
+assert.deepEqual(storedInsightsFallbackRange("2026-09-22", new Date("2026-09-22T06:00:00.000Z")), { startDate: "2026-07-29", endDate: "2026-09-22" });
 
 console.log("search-console self-test ok");

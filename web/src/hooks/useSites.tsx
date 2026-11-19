@@ -25,6 +25,8 @@ export interface Site {
   cta?: string | null;
   internalLinkLastSyncedAt?: string | null;
   internal_link_last_synced_at?: string | null;
+  indexingError?: string | null;
+  indexing_error?: string | null;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -72,6 +74,7 @@ function normalizeSite(site: Site): Site {
     pageCount: site.pageCount ?? site.page_count ?? 0,
     vectorCount: site.vectorCount ?? site.vector_count ?? 0,
     internalLinkLastSyncedAt: site.internalLinkLastSyncedAt ?? site.internal_link_last_synced_at,
+    indexingError: site.indexingError ?? site.indexing_error,
     createdAt: site.createdAt ?? site.created_at,
     updatedAt: site.updatedAt ?? site.updated_at,
     topics: asStringArray(site.topics),
@@ -96,8 +99,8 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
   const createSiteMutation = useMutation({
     mutationFn: async (input: CreateSiteInput) => {
-      const response = await api.post<{ site: Site; activeSiteId: string; active_site_id: string }>("/sites", input);
-      return normalizeSite(response.site);
+      const response = await api.post<{ site: Site; activeSiteId: string; active_site_id: string; indexingError?: string | null; indexing_error?: string | null }>("/sites", input);
+      return normalizeSite({ ...response.site, indexingError: response.indexingError ?? response.indexing_error });
     },
     onSuccess: async () => {
       await Promise.all([

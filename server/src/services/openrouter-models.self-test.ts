@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { catalogFromOpenRouterPayload, OPENROUTER_AUTO_MODEL_MESSAGE, OPENROUTER_MODEL_UNAVAILABLE_MESSAGE, preferredTextModelId } from "./openrouter-models.js";
+import { catalogFromOpenRouterPayload, curatedTextModels, OPENROUTER_AUTO_MODEL_MESSAGE, OPENROUTER_MODEL_UNAVAILABLE_MESSAGE, preferredTextModelId } from "./openrouter-models.js";
 
 const payload = {
   data: [
@@ -63,6 +63,8 @@ const image = catalogFromOpenRouterPayload(payload, "image");
 
 assert.deepEqual(text.map((model: { id: string }) => model.id), ["openai/gpt-4o-mini"]);
 assert.equal(preferredTextModelId(text), "openai/gpt-4o-mini");
+const wide = [{ id: "openai/gpt-4o-mini" }, { id: "random/obscure-7b" }, { id: "anthropic/claude-sonnet-5" }];
+assert.deepEqual(curatedTextModels(wide).map((model) => model.id), ["openai/gpt-4o-mini", "anthropic/claude-sonnet-5"]);
 assert.match(OPENROUTER_AUTO_MODEL_MESSAGE, /Auto is disabled/);
 assert.deepEqual(image.map((model: { id: string }) => model.id), ["x-ai/grok-imagine-image-quality", "google/gemini-3.1-flash-image-preview"]);
 assert.deepEqual(image.find((model: { id: string }) => model.id === "x-ai/grok-imagine-image-quality")?.constraints.resolutions, ["1K"]);

@@ -89,17 +89,17 @@ const getSourceIcon = (sourceType: SourceType = "url") => {
 const getSourceLabel = (sourceType: SourceType = "url") => {
   switch (sourceType) {
     case "article_keyword":
-      return "Article Keyword";
+      return "Article keyword";
     case "article_title":
-      return "Article Title";
+      return "Article title";
     case "url":
-      return "Web Article";
+      return "Web article";
     case "youtube":
-      return "YouTube Video";
+      return "YouTube video";
     case "pdf":
-      return "PDF Document";
+      return "PDF document";
     case "raw_text":
-      return "Text Input";
+      return "Text input";
     default:
       return "Content";
   }
@@ -158,7 +158,7 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
     : [];
 
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-byword-blue-soft/60 p-4">
+    <div className="space-y-4 rounded-md border border-border bg-byword-blue-soft/60 p-4">
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2 font-medium">
           {getSourceIcon(sourceType)}
@@ -166,13 +166,13 @@ export function GenerationProgress({ currentStep, sourceType = "url", error, dra
             {currentStep === "error" 
               ? "Generation failed" 
               : currentStep === "complete"
-                ? `${getSourceLabel(sourceType)} processed!`
+                ? `${getSourceLabel(sourceType)} processed`
                 : `Processing ${getSourceLabel(sourceType)}...`}
           </span>
         </div>
         <span className="text-muted-foreground">
           {currentStep === "complete" 
-            ? "Done!" 
+            ? "Done"
             : draftProgress && draftProgress.total > 1
               ? `Draft ${draftProgress.current}/${draftProgress.total} • ${draftProgress.completed} done`
               : `Step ${currentIndex + 1} of ${steps.length}`}

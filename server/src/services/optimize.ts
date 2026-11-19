@@ -1,9 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { optimizeAnalyses, optimizePages, searchConsoleIntegrations, searchConsoleMetrics, sites } from "../db/schema.js";
 import { extractContent } from "./extract-content.js";
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { getEffectiveSettings } from "./user-settings.js";
+import { safeFetch } from "./safe-fetch.js";
 
 export type OptimizeStatus = "needs_attention" | "tracking" | "improved";
 
@@ -282,11 +283,7 @@ export function normalizePageUrlForSite(pageUrl: string, siteDomain: string) {
   return normalized;
 }
 
-export async function refreshOptimizePages(userId: string, siteId: string) {
-  const metrics = await db
-    .select()
-    .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+export async function refreshOptimizePages(userId: string, siteId: string, metrics: GscMetric[]) {
   if (!metrics.length) return { updated: 0 };
 
   const maxDate = metrics.reduce((max, metric) => metric.date > max ? metric.date : max, metrics[0].date);
@@ -297,51 +294,57 @@ export async function refreshOptimizePages(userId: string, siteId: string) {
 
   for (const metric of metrics) {
     const key = `${metric.pageUrl}\n${metric.query}`;
-    groups.set(key, [...(groups.get(key) || []), metric]);
+    const rows = groups.get(key);
+    if (rows) rows.push(metric);
+    else groups.set(key, [metric]);
   }
 
-  let updated = 0;
+  const existingRows = await db
+    .select({ pageUrl: optimizePages.pageUrl, targetQuery: optimizePages.targetQuery, optimizedAt: optimizePages.optimizedAt })
+    .from(optimizePages)
+    .where(and(eq(optimizePages.userId, userId), eq(optimizePages.siteId, siteId)));
+  const existingByKey = new Map(existingRows.map((row) => [`${row.pageUrl}\n${row.targetQuery}`, row]));
+  const updates: Array<typeof optimizePages.$inferInsert> = [];
+
   for (const [key, rows] of groups) {
     const [pageUrl, query] = key.split("\n");
     const baseline = summarizeMetrics(rows.filter((row) => row.date >= baselineStart && row.date <= baselineEnd));
     const latest = summarizeMetrics(rows.filter((row) => row.date >= latestStart && row.date <= maxDate));
+    const status = classifyOptimizeStatus({ baseline, latest, optimizedAt: existingByKey.get(key)?.optimizedAt });
+    updates.push({
+      userId,
+      siteId,
+      pageUrl,
+      targetQuery: query,
+      status,
+      baselineMetrics: baseline as never,
+      latestMetrics: latest as never,
+    });
+  }
 
-    const [existing] = await db
-      .select({ optimizedAt: optimizePages.optimizedAt })
-      .from(optimizePages)
-      .where(and(
-        eq(optimizePages.userId, userId),
-        eq(optimizePages.siteId, siteId),
-        eq(optimizePages.pageUrl, pageUrl),
-        eq(optimizePages.targetQuery, query),
-      ))
-      .limit(1);
-
-    const status = classifyOptimizeStatus({ baseline, latest, optimizedAt: existing?.optimizedAt });
+  for (const batch of chunkOptimizePageUpdates(updates)) {
     await db
       .insert(optimizePages)
-      .values({
-        userId,
-        siteId,
-        pageUrl,
-        targetQuery: query,
-        status,
-        baselineMetrics: baseline as never,
-        latestMetrics: latest as never,
-      })
+      .values(batch)
       .onConflictDoUpdate({
         target: [optimizePages.siteId, optimizePages.pageUrl, optimizePages.targetQuery],
         set: {
-          status,
-          baselineMetrics: baseline as never,
-          latestMetrics: latest as never,
+          status: sql`excluded.status`,
+          baselineMetrics: sql`excluded.baseline_metrics`,
+          latestMetrics: sql`excluded.latest_metrics`,
           updatedAt: new Date(),
         },
       });
-    updated += 1;
   }
 
-  return { updated };
+  return { updated: updates.length };
+}
+
+export function chunkOptimizePageUpdates<T>(updates: T[], size = 500) {
+  const batchSize = Math.max(1, Math.floor(size));
+  const batches: T[][] = [];
+  for (let index = 0; index < updates.length; index += batchSize) batches.push(updates.slice(index, index + batchSize));
+  return batches;
 }
 
 export async function listOptimizePages(userId: string, siteId: string, status?: string) {
@@ -413,6 +416,11 @@ export async function analyzeOptimizePage(input: {
   }
 
   const suggestions = await aiSuggestions(input.userId, targetQuery, own, competitors) || fallbackSuggestions(own, competitors);
+  // Dynamic import keeps this module out of the product-seo import cycle.
+  const questionExtras = await import("./refresh-questions.js")
+    .then((module) => module.questionSuggestions({ pageUrl, targetQuery, language: site.language }))
+    .catch(() => []);
+  suggestions.push(...questionExtras);
 
   const [page] = await db
     .insert(optimizePages)
@@ -574,11 +582,10 @@ function actionPlan(opportunities: Opportunity[]): ActionPlanItem[] {
 }
 
 async function aiActionPlan(userId: string, insight: PageInsight, fallback: ActionPlanItem[]) {
-  const key = await getOpenRouterKey(userId);
-  if (!key) return null;
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try { await resolveOpenRouterAccess(userId); } catch { return null; }
+  const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "openai/gpt-5-mini",
       messages: [{
@@ -696,6 +703,10 @@ function groupBy<T>(items: T[], key: (item: T) => string) {
 }
 
 async function selectGscMetrics(userId: string, siteId: string): Promise<GscMetric[]> {
+  const [latest] = await db.select({ date: sql<string | null>`max(${searchConsoleMetrics.date})` })
+    .from(searchConsoleMetrics)
+    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+  if (!latest?.date) return [];
   return db
     .select({
       date: searchConsoleMetrics.date,
@@ -707,7 +718,12 @@ async function selectGscMetrics(userId: string, siteId: string): Promise<GscMetr
       position: searchConsoleMetrics.position,
     })
     .from(searchConsoleMetrics)
-    .where(and(eq(searchConsoleMetrics.userId, userId), eq(searchConsoleMetrics.siteId, siteId)));
+    .where(and(
+      eq(searchConsoleMetrics.userId, userId),
+      eq(searchConsoleMetrics.siteId, siteId),
+      gte(searchConsoleMetrics.date, shiftDate(latest.date, -27)),
+      lte(searchConsoleMetrics.date, latest.date),
+    ));
 }
 
 async function snapshotPage(url: string): Promise<ContentSnapshot> {
@@ -734,7 +750,7 @@ async function snapshotPage(url: string): Promise<ContentSnapshot> {
 }
 
 async function fetchHtml(url: string) {
-  const response = await fetch(url, {
+  const response = await safeFetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
       Accept: "text/html,application/xhtml+xml",
@@ -748,11 +764,10 @@ async function fetchHtml(url: string) {
 }
 
 async function aiSuggestions(userId: string, targetQuery: string, own: ContentSnapshot, competitors: ContentSnapshot[]) {
-  const key = await getOpenRouterKey(userId);
-  if (!key) return null;
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try { await resolveOpenRouterAccess(userId); } catch { return null; }
+  const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "openai/gpt-5-mini",
       messages: [{

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { MCP_SCOPES, type McpScope } from "./contracts.js";
 import { db } from "../db/index.js";
 import { sites, users } from "../db/schema.js";
@@ -8,7 +8,7 @@ import {
   isMcpAccessTokenSecret,
   markMcpAccessTokenUsed,
 } from "../services/mcp-access-tokens.js";
-import { bootstrapUserAccess, isApproved } from "../services/access-control.js";
+import { bootstrapUserAccess, isApproved, isSuspended } from "../services/access-control.js";
 import {
   type McpOAuthIdentity,
   verifyMcpOAuthAccessToken,
@@ -17,6 +17,7 @@ import { authorizeMcpOAuthConnection } from "../services/mcp-oauth-connections.j
 
 export interface McpPrincipal {
   tokenId: string;
+  clientName: string;
   userId: string;
   scopes: ReadonlySet<McpScope>;
   siteIds: ReadonlySet<string>;
@@ -26,44 +27,49 @@ export interface McpPrincipal {
 }
 
 type TokenLookup = Awaited<ReturnType<typeof findMcpAccessToken>>;
-type OAuthUserSite = {
+type OAuthUserSites = {
   userId: string;
   email: string;
   displayName: string | null;
   role: string;
   approvalStatus: string;
-  siteId: string;
+  suspendedAt?: Date | null;
+  siteIds: string[];
 };
 type McpAuthDependencies = {
   find: (tokenHash: string) => Promise<TokenLookup>;
   touch: (tokenId: string, usedAt: Date) => Promise<boolean>;
   verifyOAuth?: (token: string) => Promise<McpOAuthIdentity | null>;
-  findOAuthUserSite?: (userId: string, siteId: string) => Promise<OAuthUserSite | undefined>;
-  authorizeOAuth?: (identity: McpOAuthIdentity, usedAt: Date) => Promise<{ id: string; scopes: string[] } | undefined>;
+  findOAuthUserSites?: (userId: string, siteIds: string[]) => Promise<OAuthUserSites | undefined>;
+  authorizeOAuth?: (identity: McpOAuthIdentity, usedAt: Date, canCreate: boolean) => Promise<{ id: string; scopes: string[] } | undefined>;
 };
 
-async function findOAuthUserSite(userId: string, siteId: string) {
-  const [row] = await db
+async function findOAuthUserSites(userId: string, siteIds: string[]) {
+  const [user] = await db
     .select({
       userId: users.id,
       email: users.email,
       displayName: users.displayName,
       role: users.role,
       approvalStatus: users.approvalStatus,
-      siteId: sites.id,
+      suspendedAt: users.suspendedAt,
     })
     .from(users)
-    .innerJoin(sites, and(eq(sites.id, siteId), eq(sites.userId, users.id)))
     .where(eq(users.id, userId))
     .limit(1);
-  return row;
+  if (!user) return undefined;
+  const allowedSites = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(and(eq(sites.userId, userId), inArray(sites.id, siteIds)));
+  return { ...user, siteIds: allowedSites.map((site) => site.id) };
 }
 
 const productionDependencies: McpAuthDependencies = {
   find: findMcpAccessToken,
   touch: markMcpAccessTokenUsed,
   verifyOAuth: verifyMcpOAuthAccessToken,
-  findOAuthUserSite,
+  findOAuthUserSites,
   authorizeOAuth: authorizeMcpOAuthConnection,
 };
 
@@ -89,10 +95,12 @@ export async function authenticateMcpBearer(
       approvalStatus: token.approvalStatus,
     });
     if (!isApproved(user.role, user.approvalStatus)) return null;
+    if (isSuspended({ role: user.role, suspendedAt: token.suspendedAt })) return null;
 
     if (!await dependencies.touch(token.tokenId, now)) return null;
     return {
       tokenId: token.tokenId,
+      clientName: token.tokenName,
       userId: token.userId,
       scopes: new Set(token.scopes as McpScope[]),
       siteIds: new Set(token.siteIds),
@@ -102,13 +110,14 @@ export async function authenticateMcpBearer(
     };
   }
 
-  const oauthIdentity = await (dependencies.verifyOAuth || verifyMcpOAuthAccessToken)(secret);
+  if (!dependencies.verifyOAuth) return null;
+  const oauthIdentity = await dependencies.verifyOAuth(secret);
   if (!oauthIdentity) return null;
-  const oauthUser = await (dependencies.findOAuthUserSite || findOAuthUserSite)(
+  const oauthUser = await (dependencies.findOAuthUserSites || findOAuthUserSites)(
     oauthIdentity.userId,
-    oauthIdentity.siteId,
+    oauthIdentity.siteIds,
   );
-  if (!oauthUser) return null;
+  if (!oauthUser?.siteIds.length) return null;
   const user = await bootstrapUserAccess({
     id: oauthUser.userId,
     email: oauthUser.email,
@@ -116,14 +125,20 @@ export async function authenticateMcpBearer(
     approvalStatus: oauthUser.approvalStatus,
   });
   if (!isApproved(user.role, user.approvalStatus)) return null;
-  const connection = await (dependencies.authorizeOAuth || authorizeMcpOAuthConnection)(oauthIdentity, now);
+  if (isSuspended({ role: user.role, suspendedAt: oauthUser.suspendedAt })) return null;
+  const connection = await (dependencies.authorizeOAuth || authorizeMcpOAuthConnection)(
+    oauthIdentity,
+    now,
+    oauthUser.siteIds.length === oauthIdentity.siteIds.length,
+  );
   if (!connection) return null;
 
   return {
     tokenId: connection.id,
+    clientName: `OAuth client ${connection.id.slice(0, 8)}`,
     userId: oauthUser.userId,
     scopes: new Set(connection.scopes as McpScope[]),
-    siteIds: new Set([oauthUser.siteId]),
+    siteIds: new Set(oauthUser.siteIds),
     displayName: oauthUser.displayName,
     role: user.role,
     approvalStatus: user.approvalStatus,
@@ -134,11 +149,15 @@ export function hasMcpScope(principal: McpPrincipal, scope: McpScope) {
   return principal.scopes.has(scope);
 }
 
-export function allowedMcpOrigin(request: Request, configured = process.env.MCP_ALLOWED_ORIGINS) {
+export function allowedMcpOrigin(
+  request: Request,
+  configured = process.env.MCP_ALLOWED_ORIGINS,
+  selfHosted = process.env.BLOGFACTORY_SELF_HOSTED === "true",
+) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   const allowed = new Set([
-    "https://blogfactory.io",
+    ...(!selfHosted ? ["https://blogfactory.io"] : []),
     ...(configured || "").split(",").map((value) => value.trim()).filter(Boolean),
   ]);
   return allowed.has(origin);

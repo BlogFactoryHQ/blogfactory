@@ -11,7 +11,7 @@ type SchedulerOptions = {
   awaitGeneration?: boolean;
 };
 
-function getIntervalMs(frequency: string): number {
+export function getIntervalMs(frequency: string): number {
   switch (frequency) {
     case "hourly": return 60 * 60 * 1000;
     case "every_4_hours": return 4 * 60 * 60 * 1000;

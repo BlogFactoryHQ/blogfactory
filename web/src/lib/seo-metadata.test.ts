@@ -57,6 +57,6 @@ describe("SEO slug input", () => {
 it("turns a missing OpenRouter key error into an actionable settings link", () => {
   expect(seoErrorPresentation("Add your OpenRouter API key before generating SEO metadata")).toEqual({
     message: "SEO üretimi için OpenRouter anahtarı gerekli.",
-    settingsHref: "/settings?section=api-keys",
+    settingsHref: "/control/article-settings?section=api-keys",
   });
 });

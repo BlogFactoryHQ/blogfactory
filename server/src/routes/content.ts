@@ -1,16 +1,17 @@
 import { Hono } from "hono";
 import { waitUntil } from "@vercel/functions";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { jobs } from "../db/schema.js";
+import { campaignItems, campaigns, jobs } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
-import { getOpenRouterKey } from "../services/api-keys.js";
+import { resolveOpenRouterAccess } from "../services/managed-openrouter.js";
 import { claimFeedRun, normalizeFeedRunSlots, releaseFeedRun, type FeedRunClaim } from "../services/feed-run-lease.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
-import { readJsonObject, requiredString, safeError } from "../http/error-contract.js";
+import { ApiError, readJsonObject, requiredString, safeError } from "../http/error-contract.js";
 import type { GenerateOpts } from "../services/generation-types.js";
 import type { ExtractOpts } from "../services/extract-content.js";
 import type { FetchOpts } from "../services/fetch-social-content.js";
+import { SEO_PLAN_MODE } from "../services/seo-growth-plan.js";
 
 export const contentRoutes = new Hono();
 
@@ -55,8 +56,21 @@ contentRoutes.post("/generate", async (c) => {
   let releaseScheduled = false;
 
   try {
-    const openRouterKey = await getOpenRouterKey(userId);
-    if (!openRouterKey) return c.json({ error: "Add your OpenRouter API key in Settings before generating content" }, 400);
+    const campaignId = body.campaignId || null;
+    const campaignItemId = body.campaignItemId || null;
+    if (campaignId || campaignItemId) {
+      if (!campaignId || !campaignItemId || !body.siteId) return c.json({ error: "Campaign, item, and site must be supplied together" }, 400);
+      const [planItem] = await db.select({ id: campaignItems.id }).from(campaignItems).innerJoin(campaigns, eq(campaigns.id, campaignItems.campaignId)).where(and(
+        eq(campaignItems.id, campaignItemId),
+        eq(campaignItems.campaignId, campaignId),
+        eq(campaignItems.userId, userId),
+        eq(campaigns.userId, userId),
+        eq(campaigns.siteId, body.siteId),
+        eq(campaigns.mode, SEO_PLAN_MODE),
+      )).limit(1);
+      if (!planItem) return c.json({ error: "SEO plan item not found" }, 404);
+    }
+    const openRouterKey = (await resolveOpenRouterAccess(userId)).apiKey;
     const modelId = await resolveOpenRouterTextModel(openRouterKey, body.modelId || "openai/gpt-4o");
     const feedId = body.feedId || body.feed_id || null;
     const requestedFeedRunToken = body.feedRunToken || body.feed_run_token;
@@ -82,9 +96,16 @@ contentRoutes.post("/generate", async (c) => {
       sourceValue: body.sourceValue,
       modelId,
       personaId: body.personaId || null,
-      status: "running",
+      campaignId,
+      campaignItemId,
+      status: "pending",
       currentStep: "starting",
     }).returning();
+
+    if (campaignItemId) {
+      await db.update(campaignItems).set({ jobId: job.id, status: "running", planningStatus: "in_progress", startedAt: new Date() })
+        .where(and(eq(campaignItems.id, campaignItemId), eq(campaignItems.userId, userId)));
+    }
 
     const { generateContent } = await import("../services/generate-content.js");
     const generation = generateContent({ ...body, userId, jobId: job.id, modelId })
@@ -113,6 +134,7 @@ contentRoutes.post("/generate", async (c) => {
       });
     }
     console.error("generate error", safeError(err));
+    if (err instanceof ApiError) throw err;
     return c.json({ error: "Content generation failed" }, 500);
   }
 });
@@ -126,6 +148,7 @@ contentRoutes.post("/article-plan", async (c) => {
     const result = await generateArticlePlan({ ...body, userId });
     return c.json(result);
   } catch (err: any) {
+    if (err instanceof ApiError) throw err;
     const message = err.message || "Article planning failed";
     if (message.includes("only supports") || message.includes("is required")) {
       return c.json({ error: message }, 400);
@@ -150,12 +173,12 @@ contentRoutes.post("/extract", async (c) => {
     return c.json(result);
   } catch (err: any) {
     console.error("extract error", safeError(err));
+    if (err instanceof ApiError) throw err;
     return c.json({ error: "Content extraction failed" }, 500);
   }
 });
 
 contentRoutes.post("/fetch-social", async (c) => {
-  const userId = getUserId(c);
   const body = await readJsonObject(c);
 
   // Map frontend request shape to service interface

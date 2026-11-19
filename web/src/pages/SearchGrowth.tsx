@@ -13,6 +13,7 @@ import {
   Loader2,
   Minus,
   MousePointerClick,
+  RefreshCw,
   Send,
   Target,
   TrendingDown,
@@ -23,6 +24,10 @@ import { safeFormatIsoDate } from "@/lib/date-format";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BywordCard, BywordPageShell, IconTile } from "@/components/layout/BywordSurface";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { ListSkeleton, StatRowSkeleton } from "@/components/patterns/PageSkeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -41,12 +46,13 @@ import { SearchGrowthDependencyBand } from "@/components/search-growth/SearchGro
 import { IndexingPanel } from "@/pages/Indexing";
 import { SearchAnalyticsPanel } from "@/pages/SearchAnalytics";
 import { OptimizePanel } from "@/pages/Optimize";
+import { SeoGrowthPlanPanel } from "@/pages/SeoGrowthPlan";
 import { api } from "@/lib/api";
 import { connectionReady, displayConnectionStatus } from "@/lib/credential-status";
 import { formatCompactNumber, formatDelta, formatPercent, type TrendTone } from "@/lib/search-insights";
 import { cn } from "@/lib/utils";
 
-const tabs = new Set(["overview", "optimize", "analytics", "indexing", "internal-links"]);
+const tabs = new Set(["overview", "plan", "optimize", "analytics", "indexing", "internal-links"]);
 
 interface InternalLinkSettings {
   internal_link_status?: string | null;
@@ -54,19 +60,48 @@ interface InternalLinkSettings {
 }
 
 const INSIGHT_COLORS = {
-  performance: "#2F8EDB",
-  opportunity: "#D68400",
-  risk: "#D92D20",
-  improved: "#00856A",
+  performance: "hsl(var(--byword-blue))",
+  opportunity: "hsl(var(--factory-amber))",
+  risk: "hsl(var(--status-error))",
+  improved: "hsl(var(--status-success))",
 };
 
-const rowTone: Record<SearchInsightRow["kind"], string> = {
-  risk: "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
-  ctr: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-  lift: "bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))]",
-  improved: "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
-  watch: "bg-muted text-muted-foreground",
+const rowStatus: Record<SearchInsightRow["kind"], { status: StatusType; label: string }> = {
+  risk: { status: "error", label: "At risk" },
+  ctr: { status: "warning", label: "Low CTR" },
+  lift: { status: "warning", label: "Near page one" },
+  improved: { status: "success", label: "Improved" },
+  watch: { status: "pending", label: "Watch" },
 };
+
+const queueStatus: Record<"risk" | "ctr" | "lift", StatusType> = {
+  risk: "error",
+  ctr: "warning",
+  lift: "warning",
+};
+
+const nextMoveStatus: Record<string, { status: StatusType; label: string }> = {
+  risk: { status: "error", label: "Traffic at risk" },
+  ctr: { status: "warning", label: "CTR upside" },
+  lift: { status: "warning", label: "Page-one push" },
+  improved: { status: "success", label: "Stable" },
+};
+
+function internalLinkStatusLabel(status: string) {
+  if (status === "connected") return "Ready";
+  if (status === "disconnected") return "Not connected";
+  if (status === "indexing") return "Indexing";
+  if (status === "failed") return "Failed";
+  const words = status.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function internalLinkStatusType(status: string): StatusType {
+  if (status === "connected") return "success";
+  if (status === "failed") return "error";
+  if (status === "indexing") return "running";
+  return "pending";
+}
 
 export default function SearchGrowth() {
   const [params, setParams] = useSearchParams();
@@ -101,10 +136,11 @@ export default function SearchGrowth() {
       <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="plan">Growth Plan</TabsTrigger>
           <TabsTrigger value="optimize">Optimize</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="indexing">Indexing</TabsTrigger>
-          <TabsTrigger value="internal-links">Internal Links</TabsTrigger>
+          <TabsTrigger value="internal-links">Internal links</TabsTrigger>
         </TabsList>
 
         {tab === "overview" && (
@@ -115,6 +151,11 @@ export default function SearchGrowth() {
         {tab === "optimize" && (
           <TabsContent value="optimize" className="mt-0">
             <OptimizePanel />
+          </TabsContent>
+        )}
+        {tab === "plan" && (
+          <TabsContent value="plan" className="mt-0">
+            <SeoGrowthPlanPanel />
           </TabsContent>
         )}
         {tab === "analytics" && (
@@ -191,9 +232,9 @@ function SearchGrowthOverview({
 
   if (insightsQuery.isLoading) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-byword-border bg-card text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading Search Console insights
+      <div className="space-y-6" aria-busy="true" aria-label="Loading Search Console insights">
+        <StatRowSkeleton />
+        <BywordCard><ListSkeleton rows={4} /></BywordCard>
       </div>
     );
   }
@@ -234,15 +275,21 @@ function SearchGrowthOverview({
   return (
     <TooltipProvider>
       <div className="space-y-6">
+        {insights.unavailable && (
+          <Alert variant="warning">
+            <AlertTriangle />
+            <AlertDescription className="text-foreground">Search Console could not be refreshed, so these numbers come from the last sync. Reconnect the property to bring them up to date.</AlertDescription>
+          </Alert>
+        )}
         <GrowthBriefing siteDomain={activeSite.domain} insights={insights} onOpenOptimize={onOpenOptimize} />
         <SearchGrowthDependencyBand
           items={[
             {
               label: "Search Console",
               value: connectionReady(searchConsole) ? "Connected" : displayConnectionStatus(searchConsole),
-              detail: `Last sync: ${searchConsole.lastSyncAt || searchConsole.last_sync_at || "none yet"}`,
+              detail: insights.provenance ? `Fetched: ${new Date(insights.provenance.fetched_at).toLocaleString()}` : "No performance data fetched yet.",
               state: connectionReady(searchConsole) ? "ready" : "warning",
-              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("optimize")}>Manage GSC</Button>,
+              action: <Button variant="outline" size="sm" onClick={handleSync} disabled={sync.isPending}>{sync.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Refresh Search Console</Button>,
             },
             {
               label: "Indexing",
@@ -252,11 +299,11 @@ function SearchGrowthOverview({
               action: <Button variant="outline" size="sm" onClick={() => onSelectTab("indexing")}>Open Indexing</Button>,
             },
             {
-              label: "Internal Links",
-              value: internalStatus === "connected" ? "Ready" : internalStatus,
+              label: "Internal links",
+              value: internalLinkStatusLabel(internalStatus),
               detail: internalStatus === "connected" ? `${internalPageCount} pages available for semantic links.` : "Build a sitemap index to support page-one pushes.",
               state: internalStatus === "connected" ? "ready" : internalStatus === "failed" ? "blocked" : "idle",
-              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("internal-links")}>Open Links</Button>,
+              action: <Button variant="outline" size="sm" onClick={() => onSelectTab("internal-links")}>Open links</Button>,
             },
           ]}
         />
@@ -298,36 +345,46 @@ function GrowthBriefing({
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">Growth briefing</span>
+                <span className="type-kicker">Growth briefing</span>
                 <Badge variant="secondary">{siteDomain}</Badge>
                 {!insights.range.baselineStart && <Badge variant="outline">Baseline building</Badge>}
-                {(insights.integration?.syncMetadata?.first_incomplete_date || insights.integration?.sync_metadata?.first_incomplete_date) && (
-                  <Badge variant="outline" className="border-amber-300 text-amber-700">Provisional data</Badge>
-                )}
+                <Badge variant="outline">{insights.provenance?.data_status === "preliminary" ? "Preliminary data" : `Complete through ${insights.provenance?.complete_through || "—"}`}</Badge>
               </div>
               <h2 className="mt-2 text-xl font-semibold text-foreground">Search operations pulse</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from synced Google Search Console data.</p>
+              <p className="mt-1 text-sm text-muted-foreground">{rangeLabel} from Google Search Console data.</p>
             </div>
             <div className="rounded-md border border-byword-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               <span className="font-mono uppercase">Window</span>
               <span className="ml-2 text-foreground">{rangeLabel}</span>
             </div>
           </div>
+          {insights.provenance && (
+            <div className="mt-5 grid gap-3 rounded-md border border-byword-border bg-muted/20 p-3 font-mono text-[11px] sm:grid-cols-2 xl:grid-cols-5">
+              <ProvenanceItem label="Source" value="Google Search Console API" />
+              <ProvenanceItem label="Range" value={`${insights.range.latestStart} – ${insights.range.latestEnd}`} />
+              <ProvenanceItem label="Fetched" value={new Date(insights.provenance.fetched_at).toLocaleString()} />
+              <ProvenanceItem label="Data" value={`Complete through ${insights.provenance.complete_through}`} />
+              <ProvenanceItem label="Cache" value={insights.provenance.cache} />
+            </div>
+          )}
           <SignalStack insights={insights} />
         </div>
-        <div className={cn("p-5 lg:p-6", nextMove.toneClass)}>
-          <p className="font-mono text-[11px] font-bold uppercase opacity-75">Next best move</p>
+        <div className="p-5 lg:p-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="type-kicker">Next best move</p>
+            <StatusBadge status={nextMoveStatus[nextMove.kind].status} label={nextMoveStatus[nextMove.kind].label} />
+          </div>
           <div className="mt-3 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h3 className="text-lg font-semibold text-foreground">{nextMove.title}</h3>
-              <p className="mt-1 text-sm leading-6 opacity-80">{nextMove.detail}</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{nextMove.detail}</p>
               {nextMove.row && (
-                <p className="mt-2 truncate font-mono text-xs opacity-75">
+                <p className="mt-2 truncate font-mono text-xs text-muted-foreground">
                   {nextMove.row.query || compactUrl(nextMove.row.label)} · {formatCompactNumber(nextMove.row.impressions)} impressions · pos {nextMove.row.position.toFixed(1)}
                 </p>
               )}
             </div>
-            <Button size="sm" variant={nextMove.kind === "risk" ? "destructive" : "outline"} onClick={() => onOpenOptimize(nextMove.filter)}>
+            <Button size="sm" variant="outline" onClick={() => onOpenOptimize(nextMove.filter)}>
               {nextMove.action}
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -345,30 +402,30 @@ function SignalStack({ insights }: { insights: SearchConsoleInsights }) {
       label: "Attention",
       value: insights.segments.needsAttention,
       detail: "declining rows",
-      tone: "border-[hsl(var(--status-error)/0.25)] bg-[hsl(var(--status-error)/0.07)] text-[hsl(var(--status-error))]",
+      dot: "bg-status-error",
     },
     {
       label: "CTR upside",
       value: insights.segments.ctrOpportunities,
       detail: "snippet tests",
-      tone: "border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.08)] text-[hsl(var(--status-warning))]",
+      dot: "bg-status-warning",
     },
     {
       label: "Page-one push",
       value: insights.segments.strikingDistance,
       detail: "near wins",
-      tone: "border-byword-blue/25 bg-byword-blue-soft text-byword-blue",
+      dot: "bg-status-warning",
     },
   ];
 
   return (
     <div className="mt-5 grid gap-2 sm:grid-cols-3">
       {signals.map((signal) => (
-        <div key={signal.label} className={cn("rounded-md border px-3 py-2", signal.tone)}>
-          <p className="font-mono text-[10px] font-bold uppercase opacity-80">{signal.label}</p>
+        <div key={signal.label} className="rounded-sm border border-border bg-muted/40 px-3 py-2">
+          <p className="type-kicker flex items-center gap-2"><span className={cn("h-1.5 w-1.5 rounded-full", signal.dot)} aria-hidden="true" />{signal.label}</p>
           <div className="mt-1 flex items-baseline justify-between gap-2">
             <span className="text-lg font-semibold text-foreground">{formatCompactNumber(signal.value)}</span>
-            <span className="truncate text-xs opacity-80">{signal.detail}</span>
+            <span className="truncate text-xs text-muted-foreground">{signal.detail}</span>
           </div>
         </div>
       ))}
@@ -395,10 +452,14 @@ function MetricRail({ insights }: { insights: SearchConsoleInsights }) {
         lowerIsBetter
         tooltip="Lower average position is better."
       />
-      <PulseStatic label="Tracked pages" value={formatCompactNumber(insights.totals.pageCount)} />
-      <PulseStatic label="Tracked queries" value={formatCompactNumber(insights.totals.queryCount)} />
+      <PulseStatic label="Analyzed pages" value={formatCompactNumber(insights.opportunity_scope.page_count)} />
+      <PulseStatic label="Analyzed queries" value={formatCompactNumber(insights.opportunity_scope.query_count)} />
     </div>
   );
+}
+
+function ProvenanceItem({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0"><p className="uppercase text-muted-foreground">{label}</p><p className="mt-1 truncate text-foreground" title={value}>{value}</p></div>;
 }
 
 function PulseMetric({
@@ -420,7 +481,7 @@ function PulseMetric({
   const trend = formatDelta(delta, { percent: percent || !lowerIsBetter, lowerIsBetter });
   return (
     <div className="min-w-0 p-5">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="type-kicker flex items-center gap-1.5">
         {label}
         {tooltip && <InfoTip text={tooltip} />}
       </div>
@@ -433,7 +494,7 @@ function PulseMetric({
 function PulseStatic({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 p-5">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <p className="type-kicker">{label}</p>
       <p className="mt-2 truncate text-2xl font-semibold text-foreground">{value}</p>
       <p className="mt-2 text-xs text-muted-foreground">Latest window</p>
     </div>
@@ -490,7 +551,7 @@ function PerformanceCard({ insights }: { insights: SearchConsoleInsights }) {
                 labelFormatter={(value) => safeFormatIsoDate(value, "MMM d, yyyy")}
                 formatter={(value, name) => [chartValueLabel(Number(value), String(name) as typeof lineMetric | "impressions"), chartName(String(name), lineMetric)]}
               />
-              <Bar yAxisId="impressions" dataKey="impressions" fill="hsl(202 84% 38% / 0.18)" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="impressions" dataKey="impressions" fill="hsl(var(--byword-blue) / 0.18)" radius={[4, 4, 0, 0]} />
               <Line
                 yAxisId="line"
                 type="monotone"
@@ -538,12 +599,12 @@ function OpportunityLedger({
                 : "hover:bg-muted/20"
             )}
           >
-            <div className={cn("flex h-9 w-9 items-center justify-center rounded-md border font-mono text-xs font-bold", isEmpty ? "border-byword-border bg-muted/30" : item.toneClass)}>
+            <div className={cn("flex h-9 w-9 items-center justify-center rounded-md border font-mono text-xs font-bold", isEmpty ? "border-byword-border bg-muted/30" : "border-border bg-muted/40 text-foreground")}>
               {index + 1}
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] font-bold uppercase opacity-75">{item.label}</span>
+                <span className="type-kicker">{item.label}</span>
                 <Badge variant="outline">{item.countLabel}</Badge>
               </div>
               <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_4.5rem] sm:items-center">
@@ -552,7 +613,7 @@ function OpportunityLedger({
                 </div>
                 <p className={cn("font-mono text-sm font-semibold sm:text-right", isEmpty ? "text-muted-foreground" : "text-foreground")}>{formatCompactNumber(item.value)}</p>
               </div>
-              <p className="mt-2 truncate text-sm opacity-80">{item.example}</p>
+              <p className="mt-2 truncate text-sm text-muted-foreground">{item.example}</p>
             </div>
             <span className={cn("inline-flex shrink-0 items-center gap-1 text-sm font-semibold sm:justify-end", isEmpty ? "text-muted-foreground" : "text-foreground")}>
                 {item.action}
@@ -576,7 +637,6 @@ function getNextMove(insights: SearchConsoleInsights) {
       action: "Review page",
       row: risk,
       filter: { status: "needs_attention" },
-      toneClass: "border-l-4 border-[hsl(var(--status-error))] bg-[hsl(var(--status-error)/0.08)]",
     };
   }
 
@@ -589,7 +649,6 @@ function getNextMove(insights: SearchConsoleInsights) {
       action: "Lift CTR",
       row: ctr,
       filter: { opportunity: "low_ctr" },
-      toneClass: "border-l-4 border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.08)]",
     };
   }
 
@@ -602,7 +661,6 @@ function getNextMove(insights: SearchConsoleInsights) {
       action: "Build links",
       row: lift,
       filter: { opportunity: "almost_ranking" },
-      toneClass: "border-l-4 border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.08)]",
     };
   }
 
@@ -613,7 +671,6 @@ function getNextMove(insights: SearchConsoleInsights) {
     action: "Open Optimize",
     row: null,
     filter: { status: "tracking" },
-    toneClass: "border-l-4 border-[hsl(var(--status-success))] bg-[hsl(var(--status-success)/0.08)]",
   };
 }
 
@@ -628,8 +685,7 @@ function buildOpportunityLedger(insights: SearchConsoleInsights) {
       example: evidenceLabel(insights.actionRows.protectTraffic[0], "No declining rows in this window."),
       action: "Review page",
       filter: { status: "needs_attention" },
-      toneClass: "border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.08)] hover:border-[hsl(var(--status-error)/0.55)]",
-      barClass: "bg-[hsl(var(--status-error))]",
+      barClass: "bg-status-error",
     },
     {
       label: "CTR upside",
@@ -638,8 +694,7 @@ function buildOpportunityLedger(insights: SearchConsoleInsights) {
       example: evidenceLabel(insights.actionRows.liftCtr[0], "No under-clicking high-impression rows."),
       action: "Rewrite snippet",
       filter: { opportunity: "low_ctr" },
-      toneClass: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.08)] hover:border-[hsl(var(--status-warning)/0.55)]",
-      barClass: "bg-[hsl(var(--status-warning))]",
+      barClass: "bg-status-warning",
     },
     {
       label: "Striking distance",
@@ -648,8 +703,7 @@ function buildOpportunityLedger(insights: SearchConsoleInsights) {
       example: evidenceLabel(insights.actionRows.strikingDistance[0], "No near-page-one query with enough volume."),
       action: "Build links",
       filter: { opportunity: "almost_ranking" },
-      toneClass: "border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.08)] hover:border-[hsl(var(--status-warning)/0.55)]",
-      barClass: "bg-[hsl(var(--status-warning))]",
+      barClass: "bg-status-warning",
     },
     {
       label: "Improved wins",
@@ -658,8 +712,7 @@ function buildOpportunityLedger(insights: SearchConsoleInsights) {
       example: evidenceLabel(improvedExample, "No confirmed wins yet."),
       action: "Review wins",
       filter: { status: "improved" },
-      toneClass: "border-[hsl(var(--status-success)/0.35)] bg-[hsl(var(--status-success)/0.08)] hover:border-[hsl(var(--status-success)/0.55)]",
-      barClass: "bg-[hsl(var(--status-success))]",
+      barClass: "bg-status-success",
     },
   ];
   return items;
@@ -727,10 +780,10 @@ function OptimizationQueue({
         {rows.length ? rows.map((item) => {
           const trend = formatDelta(item.row.deltaClicks, {});
           return (
-            <div key={`${item.kind}-${item.row.pageUrl}-${item.row.query}`} className={cn("grid gap-3 border-l-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_420px_auto] lg:items-center lg:px-6", queueTone(item.kind))}>
+            <div key={`${item.kind}-${item.row.pageUrl}-${item.row.query}`} className="grid gap-3 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_420px_auto] lg:items-center lg:px-6">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={item.kind === "risk" ? "destructive" : "secondary"}>{item.label}</Badge>
+                  <StatusBadge status={queueStatus[item.kind]} label={item.label} />
                   <span className="font-mono text-xs text-muted-foreground">{queueEvidence(item.row, item.kind)}</span>
                 </div>
                 <p className="mt-2 truncate font-semibold text-foreground">{item.row.query || compactUrl(item.row.label)}</p>
@@ -750,7 +803,7 @@ function OptimizationQueue({
             </div>
           );
         }) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">No actionable search signal in this window.</div>
+          <EmptyState size="row" title="No actionable search signal" description="Nothing in this date window crosses the action threshold. Widen the range or sync Search Console again." />
         )}
       </div>
     </BywordCard>
@@ -759,17 +812,11 @@ function OptimizationQueue({
 
 function QueueMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-byword-border bg-muted/20 px-2 py-1.5">
+    <div className="rounded-sm border border-border bg-muted/40 px-2 py-1.5">
       <p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>
       <p className="mt-0.5 truncate font-semibold text-foreground">{value}</p>
     </div>
   );
-}
-
-function queueTone(kind: "risk" | "ctr" | "lift") {
-  if (kind === "risk") return "border-[hsl(var(--status-error))] bg-[hsl(var(--status-error)/0.035)]";
-  if (kind === "ctr") return "border-[hsl(var(--status-warning))] bg-[hsl(var(--status-warning)/0.035)]";
-  return "border-byword-blue bg-byword-blue-soft/45";
 }
 
 function queueEvidence(row: SearchInsightRow, kind: "risk" | "ctr" | "lift") {
@@ -813,15 +860,15 @@ function RankedBars({ title, icon, rows, color }: { title: string; icon: LucideI
             <div className="h-2 rounded-full bg-muted">
               <div className="h-2 rounded-full" style={{ width: `${Math.max(4, (row.value / max) * 100)}%`, backgroundColor: color }} />
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>{formatCompactNumber(row.impressions)} impressions</span>
               <span>{formatPercent(row.ctr)} CTR</span>
               <span>pos {row.position.toFixed(1)}</span>
-              <span className={cn("rounded px-1.5 py-0.5", rowTone[row.kind])}>{row.kind}</span>
+              <StatusBadge status={rowStatus[row.kind].status} label={rowStatus[row.kind].label} showIcon={false} />
             </div>
           </div>
         )) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">No rows in this window.</p>
+          <EmptyState size="row" title="No rows in this window" description="Choose a wider date range to see query and page performance." />
         )}
       </div>
     </BywordCard>
@@ -845,18 +892,20 @@ function SupportCards({
     <div className="grid gap-4 lg:grid-cols-2">
       <SupportCard
         icon={Send}
-        title="URL Indexing"
+        title="URL indexing"
         badge={connectedIndexing ? `${connectedIndexing} connected` : "Not connected"}
+        status={connectedIndexing ? "success" : "pending"}
         description={connectedIndexing ? `${indexingStats.accepted} accepted, ${indexingStats.queued} queued, ${indexingStats.failed} failed.` : "Connect Bing Webmaster or IndexNow for normal articles."}
         action="Open Indexing"
         onClick={() => onSelectTab("indexing")}
       />
       <SupportCard
         icon={LinkIcon}
-        title="Internal Links"
-        badge={internalStatus === "connected" ? "Ready" : internalStatus}
+        title="Internal links"
+        badge={internalLinkStatusLabel(internalStatus)}
+        status={internalLinkStatusType(internalStatus)}
         description={internalStatus === "connected" ? `${internalPageCount} pages available for semantic internal links.` : "Build a sitemap-based index for generated articles."}
-        action="Open Internal Links"
+        action="Open internal links"
         onClick={() => onSelectTab("internal-links")}
       />
     </div>
@@ -867,6 +916,7 @@ function SupportCard({
   icon,
   title,
   badge,
+  status,
   description,
   action,
   onClick,
@@ -874,6 +924,7 @@ function SupportCard({
   icon: LucideIcon;
   title: string;
   badge: string;
+  status: StatusType;
   description: string;
   action: string;
   onClick: () => void;
@@ -886,7 +937,7 @@ function SupportCard({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold text-foreground">{title}</h3>
-              <Badge variant="secondary">{badge}</Badge>
+              <StatusBadge status={status} label={badge} />
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
           </div>
@@ -956,11 +1007,10 @@ function TrendPill({ tone, label }: { tone: TrendTone; label: string }) {
   const Icon = tone === "good" ? TrendingUp : tone === "bad" ? TrendingDown : Minus;
   return (
     <div className={cn(
-      "mt-2 inline-flex max-w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium",
-      tone === "good" && "bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))]",
-      tone === "bad" && "bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))]",
-      tone === "flat" && "bg-muted text-muted-foreground",
-      tone === "pending" && "bg-muted text-muted-foreground",
+      "mt-2 inline-flex max-w-full items-center gap-1 text-xs font-medium",
+      tone === "good" && "text-status-success",
+      tone === "bad" && "text-status-error",
+      (tone === "flat" || tone === "pending") && "text-muted-foreground",
     )}>
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{label}</span>

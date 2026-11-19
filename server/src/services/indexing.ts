@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { indexingIntegrations, indexingSubmissions, sites } from "../db/schema.js";
 import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
+import { safeFetch } from "./safe-fetch.js";
 
 const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const GOOGLE_INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
@@ -408,7 +409,7 @@ async function getIntegrationSite(row: IntegrationRow) {
 }
 
 async function testIndexNow(credentials: IndexNowCredentials) {
-  const response = await fetch(credentials.keyLocation, { signal: AbortSignal.timeout(10000) });
+  const response = await safeFetch(credentials.keyLocation, { timeoutMs: 10000 });
   if (!response.ok) throw new Error(`Key file returned ${response.status}`);
   const text = (await response.text()).trim();
   if (text !== credentials.key) throw new Error("Key file does not contain the IndexNow key");
@@ -648,7 +649,7 @@ async function markQueuedGoogle(id: string, status: "accepted" | "skipped" | "fa
 }
 
 async function isGoogleIndexingEligibleUrl(url: string) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const response = await safeFetch(url, { timeoutMs: 10000 });
   if (!response.ok) return false;
   const contentType = response.headers.get("content-type") || "";
   if (contentType && !contentType.includes("html")) return false;
@@ -658,7 +659,7 @@ async function isGoogleIndexingEligibleUrl(url: string) {
 async function googleAccessToken(credentials: GoogleCredentials) {
   if (credentials.type === "oauth") return refreshOAuthAccessToken(credentials);
 
-  const tokenUri = credentials.token_uri || GOOGLE_TOKEN_URI;
+  const tokenUri = GOOGLE_TOKEN_URI;
   const assertion = await new SignJWT({ scope: GOOGLE_INDEXING_SCOPE })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(credentials.client_email || "")
@@ -683,7 +684,7 @@ async function googleAccessToken(credentials: GoogleCredentials) {
 }
 
 async function refreshOAuthAccessToken(credentials: GoogleCredentials) {
-  const response = await fetch(credentials.token_uri || GOOGLE_TOKEN_URI, {
+  const response = await fetch(GOOGLE_TOKEN_URI, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

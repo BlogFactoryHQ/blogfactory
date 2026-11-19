@@ -8,7 +8,7 @@ import {
 } from "../services/mcp-oauth-connections.js";
 
 type McpOAuthRoutesDependencies = {
-  complete: (userId: string, externalAuthId: unknown) => Promise<{ redirect_uri: string }>;
+  complete: (userId: string, externalAuthId: unknown, siteIds: unknown) => Promise<{ redirect_uri: string }>;
   list: (userId: string) => Promise<unknown[]>;
   revoke: (userId: string, connectionId: string) => Promise<{ revoked: true }>;
 };
@@ -17,7 +17,7 @@ export function createMcpOAuthRoutes(dependencies: McpOAuthRoutesDependencies) {
   const routes = new Hono();
   routes.post("/complete", async (c) => {
     const body = await readJsonObject(c);
-    return c.json(await dependencies.complete(getUserId(c), body.external_auth_id));
+    return c.json(await dependencies.complete(getUserId(c), body.external_auth_id, body.site_ids));
   });
   routes.get("/connections", async (c) => (
     c.json({ connections: await dependencies.list(getUserId(c)) })

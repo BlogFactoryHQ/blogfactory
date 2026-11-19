@@ -1,0 +1,157 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, RefreshCw, Send } from "lucide-react";
+import { DetailSkeleton, ListSkeleton } from "@/components/patterns/PageSkeleton";
+import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { BywordCard, BywordPageShell, SectionHeader } from "@/components/layout/BywordSurface";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { api, ApiError } from "@/lib/api";
+import type { ActionItem, ReviewPacket } from "@/lib/control-plane";
+import { useSites } from "@/hooks/useSites";
+import { safeFormatDistanceToNow } from "@/lib/date-format";
+import { formatSourceType } from "@/lib/source-labels";
+import { StatusBadge, type StatusType } from "@/components/ui/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+type QueueResponse = { items: ActionItem[]; counts: { total: number; blocker: number; review: number; warning: number } };
+type PublishResponse = { success: boolean; idempotent?: boolean; publication?: { externalEditUrl?: string | null; externalUrl?: string | null } };
+type SeverityFilter = "all" | "blocker" | "review" | "warning";
+
+const editorialLabels: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In review",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+};
+
+function editorialLabel(state: string) {
+  if (editorialLabels[state]) return editorialLabels[state];
+  const words = state.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const checkStatus: Record<"pass" | "warning" | "blocker", { status: StatusType; label: string }> = {
+  pass: { status: "success", label: "Pass" },
+  warning: { status: "warning", label: "Warning" },
+  blocker: { status: "error", label: "Blocker" },
+};
+
+export default function ReviewQueue() {
+  const { activeSite } = useSites();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedId = searchParams.get("post");
+  const severity = (["blocker", "review", "warning"].includes(searchParams.get("severity") || "") ? searchParams.get("severity") : "all") as SeverityFilter;
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["action-items", activeSite?.id, severity],
+    queryFn: () => api.get<QueueResponse>(`/control-plane/action-items?site_id=${encodeURIComponent(activeSite!.id)}&limit=50${severity === "all" ? "" : `&severity=${severity}`}`),
+    enabled: Boolean(activeSite?.id),
+    refetchInterval: 60_000,
+  });
+
+  useEffect(() => {
+    if (!selectedId && data?.items[0]) {
+      const next = new URLSearchParams(searchParams);
+      next.set("post", data.items[0].id);
+      setSearchParams(next, { replace: true });
+    }
+  }, [data?.items, searchParams, selectedId, setSearchParams]);
+
+  const setSeverity = (nextSeverity: SeverityFilter) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("post");
+    if (nextSeverity === "all") next.delete("severity");
+    else next.set("severity", nextSeverity);
+    setSearchParams(next);
+  };
+
+  const selectPost = (postId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("post", postId);
+    setSearchParams(next);
+  };
+
+  return <BywordPageShell className="max-w-7xl">
+    <PageHeader title="Review Queue" description="Drafts that require an editorial decision or delivery fix.">
+      <Button variant="outline" onClick={() => refetch()}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+    </PageHeader>
+    {isLoading && <BywordCard><ListSkeleton rows={6} /></BywordCard>}
+    {error && <BywordCard><EmptyState tone="error" title="Could not load the Review Queue" description={error instanceof Error ? error.message : "Nothing was changed. Try again in a moment."} primaryAction={{ label: "Retry", onClick: () => refetch() }} /></BywordCard>}
+    {data && <>
+      <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="Queue severity filters">
+        {([
+          ["all", "All", data.counts.total],
+          ["blocker", "Blockers", data.counts.blocker],
+          ["review", "Review", data.counts.review],
+          ["warning", "Warnings", data.counts.warning],
+        ] as const).map(([value, label, count]) => <Button key={value} type="button" size="sm" variant={severity === value ? "secondary" : "outline"} aria-pressed={severity === value} onClick={() => setSeverity(value)}>{label}<span className="ml-2 font-mono text-[10px] opacity-70">{count}</span></Button>)}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+        <BywordCard className="order-2 xl:order-1"><div className="divide-y divide-byword-border">{data.items.map((item) => <button key={item.id} type="button" aria-pressed={selectedId === item.id} onClick={() => selectPost(item.id)} className={`relative flex w-full gap-4 p-4 text-left transition-calm hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${selectedId === item.id ? "bg-byword-blue-soft/50 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-byword-blue" : ""}`}>
+          <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.severity === "blocker" ? "bg-status-error" : item.severity === "review" ? "bg-status-warning" : "bg-status-pending"}`} />
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block text-xs text-muted-foreground">{formatSourceType(item.source_type)} · {editorialLabel(item.editorial_state)} · Revision {item.revision_number || "—"}</span><span className="mt-2 flex flex-wrap gap-1">{item.reasons.map((reason) => <Badge key={reason.kind} variant="outline" className="text-[10px]">{reason.label}</Badge>)}</span></span>
+          <span className="shrink-0 text-right text-[11px] text-muted-foreground">{safeFormatDistanceToNow(item.updated_at)}<span className="mt-1 block">{item.routing_status === "ready" ? [item.destination_name, item.destination_provider].filter(Boolean).join(" · ") || "Routed" : "Choose CMS"}</span></span>
+        </button>)}{!data.items.length && <EmptyState icon={CheckCircle2} title="Queue clear" description="No draft is waiting on an editorial or delivery decision." />}</div></BywordCard>
+        <ReviewDetail postId={selectedId} />
+      </div>
+    </>}
+  </BywordPageShell>;
+}
+
+function ReviewDetail({ postId }: { postId: string | null }) {
+  const queryClient = useQueryClient();
+  const [destinationId, setDestinationId] = useState("");
+  const [delivery, setDelivery] = useState<PublishResponse | null>(null);
+  const { data: packet, isLoading, error, refetch } = useQuery({
+    queryKey: ["review-packet", postId],
+    queryFn: () => api.get<ReviewPacket>(`/posts/${postId}/review`),
+    enabled: Boolean(postId),
+  });
+  useEffect(() => {
+    if (!packet) return;
+    const preferred = packet.destinations.find((item) => item.preferred && item.status === "connected" && item.credential_status === "usable");
+    const connected = packet.destinations.filter((item) => item.status === "connected" && item.credential_status === "usable");
+    setDestinationId(preferred?.id || (connected.length === 1 ? connected[0].id : ""));
+    setDelivery(null);
+  }, [packet]);
+  const push = useMutation({
+    mutationFn: () => api.post<PublishResponse>(`/posts/${postId}/publish`, { integrationId: destinationId, mode: "draft", postType: "post", expected_updated_at: packet!.post.updated_at }),
+    onSuccess: (result) => {
+      setDelivery(result);
+      queryClient.invalidateQueries({ queryKey: ["review-packet", postId] });
+      queryClient.invalidateQueries({ queryKey: ["control-plane-overview"] });
+      toast.success(result.idempotent ? "Existing CMS draft reused" : "CMS draft created");
+    },
+    onError: (pushError) => {
+      queryClient.invalidateQueries({ queryKey: ["review-packet", postId] });
+      toast.error(pushError instanceof ApiError && pushError.code === "POST_VERSION_CONFLICT" ? "Draft changed. Review the refreshed version before sending again." : pushError instanceof Error ? pushError.message : "CMS draft could not be created");
+    },
+  });
+  if (!postId) return <BywordCard><EmptyState title="Select a draft to review" description="Its provenance, revision summary, preflight and destination appear here." /></BywordCard>;
+  if (isLoading) return <BywordCard><DetailSkeleton className="p-6" /></BywordCard>;
+  if (error || !packet) return <BywordCard><EmptyState tone="error" title="Could not load this review packet" description="The draft is unchanged. Try again, or pick another item." primaryAction={{ label: "Retry", onClick: () => refetch() }} /></BywordCard>;
+  const connected = packet.destinations.filter((item) => item.status === "connected" && item.credential_status === "usable");
+  const canSend = packet.preflight.can_send && Boolean(destinationId);
+  const externalUrl = delivery?.publication?.externalEditUrl || delivery?.publication?.externalUrl;
+
+  return <BywordCard className="order-1 self-start xl:order-2 xl:sticky xl:top-16">
+    <SectionHeader icon={AlertTriangle} title={packet.post.title} description={`${formatSourceType(packet.source.type)} · ${editorialLabel(packet.editorial.state)} · Revision ${packet.editorial.revision_number || "—"}`} />
+    <div className="space-y-5 p-5">
+      {packet.post.summary && <p className="text-sm leading-6 text-muted-foreground">{packet.post.summary}</p>}
+      <div><p className="type-kicker text-muted-foreground">Last revision</p><p className="mt-2 text-sm">{packet.changes.changed_fields.length ? packet.changes.changed_fields.join(", ") : "No changed fields"} · {packet.changes.word_delta >= 0 ? "+" : ""}{packet.changes.word_delta} words</p></div>
+      <Alert variant={packet.preflight.has_blockers ? "destructive" : "success"}><AlertTitle>{packet.preflight.has_blockers ? "Resolve blockers before delivery" : "Ready for a CMS draft"}</AlertTitle><AlertDescription className="text-xs">Draft only · live publishing is unavailable in this workflow.</AlertDescription></Alert>
+      <div className="grid gap-2 sm:grid-cols-2">{packet.preflight.checks.map((check) => <div key={check.id} className="rounded-sm border border-border bg-muted/40 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{check.label}</p><StatusBadge status={checkStatus[check.status].status} label={checkStatus[check.status].label} /></div><p className="mt-1 text-xs text-muted-foreground">{check.message}</p></div>)}</div>
+      <div><p className="mb-2 text-xs font-semibold">CMS destination</p><Select value={destinationId} onValueChange={setDestinationId}><SelectTrigger aria-label="CMS destination"><SelectValue placeholder="Choose a destination" /></SelectTrigger><SelectContent>{connected.map((destination) => <SelectItem key={destination.id} value={destination.id}>{destination.display_name} · {destination.provider}</SelectItem>)}</SelectContent></Select>{!connected.length && <p className="mt-2 text-xs text-destructive">No usable CMS destination. Repair the connection in Control.</p>}</div>
+      <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link to={packet.links.edit}>Edit <ArrowRight className="ml-1.5 h-4 w-4" /></Link></Button><Button asChild variant="outline" size="sm"><Link to={packet.links.preview} target="_blank">Preview <ExternalLink className="ml-1.5 h-4 w-4" /></Link></Button>
+        <AlertDialog><AlertDialogTrigger asChild><Button size="sm" disabled={!canSend || push.isPending}><Send className="mr-1.5 h-4 w-4" />Send CMS draft</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Send this revision to CMS?</AlertDialogTitle><AlertDialogDescription>This creates a draft in {connected.find((destination) => destination.id === destinationId)?.display_name || "the selected destination"}. It never publishes live.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => push.mutate()}>Create CMS draft</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      </div>
+      {!packet.preflight.can_send && <p className="text-xs text-destructive">Resolve revision, SEO, and destination blockers before delivery.</p>}
+      {externalUrl && <Button asChild variant="outline" className="w-full"><a href={externalUrl} target="_blank" rel="noreferrer">Open CMS draft <ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
+    </div>
+  </BywordCard>;
+}

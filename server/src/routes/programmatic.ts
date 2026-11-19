@@ -9,6 +9,7 @@ import {
   parseCsv,
   type ProgrammaticRow,
 } from "../services/programmatic.js";
+import { safeFetch } from "../services/safe-fetch.js";
 
 export const programmaticRoutes = new Hono();
 
@@ -122,24 +123,14 @@ programmaticRoutes.delete("/datasets/:id", async (c) => {
 
 programmaticRoutes.post("/import-csv-url", async (c) => {
   const { url } = await c.req.json();
-  let parsedUrl: URL;
+  let response: Response;
   try {
-    parsedUrl = new URL(String(url || ""));
+    response = await safeFetch(String(url || ""), { timeoutMs: 8000, maxResponseBytes: 2_000_000 });
   } catch {
-    return c.json({ error: "Enter a valid CSV URL" }, 400);
+    return c.json({ error: "Enter a valid public CSV URL" }, 400);
   }
-  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-    return c.json({ error: "CSV URL must use http or https" }, 400);
-  }
-  if (parsedUrl.username || parsedUrl.password || isPrivateCsvHost(parsedUrl.hostname)) {
-    return c.json({ error: "CSV URL must be public" }, 400);
-  }
-
-  const response = await fetch(parsedUrl, { signal: AbortSignal.timeout(8000) });
   if (!response.ok) return c.json({ error: `CSV fetch failed: ${response.status}` }, 400);
-  if (isPrivateCsvHost(new URL(response.url).hostname)) return c.json({ error: "CSV URL redirected to a private host" }, 400);
   const text = await response.text();
-  if (text.length > 2_000_000) return c.json({ error: "CSV is too large" }, 400);
   return c.json(parseCsv(text));
 });
 
@@ -169,21 +160,4 @@ function sanitizeColumns(value: unknown, rows: ProgrammaticRow[]) {
   const fromBody = Array.isArray(value) ? value.map(String).map((column) => column.trim()).filter(Boolean) : [];
   if (fromBody.length) return Array.from(new Set(fromBody));
   return Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
-}
-
-function isPrivateCsvHost(value: string) {
-  const host = value.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
-  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return true;
-  const match = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (!match) return false;
-  const [a, b] = match.slice(1).map(Number);
-  return a === 0
-    || a === 10
-    || a === 127
-    || (a === 169 && b === 254)
-    || (a === 172 && b >= 16 && b <= 31)
-    || (a === 192 && b === 168)
-    || (a === 100 && b >= 64 && b <= 127)
-    || a >= 224;
 }

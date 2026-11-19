@@ -12,6 +12,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     public details: ApiFieldError[] = [],
+    public billingUrl: string | null = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -26,6 +27,8 @@ export function authRedirectHref(pathname: string, search: string) {
   if (pathname === "/auth") return `/auth${search}`;
   return `/auth?returnTo=${encodeURIComponent(`${pathname}${search}`)}`;
 }
+
+export const PLAN_REQUIRED_EVENT = "blogfactory:plan-required";
 
 export function shouldRedirectAfterUnauthorized(apiPath: string) {
   return !apiPath.startsWith("/auth/");
@@ -83,7 +86,11 @@ class ApiClient {
             item && typeof item === "object" && "field" in item && typeof item.field === "string" && "message" in item && typeof item.message === "string",
           ))
         : [];
-      const apiError = new ApiError(message, resp.status, code, details);
+      const billingUrl = typeof envelope.billing_url === "string" && envelope.billing_url.startsWith("/") ? envelope.billing_url : null;
+      const apiError = new ApiError(message, resp.status, code, details, billingUrl);
+      if (resp.status === 403 && billingUrl) {
+        window.dispatchEvent(new CustomEvent(PLAN_REQUIRED_EVENT, { detail: { billingUrl } }));
+      }
       if (resp.status === 401) {
         this.setToken(null);
         if (shouldRedirectAfterUnauthorized(path)) {
@@ -145,6 +152,27 @@ export interface CmsDraftProgress {
   completed: number;
   total: number;
   failures: CmsDraftFailure[];
+}
+
+export interface ImagePromptBatchResult {
+  total: number;
+  created: number;
+  existing: number;
+  failures: Array<CmsDraftTarget & { error: string }>;
+}
+
+export async function prepareImagePrompts(targets: CmsDraftTarget[]): Promise<ImagePromptBatchResult> {
+  const result: ImagePromptBatchResult = { total: targets.length, created: 0, existing: 0, failures: [] };
+  for (const target of targets) {
+    try {
+      const prepared = await api.post<{ created: number; existing: number }>(`/images/posts/${target.id}/manual-prompts`, {});
+      result.created += prepared.created;
+      result.existing += prepared.existing;
+    } catch (error) {
+      result.failures.push({ ...target, error: error instanceof Error ? error.message : "Image prompt preparation failed" });
+    }
+  }
+  return result;
 }
 
 export async function pushCmsDrafts(

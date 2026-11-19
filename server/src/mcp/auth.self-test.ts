@@ -48,18 +48,22 @@ assert.equal(await authenticateMcpBearer(`Bearer ${token.secret}`, {
   ...dependencies,
   touch: async () => false,
 }, now), null, "token revoked between lookup and usage update authenticated");
+assert.equal(await authenticateMcpBearer(`Bearer ${token.secret}`, {
+  ...dependencies,
+  find: async () => ({ ...base, suspendedAt: now }),
+}, now), null, "suspended account authenticated with a personal token");
 
 const oauthIdentity = {
   connectionId: "app_consent_01K0BLOGFACTORY",
   userId: base.userId,
-  siteId: base.siteIds[0],
+  siteIds: [base.siteIds[0], "55555555-5555-4555-8555-555555555555"],
 };
 const oauthDependencies = {
   ...dependencies,
   verifyOAuth: async (secret: string) => secret === "oauth.jwt.token" ? oauthIdentity : null,
-  findOAuthUserSite: async (userId: string, siteId: string) => (
-    userId === base.userId && siteId === base.siteIds[0]
-      ? { ...base, siteId }
+  findOAuthUserSites: async (userId: string, siteIds: string[]) => (
+    userId === base.userId && siteIds.every((siteId) => oauthIdentity.siteIds.includes(siteId))
+      ? { ...base, siteIds }
       : undefined
   ),
   authorizeOAuth: async () => ({ id: "44444444-4444-4444-8444-444444444444", scopes: ["content:read", "drafts:write", "publish:draft"] }),
@@ -68,24 +72,30 @@ const oauthPrincipal = await authenticateMcpBearer("Bearer oauth.jwt.token", oau
 assert.equal(oauthPrincipal?.tokenId, "44444444-4444-4444-8444-444444444444");
 assert.equal(oauthPrincipal?.userId, base.userId);
 assert.deepEqual([...oauthPrincipal!.scopes], ["content:read", "drafts:write", "publish:draft"]);
-assert.deepEqual([...oauthPrincipal!.siteIds], [base.siteIds[0]]);
+assert.deepEqual([...oauthPrincipal!.siteIds], oauthIdentity.siteIds);
 assert.equal(await authenticateMcpBearer("Bearer other.jwt.token", oauthDependencies, now), null);
 assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
   ...oauthDependencies,
-  findOAuthUserSite: async () => undefined,
+  findOAuthUserSites: async () => undefined,
 }, now), null);
 assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
   ...oauthDependencies,
-  findOAuthUserSite: async () => ({ ...base, siteId: base.siteIds[0], approvalStatus: "pending" }),
+  findOAuthUserSites: async () => ({ ...base, siteIds: oauthIdentity.siteIds, approvalStatus: "pending" }),
 }, now), null);
 assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
   ...oauthDependencies,
   authorizeOAuth: async () => undefined,
 }, now), null, "revoked OAuth connection authenticated");
+assert.equal(await authenticateMcpBearer("Bearer oauth.jwt.token", {
+  ...oauthDependencies,
+  findOAuthUserSites: async () => ({ ...base, siteIds: oauthIdentity.siteIds, suspendedAt: now }),
+}, now), null, "suspended account authenticated over OAuth");
 
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp")), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://blogfactory.io" } })), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://client.example" } }), "https://client.example"), true);
 assert.equal(allowedMcpOrigin(new Request("https://blogfactory.io/mcp", { headers: { origin: "https://evil.example" } })), false);
+assert.equal(allowedMcpOrigin(new Request("https://self-hosted.example/mcp", { headers: { origin: "https://blogfactory.io" } }), "https://self-hosted.example", true), false);
+assert.equal(allowedMcpOrigin(new Request("https://self-hosted.example/mcp", { headers: { origin: "https://self-hosted.example" } }), "https://self-hosted.example", true), true);
 
 console.log("MCP bearer authentication self-check passed");

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { waitUntil } from "@vercel/functions";
-import { asc, and, desc, eq, inArray } from "drizzle-orm";
+import { asc, and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaignItems, campaigns, jobs, personas, posts, userSettings } from "../db/schema.js";
 import { getUserId } from "../middleware/auth.js";
@@ -10,8 +10,16 @@ import { materializeProgrammaticItems } from "../services/programmatic.js";
 import { getEffectiveSettings } from "../services/user-settings.js";
 import { safeError } from "../http/error-contract.js";
 import { seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
+import { hasSiteAccess } from "../services/search-console.js";
+import { SEO_PLAN_MODE } from "../services/seo-growth-plan.js";
+import { persistentBackgroundExecution } from "../services/background-drain.js";
 
 export const campaignsRoutes = new Hono();
+
+function kickCampaign(id: string, label: string) {
+  if (persistentBackgroundExecution()) return;
+  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error(`[campaign] ${label} failed`, safeError(err))));
+}
 
 const snapshotKeys = [
   "articleWordCount",
@@ -81,7 +89,7 @@ campaignsRoutes.get("/", async (c) => {
   const rows = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.userId, userId))
+    .where(and(eq(campaigns.userId, userId), ne(campaigns.mode, SEO_PLAN_MODE)))
     .orderBy(desc(campaigns.createdAt));
   return c.json(rows);
 });
@@ -95,6 +103,8 @@ campaignsRoutes.post("/", async (c) => {
   if (!isCampaignMode(mode)) return c.json({ error: "Invalid campaign mode" }, 400);
   const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
   if (!modelId) return c.json({ error: "Model is required" }, 400);
+  const siteId = typeof body.siteId === "string" ? body.siteId : typeof body.site_id === "string" ? body.site_id : null;
+  if (siteId && !(await hasSiteAccess(userId, siteId))) return c.json({ error: "Site not found" }, 404);
 
   let items: ParsedCampaignItem[];
   let programmatic: ReturnType<typeof materializeProgrammaticItems> | null = null;
@@ -137,6 +147,7 @@ campaignsRoutes.post("/", async (c) => {
 
   const [campaign] = await db.insert(campaigns).values({
     userId,
+    siteId,
     name,
     mode,
     outlineMode,
@@ -243,6 +254,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
   const id = c.req.param("id");
   const [existing] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   if (!existing) return c.json({ error: "Campaign not found" }, 404);
+  if (existing.mode === SEO_PLAN_MODE) return c.json({ error: "SEO growth plans are started item by item" }, 409);
   if (!["draft", "stopped"].includes(existing.status)) {
     return c.json({ error: "Campaign cannot be started from this state" }, 409);
   }
@@ -262,7 +274,7 @@ campaignsRoutes.post("/:id/start", async (c) => {
     .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)))
     .returning();
 
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run failed", safeError(err))));
+  kickCampaign(id, "Run");
   return c.json({ campaign });
 });
 
@@ -276,7 +288,7 @@ campaignsRoutes.post("/:id/run-next", async (c) => {
   }
 
   await reconcileStaleCampaignItems(id, userId);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Run next failed", safeError(err))));
+  kickCampaign(id, "Run next");
   const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
   return c.json({ campaign, queued: true }, 202);
 });
@@ -293,7 +305,7 @@ campaignsRoutes.post("/:id/retry-failed", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry failed", safeError(err))));
+  kickCampaign(id, "Retry");
   return c.json({ campaign });
 });
 
@@ -302,7 +314,7 @@ campaignsRoutes.post("/:id/items/:itemId/retry", async (c) => {
   const id = c.req.param("id");
   const campaign = await retryCampaignItems(id, userId, [c.req.param("itemId")]);
   if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-  waitUntil(runCampaign(id, { maxItems: 3 }).catch((err) => console.error("[campaign] Retry item failed", safeError(err))));
+  kickCampaign(id, "Retry item");
   return c.json({ campaign });
 });
 

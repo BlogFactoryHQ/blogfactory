@@ -21,6 +21,12 @@ export function isApproved(role?: string | null, status?: string | null): boolea
   return role === "admin" || status === "approved";
 }
 
+export const SUSPENDED_ALLOWED_PATHS: ReadonlySet<string> = new Set(["/api/auth/me", "/api/auth/workos/logout"]);
+
+export function isSuspended(user: { role?: string | null; suspendedAt?: Date | string | null }): boolean {
+  return Boolean(user.suspendedAt) && user.role !== "admin";
+}
+
 export function publicUser<T extends {
   id: string;
   email: string;
@@ -29,6 +35,7 @@ export function publicUser<T extends {
   role?: string;
   approvalStatus?: string;
   rejectedReason?: string | null;
+  suspendedAt?: Date | string | null;
   createdAt?: Date | string;
 }>(user: T) {
   return {
@@ -39,6 +46,8 @@ export function publicUser<T extends {
     role: user.role || "user",
     approvalStatus: user.approvalStatus || "pending",
     rejectedReason: user.rejectedReason || null,
+    // The suspension reason is an internal admin note and is never sent to the customer.
+    suspendedAt: isSuspended(user) ? user.suspendedAt : null,
     createdAt: user.createdAt,
   };
 }

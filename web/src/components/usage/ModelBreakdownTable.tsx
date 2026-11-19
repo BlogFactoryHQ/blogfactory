@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/patterns/EmptyState";
 import {
   Table,
   TableBody,
@@ -15,9 +16,12 @@ interface Props {
 export function ModelBreakdownTable({ data }: Props) {
   if (!data.length) {
     return (
-      <div className="text-center py-8 text-muted-foreground text-sm">
-        No model usage data yet.
-      </div>
+      <EmptyState
+        size="row"
+        title="No model usage yet"
+        description="Each model's calls, tokens, and cost appear here after the first generation."
+        primaryAction={{ label: "Create content", href: "/create" }}
+      />
     );
   }
 

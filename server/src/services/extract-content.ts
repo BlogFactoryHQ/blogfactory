@@ -1,6 +1,7 @@
 import { getObject } from "./s3-client.js";
+import { openRouterInferenceFetch } from "./managed-openrouter.js";
+import { safeFetch } from "./safe-fetch.js";
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GOOGLE_AI_KEY = process.env.GOOGLE_AI_KEY;
 const URL_FETCH_TIMEOUT_MS = 15_000;
 const AI_EXTRACT_TIMEOUT_MS = 35_000;
@@ -19,7 +20,7 @@ export async function extractContent(opts: ExtractOpts): Promise<{ content: stri
     case "pdf":
       return extractPdf(opts.sourceValue, opts.userId);
     case "url":
-      return extractUrl(opts.sourceValue, opts.extractModel);
+      return extractUrl(opts.sourceValue, opts.userId, opts.extractModel);
     default:
       return { content: opts.sourceValue };
   }
@@ -117,12 +118,11 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
   }
 
   // Fallback: Use OpenRouter
-  if (OPENROUTER_API_KEY) {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try {
+    const resp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       signal: AbortSignal.timeout(AI_EXTRACT_TIMEOUT_MS),
       headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -143,16 +143,16 @@ async function extractPdf(storagePath: string, userId: string): Promise<{ conten
       const text = data.choices?.[0]?.message?.content || "";
       return { content: text, metadata: { type: "pdf", method: "openrouter" } };
     }
-  }
+  } catch { /* provider availability is reported below */ }
 
   throw new Error("No AI provider available for PDF extraction");
 }
 
-async function extractUrl(url: string, model?: string): Promise<{ content: string; title?: string; metadata?: any }> {
+async function extractUrl(url: string, userId: string, model?: string): Promise<{ content: string; title?: string; metadata?: any }> {
   let resp: Response;
   try {
-    resp = await fetch(url, {
-      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
+    resp = await safeFetch(url, {
+      timeoutMs: URL_FETCH_TIMEOUT_MS,
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; BlogFactory/1.0)",
         Accept: "text/html,application/xhtml+xml",
@@ -180,13 +180,11 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
   }
 
   // Fallback to AI extraction if content is too short
-  if (OPENROUTER_API_KEY) {
-    try {
-      const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  try {
+      const aiResp = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         signal: AbortSignal.timeout(AI_EXTRACT_TIMEOUT_MS),
         headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -204,12 +202,11 @@ async function extractUrl(url: string, model?: string): Promise<{ content: strin
         const aiContent = aiData.choices?.[0]?.message?.content || content;
         return { content: aiContent, title, metadata: { type: "url", method: "ai-extraction" } };
       }
-    } catch (err: any) {
+  } catch (err: any) {
       if (err?.name === "AbortError" || err?.name === "TimeoutError") {
         throw new Error("Source URL extraction timed out. Try pasting the article text directly.");
       }
       throw err;
-    }
   }
 
   return { content, title, metadata: { type: "url", method: "html-extraction" } };

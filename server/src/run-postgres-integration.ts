@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
@@ -57,6 +57,106 @@ try {
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${siteId}, ${userId}, 'MCP test', 'mcp-test.example.com')`;
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${restrictedSiteId}, ${userId}, 'Restricted MCP test', 'restricted-mcp-test.example.com')`;
   await sql`INSERT INTO sites (id, user_id, name, domain) VALUES (${otherSiteId}, ${otherUserId}, 'Other user MCP test', 'other-mcp-test.example.com')`;
+
+  await sql`INSERT INTO billing_entitlements (user_id, plan_code, source, status, effective_at, limits) VALUES (${userId}, 'cloud', 'admin', 'active', NOW(), ${sql.json({ sites: 3, storageBytes: 1_000_000_000, concurrency: 1, activeFeeds: 3, feedMinimumMinutes: 360, monthlyDrafts: 150, monthlyAutomatedDrafts: null })})`;
+  await sql`INSERT INTO ai_credit_accounts (user_id, available_credits) VALUES (${userId}, 1000)`;
+  await sql`INSERT INTO ai_credit_grants (user_id, source, source_ref, granted_credits, remaining_credits, expires_at) VALUES (${userId}, 'admin', 'postgres-integration', 1000, 1000, NOW() + INTERVAL '1 year')`;
+  const oldCloud = process.env.BLOGFACTORY_CLOUD;
+  const oldEnforcement = process.env.CLOUD_BILLING_ENFORCEMENT;
+  const oldCloudProduct = process.env.POLAR_PRODUCT_CLOUD_MONTHLY;
+  const oldCreditProduct = process.env.POLAR_PRODUCT_AI_CREDITS_14000;
+  process.env.BLOGFACTORY_CLOUD = "true";
+  process.env.CLOUD_BILLING_ENFORCEMENT = "true";
+  process.env.POLAR_PRODUCT_CLOUD_MONTHLY = "polar_cloud_test";
+  process.env.POLAR_PRODUCT_AI_CREDITS_14000 = "polar_credits_test";
+  const { feeds, imageAssets, posts, sites } = await import("./db/schema.js");
+  const {
+    assertCanActivateFeed,
+    assertCanCreateSite,
+    assertStorageAvailable,
+    withCloudLimitLock,
+  } = await import("./services/cloud-limits.js");
+  const siteAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertCanCreateSite(userId, tx);
+    await tx.insert(sites).values({ userId, name: `Concurrent site ${index}`, domain: `concurrent-site-${index}.example.com` });
+  })));
+  assert.equal(siteAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent site creation exceeded the plan limit");
+
+  await sql`INSERT INTO feeds (user_id, name, source_url) VALUES (${userId}, 'Second feed', 'https://example.com/feed-2.xml')`;
+  const feedAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertCanActivateFeed(userId, undefined, tx);
+    await tx.insert(feeds).values({ userId, name: `Concurrent feed ${index}`, sourceUrl: `https://example.com/feed-concurrent-${index}.xml` });
+  })));
+  assert.equal(feedAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent feed activation exceeded the plan limit");
+
+  await sql`INSERT INTO image_assets (user_id, storage_path, file_size_bytes) VALUES (${userId}, 'integration/existing.bin', 999999850)`;
+  const storageAttempts = await Promise.allSettled([0, 1].map((index) => withCloudLimitLock(userId, async (tx) => {
+    await assertStorageAvailable(userId, 100, tx);
+    await tx.insert(imageAssets).values({ userId, storagePath: `integration/concurrent-${index}.bin`, fileSizeBytes: 100 });
+  })));
+  assert.equal(storageAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent storage writes exceeded the plan limit");
+
+  const { releaseAiCredits, reserveAiCredits } = await import("./services/ai-credits.js");
+  const creditAttempts = await Promise.allSettled([
+    reserveAiCredits(userId, `credit-${randomUUID()}`, 800),
+    reserveAiCredits(userId, `credit-${randomUUID()}`, 800),
+  ]);
+  assert.equal(creditAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent Managed AI reservations overspent the wallet");
+  const creditWinner = creditAttempts.find((result) => result.status === "fulfilled");
+  assert.ok(creditWinner && creditWinner.status === "fulfilled");
+  await releaseAiCredits(creditWinner.value.id);
+  await sql`INSERT INTO plan_usage_monthly (user_id, period_start, manual_completed) VALUES (${userId}, ${new Date().toISOString().slice(0, 7) + "-01"}, 149)`;
+  const { reserveDraftQuota, settleDraftQuota, withDraftQuota } = await import("./services/plan-usage.js");
+  const quotaAttempts = await Promise.allSettled([
+    reserveDraftQuota(userId, "manual", `quota-${randomUUID()}`),
+    reserveDraftQuota(userId, "automated", `quota-${randomUUID()}`),
+  ]);
+  assert.equal(quotaAttempts.filter((result) => result.status === "fulfilled").length, 1, "concurrent Cloud draft reservations exceeded 150");
+  const quotaWinner = quotaAttempts.find((result) => result.status === "fulfilled");
+  assert.ok(quotaWinner && quotaWinner.status === "fulfilled");
+  await settleDraftQuota(quotaWinner.value, false);
+  const rolledBackPostId = randomUUID();
+  await assert.rejects(() => withDraftQuota(userId, "manual", `rollback-${randomUUID()}`, async (tx) => {
+    await tx.insert(posts).values({
+      id: rolledBackPostId,
+      userId,
+      siteId,
+      title: "Must roll back",
+      content: "Must roll back",
+      status: "draft",
+      sourceType: "raw_text",
+      modelId: "integration/model",
+    });
+    throw new Error("forced draft transaction rollback");
+  }), /forced draft transaction rollback/);
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM posts WHERE id = ${rolledBackPostId}`)[0]?.count, 0, "failed draft transaction left a post behind");
+  assert.deepEqual((await sql<{ manual_completed: number; manual_reserved: number }[]>`SELECT manual_completed, manual_reserved FROM plan_usage_monthly WHERE user_id = ${userId} AND period_start = ${new Date().toISOString().slice(0, 7) + "-01"}`)[0], { manual_completed: 149, manual_reserved: 0 }, "failed draft transaction changed quota counters");
+
+  const { drainPolarWebhookEvents, enqueuePolarWebhook } = await import("./services/billing-webhooks.js");
+  await enqueuePolarWebhook("stale-processing", { type: "unknown", timestamp: "2026-09-15T11:00:00Z", data: {} });
+  await sql`UPDATE billing_webhook_events SET status = 'processing', processing_started_at = NOW() - INTERVAL '10 minutes' WHERE event_id = 'stale-processing'`;
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ status: string }[]>`SELECT status FROM billing_webhook_events WHERE event_id = 'stale-processing'`)[0]?.status, "processed", "stale webhook processing claim was not recovered");
+  const subscriptionData = { id: "sub_integration", productId: "polar_cloud_test", customerId: "customer_integration", customer: { id: "customer_integration", externalId: userId }, currentPeriodStart: "2026-09-01T00:00:00Z", currentPeriodEnd: "2026-10-01T00:00:00Z" };
+  await enqueuePolarWebhook("event-active", { type: "subscription.active", timestamp: "2026-09-15T12:00:00Z", data: { ...subscriptionData, status: "active", modifiedAt: "2026-09-15T12:00:00Z" } });
+  await enqueuePolarWebhook("event-old-revoke", { type: "subscription.revoked", timestamp: "2026-09-14T12:00:00Z", data: { ...subscriptionData, status: "revoked", modifiedAt: "2026-09-14T12:00:00Z" } });
+  await enqueuePolarWebhook("event-active", { type: "subscription.active", timestamp: "2026-09-15T12:00:00Z", data: subscriptionData });
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ status: string }[]>`SELECT status FROM billing_subscriptions WHERE polar_subscription_id = 'sub_integration'`)[0]?.status, "active", "out-of-order subscription event regressed access");
+  const creditOrder = { id: "order_integration", productId: "polar_credits_test", totalAmount: 2000, customer: { id: "customer_other", externalId: otherUserId } };
+  await enqueuePolarWebhook("credit-order-1", { type: "order.paid", timestamp: "2026-09-15T12:00:00Z", data: creditOrder });
+  await enqueuePolarWebhook("credit-order-2", { type: "order.paid", timestamp: "2026-09-15T12:00:01Z", data: creditOrder });
+  await drainPolarWebhookEvents();
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM ai_credit_grants WHERE source_ref = 'order_integration'`)[0]?.count, 1, "duplicate order granted credits twice");
+  await sql`UPDATE ai_credit_grants SET remaining_credits = 3000 WHERE source_ref = 'order_integration'`;
+  await sql`UPDATE ai_credit_accounts SET available_credits = 3000 WHERE user_id = ${otherUserId}`;
+  await enqueuePolarWebhook("credit-refund", { type: "order.refunded", timestamp: "2026-09-15T13:00:00Z", data: { ...creditOrder, refundedAmount: 2000 } });
+  await drainPolarWebhookEvents();
+  assert.deepEqual((await sql<{ available_credits: number; debt_credits: number }[]>`SELECT available_credits, debt_credits FROM ai_credit_accounts WHERE user_id = ${otherUserId}`)[0], { available_credits: 0, debt_credits: 11000 }, "consumed-credit refund did not create wallet debt");
+  if (oldCloud === undefined) delete process.env.BLOGFACTORY_CLOUD; else process.env.BLOGFACTORY_CLOUD = oldCloud;
+  if (oldEnforcement === undefined) delete process.env.CLOUD_BILLING_ENFORCEMENT; else process.env.CLOUD_BILLING_ENFORCEMENT = oldEnforcement;
+  if (oldCloudProduct === undefined) delete process.env.POLAR_PRODUCT_CLOUD_MONTHLY; else process.env.POLAR_PRODUCT_CLOUD_MONTHLY = oldCloudProduct;
+  if (oldCreditProduct === undefined) delete process.env.POLAR_PRODUCT_AI_CREDITS_14000; else process.env.POLAR_PRODUCT_AI_CREDITS_14000 = oldCreditProduct;
 
   const revisionPostId = randomUUID();
   await sql`
@@ -159,13 +259,18 @@ try {
   const oauthIdentity = {
     connectionId: `app_consent_${randomUUID()}`,
     userId,
-    siteId,
+    siteIds: [siteId, restrictedSiteId].sort(),
   };
   const oauthConnection = await authorizeMcpOAuthConnection(oauthIdentity, new Date());
   assert.ok(oauthConnection?.id, "OAuth connection was not persisted");
+  assert.equal(
+    await authorizeMcpOAuthConnection({ ...oauthIdentity, siteIds: [siteId] }, new Date()),
+    undefined,
+    "existing OAuth grant silently changed its allowed sites",
+  );
   assert.deepEqual(
-    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_id),
-    [siteId],
+    (await listMcpOAuthConnections(userId)).map((connection) => connection.site_ids),
+    [oauthIdentity.siteIds],
     "OAuth connection site grant was not listed",
   );
   await revokeMcpOAuthConnection(userId, oauthConnection!.id);
@@ -177,6 +282,92 @@ try {
 
   process.env.API_KEY_ENCRYPTION_SECRET ||= "postgres-integration-mcp-secret";
   const { encryptSecret } = await import("./services/api-keys.js");
+  const { listDueSearchConsoleIntegrations, replaceSearchConsoleSnapshot } = await import("./services/search-console.js");
+  const searchConsoleIntegrationId = randomUUID();
+  const otherSearchConsoleIntegrationId = randomUUID();
+  await sql`
+    INSERT INTO search_console_integrations (id, user_id, site_id, property_url, credentials_encrypted)
+    VALUES
+      (${searchConsoleIntegrationId}, ${userId}, ${siteId}, 'sc-domain:mcp-test.example.com', ${encryptSecret('{"test":true}')}),
+      (${otherSearchConsoleIntegrationId}, ${otherUserId}, ${otherSiteId}, 'sc-domain:other-mcp-test.example.com', ${encryptSecret('{"test":true}')})
+  `;
+  await sql`
+    INSERT INTO search_console_metrics (user_id, site_id, date, page_url, query, clicks, impressions, ctr, position)
+    VALUES
+      (${userId}, ${siteId}, '2026-07-10', 'https://mcp-test.example.com/stale', 'stale', 10, 100, 0.1, 5),
+      (${otherUserId}, ${otherSiteId}, '2026-07-10', 'https://other-mcp-test.example.com/private', 'private', 20, 200, 0.1, 4)
+  `;
+  const searchConsoleSyncedAt = new Date("2026-08-22T12:00:00.000Z");
+  await replaceSearchConsoleSnapshot({
+    userId,
+    siteId,
+    integrationId: searchConsoleIntegrationId,
+    startDate: "2026-07-01",
+    endDate: "2026-08-20",
+    syncedAt: searchConsoleSyncedAt,
+    syncMetadata: { complete_through: "2026-08-20" },
+    metrics: [{
+      date: "2026-08-20",
+      pageUrl: "https://mcp-test.example.com/current",
+      query: "current",
+      clicks: 3,
+      impressions: 30,
+      ctr: 0.1,
+      position: 3,
+    }],
+  });
+  const refreshedSearchRows = await sql<{ date: string; query: string }[]>`
+    SELECT date, query FROM search_console_metrics WHERE user_id = ${userId} AND site_id = ${siteId} ORDER BY date
+  `;
+  assert.deepEqual(refreshedSearchRows, [{ date: "2026-08-20", query: "current" }], "Search Console refresh retained stale opportunity rows");
+  assert.equal((await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM search_console_metrics WHERE user_id = ${otherUserId} AND site_id = ${otherSiteId}`)[0]?.count, 1, "Search Console refresh crossed the tenant boundary");
+  const [searchConsoleSyncState] = await sql<{ last_sync_at: Date; sync_metadata: { complete_through?: string } }[]>`
+    SELECT last_sync_at, sync_metadata FROM search_console_integrations WHERE id = ${searchConsoleIntegrationId}
+  `;
+  assert.equal(searchConsoleSyncState.last_sync_at.toISOString(), searchConsoleSyncedAt.toISOString(), "Search Console last_sync_at was not updated");
+  assert.equal(searchConsoleSyncState.sync_metadata.complete_through, "2026-08-20", "Search Console provenance was not persisted");
+  assert.equal((await listDueSearchConsoleIntegrations(1, new Date("2026-08-22T13:00:00.000Z")))[0]?.id, otherSearchConsoleIntegrationId, "never-synced Search Console integration was not prioritized");
+  const asOfParts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  const asOf = `${asOfParts.year}-${asOfParts.month}-${asOfParts.day}`;
+  const canonicalParams = {
+    propertyUrl: "sc-domain:mcp-test.example.com",
+    asOf,
+    range: 28,
+    compare: true,
+    searchType: "web",
+    includePreliminary: false,
+  };
+  const canonicalCacheKey = createHash("sha256").update(`performance:${JSON.stringify(canonicalParams)}`).digest("hex");
+  await sql`
+    INSERT INTO search_console_query_cache (user_id, site_id, cache_key, kind, params, result, expires_at)
+    VALUES (${userId}, ${siteId}, ${canonicalCacheKey}, 'performance', ${sql.json(canonicalParams)}, ${sql.json({
+      range: { startDate: "2026-07-24", endDate: "2026-08-20", baselineStart: "2026-06-26", baselineEnd: "2026-07-23" },
+      totals: {
+        clicks: { value: 3, previous: 0, change: 3, changePercent: null },
+        impressions: { value: 30, previous: 0, change: 30, changePercent: null },
+        ctr: { value: 0.1, previous: 0, change: 0.1, changePercent: null },
+        position: { value: 3, previous: 0, change: 3, changePercent: null },
+      },
+      daily: [{ date: "2026-08-20", clicks: 3, impressions: 30, ctr: 0.1, position: 3 }],
+      metadata: { first_incomplete_date: "2026-08-21" },
+      provenance: {
+        source: "google_search_console_api", property: "sc-domain:mcp-test.example.com", scope: "site_total",
+        fetched_at: "", complete_through: "2026-08-20", first_incomplete_date: "2026-08-21", data_status: "complete", cache: "live",
+      },
+    })}, now() + interval '1 hour')
+  `;
+  await assert.rejects(() => replaceSearchConsoleSnapshot({
+    userId: otherUserId,
+    siteId,
+    integrationId: searchConsoleIntegrationId,
+    startDate: "2026-07-01",
+    endDate: "2026-08-20",
+    syncedAt: searchConsoleSyncedAt,
+    syncMetadata: {},
+    metrics: [],
+  }), /not found/i, "cross-user Search Console refresh succeeded");
   const { seoSourceHash } = await import("./services/seo-metadata.js");
   const { MCP_PROTOCOL_VERSION } = await import("./mcp/contracts.js");
   const { handleMcpHttpRequest } = await import("./mcp/server.js");
@@ -207,10 +398,10 @@ try {
   `;
   await sql`
     INSERT INTO site_integrations (
-      id, user_id, site_id, provider, display_name, credentials_encrypted, credential_hint, config
+      id, user_id, site_id, provider, display_name, credentials_encrypted, credential_hint, config, last_tested_at
     ) VALUES (
       ${integrationId}, ${userId}, ${siteId}, 'wordpress', 'MCP WordPress',
-      ${encryptSecret(secretMarker)}, ${secretMarker}, ${sql.json({ secret: secretMarker })}
+      ${encryptSecret(secretMarker)}, ${secretMarker}, ${sql.json({ secret: secretMarker })}, now()
     )
   `;
   await sql`
@@ -354,6 +545,20 @@ try {
   const seoReadyPosts = await callTool("list_posts", { site_id: siteId, seo_status: "ready" });
   assert.deepEqual(seoReadyPosts.structuredContent.data.items.map((post: any) => post.id), [postId], "SEO filtering diverged from get_post");
   assert.equal(readPost.structuredContent.data.seo.status, "ready");
+  const digest = await callTool("get_workspace_digest", { site_id: siteId });
+  assert.equal(digest.structuredContent.data.workspace.site.id, siteId, "workspace digest crossed the site boundary");
+  assert.equal(digest.structuredContent.data.workspace.search_growth.totals.clicks.value, 3, "workspace digest did not use canonical Search Console totals");
+  assert.equal(digest.structuredContent.data.workspace.connections.cms.connected, 1, "workspace digest missed the usable CMS destination");
+  assert.ok(digest.structuredContent.data.workspace.recent_outputs.some((post: any) => post.id === postId), "workspace digest missed a recent output");
+  const actionQueue = await callTool("list_action_items", { site_id: siteId, limit: 50, page: 1 });
+  const postAction = actionQueue.structuredContent.data.items.find((item: any) => item.id === postId);
+  assert.ok(postAction, "action queue missed a draft warning");
+  assert.equal(postAction.severity, "warning", "non-blocking draft checks became blockers");
+  assert.equal(postAction.destination_name, "MCP WordPress", "action queue omitted CMS routing details");
+  const review = await callTool("review_post", { post_id: postId });
+  assert.equal(review.structuredContent.data.review.permissions.can_push_cms_draft, false, "read-only MCP token received CMS draft permission");
+  assert.equal(review.structuredContent.data.review.destinations[0].credential_status, "usable", "review packet missed credential readiness");
+  assert.equal(review.structuredContent.data.review.preflight.has_blockers, false, "review packet blocked warning-only delivery");
   const readPoisonedPost = await callTool("get_post", { post_id: poisonedPostId });
   assert.equal(readPoisonedPost.structuredContent.data.persona, null, "foreign persona leaked from post");
   assert.equal(readPoisonedPost.structuredContent.data.publishing.preferred_integration_id, null, "foreign integration id leaked");
@@ -363,15 +568,45 @@ try {
   assert.deepEqual(readJob.structuredContent.data.result_post_ids, [postId], "foreign or restricted result post ids leaked");
   for (const [name, args] of [
     ["list_publish_targets", { site_id: restrictedSiteId }],
+    ["get_workspace_digest", { site_id: restrictedSiteId }],
+    ["list_action_items", { site_id: restrictedSiteId, limit: 20, page: 1 }],
     ["get_post", { post_id: restrictedPostId }],
+    ["review_post", { post_id: restrictedPostId }],
     ["get_job", { job_id: restrictedJobId }],
     ["get_post", { post_id: otherPostId }],
     ["get_job", { job_id: otherJobId }],
   ] as const) {
     const denied = await callTool(name, args);
     assert.equal(denied.isError, true);
-    assert.equal(denied.structuredContent.error.code, "not_found");
+    assert.equal(denied.structuredContent.error.code, "site_id" in args ? "forbidden" : "not_found");
   }
+
+  const systemJobEvents = await sql<{ action: string; status: string }[]>`
+    SELECT action, status FROM operation_events WHERE user_id = ${userId} AND object_id = ${jobId} AND origin = 'system'
+  `;
+  assert.deepEqual(systemJobEvents, [{ action: "job.completed", status: "succeeded" }], "job completion was not recorded in the operation ledger");
+  const oldJobId = randomUUID();
+  await sql`
+    INSERT INTO jobs (id, user_id, site_id, source_type, source_value, model_id, status, created_at)
+    VALUES (${oldJobId}, ${userId}, ${siteId}, 'campaign', 'old campaign item', 'integration/model', 'running', now() - interval '40 days')
+  `;
+  await sql`UPDATE jobs SET status = 'failed', completed_at = now() WHERE id = ${oldJobId}`;
+  const [oldJobEvent] = await sql<{ duration_ms: number }[]>`
+    SELECT duration_ms FROM operation_events WHERE object_id = ${oldJobId} AND action = 'job.failed'
+  `;
+  assert.equal(oldJobEvent.duration_ms, 2147483647, "old job duration overflowed the operation ledger");
+  const mcpEvents = await sql<{ site_id: string | null; metadata: unknown }[]>`
+    SELECT site_id, metadata FROM operation_events WHERE user_id = ${userId} AND origin = 'mcp'
+  `;
+  assert.ok(mcpEvents.length >= 10, "authenticated MCP calls were not recorded");
+  assert.equal(mcpEvents.some((event) => event.site_id === otherSiteId), false, "MCP ledger crossed the user boundary");
+  assert.equal(JSON.stringify(mcpEvents).includes(secretMarker), false, "operation ledger stored sensitive data");
+  await sql`
+    INSERT INTO operation_events (user_id, site_id, origin, action, status, expires_at)
+    VALUES (${userId}, ${siteId}, 'system', 'retention.test', 'succeeded', now() - interval '1 minute')
+  `;
+  const { purgeExpiredOperationEvents } = await import("./services/operation-events.js");
+  assert.ok(await purgeExpiredOperationEvents() >= 1, "expired operation events were not purged");
 
   await revokeMcpAccessToken(userId, createdToken.token.id);
   assert.equal(

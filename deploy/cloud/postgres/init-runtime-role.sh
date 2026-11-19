@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+: "${POSTGRES_DB:?}"
+: "${POSTGRES_OWNER_USER:?}"
+: "${POSTGRES_RUNTIME_USER:?}"
+: "${POSTGRES_RUNTIME_PASSWORD:?}"
+
+psql -X -v ON_ERROR_STOP=1 \
+  -v database_name="$POSTGRES_DB" \
+  -v owner_user="$POSTGRES_OWNER_USER" \
+  -v runtime_user="$POSTGRES_RUNTIME_USER" \
+  -v runtime_password="$POSTGRES_RUNTIME_PASSWORD" <<'SQL'
+SELECT format('CREATE ROLE %I LOGIN', :'runtime_user')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'runtime_user') \gexec
+
+ALTER ROLE :"runtime_user" WITH LOGIN PASSWORD :'runtime_password'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT CONNECT ON DATABASE :"database_name" TO :"runtime_user";
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO :"runtime_user";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"runtime_user";
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"runtime_user";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_user" IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"runtime_user";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_user" IN SCHEMA public
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO :"runtime_user";
+SQL

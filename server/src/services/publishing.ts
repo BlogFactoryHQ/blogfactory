@@ -1,11 +1,12 @@
 import { Buffer } from "node:buffer";
+import { faqJsonLdHead } from "./structured-data.js";
 import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { connect } from "framer-api";
 import { and, eq, desc, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { imageAssets, postPublications, posts, siteIntegrations, sites, userSettings } from "../db/schema.js";
-import { decryptSecret, encryptSecret, encryptedCredentialStatus } from "./api-keys.js";
+import { decryptSecret, encryptSecret, encryptedCredentialStatus, testedConnectionReady } from "./api-keys.js";
 import { normalizeImagePlacement, reflowInlineImages, type ImagePlacement, type PlacementImage } from "./image-placement.js";
 import { stripUnclosedBoldMarkers } from "./post-cleanup.js";
 import { getObject } from "./s3-client.js";
@@ -14,6 +15,7 @@ import { slugify } from "./slugify.js";
 export { slugify } from "./slugify.js";
 import { readySeoMetadataForArticle, type SeoMetadataV1 } from "./seo-metadata.js";
 import { currentPostRevision, updatePostWithRevision } from "./post-revisions.js";
+import { safeFetch } from "./safe-fetch.js";
 import {
   appendOrtakAlanDisclosures,
   isOrtakAlanProfile,
@@ -86,6 +88,13 @@ export class ReviewRequiredError extends Error {
   constructor() {
     super("The current revision has not been approved");
     this.name = "ReviewRequiredError";
+  }
+}
+
+export class SavedRevisionRequiredError extends Error {
+  constructor() {
+    super("A saved revision is required before CMS delivery");
+    this.name = "SavedRevisionRequiredError";
   }
 }
 
@@ -174,6 +183,7 @@ export function serializeIntegration(row: IntegrationRow) {
     displayName: row.displayName,
     display_name: row.displayName,
     status: row.status,
+    ready: testedConnectionReady(row),
     credentialStatus: encryptedCredentialStatus(row.credentialsEncrypted),
     credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
     credentialHint: row.credentialHint,
@@ -366,6 +376,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     throw new Error("Post not found");
   }
   let revision = await currentPostRevision(userId, postId);
+  if (expectedUpdatedAt && !revision) throw new SavedRevisionRequiredError();
   const mode = publishOptions.mode === "publish" ? "publish" : "draft";
   const metadataChanged = publishOptions.publishingMetadata !== undefined && stableJson(post.publishingMetadata) !== stableJson(publishOptions.publishingMetadata);
   const initiallyApproved = Boolean(revision && post.editorialState === "approved" && post.approvedRevisionId === revision.id);
@@ -393,7 +404,7 @@ export async function publishPost(userId: string, postId: string, integrationId:
     .where(and(eq(siteIntegrations.id, integrationId), eq(siteIntegrations.userId, userId)))
     .limit(1);
   if (!integration) throw new Error("Integration not found");
-  if (integration.status !== "connected") throw new Error("Integration is not connected");
+  if (!testedConnectionReady(integration)) throw new Error("Integration is not ready; save and test it first");
   if (post.siteId && integration.siteId !== post.siteId) throw new Error("Publishing target does not belong to this post's destination site");
 
   const [site] = await db
@@ -1207,7 +1218,7 @@ function basicAuth(username: string, password: string) {
 }
 
 async function testWordPress(credentials: WordPressCredentials) {
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/users/me?context=edit`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/users/me?context=edit`, {
     headers: { Authorization: basicAuth(credentials.username, credentials.applicationPassword) },
   });
   if (!response.ok) throw new Error(`WordPress test failed: ${response.status}`);
@@ -1231,7 +1242,7 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
   );
   const postType = options.postType === "page" ? "pages" : "posts";
 
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/${postType}`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/${postType}`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -1266,7 +1277,7 @@ async function publishWordPress(credentials: WordPressCredentials, article: Arti
 async function resolveWordPressTerms(credentials: WordPressCredentials, taxonomy: "tags" | "categories", labels: string[]) {
   const ids: number[] = [];
   for (const label of labels.slice(0, 10)) {
-    const found = await fetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(label)}&per_page=20`, {
+    const found = await safeFetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(label)}&per_page=20`, {
       headers: { Authorization: basicAuth(credentials.username, credentials.applicationPassword) },
     });
     if (found.ok) {
@@ -1277,7 +1288,7 @@ async function resolveWordPressTerms(credentials: WordPressCredentials, taxonomy
         continue;
       }
     }
-    const created = await fetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}`, {
+    const created = await safeFetch(`${credentials.url}/wp-json/wp/v2/${taxonomy}`, {
       method: "POST",
       headers: {
         Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1297,7 +1308,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
   const image = await fetchImage(pathOrUrl);
   if (!image) return null;
   const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
-  const response = await fetch(`${credentials.url}/wp-json/wp/v2/media`, {
+  const response = await safeFetch(`${credentials.url}/wp-json/wp/v2/media`, {
     method: "POST",
     headers: {
       Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1309,7 +1320,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
   if (!response.ok) return null;
   const data = await response.json() as { id?: number; source_url?: string };
   if (data.id && altText) {
-    await fetch(`${credentials.url}/wp-json/wp/v2/media/${data.id}`, {
+    await safeFetch(`${credentials.url}/wp-json/wp/v2/media/${data.id}`, {
       method: "POST",
       headers: {
         Authorization: basicAuth(credentials.username, credentials.applicationPassword),
@@ -1322,7 +1333,7 @@ async function uploadWordPressMedia(credentials: WordPressCredentials, pathOrUrl
 }
 
 async function testGhost(credentials: GhostCredentials) {
-  const response = await fetch(`${credentials.url}/ghost/api/admin/site/`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/site/`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost test"));
@@ -1336,7 +1347,7 @@ export async function getGhostAuthors(row: IntegrationRow) {
 }
 
 async function listGhostAuthors(credentials: GhostCredentials): Promise<GhostAuthor[]> {
-  const response = await fetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/users/?limit=all`, {
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
   });
   if (!response.ok) throw new Error(await ghostErrorMessage(response, "Ghost authors could not be loaded"));
@@ -1360,7 +1371,7 @@ async function publishGhost(credentials: GhostCredentials, article: ArticlePaylo
     }))
   );
   const html = replaceImageUrls(article.html, uploadedInlineImages);
-  const response = await fetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/${postType}/?source=html`, {
     method: "POST",
     headers: {
       Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`,
@@ -1395,6 +1406,8 @@ export function ghostPostFields(article: ArticlePayload, mode: PublishMode, feat
     meta_description: article.metaDescription,
     tags: article.tags.map((name) => ({ name })),
     ...(article.authorId ? { authors: [{ id: article.authorId }] } : {}),
+    // Ghost themes already emit Article markup; FAQPage is additive and lives in the draft's code injection.
+    ...(faqJsonLdHead(article.markdown) ? { codeinjection_head: faqJsonLdHead(article.markdown) } : {}),
     ...(featureImage ? { feature_image: featureImage } : {}),
     ...(featureImage && article.coverAltText ? { feature_image_alt: article.coverAltText } : {}),
     ...(featureImage && article.coverCaption ? { feature_image_caption: article.coverCaption } : {}),
@@ -1407,7 +1420,7 @@ async function uploadGhostImage(credentials: GhostCredentials, pathOrUrl: string
   const filename = `${slugify(title)}.${extensionForMime(image.mimeType)}`;
   const formData = new FormData();
   formData.append("file", new Blob([image.buffer as BlobPart], { type: image.mimeType }), filename);
-  const response = await fetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
+  const response = await safeFetch(`${credentials.url}/ghost/api/admin/images/upload/`, {
     method: "POST",
     headers: { Authorization: `Ghost ${await ghostJwt(credentials.adminApiKey)}`, Accept: "application/json", "Accept-Version": "v6.0" },
     body: formData,
@@ -2124,7 +2137,7 @@ async function getFramerCollection(framer: Awaited<ReturnType<typeof connect>>, 
 
 async function fetchImage(pathOrUrl: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
   if (pathOrUrl.startsWith("http")) {
-    const response = await fetch(pathOrUrl);
+    const response = await safeFetch(pathOrUrl, { maxResponseBytes: 20 * 1024 * 1024 });
     if (!response.ok) return null;
     const mimeType = response.headers.get("content-type") || mimeForPath(pathOrUrl);
     return { buffer: Buffer.from(await response.arrayBuffer()), mimeType };

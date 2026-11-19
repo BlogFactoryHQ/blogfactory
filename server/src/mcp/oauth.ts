@@ -5,16 +5,24 @@ import {
   type JWTVerifyGetKey,
   type JWTPayload,
 } from "jose";
-import { MCP_SCOPES } from "./contracts.js";
 
 export const MCP_OAUTH_USER_ID_CLAIM = "urn:blogfactory:user_id";
 export const MCP_OAUTH_SITE_ID_CLAIM = "urn:blogfactory:site_id";
+export const MCP_OAUTH_SITE_IDS_CLAIM = "urn:blogfactory:site_ids";
 export const MCP_OAUTH_READ_SCOPE = "content:read";
-export const MCP_OAUTH_SCOPES = [...MCP_SCOPES];
+
+// MCP OAuth may live in a different WorkOS environment than hosted browser sign-in.
+export function mcpWorkosApiKey(env: Record<string, string | undefined> = process.env) {
+  return env.MCP_WORKOS_API_KEY?.trim() || env.WORKOS_API_KEY?.trim() || undefined;
+}
+// AuthKit issues these standard OAuth scopes. BlogFactory authorizes its
+// draft-only capabilities from the site-bound consent claims after token verification.
+export const MCP_OAUTH_SCOPES = ["openid", "profile", "email", "offline_access"];
 
 export interface McpOAuthConfig {
   issuer: string;
   resource: string;
+  acceptedResources: string[];
   jwksUrl: string;
   protectedResourceMetadataUrl: string;
 }
@@ -22,7 +30,7 @@ export interface McpOAuthConfig {
 export interface McpOAuthIdentity {
   connectionId: string;
   userId: string;
-  siteId: string;
+  siteIds: string[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,33 +53,46 @@ function canonicalUrl(value: string, label: string) {
   return url;
 }
 
+function mcpResourceUrl(value: string, label: string) {
+  const url = canonicalUrl(value, label);
+  const loopback = url.protocol === "http:"
+    && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  if ((url.protocol !== "https:" && !loopback) || url.pathname !== "/mcp") {
+    throw new Error(`${label} must contain HTTPS /mcp URLs, or HTTP on loopback`);
+  }
+  return url.toString();
+}
+
 export function getMcpOAuthConfig(
   env: Record<string, string | undefined> = process.env,
 ): McpOAuthConfig | null {
   const issuerValue = env.WORKOS_AUTHKIT_ISSUER?.trim();
   const resourceValue = env.MCP_RESOURCE_URL?.trim();
-  const apiKey = env.WORKOS_API_KEY?.trim();
-  if (!issuerValue && !resourceValue && !apiKey) return null;
+  const legacyResourceValue = env.MCP_LEGACY_RESOURCE_URLS?.trim();
+  const apiKey = mcpWorkosApiKey(env);
+  if (!issuerValue && !resourceValue && !legacyResourceValue && !apiKey) return null;
   if (!issuerValue || !resourceValue || !apiKey) {
     throw new Error("MCP OAuth requires WORKOS_AUTHKIT_ISSUER, MCP_RESOURCE_URL, and WORKOS_API_KEY");
   }
 
   const issuerUrl = canonicalUrl(issuerValue, "WORKOS_AUTHKIT_ISSUER");
-  const resourceUrl = canonicalUrl(resourceValue, "MCP_RESOURCE_URL");
+  const resourceUrl = new URL(mcpResourceUrl(resourceValue, "MCP_RESOURCE_URL"));
   if (issuerUrl.protocol !== "https:" || issuerUrl.pathname !== "/") {
     throw new Error("WORKOS_AUTHKIT_ISSUER must be an HTTPS origin");
-  }
-  const loopbackResource = resourceUrl.protocol === "http:"
-    && (resourceUrl.hostname === "localhost" || resourceUrl.hostname === "127.0.0.1");
-  if ((resourceUrl.protocol !== "https:" && !loopbackResource) || resourceUrl.pathname !== "/mcp") {
-    throw new Error("MCP_RESOURCE_URL must be an HTTPS /mcp URL, or HTTP on loopback");
   }
 
   const issuer = issuerUrl.origin;
   const resource = resourceUrl.toString();
+  const acceptedResources = [...new Set([
+    resource,
+    ...(legacyResourceValue || "").split(",").map((value) => value.trim()).filter(Boolean).map((value) => (
+      mcpResourceUrl(value, "MCP_LEGACY_RESOURCE_URLS")
+    )),
+  ])];
   return {
     issuer,
     resource,
+    acceptedResources,
     jwksUrl: `${issuer}/oauth2/jwks`,
     protectedResourceMetadataUrl: `${resourceUrl.origin}/.well-known/oauth-protected-resource`,
   };
@@ -94,17 +115,29 @@ export function mcpBearerChallenge(config = getMcpOAuthConfig()) {
 export function mcpOAuthIdentityFromClaims(payload: JWTPayload): McpOAuthIdentity | null {
   const connectionId = payload.sid;
   const userId = payload[MCP_OAUTH_USER_ID_CLAIM];
-  const siteId = payload[MCP_OAUTH_SITE_ID_CLAIM];
+  const pluralClaim = payload[MCP_OAUTH_SITE_IDS_CLAIM];
+  let siteIds: unknown = pluralClaim;
+  if (typeof pluralClaim === "string") {
+    try {
+      siteIds = JSON.parse(pluralClaim);
+    } catch {
+      return null;
+    }
+  } else if (pluralClaim === undefined) {
+    siteIds = [payload[MCP_OAUTH_SITE_ID_CLAIM]];
+  }
   if (
     typeof connectionId !== "string"
     || connectionId.length === 0
     || connectionId.length > 255
     || typeof userId !== "string"
     || !UUID_PATTERN.test(userId)
-    || typeof siteId !== "string"
-    || !UUID_PATTERN.test(siteId)
+    || !Array.isArray(siteIds)
+    || siteIds.length === 0
+    || siteIds.length > 100
+    || siteIds.some((siteId) => typeof siteId !== "string" || !UUID_PATTERN.test(siteId))
   ) return null;
-  return { connectionId, userId, siteId };
+  return { connectionId, userId, siteIds: [...new Set(siteIds as string[])].sort() };
 }
 
 export function isInvalidMcpOAuthTokenError(error: unknown) {
@@ -130,7 +163,7 @@ export async function verifyMcpOAuthAccessToken(
   try {
     const { payload } = await jwtVerify(token, resolver, {
       issuer: config.issuer,
-      audience: config.resource,
+      audience: config.acceptedResources,
       algorithms: ["RS256"],
     });
     return mcpOAuthIdentityFromClaims(payload);

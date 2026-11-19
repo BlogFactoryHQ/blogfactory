@@ -96,9 +96,11 @@ export const rssUrlSchema = z.string().refine(
     const result = validateSourceUrl(url);
     return result.valid;
   },
-  (url) => {
-    const result = validateSourceUrl(url);
-    return { message: result.error || "Invalid URL" };
+  {
+    error: (issue) => {
+      const result = validateSourceUrl(String(issue.input));
+      return result.error || "Invalid URL";
+    },
   }
 );
 

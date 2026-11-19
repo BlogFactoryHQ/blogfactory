@@ -3,17 +3,18 @@ import { useAuth } from "@/hooks/useAuth";
 import { Clock, Loader2, LogOut, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FactoryMark } from "@/components/layout/BywordSurface";
+import { PlanRequiredNotice } from "@/components/billing/PlanRequiredNotice";
 
 function AccountStatusScreen({
   type,
   reason,
   onSignOut,
 }: {
-  type: "pending" | "rejected";
+  type: "pending" | "rejected" | "suspended";
   reason?: string | null;
   onSignOut: () => void;
 }) {
-  const rejected = type === "rejected";
+  const rejected = type === "rejected" || type === "suspended";
   const Icon = rejected ? ShieldX : Clock;
 
   return (
@@ -24,11 +25,13 @@ function AccountStatusScreen({
           <Icon className="h-6 w-6 text-foreground" />
         </div>
         <h1 className="font-mono text-xl font-semibold uppercase">
-          {rejected ? "Access request rejected" : "Approval pending"}
+          {type === "suspended" ? "Account suspended" : rejected ? "Access request rejected" : "Approval pending"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          {rejected
-            ? reason || "Your BlogFactory beta access request was not approved."
+          {type === "suspended"
+            ? "Your BlogFactory account has been suspended. Your content has not been deleted. Contact support to restore access."
+            : rejected
+            ? reason || "Your BlogFactory access request was not approved."
             : "Your account has been created. An admin needs to approve your access before you can use BlogFactory."}
         </p>
         <Button variant="outline" className="mt-8" onClick={onSignOut}>
@@ -65,6 +68,10 @@ export function ProtectedRoute() {
     );
   }
 
+  if (user.role !== "admin" && user.suspendedAt) {
+    return <AccountStatusScreen type="suspended" onSignOut={signOut} />;
+  }
+
   if (user.role !== "admin" && user.approvalStatus === "pending") {
     return <AccountStatusScreen type="pending" onSignOut={signOut} />;
   }
@@ -73,5 +80,10 @@ export function ProtectedRoute() {
     return <AccountStatusScreen type="rejected" reason={user.rejectedReason} onSignOut={signOut} />;
   }
 
-  return <Outlet />;
+  return <><PlanRequiredNotice /><Outlet /></>;
+}
+
+export function AdminRoute() {
+  const { user } = useAuth();
+  return user?.role === "admin" ? <Outlet /> : <Navigate to="/" replace />;
 }

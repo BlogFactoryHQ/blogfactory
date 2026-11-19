@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { duplicateSeoSlugs, fitMetaDescription, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
+import { duplicateSeoSlugs, fitMetaDescription, generateValidatedCandidate, mergeManualSeoMetadata, normalizeAiSeoCandidate, normalizeSeoSlug, parseSeoCandidate, readySeoMetadataForArticle, SEO_LIMITS, SEO_MODEL_ID, SEO_REQUEST_RESPONSE_FORMAT, SEO_RESPONSE_FORMAT, SeoGenerationAttemptError, seoSourceHash, seoStatusForArticle, validateSeoForArticle, validateSeoMetadata } from "./seo-metadata.js";
 
 assert.equal(SEO_MODEL_ID, "openai/gpt-4.1-mini");
+assert.equal(SEO_REQUEST_RESPONSE_FORMAT.type, "json_object");
 assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaTitle, { type: "string", minLength: 48, maxLength: 56 });
 assert.deepEqual(SEO_RESPONSE_FORMAT.json_schema.schema.properties.metaDescription, { type: "string", minLength: SEO_LIMITS.descriptionMin });
 assert.equal(SEO_LIMITS.descriptionMax, 155);

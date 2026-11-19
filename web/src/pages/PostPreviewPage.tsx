@@ -28,7 +28,7 @@ export default function PostPreviewPage() {
   });
 
   if (isLoading) return <WorkspaceBackground className="flex min-h-screen items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></WorkspaceBackground>;
-  if (error || !post) return <WorkspaceBackground className="flex min-h-screen flex-col items-center justify-center gap-4"><p className="text-muted-foreground">Preview not available.</p><Button asChild variant="outline"><Link to="/posts"><ArrowLeft className="mr-2 h-4 w-4" />Back to content</Link></Button></WorkspaceBackground>;
+  if (error || !post) return <WorkspaceBackground className="flex min-h-screen flex-col items-center justify-center gap-4"><p className="text-muted-foreground">Preview not available.</p><Button asChild variant="outline"><Link to="/library/content"><ArrowLeft className="mr-2 h-4 w-4" />Back to content</Link></Button></WorkspaceBackground>;
 
   return (
     <WorkspaceBackground className="min-h-screen">
@@ -36,12 +36,12 @@ export default function PostPreviewPage() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3"><FactoryMark /><span className="hidden h-6 w-px bg-border sm:block" /><span className="section-label">Saved preview</span></div>
           <div className="flex items-center gap-2">
-            <Button asChild size="sm" variant="outline"><Link to={`/posts/${post.id}/edit`}><Pencil className="mr-1.5 h-4 w-4" />Back to editor</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link to={`/library/posts/${post.id}/edit`}><Pencil className="mr-1.5 h-4 w-4" />Back to editor</Link></Button>
           </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:py-10">
-        <div className="mb-5 flex gap-3 rounded-sm border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950" role="note">
+        <div className="mb-5 flex gap-3 rounded-sm border border-byword-blue/30 bg-byword-blue-soft px-4 py-3 text-sm text-byword-blue" role="note">
           <Eye className="mt-0.5 h-4 w-4 shrink-0" />
           <p>This is BlogFactory’s editorial rendering of the last saved revision. Use the CMS preview for the destination site’s exact theme and layout.</p>
         </div>

@@ -1,13 +1,16 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Loader2, Plus, ShieldCheck, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
 import { api, retryTransientApiError } from "@/lib/api";
+import { useMcpCapabilities } from "@/hooks/useMcpCapabilities";
 import { useSites } from "@/hooks/useSites";
 import { BywordCard, SectionHeader } from "@/components/layout/BywordSurface";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, TableSkeleton } from "@/components/patterns/PageSkeleton";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -40,9 +43,8 @@ interface McpOAuthConnection {
   id: string;
   name: string;
   scopes: string[];
-  site_id: string;
-  site_name: string;
-  site_domain: string;
+  site_ids: string[];
+  sites: Array<{ id: string; name: string; domain: string }>;
   last_used_at: string | null;
   revoked_at: string | null;
   created_at: string;
@@ -58,19 +60,12 @@ type RevokeTarget = {
   kind: "personal" | "oauth";
 };
 
-const MCP_TOOL_GROUPS = [
-  { label: "Identity", tools: ["whoami", "list_sites"] },
-  { label: "Editorial read", tools: ["list_personas", "list_publish_targets", "list_posts", "get_post"] },
-  { label: "Draft workflow", tools: ["generate_draft", "get_job", "update_draft"] },
-  { label: "CMS delivery", tools: ["push_to_cms_draft"] },
-];
-
 function tokenStatus(token: McpToken) {
-  if (token.revoked_at) return { label: "Revoked", variant: "destructive" as const };
+  if (token.revoked_at) return { label: "Revoked", status: "error" as const };
   if (token.expires_at && new Date(token.expires_at).getTime() <= Date.now()) {
-    return { label: "Expired", variant: "secondary" as const };
+    return { label: "Expired", status: "paused" as const };
   }
-  return { label: "Active", variant: "default" as const };
+  return { label: "Active", status: "active" as const };
 }
 
 function formatDate(value: string | null) {
@@ -103,19 +98,21 @@ export function McpConnectionsPanel() {
   const [creating, setCreating] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
-  const endpoint = useMemo(() => new URL("/mcp", window.location.origin).toString(), []);
-  const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
-  const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
-
   const tokensQuery = useQuery({
     queryKey: ["mcp-tokens"],
     queryFn: () => api.get<McpTokenList>("/mcp/tokens"),
     retry: retryTransientApiError,
   });
+  const capabilitiesQuery = useMcpCapabilities();
+  const endpoint = new URL(capabilitiesQuery.data?.endpoint || import.meta.env.VITE_MCP_URL || `${window.location.origin}/mcp`).toString();
+  const codexOauthCommand = `codex mcp add blogfactory --url ${endpoint}`;
+  const codexTokenCommand = `${codexOauthCommand} --bearer-token-env-var BLOGFACTORY_MCP_TOKEN`;
+  const oauthEnabled = capabilitiesQuery.data?.oauth_enabled === true;
   const oauthConnectionsQuery = useQuery({
     queryKey: ["mcp-oauth-connections"],
     queryFn: () => api.get<McpOAuthConnectionList>("/mcp/oauth/connections"),
     retry: retryTransientApiError,
+    enabled: oauthEnabled,
   });
 
   const submitCreate = async (event: FormEvent) => {
@@ -201,15 +198,15 @@ export function McpConnectionsPanel() {
         <SectionHeader
           icon={KeyRound}
           title="MCP Connections"
-          description="Connect AI clients to BlogFactory's site-scoped editorial workflow."
+          description="Let Codex or another MCP client work with BlogFactory drafts. Start by choosing how the client will authenticate."
           action={
             <Button
               type="button"
-              onClick={() => copyText(codexOauthCommand, "OAuth setup command")}
+              onClick={() => oauthEnabled ? copyText(codexOauthCommand, "OAuth setup command") : openCreate()}
               disabled={sitesLoading || !sites.length}
             >
-              <Terminal className="mr-2 h-4 w-4" />
-              Copy OAuth setup
+              {oauthEnabled ? <Terminal className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
+              {oauthEnabled ? "Copy OAuth setup" : "Create personal token"}
             </Button>
           }
         />
@@ -220,7 +217,7 @@ export function McpConnectionsPanel() {
               ["MCP access", connectionsLoading ? "Checking" : connectionsError ? "Attention" : "Ready"],
               ["Connections", connectionsLoading ? "—" : `${activeConnectionCount} active`],
               ["Site scope", activeSite?.domain || "No site selected"],
-              ["Tool catalog", "10 available"],
+              ["Tool catalog", capabilitiesQuery.data ? `${capabilitiesQuery.data.tool_count} available` : "Checking"],
             ].map(([label, value]) => (
               <div key={label} className="border-b border-byword-border p-4 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
                 <p className="type-kicker text-muted-foreground">{label}</p>
@@ -228,6 +225,21 @@ export function McpConnectionsPanel() {
               </div>
             ))}
           </div>
+
+          <section aria-labelledby="mcp-workflow-title" className="space-y-3">
+            <div>
+              <h3 id="mcp-workflow-title" className="text-sm font-semibold">Connect a client</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Do this once per AI client. Provider and CMS credentials are never given to the client.</p>
+            </div>
+            <ol className="grid overflow-hidden rounded-md border border-byword-border bg-card sm:grid-cols-3">
+              {[
+                ["01", oauthEnabled ? "Copy the OAuth command" : "Create a personal token", oauthEnabled ? "Run the command in Codex. It opens BlogFactory in your browser for approval." : "Choose the site this client may access. Copy the token when it appears; it is shown once."],
+                ["02", "Add the server", `Use ${endpoint} as the MCP server endpoint. Token connections use it with Bearer authentication.`],
+                ["03", "Verify in this list", "Ask the client to list BlogFactory tools, then return here. Its last-used time will update after the first successful request."],
+              ].map(([step, title, description]) => <li key={step} className="border-b border-byword-border p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><span className="type-kicker text-byword-blue">{step}</span><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{description}</p></li>)}
+            </ol>
+            <Button asChild variant="link" size="sm" className="h-auto justify-start px-0"><a href="/docs/mcp" target="_blank" rel="noreferrer">Open the complete MCP client guide</a></Button>
+          </section>
 
           <section className="space-y-2">
             <Label htmlFor="mcp-endpoint">MCP endpoint</Label>
@@ -239,9 +251,9 @@ export function McpConnectionsPanel() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Add this endpoint to a compatible client. OAuth opens BlogFactory in your browser so you can sign in and choose one site.
+              Add this endpoint to a compatible client. Access remains limited to the sites selected for that connection.
             </p>
-            <details className="rounded-md border border-byword-border bg-muted/25 p-3">
+            {oauthEnabled && <details className="rounded-md border border-byword-border bg-muted/25 p-3">
               <summary className="cursor-pointer text-sm font-medium">Codex OAuth setup</summary>
               <div className="mt-3 space-y-3">
                 <p className="text-sm text-muted-foreground">
@@ -257,12 +269,12 @@ export function McpConnectionsPanel() {
                   </Button>
                 </div>
               </div>
-            </details>
+            </details>}
           </section>
 
           <div className="rounded-md border border-byword-border bg-muted/35 p-4">
             <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-status-success" aria-hidden="true" />
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-byword-blue" aria-hidden="true" />
               <div>
                 <h3 className="text-sm font-semibold">Site-scoped MCP access</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -272,40 +284,35 @@ export function McpConnectionsPanel() {
             </div>
           </div>
 
-          <section className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold">Available tools</h3>
-              <p className="mt-1 text-sm text-muted-foreground">The client can discover these 10 tools for the selected site.</p>
+          <details className="rounded-md border border-byword-border bg-card">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"><span>Server tool catalog</span><span className="type-meta">{capabilitiesQuery.data ? `${capabilitiesQuery.data.tool_count} tools` : capabilitiesQuery.isError ? "Unavailable" : "Checking"}</span></summary>
+            <div className="flex flex-wrap gap-2 border-t border-byword-border p-4">
+              {capabilitiesQuery.data?.tools?.map((tool) => <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">{tool}</code>)}
+              {capabilitiesQuery.isLoading && [0, 1, 2, 3, 4, 5].map((index) => <Skeleton key={index} className="h-6 w-28" />)}
+              {capabilitiesQuery.isError && (
+                <EmptyState
+                  size="row"
+                  tone="error"
+                  className="w-full"
+                  title="Tool catalog unavailable"
+                  description="Existing connections keep working. Retry to load the current catalog."
+                  primaryAction={{ label: "Try again", onClick: () => void capabilitiesQuery.refetch() }}
+                />
+              )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {MCP_TOOL_GROUPS.map((group) => (
-                <div key={group.label} className="rounded-md border border-byword-border bg-card p-4">
-                  <div className="flex items-center gap-2">
-                    <Cable className="h-4 w-4 text-byword-blue" aria-hidden="true" />
-                    <p className="type-kicker text-muted-foreground">{group.label}</p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {group.tools.map((tool) => (
-                      <code key={tool} className="rounded-sm border border-byword-border bg-muted/35 px-2 py-1 font-mono text-[11px] text-foreground">
-                        {tool}
-                      </code>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          </details>
 
           {!sitesLoading && !sites.length && (
-            <div className="rounded-md border border-dashed border-byword-border p-6 text-center">
-              <p className="text-sm font-medium">Add a site before creating an MCP connection.</p>
-              <Button asChild variant="link" className="mt-1">
-                <Link to="/sites">Go to Sites</Link>
-              </Button>
-            </div>
+            <EmptyState
+              size="row"
+              className="rounded-md border border-dashed border-byword-border"
+              title="Add a site before creating an MCP connection"
+              description="Connections are scoped to sites, so at least one site is required."
+              primaryAction={{ label: "Go to Sites", href: "/control/sites" }}
+            />
           )}
 
-          <section className="space-y-3">
+          {oauthEnabled && <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Browser-authorized clients</h3>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -313,34 +320,41 @@ export function McpConnectionsPanel() {
               </p>
             </div>
             {oauthConnectionsQuery.isLoading ? (
-              <div className="flex min-h-20 items-center justify-center text-sm text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading OAuth connections
-              </div>
+              <ListSkeleton rows={2} className="rounded-md border border-byword-border" />
             ) : oauthConnectionsQuery.isError ? (
-              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
-                <p className="text-sm font-medium text-destructive">OAuth connections could not be loaded.</p>
-                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => oauthConnectionsQuery.refetch()}>
-                  Try again
-                </Button>
-              </div>
+              <EmptyState
+                size="row"
+                tone="error"
+                className="rounded-md border border-byword-border"
+                title="OAuth connections could not be loaded"
+                description="Existing connections keep their access. Retry to see the current list."
+                primaryAction={{ label: "Try again", onClick: () => void oauthConnectionsQuery.refetch() }}
+              />
             ) : oauthConnections.length === 0 ? (
-              <div className="rounded-md border border-dashed border-byword-border p-5 text-sm text-muted-foreground">
-                No browser-authorized MCP clients yet.
-              </div>
+              <EmptyState
+                size="row"
+                className="rounded-md border border-dashed border-byword-border"
+                title="No browser-authorized MCP clients yet"
+                description={oauthEnabled ? "Run the OAuth command in a client; it appears here after its first successful request." : undefined}
+              />
             ) : (
               <div className="divide-y divide-byword-border rounded-md border border-byword-border">
                 {oauthConnections.map((connection) => {
                   const active = !connection.revoked_at;
+                  const authorizedSites = new Map(connection.sites.map((site) => [site.id, site]));
+                  const siteLabels = connection.site_ids.map((siteId) => {
+                    const site = authorizedSites.get(siteId);
+                    return site ? `${site.name} — ${site.domain}` : "Removed site";
+                  });
                   return (
                     <div key={connection.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{connection.name}</p>
-                          <Badge variant={active ? "default" : "destructive"}>{active ? "Active" : "Revoked"}</Badge>
+                          <StatusBadge status={active ? "active" : "error"} label={active ? "Active" : "Revoked"} showIcon={false} />
                         </div>
-                        <p className="mt-1 truncate text-sm text-muted-foreground" title={`${connection.site_name} — ${connection.site_domain}`}>
-                          {connection.site_name} — {connection.site_domain} · {connection.scopes.map(scopeLabel).join(", ")}
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground" title={siteLabels.join(", ")}>
+                          {siteLabels.join(", ")} · {connection.scopes.map(scopeLabel).join(", ")}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Connected {formatDate(connection.created_at)} · Last used {formatDate(connection.last_used_at)}
@@ -350,7 +364,7 @@ export function McpConnectionsPanel() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="self-start text-destructive hover:text-destructive sm:self-auto"
+                        className="self-start sm:self-auto"
                         aria-label={`Revoke ${connection.name}`}
                         disabled={!active || revokeMutation.isPending}
                         onClick={() => setRevokeTarget({
@@ -367,13 +381,13 @@ export function McpConnectionsPanel() {
                 })}
               </div>
             )}
-          </section>
+          </section>}
 
           <section className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Personal tokens</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Advanced access for internal clients without OAuth.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Use this when OAuth is unavailable: create one token, then add it with the endpoint above to your AI client.</p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={openCreate} disabled={sitesLoading || !sites.length}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -381,23 +395,23 @@ export function McpConnectionsPanel() {
               </Button>
             </div>
           {tokensQuery.isLoading ? (
-            <div className="flex min-h-28 items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading connections
-            </div>
+            <TableSkeleton rows={3} columns={6} className="rounded-md border border-byword-border" />
           ) : tokensQuery.isError ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
-              <p className="text-sm font-medium text-destructive">Connections could not be loaded.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => tokensQuery.refetch()}>
-                Try again
-              </Button>
-            </div>
+            <EmptyState
+              size="row"
+              tone="error"
+              className="rounded-md border border-byword-border"
+              title="Connections could not be loaded"
+              description="Existing tokens keep their access. Retry to see the current list."
+              primaryAction={{ label: "Try again", onClick: () => void tokensQuery.refetch() }}
+            />
           ) : tokens.length === 0 ? (
-            <div className="rounded-md border border-dashed border-byword-border p-8 text-center">
-              <KeyRound className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
-              <p className="mt-3 text-sm font-medium">No personal MCP connections yet.</p>
-              <p className="mt-1 text-sm text-muted-foreground">Create one for a site-scoped internal client.</p>
-            </div>
+            <EmptyState
+              icon={KeyRound}
+              title="No personal MCP connections yet"
+              description="Create a token for Claude Code, Codex, or another MCP-compatible client to give an agent site-scoped access."
+              className="rounded-md border border-dashed border-byword-border"
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -432,13 +446,12 @@ export function McpConnectionsPanel() {
                       <TableCell className="whitespace-nowrap">{formatDate(token.created_at)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(token.last_used_at)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(token.expires_at)}</TableCell>
-                      <TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell>
+                      <TableCell><StatusBadge status={status.status} label={status.label} showIcon={false} /></TableCell>
                       <TableCell className="text-right">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="text-destructive hover:text-destructive"
                           aria-label={`Revoke ${token.name}`}
                           disabled={status.label !== "Active" || revokeMutation.isPending}
                           onClick={() => setRevokeTarget({
@@ -502,7 +515,7 @@ export function McpConnectionsPanel() {
                   </div>
                 ))}
               </div>
-              {!siteIds.length && <p className="text-xs text-destructive">Select at least one site.</p>}
+              {!siteIds.length && <p className="text-xs text-status-error">Select at least one site.</p>}
             </fieldset>
 
             <fieldset className="space-y-2">
@@ -543,25 +556,30 @@ export function McpConnectionsPanel() {
           <AlertDialogHeader>
             <AlertDialogTitle>Copy your connection token</AlertDialogTitle>
             <AlertDialogDescription>
-              This secret will not be shown again. Store it in your MCP client now.
+              This secret is shown once. Complete the client setup before closing this dialog.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="rounded-md border border-byword-border bg-muted/45 p-4">
             <code className="block break-all font-mono text-xs">{createdSecret}</code>
           </div>
-          <details className="rounded-md border border-byword-border bg-muted/25 p-3">
-            <summary className="cursor-pointer text-sm font-medium">Codex token setup</summary>
+          <details open className="rounded-md border border-byword-border bg-muted/25 p-3">
+            <summary className="cursor-pointer text-sm font-medium">Where this token goes</summary>
             <div className="mt-3 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Save this token as <code className="font-mono text-xs">BLOGFACTORY_MCP_TOKEN</code>, then run:
+                <strong className="text-foreground">Codex:</strong> save the copied value in your shell as <code className="font-mono text-xs">BLOGFACTORY_MCP_TOKEN</code>, then run this command:
               </p>
               <code className="block break-all rounded-sm border border-byword-border bg-card p-3 font-mono text-xs">
                 {codexTokenCommand}
               </code>
+              <p className="text-sm text-muted-foreground"><strong className="text-foreground">Other clients:</strong> add <code className="font-mono text-xs">{endpoint}</code> as the MCP server URL and use this token as the Bearer token.</p>
             </div>
           </details>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeSecret}>I saved it</AlertDialogCancel>
+            <AlertDialogCancel onClick={closeSecret}>I connected my client</AlertDialogCancel>
+            <Button type="button" variant="outline" onClick={() => copyText(codexTokenCommand, "Codex setup command")}>
+              <Terminal className="mr-2 h-4 w-4" />
+              Copy Codex command
+            </Button>
             <Button type="button" onClick={() => createdSecret && copyText(createdSecret, "Token")}>
               <Copy className="mr-2 h-4 w-4" />
               Copy token

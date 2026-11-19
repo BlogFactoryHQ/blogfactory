@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  PLAN_REQUIRED_EVENT,
   api,
   authRedirectHref,
+  prepareImagePrompts,
   pushCmsDrafts,
   retryTransientApiError,
   shouldRedirectAfterUnauthorized,
@@ -14,6 +16,24 @@ beforeEach(() => {
 });
 
 describe("ApiClient errors", () => {
+  it("announces plan-required responses with their billing link", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: "An active BlogFactory Cloud plan is required for this action",
+      code: "subscription_required",
+      message: "An active BlogFactory Cloud plan is required for this action",
+      billing_url: "/billing",
+    }), { status: 403 }));
+    const listener = vi.fn();
+    window.addEventListener(PLAN_REQUIRED_EVENT, listener);
+
+    const error = await api.post("/sites", {}).catch((caught) => caught);
+    window.removeEventListener(PLAN_REQUIRED_EVENT, listener);
+
+    expect(error).toMatchObject({ status: 403, code: "subscription_required", billingUrl: "/billing" });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ billingUrl: "/billing" });
+  });
+
   it("preserves machine-readable error details", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       error: "Invalid status",
@@ -95,4 +115,23 @@ it("does not start a CMS draft batch when preflight fails", async () => {
 
   await expect(pushCmsDrafts([{ id: "one", title: "First" }], "ghost")).rejects.toThrow("Duplicate SEO slug");
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("prepares image prompts for every selected post and retains failures", async () => {
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(new Response(JSON.stringify({ created: 2, existing: 0 }), { status: 201 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: "Missing image settings" }), { status: 400 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ created: 0, existing: 2 }), { status: 200 }));
+
+  await expect(prepareImagePrompts([
+    { id: "one", title: "First" },
+    { id: "two", title: "Second" },
+    { id: "three", title: "Third" },
+  ])).resolves.toEqual({
+    total: 3,
+    created: 2,
+    existing: 2,
+    failures: [{ id: "two", title: "Second", error: "Missing image settings" }],
+  });
+  expect(fetch).toHaveBeenCalledTimes(3);
 });

@@ -5,8 +5,8 @@ import { posts, personas, imageAssets, imageGenerationRequests, campaigns, jobs,
 import { eq, and, inArray, desc, asc, sql, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { deleteFile } from "../services/image-storage.js";
-import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
-import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoSourceHashMatches, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
+import { ExpectedPostVersionError, getPostPublications, publishPost, ReviewRequiredError, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
+import { confirmManualSeoMetadata, drainSeoMetadata, duplicateSeoSlugs, enqueueSeoMetadata, readySeoMetadataForArticle, saveManualSeoMetadata, seoMetadata, seoStatusForArticle, SEO_LIMITS } from "../services/seo-metadata.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
 import { reflowInlineImages } from "../services/image-placement.js";
 import { attachPostImage } from "../services/image-post-attachments.js";
@@ -26,6 +26,11 @@ import {
   updatePostWithRevision,
   type EditorialState,
 } from "../services/post-revisions.js";
+import { getReviewPacket } from "../services/control-plane.js";
+import { withDraftQuota } from "../services/plan-usage.js";
+import { randomUUID } from "node:crypto";
+import { scoreRevisions } from "../services/post-scorecard.js";
+import { getEffectiveSettings } from "../services/user-settings.js";
 
 export const postsRoutes = new Hono();
 
@@ -56,7 +61,6 @@ postsRoutes.get("/", async (c) => {
       feed_id: posts.feedId,
       preferred_integration_id: posts.preferredIntegrationId,
       title: posts.title,
-      seo_source_content: posts.content,
       status: posts.status,
       source_type: posts.sourceType,
       source_ref_id: posts.sourceRefId,
@@ -135,9 +139,10 @@ postsRoutes.get("/", async (c) => {
     }
   }
 
-  const items = rows.map(({ persona_name, campaign_name, integration_site_id, seo_source_content, ...post }) => {
+  const items = rows.map(({ persona_name, campaign_name, integration_site_id, ...post }) => {
     const storedSeo = seoMetadata(post.seo_metadata);
-    const seoStatus = storedSeo?.status === "ready" && !seoSourceHashMatches(storedSeo.sourceHash, post.title, seo_source_content || "") ? "needs_review" : storedSeo?.status || "missing";
+    // Content edits always requeue SEO metadata; list reads must not transfer every article body.
+    const seoStatus = storedSeo?.status || "missing";
     return {
       ...post,
       seo_status: seoStatus,
@@ -183,11 +188,51 @@ postsRoutes.get("/:id/publications", async (c) => {
   return c.json({ publications: await getPostPublications(userId, id) });
 });
 
+postsRoutes.get("/:id/review", async (c) => {
+  const packet = await getReviewPacket({
+    userId: getUserId(c),
+    postId: c.req.param("id"),
+    canPushCmsDraft: true,
+  });
+  if (!packet) return c.json({ error: "Post not found" }, 404);
+  return c.json(packet);
+});
+
 postsRoutes.get("/:id/revisions", async (c) => {
   const userId = getUserId(c);
   try {
     const rows = await listPostRevisions(userId, c.req.param("id"), Number(c.req.query("limit") || 50));
     return c.json({ revisions: rows.map(serializePostRevision) });
+  } catch (error) {
+    if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+});
+
+postsRoutes.get("/:id/revisions/scorecard", async (c) => {
+  const userId = getUserId(c);
+  const id = c.req.param("id");
+  const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.userId, userId))).limit(1);
+  if (!post) return c.json({ error: "Post not found" }, 404);
+  try {
+    const rows = await listPostRevisions(userId, id, Number(c.req.query("limit") || 20));
+    const settings = await getEffectiveSettings(userId, post.siteId);
+    // The originating job carries the keyword the draft was written for; without it the
+    // keyword check reports "not applicable" rather than guessing one from the title.
+    const [job] = post.jobId
+      ? await db.select({ sourceValue: jobs.sourceValue }).from(jobs).where(and(eq(jobs.id, post.jobId), eq(jobs.userId, userId))).limit(1)
+      : [];
+    const keyword = job?.sourceValue || "";
+    const revisions = scoreRevisions(
+      rows.map((row) => ({
+        id: row.id,
+        revisionNumber: row.revisionNumber,
+        createdAt: row.createdAt,
+        content: serializePostRevision(row).snapshot.content || "",
+      })),
+      { keyword, settings },
+    );
+    return c.json({ keyword, revisions });
   } catch (error) {
     if (error instanceof PostRevisionNotFoundError) return c.json({ error: error.message }, 404);
     throw error;
@@ -322,9 +367,7 @@ postsRoutes.post("/import-md", async (c) => {
   const title = cleanPostTitle(extractMarkdownTitle(body) || meta.metaTitle || folder.replace(/[-_]+/g, " "));
   const summary = (meta.metaDescription || plainText(body)).slice(0, 220);
 
-  const [post] = await db
-    .insert(posts)
-    .values({
+  const [post] = await withDraftQuota(userId, "manual", `draft:manual-import:${randomUUID()}`, (tx) => tx.insert(posts).values({
       userId,
       title,
       content,
@@ -333,8 +376,7 @@ postsRoutes.post("/import-md", async (c) => {
       sourceType: "batch_import",
       sourceRefId: folder,
       modelId: "manual/import",
-    } as any)
-    .returning();
+    } as any).returning());
 
   if (meta.slug || meta.metaTitle || meta.metaDescription) {
     const manual = await saveManualSeoMetadata(userId, post.id, {
@@ -432,6 +474,7 @@ postsRoutes.post("/:id/publish", async (c) => {
     if (error instanceof SeoMetadataNotReadyError) return c.json({ error: error.message, code: "SEO_METADATA_NOT_READY" }, 409);
     if (error instanceof ExpectedPostVersionError || error instanceof PostVersionConflictError) return c.json({ error: error.message, code: "POST_VERSION_CONFLICT" }, 409);
     if (error instanceof ReviewRequiredError) return c.json({ error: error.message, code: "REVIEW_REQUIRED" }, 409);
+    if (error instanceof SavedRevisionRequiredError) return c.json({ error: error.message, code: "SAVED_REVISION_REQUIRED" }, 409);
     throw error;
   }
   return c.json(result, result.success ? 200 : result.validationFailed ? 400 : 502);

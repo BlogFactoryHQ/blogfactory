@@ -7,14 +7,15 @@ import {
   real,
   timestamp,
   jsonb,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 // ── users (replaces Supabase auth.users + profiles) ──
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
+  workosUserId: text("workos_user_id").unique(),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name"),
   role: text("role").default("user").notNull(),
@@ -31,6 +32,13 @@ export const users = pgTable("users", {
   resetToken: text("reset_token"),
   resetTokenExpiresAt: timestamp("reset_token_expires_at", { withTimezone: true }),
   verifyToken: text("verify_token"),
+  sessionVersion: integer("session_version").default(0).notNull(),
+  resetTokenHash: text("reset_token_hash"),
+  verifyTokenHash: text("verify_token_hash"),
+  verifyTokenExpiresAt: timestamp("verify_token_expires_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspendedReason: text("suspended_reason"),
+  suspendedBy: uuid("suspended_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -95,6 +103,7 @@ export const personas = pgTable("personas", {
 export const campaigns = pgTable("campaigns", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references((): AnyPgColumn => sites.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   mode: text("mode").notNull(),
   outlineMode: text("outline_mode").default("none").notNull(),
@@ -212,6 +221,11 @@ export const campaignItems = pgTable("campaign_items", {
   title: text("title"),
   outline: jsonb("outline"),
   variables: jsonb("variables"),
+  actionType: text("action_type"),
+  pageUrl: text("page_url"),
+  plannedFor: text("planned_for"),
+  evidence: jsonb("evidence"),
+  planningStatus: text("planning_status"),
   status: text("status").default("queued").notNull(),
   jobId: uuid("job_id").references((): AnyPgColumn => jobs.id, { onDelete: "set null" }),
   postId: uuid("post_id").references((): AnyPgColumn => posts.id, { onDelete: "set null" }),
@@ -312,6 +326,12 @@ export const sites = pgTable("sites", {
   editorialTopics: text("editorial_topics").array(),
   language: text("language"),
   cta: text("cta"),
+  productProfile: jsonb("product_profile"),
+  productProfileUpdatedAt: timestamp("product_profile_updated_at", { withTimezone: true }),
+  topicSuggestions: jsonb("topic_suggestions"),
+  topicSuggestionsCheckedAt: timestamp("topic_suggestions_checked_at", { withTimezone: true }),
+  aiVisibility: jsonb("ai_visibility"),
+  aiVisibilityCheckedAt: timestamp("ai_visibility_checked_at", { withTimezone: true }),
   internalLinkIndex: jsonb("internal_link_index"),
   internalLinkLastSyncedAt: timestamp("internal_link_last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -335,12 +355,31 @@ export const mcpAccessTokens = pgTable("mcp_access_tokens", {
 export const mcpOAuthConnections = pgTable("mcp_oauth_connections", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  siteIds: uuid("site_ids").array(),
   providerConnectionId: text("provider_connection_id").notNull().unique(),
   scopes: text("scopes").array().notNull(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const operationEvents = pgTable("operation_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  origin: text("origin").notNull(),
+  connectionId: uuid("connection_id"),
+  clientName: text("client_name"),
+  action: text("action").notNull(),
+  objectType: text("object_type"),
+  objectId: uuid("object_id"),
+  status: text("status").notNull(),
+  durationMs: integer("duration_ms"),
+  errorCode: text("error_code"),
+  metadata: jsonb("metadata").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 // ── publishing integrations ──
@@ -545,8 +584,12 @@ export const userSettings = pgTable("user_settings", {
   knowledgeBaseEnabled: boolean("knowledge_base_enabled"),
   knowledgeDocuments: jsonb("knowledge_documents"),
   monthlyBudget: real("monthly_budget"),
+  aiPreference: text("ai_preference").default("auto").notNull(),
   budgetPaused: boolean("budget_paused"),
   budgetAlertThreshold: real("budget_alert_threshold"),
+  dailyCostLimit: real("daily_cost_limit"),
+  dailyRequestLimit: integer("daily_request_limit"),
+  dailyFailureLimit: integer("daily_failure_limit"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -567,6 +610,11 @@ export const userApiKeys = pgTable("user_api_keys", {
   pexelsKeyLast4: text("pexels_key_last4"),
   pixabayApiKeyEncrypted: text("pixabay_api_key_encrypted"),
   pixabayKeyLast4: text("pixabay_key_last4"),
+  braveApiKeyEncrypted: text("brave_api_key_encrypted"),
+  braveKeyLast4: text("brave_key_last4"),
+  // "login:password", encrypted as one secret.
+  dataforseoCredentialsEncrypted: text("dataforseo_credentials_encrypted"),
+  dataforseoKeyLast4: text("dataforseo_key_last4"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -581,4 +629,150 @@ export const schedulerLogs = pgTable("scheduler_logs", {
   feedsErrored: integer("feeds_errored").default(0).notNull(),
   results: jsonb("results"),
   triggeredAt: timestamp("triggered_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Hosted Cloud billing remains outside MCP authority. Community deployments do not enforce it.
+export const billingCustomers = pgTable("billing_customers", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  polarCustomerId: text("polar_customer_id").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const billingSubscriptions = pgTable("billing_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  polarSubscriptionId: text("polar_subscription_id").notNull().unique(),
+  polarProductId: text("polar_product_id").notNull(),
+  planCode: text("plan_code").notNull(),
+  status: text("status").notNull(),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
+  pastDueAt: timestamp("past_due_at", { withTimezone: true }),
+  providerModifiedAt: timestamp("provider_modified_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const billingEntitlements = pgTable("billing_entitlements", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  planCode: text("plan_code").notNull(),
+  source: text("source").notNull(),
+  status: text("status").notNull(),
+  effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  limits: jsonb("limits").notNull(),
+  version: integer("version").default(1).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const billingWebhookEvents = pgTable("billing_webhook_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  providerModifiedAt: timestamp("provider_modified_at", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").notNull(),
+  status: text("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  errorCode: text("error_code"),
+  processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
+  receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+});
+
+export const planUsageMonthly = pgTable("plan_usage_monthly", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  periodStart: text("period_start").notNull(),
+  manualCompleted: integer("manual_completed").default(0).notNull(),
+  manualReserved: integer("manual_reserved").default(0).notNull(),
+  automatedCompleted: integer("automated_completed").default(0).notNull(),
+  automatedReserved: integer("automated_reserved").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.periodStart] })]);
+
+export const planUsageReservations = pgTable("plan_usage_reservations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  operationKey: text("operation_key").notNull().unique(),
+  periodStart: text("period_start").notNull(),
+  origin: text("origin").notNull(),
+  amount: integer("amount").notNull(),
+  state: text("state").default("reserved").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const aiCreditAccounts = pgTable("ai_credit_accounts", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  availableCredits: integer("available_credits").default(0).notNull(),
+  reservedCredits: integer("reserved_credits").default(0).notNull(),
+  debtCredits: integer("debt_credits").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const aiCreditGrants = pgTable("ai_credit_grants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  sourceRef: text("source_ref").notNull().unique(),
+  grantedCredits: integer("granted_credits").notNull(),
+  remainingCredits: integer("remaining_credits").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  status: text("status").default("active").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const aiCreditReservations = pgTable("ai_credit_reservations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  operationKey: text("operation_key").notNull().unique(),
+  reservedCredits: integer("reserved_credits").notNull(),
+  settledCredits: integer("settled_credits"),
+  allocation: jsonb("allocation").notNull(),
+  providerGenerationId: text("provider_generation_id"),
+  state: text("state").default("reserved").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const aiCreditLedger = pgTable("ai_credit_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  entryType: text("entry_type").notNull(),
+  credits: integer("credits").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  referenceType: text("reference_type"),
+  referenceId: text("reference_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const authRateLimits = pgTable("auth_rate_limits", {
+  bucketKey: text("bucket_key").primaryKey(),
+  attempts: integer("attempts").default(0).notNull(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const adminAuditEvents = pgTable("admin_audit_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+  targetUserId: uuid("target_user_id").references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  reason: text("reason"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const rankKeywords = pgTable("rank_keywords", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  keyword: text("keyword").notNull(),
+  position: integer("position"),
+  rankingUrl: text("ranking_url"),
+  history: jsonb("history").notNull().default([]),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

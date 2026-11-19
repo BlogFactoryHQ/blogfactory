@@ -8,11 +8,13 @@ import {
 } from "jose";
 import {
   MCP_OAUTH_SITE_ID_CLAIM,
+  MCP_OAUTH_SITE_IDS_CLAIM,
   MCP_OAUTH_USER_ID_CLAIM,
   getMcpOAuthConfig,
   handleMcpProtectedResourceMetadata,
   isInvalidMcpOAuthTokenError,
   mcpBearerChallenge,
+  mcpWorkosApiKey,
   mcpOAuthIdentityFromClaims,
   mcpProtectedResourceMetadata,
   verifyMcpOAuthAccessToken,
@@ -26,20 +28,29 @@ const config = getMcpOAuthConfig({
 assert.deepEqual(config, {
   issuer: "https://blogfactory-test.authkit.app",
   resource: "https://blogfactory.io/mcp",
+  acceptedResources: ["https://blogfactory.io/mcp"],
   jwksUrl: "https://blogfactory-test.authkit.app/oauth2/jwks",
   protectedResourceMetadataUrl: "https://blogfactory.io/.well-known/oauth-protected-resource",
 });
 assert.deepEqual(mcpProtectedResourceMetadata(config!), {
   resource: "https://blogfactory.io/mcp",
   authorization_servers: ["https://blogfactory-test.authkit.app"],
-  scopes_supported: ["content:read", "drafts:write", "publish:draft"],
+  scopes_supported: ["openid", "profile", "email", "offline_access"],
   bearer_methods_supported: ["header"],
 });
 assert.equal(
   mcpBearerChallenge(config),
-  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="content:read drafts:write publish:draft"',
+  'Bearer resource_metadata="https://blogfactory.io/.well-known/oauth-protected-resource", scope="openid profile email offline_access"',
 );
 assert.equal(getMcpOAuthConfig({}), null);
+assert.equal(mcpWorkosApiKey({ WORKOS_API_KEY: "sk_browser" }), "sk_browser");
+assert.equal(mcpWorkosApiKey({ WORKOS_API_KEY: "sk_browser", MCP_WORKOS_API_KEY: " sk_mcp " }), "sk_mcp");
+assert.equal(mcpWorkosApiKey({ MCP_WORKOS_API_KEY: "  " }), undefined);
+assert.ok(getMcpOAuthConfig({
+  WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
+  MCP_RESOURCE_URL: "https://blogfactory.io/mcp",
+  MCP_WORKOS_API_KEY: "sk_test_mcp_only",
+}));
 assert.throws(() => getMcpOAuthConfig({
   WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
 }), /requires WORKOS_AUTHKIT_ISSUER, MCP_RESOURCE_URL, and WORKOS_API_KEY/);
@@ -52,7 +63,24 @@ assert.throws(() => getMcpOAuthConfig({
   WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
   MCP_RESOURCE_URL: "https://blogfactory.io/not-mcp",
   WORKOS_API_KEY: "sk_test_not_a_real_secret",
-}), /HTTPS \/mcp URL/);
+}), /HTTPS \/mcp URLs/);
+
+const transitionConfig = getMcpOAuthConfig({
+  WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
+  MCP_RESOURCE_URL: "https://blogfactory.io/mcp",
+  MCP_LEGACY_RESOURCE_URLS: "https://app.blogfactory.io/mcp, https://blogfactory.io/mcp",
+  WORKOS_API_KEY: "sk_test_not_a_real_secret",
+});
+assert.deepEqual(transitionConfig?.acceptedResources, [
+  "https://blogfactory.io/mcp",
+  "https://app.blogfactory.io/mcp",
+]);
+assert.throws(() => getMcpOAuthConfig({
+  WORKOS_AUTHKIT_ISSUER: "https://blogfactory-test.authkit.app",
+  MCP_RESOURCE_URL: "https://blogfactory.io/mcp",
+  MCP_LEGACY_RESOURCE_URLS: "http://app.blogfactory.io/mcp",
+  WORKOS_API_KEY: "sk_test_not_a_real_secret",
+}), /MCP_LEGACY_RESOURCE_URLS must contain HTTPS \/mcp URLs/);
 
 const claims = {
   sid: "app_consent_01K0BLOGFACTORY",
@@ -62,9 +90,25 @@ const claims = {
 assert.deepEqual(mcpOAuthIdentityFromClaims(claims), {
   connectionId: claims.sid,
   userId: claims[MCP_OAUTH_USER_ID_CLAIM],
-  siteId: claims[MCP_OAUTH_SITE_ID_CLAIM],
+  siteIds: [claims[MCP_OAUTH_SITE_ID_CLAIM]],
 });
 assert.equal(mcpOAuthIdentityFromClaims({ ...claims, [MCP_OAUTH_SITE_ID_CLAIM]: "other-site" }), null);
+const secondSiteId = "44444444-4444-4444-8444-444444444444";
+assert.deepEqual(mcpOAuthIdentityFromClaims({
+  ...claims,
+  [MCP_OAUTH_SITE_ID_CLAIM]: undefined,
+  [MCP_OAUTH_SITE_IDS_CLAIM]: [secondSiteId, claims[MCP_OAUTH_SITE_ID_CLAIM]],
+}), {
+  connectionId: claims.sid,
+  userId: claims[MCP_OAUTH_USER_ID_CLAIM],
+  siteIds: [claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId],
+});
+assert.deepEqual(mcpOAuthIdentityFromClaims({
+  ...claims,
+  [MCP_OAUTH_SITE_ID_CLAIM]: undefined,
+  [MCP_OAUTH_SITE_IDS_CLAIM]: JSON.stringify([claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId]),
+})?.siteIds, [claims[MCP_OAUTH_SITE_ID_CLAIM], secondSiteId]);
+assert.equal(mcpOAuthIdentityFromClaims({ ...claims, [MCP_OAUTH_SITE_IDS_CLAIM]: [] }), null);
 assert.equal(mcpOAuthIdentityFromClaims({ ...claims, sid: undefined }), null);
 assert.equal(isInvalidMcpOAuthTokenError(new errors.JWTInvalid("invalid token")), true);
 assert.equal(isInvalidMcpOAuthTokenError(new errors.JOSEError("JWKS fetch failed")), false);
@@ -86,6 +130,14 @@ assert.deepEqual(
   await verifyMcpOAuthAccessToken(
     await signAccessToken(config!.issuer, config!.resource),
     config,
+    localKeys,
+  ),
+  mcpOAuthIdentityFromClaims(claims),
+);
+assert.deepEqual(
+  await verifyMcpOAuthAccessToken(
+    await signAccessToken(config!.issuer, "https://app.blogfactory.io/mcp"),
+    transitionConfig,
     localKeys,
   ),
   mcpOAuthIdentityFromClaims(claims),
@@ -124,10 +176,14 @@ assert.equal(
 
 const previousIssuer = process.env.WORKOS_AUTHKIT_ISSUER;
 const previousResource = process.env.MCP_RESOURCE_URL;
+const previousLegacyResources = process.env.MCP_LEGACY_RESOURCE_URLS;
 const previousApiKey = process.env.WORKOS_API_KEY;
+const previousMcpApiKey = process.env.MCP_WORKOS_API_KEY;
 delete process.env.WORKOS_AUTHKIT_ISSUER;
 delete process.env.MCP_RESOURCE_URL;
+delete process.env.MCP_LEGACY_RESOURCE_URLS;
 delete process.env.WORKOS_API_KEY;
+delete process.env.MCP_WORKOS_API_KEY;
 assert.equal((await handleMcpProtectedResourceMetadata()).status, 404);
 process.env.WORKOS_AUTHKIT_ISSUER = "https://blogfactory-test.authkit.app";
 process.env.MCP_RESOURCE_URL = "https://blogfactory.io/mcp";
@@ -141,7 +197,11 @@ if (previousIssuer === undefined) delete process.env.WORKOS_AUTHKIT_ISSUER;
 else process.env.WORKOS_AUTHKIT_ISSUER = previousIssuer;
 if (previousResource === undefined) delete process.env.MCP_RESOURCE_URL;
 else process.env.MCP_RESOURCE_URL = previousResource;
+if (previousLegacyResources === undefined) delete process.env.MCP_LEGACY_RESOURCE_URLS;
+else process.env.MCP_LEGACY_RESOURCE_URLS = previousLegacyResources;
 if (previousApiKey === undefined) delete process.env.WORKOS_API_KEY;
 else process.env.WORKOS_API_KEY = previousApiKey;
+if (previousMcpApiKey === undefined) delete process.env.MCP_WORKOS_API_KEY;
+else process.env.MCP_WORKOS_API_KEY = previousMcpApiKey;
 
 console.log("MCP OAuth resource-server self-check passed");

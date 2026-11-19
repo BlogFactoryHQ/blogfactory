@@ -1,5 +1,5 @@
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
-export const MCP_SERVER_VERSION = "0.3.0";
+export const MCP_SERVER_VERSION = "0.5.0";
 
 export const MCP_SCOPES = [
   "content:read",
@@ -15,16 +15,26 @@ export const MCP_TOOL_NAMES = [
   "list_publish_targets",
   "list_posts",
   "get_post",
+  "create_draft",
+  "import_drafts",
   "generate_draft",
   "get_job",
+  "get_workspace_digest",
+  "list_action_items",
+  "review_post",
   "get_search_console_dashboard",
   "get_search_console_insights",
+  "refresh_search_console",
   "update_draft",
   "push_to_cms_draft",
   "inspect_search_console_url",
   "batch_inspect_search_console_urls",
   "list_search_console_sitemaps",
   "query_search_console_analytics",
+  "analyze_post",
+  "discover_topics",
+  "research_keyword",
+  "find_content_gaps",
 ] as const;
 
 export const ACTIVE_MCP_TOOL_NAMES = [
@@ -34,16 +44,26 @@ export const ACTIVE_MCP_TOOL_NAMES = [
   "list_publish_targets",
   "list_posts",
   "get_post",
+  "create_draft",
+  "import_drafts",
   "generate_draft",
   "get_job",
+  "get_workspace_digest",
+  "list_action_items",
+  "review_post",
   "get_search_console_dashboard",
   "get_search_console_insights",
+  "refresh_search_console",
   "update_draft",
   "push_to_cms_draft",
   "inspect_search_console_url",
   "batch_inspect_search_console_urls",
   "list_search_console_sitemaps",
   "query_search_console_analytics",
+  "analyze_post",
+  "discover_topics",
+  "research_keyword",
+  "find_content_gaps",
 ] as const satisfies readonly (typeof MCP_TOOL_NAMES[number])[];
 
 export const MCP_ERROR_CODES = [
@@ -59,5 +79,6 @@ export const MCP_ERROR_CODES = [
   "destination_not_ready",
   "provider_error",
   "rate_limited",
+  "quota_exceeded",
   "internal_error",
 ] as const;

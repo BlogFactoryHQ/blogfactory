@@ -1,0 +1,182 @@
+# Architecture and developer map
+
+This document explains how the current BlogFactory system fits together. It describes shipped code, not future pricing or launch plans.
+
+## System at a glance
+
+```text
+                         public visitors
+                               |
+                     blogfactory.io (Cloudflare)
+                               |
+                    marketing one-pager + waitlist
+
+operators ------------------------------------------------ agents
+    |                                                         |
+app.blogfactory.io                                      blogfactory.io/mcp
+    |                                                         |
+React control app                                      MCP auth + tools
+    |                                                         |
+    +--------------------- Hono API ---------------------------+
+                              |
+                   shared tenant-scoped services
+                              |
+      Hetzner PostgreSQL + Cloudflare R2 object storage
+                              |
+       CMS drafts / Search Console / configured AI providers
+```
+
+The important architectural rule is that web and MCP are two transports over the same services. Queue classification, review preflight, revision logic, Search Console reads, permissions, and CMS draft delivery should not be reimplemented in a page or MCP handler.
+
+Community deployments use the same boundary on the installer's domain: Nginx serves the web app and proxies `/api/*` and `/mcp` to the private Hono service; PostgreSQL, MinIO, and the scheduler also run in the installer's infrastructure. Community MCP tokens, content, credentials, and operation events never route through BlogFactory Cloud.
+
+## Runtime surfaces
+
+### Public marketing
+
+The private `BlogFactoryHQ/blogfactory-marketing` Astro repository is the sole source for `blogfactory.io`, its blog, documentation, waitlist, and future pricing content. Cloudflare Pages serves that repository and proxies only the allowlisted API, MCP, and OAuth compatibility routes to `app.blogfactory.io`. This public application repository does not build a second marketing page.
+
+### Authenticated web app
+
+- HTML entry: `web/index.html`
+- React entry: `web/src/main.tsx`
+- Route tree: `web/src/App.tsx`
+- API client: `web/src/lib/api.ts`
+- Session and site context: `web/src/hooks/useAuth.tsx`, `web/src/hooks/useSites.tsx`
+
+The app is the operator control plane. Pages should call typed hooks/API helpers and render state; shared product decisions belong in backend services.
+
+### MCP server and Review Card
+
+- Endpoint: `/mcp`
+- Transport: `server/src/mcp/server.ts`
+- Exact catalog/scopes/version: `server/src/mcp/contracts.ts`
+- Schemas and handlers: `server/src/mcp/tools.ts`
+- Authentication: `server/src/mcp/auth.ts`, `server/src/mcp/oauth.ts`
+- Standalone app resource: `server/src/mcp/review-app.ts`
+- Frontend card: `web/src/mcp-review/`
+
+The MCP surface is site-scoped and draft-only. `generate_draft` is asynchronous. `update_draft` and `push_to_cms_draft` require the current version. Repeating the same CMS draft delivery is idempotent.
+
+### HTTP API
+
+`server/src/index.ts` assembles the Hono app. The order is deliberate:
+
+```text
+CORS -> request logger -> normalized errors -> auth -> operation ledger -> routes
+```
+
+Production runs the Hono app with Bun in the API container. `api/index.js` remains the compatible Vercel serverless entrypoint used by the ready rollback deployment. Route files own HTTP validation and response shape; business logic should live under `server/src/services/`.
+
+## Service ownership
+
+| Concern | Source of truth | Main consumers |
+| --- | --- | --- |
+| Workspace digest, action queue, review packet | `server/src/services/control-plane.ts` | Overview, Review Queue, MCP |
+| Revisions and optimistic locking | `server/src/services/post-revisions.ts` | Post routes, review, MCP updates |
+| CMS preflight and draft delivery | `server/src/services/publishing.ts` | Web approval and MCP Review Card |
+| Content generation | `server/src/services/generate-content.ts` | Content routes, campaigns, MCP |
+| Cloud plans, quota, Polar inbox, AI wallet | `cloud-entitlements.ts`, `billing-webhooks.ts`, `plan-usage.ts`, `ai-credits.ts`, `managed-openrouter.ts` | Billing HTTP, shared generation/services, worker |
+| Generation contracts and output cleanup | `generation-contracts.ts`, `generation-output.ts`, `post-cleanup.ts` | Generation and repair flows |
+| Search Console | `server/src/services/search-console.ts` | Search Growth, digest, MCP |
+| SEO growth plans | `server/src/services/seo-growth-plan.ts` | Search Growth and campaigns |
+| Page optimization | `server/src/services/optimize.ts` | Search Growth Optimize surface |
+| Internal links and indexing | `internal-linking.ts`, `indexing.ts` | Search Growth and post delivery |
+| RSS routing and leases | `feed-routing.ts`, `feed-run-lease.ts` | Feed routes and schedulers |
+| Campaign execution | `campaign-runner.ts`, `campaign-parser.ts`, `programmatic.ts` | Campaign and programmatic routes |
+| Images | `image-slots.ts`, `low-cost-images.ts`, `ai-image-queue.ts`, `image-storage.ts` | Generation, gallery, background drains |
+| Credentials | `api-keys.ts` and integration-specific services | Settings, generation, publishing |
+| Audit history | `operation-events.ts`, `middleware/operation-ledger.ts` | Operations API and Overview |
+
+## Data and tenancy
+
+- Schema: `server/src/db/schema.ts`
+- Database connection: `server/src/db/index.ts`
+- Additive migrations: `server/src/db/migrations/`
+- Migration runner: `server/src/db/migration-runner.ts`
+
+Every authenticated query and mutation must remain user- and site-scoped. The main consistency guarantees are:
+
+- post edits use optimistic locking;
+- CMS draft delivery is idempotent;
+- background feed work uses PostgreSQL leases;
+- operation records are sanitized and retained for 30 days;
+- secrets are encrypted at rest and never returned through MCP;
+- integration tests use a disposable PostgreSQL database.
+
+Object storage holds generated/imported image assets. Database rows retain ownership, attachment, source, status, and attribution metadata; the object key alone is not an authorization boundary.
+
+## Background work
+
+Production heavy work runs in the private Cloud repository's persistent worker process. It polls every five seconds and drains at most one campaign item, two SEO jobs, and one deferred-image job per cycle using the existing PostgreSQL claims, retries, stale recovery, and terminal states. The worker runs `server/src/worker.ts` with `BACKGROUND_EXECUTION_MODE=worker`; the API runs `inline`. No Redis or external queue is involved.
+
+The worker also owns periodic work; one thin external trigger remains as a fallback:
+
+| Trigger | Schedule | Work |
+| --- | --- | --- |
+| Persistent worker | Every 5 seconds | Campaigns, SEO metadata, deferred images |
+| Persistent worker | Every 6 hours and on start | Due RSS feeds |
+| Persistent worker | Daily and on start | Google indexing, Search Console, expired operation events |
+| Cloudflare Worker | Every 6 hours | Protected bounded fallback drain |
+
+Self-hosted Compose and Dokploy installs keep their own `scheduler` container calling the all-task drain.
+
+The backend decides eligibility and claims work. Schedulers must stay thin; do not create a second queue or duplicate job classification in a Worker or workflow.
+
+## Hosting and routing
+
+| Layer | Current responsibility |
+| --- | --- |
+| Cloudflare | Private-repository public apex/front door and six-hour cron Worker |
+| Private `BlogFactoryHQ/blogfactory-cloud` | Cloud-only Compose, Caddy, image-build, and deployment ownership |
+| Hetzner Nuremberg | PostgreSQL 18, API, worker, backup, and web container runtime |
+| Cloudflare R2 EU | Private production image/object storage and encrypted portable backup |
+| GitHub Actions + GHCR | Validation and immutable API/web image builds by commit SHA; no scheduled production drains |
+| Vercel project `editorial-flow-main` | Last clean serverless deployment retained as the DNS rollback target |
+
+The pre-cutover Neon database and manual snapshot remain available only as a
+short-term rollback source. Current writes go to the private Hetzner Compose
+PostgreSQL service; encrypted R2 backups are the durable recovery source.
+
+For self-hosting, `WEB_APP_URL` is the browser origin used in review/preview links, `MCP_APP_URL` is the API's internal Review Card fetch URL, and `/api/mcp/capabilities` returns the instance-local MCP endpoint. The API honors the platform-provided `PORT`; the Nginx image resolves its private backend at runtime through `API_UPSTREAM`.
+
+This repository is the canonical shared core for the authenticated app, public self-hosting help/docs entries, and standalone MCP Review Card. Production uses the private marketing repository at the public apex and the private Cloud overlay at the app subdomain. Cloudflare proxies `app.blogfactory.io` to Caddy on Hetzner; Caddy forwards to the loopback-bound Nginx web container, which proxies API and MCP traffic to the private Hono container. Shared changes originate here and sync into Cloud; private Cloud changes never sync back automatically. Verify actual DNS, image digests, and proxy behavior during every release; do not infer live routing from configuration alone.
+
+## Authentication and authority
+
+- Hosted Cloud web sessions use WorkOS AuthKit sealed HttpOnly cookies mapped to local PostgreSQL users; Community/self-hosted keeps application authentication.
+- MCP accepts WorkOS browser OAuth or hashed personal `bf_mcp_` tokens.
+- OAuth fails closed unless issuer, resource URL, and WorkOS key are configured together.
+- MCP scopes are `content:read`, `drafts:write`, and `publish:draft`.
+- `publish:draft` means CMS draft delivery, never live publication.
+- Hosted public signup remains flag-gated; WorkOS owns email verification, password recovery, and session lifecycle. Self-hosted signup remains an environment-gated administrator bootstrap path.
+
+## Pricing boundary
+
+Cloud billing is live: public signup, Polar checkout, and entitlement enforcement have been on since 2026-09-15, while Managed AI credits stay disabled. Polar owns payment/subscription events; PostgreSQL owns entitlements, quotas, and spendable credit. The browser redirect is non-authoritative, the webhook inbox is idempotent, and all OpenRouter inference crosses the managed gateway. Community behavior is unchanged. See [`billing.md`](billing.md) for the remaining acceptance gates.
+
+## Where to make a change
+
+| If you need to change… | Start here |
+| --- | --- |
+| Public one-pager, blog, waitlist, or future pricing | private `BlogFactoryHQ/blogfactory-marketing` repository |
+| Hosted app deployment, Cloud-only code, billing, or entitlements | private `BlogFactoryHQ/blogfactory-cloud` repository |
+| App navigation or route | `web/src/App.tsx`, `web/src/components/layout/AppSidebar.tsx` |
+| Shared page chrome | `web/src/components/layout/BywordSurface.tsx`, `UI_UX.md` |
+| API endpoint | matching file under `server/src/routes/`, then a shared service |
+| Database field | `server/src/db/schema.ts` plus a new additive migration |
+| MCP tool | `contracts.ts`, `tools.ts`, exact catalog assertions, `docs/mcp.md` |
+| Review/preflight behavior | `server/src/services/control-plane.ts` or `publishing.ts` |
+| Scheduled work | `server/src/routes/cron.ts`, existing drain service, current trigger config |
+| Production routing | private Cloud Compose/Caddy, Cloudflare, `docs/operations.md` |
+
+## Developer reading order
+
+1. `README.md`
+2. This document
+3. `AGENTS.md`
+4. `docs/mcp.md` for MCP or agent work
+5. `docs/operations.md` for database, jobs, or release work
+6. `UI_UX.md` for frontend work
+
+Historical plans preserve decisions but are not evidence of current behavior. When documentation disagrees, confirm the code and update the current document in the same change.

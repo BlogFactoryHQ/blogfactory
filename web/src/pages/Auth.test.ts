@@ -1,5 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { authReturnTo } from "./Auth";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import Auth, { authReturnTo } from "./Auth";
+
+const { apiGetMock } = vi.hoisted(() => ({ apiGetMock: vi.fn() }));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ login: vi.fn(), devLogin: vi.fn(), signup: vi.fn() }),
+}));
+vi.mock("@/lib/api", () => ({ api: { get: apiGetMock } }));
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 describe("authReturnTo", () => {
   it("keeps internal OAuth paths and rejects external redirects", () => {
@@ -8,8 +25,100 @@ describe("authReturnTo", () => {
     expect(authReturnTo(null, "/mcp/oauth?external_auth_id=ext_auth_456"))
       .toBe("/mcp/oauth?external_auth_id=ext_auth_456");
     expect(authReturnTo({ returnTo: "//evil.example/steal" })).toBe("/");
+    expect(authReturnTo({ returnTo: "/\\evil.example/steal" })).toBe("/");
     expect(authReturnTo({ returnTo: "https://evil.example/steal" })).toBe("/");
     expect(authReturnTo(null, "https://evil.example/steal")).toBe("/");
     expect(authReturnTo(null)).toBe("/");
+  });
+
+  it("renders login without public signup controls", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(Auth, { selfHosted: false })));
+    });
+
+    expect(container).toHaveTextContent("Sign in");
+    expect(container).not.toHaveTextContent("Sign up");
+    expect(container).not.toHaveTextContent("Create account");
+    expect(container).toHaveTextContent("Forgot password");
+    await act(async () => root.unmount());
+  });
+
+  it("offers account creation only for self-hosted builds", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(Auth, { selfHosted: true })));
+    });
+
+    expect(container).toHaveTextContent("Create account");
+    await act(async () => {
+      (Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "Create account") as HTMLButtonElement).click();
+    });
+    expect(container).toHaveTextContent("Other accounts wait for administrator approval");
+    await act(async () => root.unmount());
+  });
+
+  it("uses the runtime signup configuration", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Create account"));
+    });
+    expect(apiGetMock).toHaveBeenCalledWith("/auth/config");
+    await act(async () => root.unmount());
+  });
+
+  it("opens signup mode from a ?mode=signup link once runtime signup is confirmed", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Back to sign in"));
+    });
+    expect(container).toHaveTextContent("Verify your email, then choose a Cloud plan.");
+    await act(async () => root.unmount());
+  });
+
+  it("falls back to sign in when a signup link reaches a build without signup", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: false });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Access your BlogFactory workspace."));
+    });
+    expect(container).not.toHaveTextContent("Create account");
+    await act(async () => root.unmount());
+  });
+
+  it("returns a WorkOS user without a local account to the create-account step", async () => {
+    apiGetMock.mockResolvedValueOnce({ signup_enabled: true, auth_provider: "workos" });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/auth?mode=signup&error=signup_required"] }, createElement(Auth)));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(container).toHaveTextContent("Continue to create account"));
+    });
+    expect(container).toHaveTextContent("I accept the BlogFactory Terms of Service and Privacy Policy.");
+    await act(async () => root.unmount());
   });
 });

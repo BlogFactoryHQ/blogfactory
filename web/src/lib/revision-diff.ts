@@ -44,3 +44,97 @@ export function lineRevisionDiff(before: string, after: string): RevisionDiffLin
   while (j < right.length) result.push({ type: "added", text: right[j++] });
   return result;
 }
+
+export type NumberedRevisionDiffLine = RevisionDiffLine & {
+  beforeLine: number | null;
+  afterLine: number | null;
+};
+
+export type RevisionDiffHunk = {
+  beforeStart: number;
+  beforeCount: number;
+  afterStart: number;
+  afterCount: number;
+  lines: NumberedRevisionDiffLine[];
+};
+
+export type RevisionDiffSummary = {
+  added: number;
+  removed: number;
+  beforeWords: number;
+  afterWords: number;
+};
+
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+export function numberRevisionDiff(lines: RevisionDiffLine[]): NumberedRevisionDiffLine[] {
+  let before = 0;
+  let after = 0;
+  return lines.map((line) => {
+    if (line.type === "added") {
+      after += 1;
+      return { ...line, beforeLine: null, afterLine: after };
+    }
+    if (line.type === "removed") {
+      before += 1;
+      return { ...line, beforeLine: before, afterLine: null };
+    }
+    before += 1;
+    after += 1;
+    return { ...line, beforeLine: before, afterLine: after };
+  });
+}
+
+// Collapse unchanged stretches so a long article shows only the edited regions with
+// a few lines of surrounding context, the way a code review hunk reads.
+export function groupRevisionDiffHunks(lines: RevisionDiffLine[], context = 3): RevisionDiffHunk[] {
+  const numbered = numberRevisionDiff(lines);
+  const ranges: Array<[number, number]> = [];
+
+  numbered.forEach((line, index) => {
+    if (line.type === "same") return;
+    const start = Math.max(0, index - context);
+    const end = Math.min(numbered.length - 1, index + context);
+    const last = ranges[ranges.length - 1];
+    if (last && start <= last[1] + 1) last[1] = Math.max(last[1], end);
+    else ranges.push([start, end]);
+  });
+
+  return ranges.map(([start, end]) => {
+    const slice = numbered.slice(start, end + 1);
+    const beforeNumbers = slice.map((line) => line.beforeLine).filter((value): value is number => value !== null);
+    const afterNumbers = slice.map((line) => line.afterLine).filter((value): value is number => value !== null);
+    return {
+      beforeStart: beforeNumbers[0] ?? 0,
+      beforeCount: beforeNumbers.length,
+      afterStart: afterNumbers[0] ?? 0,
+      afterCount: afterNumbers.length,
+      lines: slice,
+    };
+  });
+}
+
+export function summarizeRevisionDiff(lines: RevisionDiffLine[]): RevisionDiffSummary {
+  let added = 0;
+  let removed = 0;
+  let beforeWords = 0;
+  let afterWords = 0;
+  for (const line of lines) {
+    const words = countWords(line.text);
+    if (line.type === "added") {
+      added += 1;
+      afterWords += words;
+    } else if (line.type === "removed") {
+      removed += 1;
+      beforeWords += words;
+    } else {
+      beforeWords += words;
+      afterWords += words;
+    }
+  }
+  return { added, removed, beforeWords, afterWords };
+}

@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { feeds, siteIntegrations, sites } from "../db/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { feeds, jobs, siteIntegrations, sites } from "../db/schema.js";
+import { eq, and, desc, gte, isNotNull } from "drizzle-orm";
 import { getUserId } from "../middleware/auth.js";
 import { inspectFeedRouting, normalizeFeedEditorialDefaults } from "../services/feed-routing.js";
 import { readJsonObject, requiredString } from "../http/error-contract.js";
+import { assertCanActivateFeed, withCloudLimitLock } from "../services/cloud-limits.js";
+import { feedSyncHealth, schedulerTickMs, summarizeFeedHealth } from "../services/feed-sync-health.js";
 
 export const feedsRoutes = new Hono();
 
@@ -107,6 +109,32 @@ feedsRoutes.get("/", async (c) => {
   }));
 });
 
+// Sync health for every feed, judged against what the scheduler tick can actually deliver.
+feedsRoutes.get("/health", async (c) => {
+  const userId = getUserId(c);
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const [rows, outcomes] = await Promise.all([
+    db.select({
+      id: feeds.id,
+      name: feeds.name,
+      platform: feeds.platform,
+      frequency: feeds.frequency,
+      isActive: feeds.isActive,
+      lastRunAt: feeds.lastRunAt,
+      runActiveCount: feeds.runActiveCount,
+      runLeaseUntil: feeds.runLeaseUntil,
+      totalArticles: feeds.totalArticles,
+    }).from(feeds).where(eq(feeds.userId, userId)).orderBy(desc(feeds.createdAt)),
+    db.select({ feedId: jobs.feedId, status: jobs.status, errorMessage: jobs.errorMessage, createdAt: jobs.createdAt })
+      .from(jobs)
+      .where(and(eq(jobs.userId, userId), isNotNull(jobs.feedId), gte(jobs.createdAt, weekAgo))),
+  ]);
+  const tickMs = schedulerTickMs();
+  const entries = rows.map((row) => feedSyncHealth(row, outcomes, now, tickMs));
+  return c.json({ summary: summarizeFeedHealth(entries, tickMs), feeds: entries });
+});
+
 feedsRoutes.post("/", async (c) => {
   const userId = getUserId(c);
   const body = await readJsonObject(c);
@@ -118,10 +146,11 @@ feedsRoutes.post("/", async (c) => {
   values.editorialDefaults = route.editorialDefaults;
   values.routingVersion = 1;
   if (!route.valid) values.isActive = false;
-  const [feed] = await db
-    .insert(feeds)
-    .values({ ...values, userId, name: values.name })
-    .returning();
+  const feed = await withCloudLimitLock(userId, async (tx) => {
+    if (values.isActive !== false) await assertCanActivateFeed(userId, undefined, tx);
+    const [created] = await tx.insert(feeds).values({ ...values, userId, name: values.name }).returning();
+    return created;
+  });
   return c.json({ ...serializeFeed(feed, { ready: route.valid }), routing_errors: route.errors }, 201);
 });
 
@@ -152,12 +181,11 @@ feedsRoutes.put("/:id", async (c) => {
     routeErrors = route.errors;
     if (!route.valid) values.isActive = false;
   }
-
-  const [updated] = await db
-    .update(feeds)
-    .set(values)
-    .where(and(eq(feeds.id, id), eq(feeds.userId, userId)))
-    .returning();
+  const updated = await withCloudLimitLock(userId, async (tx) => {
+    if (values.isActive === true && !existing[0].isActive) await assertCanActivateFeed(userId, id, tx);
+    const [row] = await tx.update(feeds).set(values).where(and(eq(feeds.id, id), eq(feeds.userId, userId))).returning();
+    return row;
+  });
 
   if (!updated) return c.json({ error: "Feed not found" }, 404);
   return c.json({ ...serializeFeed(updated, { ready: routeErrors.length === 0 && Boolean(updated.siteId && updated.integrationId) }), routing_errors: routeErrors });

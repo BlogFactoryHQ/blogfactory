@@ -1,4 +1,4 @@
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { assertOpenRouterModelAvailable } from "./openrouter-models.js";
 import { randomUUID } from "node:crypto";
 
@@ -149,8 +149,7 @@ export async function analyzeVoiceProfile(opts: { userId: string; samples: unkno
   const samples = sanitizeTrainingSamples(opts.samples);
   if (!samples.length) throw new Error("Add at least one writing sample");
 
-  const apiKey = await getOpenRouterKey(opts.userId);
-  if (!apiKey) throw new Error("Add your OpenRouter API key before generating a voice profile");
+  const apiKey = (await resolveOpenRouterAccess(opts.userId)).apiKey;
 
   const model = cleanText(opts.modelId, 120) || DEFAULT_PROFILE_MODEL;
   await assertOpenRouterModelAvailable(apiKey, model);
@@ -159,7 +158,7 @@ export async function analyzeVoiceProfile(opts: { userId: string; samples: unkno
     .map((sample, index) => `Sample ${index + 1}: ${sample.title}\n${sample.content}`)
     .join("\n\n---\n\n");
 
-  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const resp = await openRouterInferenceFetch(opts.userId, "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(35_000),
     headers: {

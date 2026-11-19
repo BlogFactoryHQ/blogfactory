@@ -7,6 +7,13 @@
       "maxDuration": 60
     }
   },
+  "headers": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "app.blogfactory.io" }],
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    }
+  ],
   "rewrites": [
     {
       "source": "/.well-known/oauth-protected-resource",
@@ -17,11 +24,16 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "app.blogfactory.io" }],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api/|assets/|help\\.html$|docs\\.html$|mcp-review\\.html$).*)",
       "destination": "/index.html"
     }
   ]

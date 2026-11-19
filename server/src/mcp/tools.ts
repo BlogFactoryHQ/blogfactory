@@ -1,8 +1,10 @@
 import { and, asc, count, desc, eq, ilike, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { waitUntil } from "@vercel/functions";
 import { db } from "../db/index.js";
+import { ApiError } from "../http/error-contract.js";
 import {
   imageAssets,
   jobs,
@@ -12,13 +14,16 @@ import {
   siteIntegrations,
   sites,
 } from "../db/schema.js";
-import { encryptedCredentialStatus } from "../services/api-keys.js";
-import { getOpenRouterKey } from "../services/api-keys.js";
+import { encryptedCredentialStatus, testedConnectionReady } from "../services/api-keys.js";
 import { NO_DRAFT_TIMEOUT_MESSAGE, reconciledJobForRead } from "../services/job-timeouts.js";
 import { resolveOpenRouterTextModel } from "../services/openrouter-models.js";
 import { cleanGeneratedPostContent, cleanPostTitle } from "../services/post-cleanup.js";
-import { ExpectedPostVersionError, publishPost, SeoMetadataNotReadyError } from "../services/publishing.js";
+import { plainText, truncateAtWord } from "../services/generation-output.js";
+import { hashContent } from "../services/generation-sources.js";
+import { ExpectedPostVersionError, publishPost, SavedRevisionRequiredError, SeoMetadataNotReadyError } from "../services/publishing.js";
 import { PostNotEditableError, PostRevisionNotFoundError, PostVersionConflictError, currentPostRevision, updatePostWithRevision } from "../services/post-revisions.js";
+import { ACTION_KINDS, ACTION_SEVERITIES, getReviewPacket, getWorkspaceDigest, listActionItems, type ActionKind, type ActionSeverity } from "../services/control-plane.js";
+import { finishOperationEvent, safeOperationMetadata, startOperationEvent } from "../services/operation-events.js";
 import { getPublicUrl } from "../services/s3-client.js";
 import {
   getSearchConsoleDashboard,
@@ -27,12 +32,25 @@ import {
   inspectSearchConsoleUrls,
   listSearchConsoleSitemaps,
   querySearchConsoleAnalytics,
+  refreshSearchConsoleData,
 } from "../services/search-console.js";
 import { drainSeoMetadata, enqueueSeoMetadata, seoMetadata, seoStatusForArticle } from "../services/seo-metadata.js";
+import { getCloudAccess } from "../services/cloud-entitlements.js";
+import { withDraftQuota } from "../services/plan-usage.js";
+import { randomUUID } from "node:crypto";
+import { MANAGED_TEXT_MODELS, resolveOpenRouterAccess } from "../services/managed-openrouter.js";
+import { analyzePostContent, discoverTopics, postStructuredData } from "../services/product-seo.js";
+import { researchKeyword } from "../services/keyword-research.js";
+import { toPlanBrief } from "../services/plan-brief.js";
+import { findContentGaps } from "../services/competitor-gap.js";
 import { hasMcpScope, type McpPrincipal } from "./auth.js";
 import { ACTIVE_MCP_TOOL_NAMES, MCP_SCOPES, MCP_SERVER_VERSION, MCP_TOOL_NAMES, type McpScope } from "./contracts.js";
 
+export const MCP_REVIEW_APP_URI = "ui://blogfactory/review-post.html";
+
 export const MCP_POST_CONTENT_LIMIT = 100_000;
+export const MCP_BATCH_DRAFT_LIMIT = 20;
+export const MCP_BATCH_TOTAL_CONTENT_LIMIT = 500_000;
 
 type ToolAnnotations = {
   readOnlyHint: boolean;
@@ -46,6 +64,13 @@ const READ_ONLY_ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
+} as const;
+
+const READ_ONLY_OPEN_WORLD_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
 } as const;
 
 const GENERATE_ANNOTATIONS = {
@@ -63,6 +88,13 @@ const UPDATE_ANNOTATIONS = {
 } as const;
 
 const PUSH_DRAFT_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
+const REFRESH_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: true,
@@ -96,6 +128,7 @@ const successOutputSchema = (data: z.ZodRawShape) => ({
 
 type ToolErrorCode =
   | "insufficient_scope"
+  | "forbidden"
   | "not_found"
   | "validation_error"
   | "conflict"
@@ -106,6 +139,7 @@ type ToolErrorCode =
   | "destination_not_ready"
   | "provider_error"
   | "rate_limited"
+  | "quota_exceeded"
   | "internal_error";
 
 export class McpToolError extends Error {
@@ -121,7 +155,7 @@ export class McpToolError extends Error {
 
 async function requireOwnedAllowedSite(principal: McpPrincipal, siteId: string) {
   if (!principal.siteIds.has(siteId)) {
-    throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    throw new McpToolError("forbidden", "Site is not authorized for this connection.", "Call list_sites to choose an allowed site.");
   }
   const [site] = await db
     .select({ id: sites.id })
@@ -129,7 +163,7 @@ async function requireOwnedAllowedSite(principal: McpPrincipal, siteId: string) 
     .where(and(eq(sites.id, siteId), eq(sites.userId, principal.userId)))
     .limit(1);
   if (!site) {
-    throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    throw new McpToolError("forbidden", "Site is not authorized for this connection.", "Call list_sites to choose an allowed site.");
   }
 }
 
@@ -225,6 +259,7 @@ async function listPublishTargets(principal: McpPrincipal, input: { site_id: str
       display_name: row.displayName,
       status: row.status,
       credential_status: encryptedCredentialStatus(row.credentialsEncrypted),
+      ready: testedConnectionReady(row),
       last_tested_at: isoDate(row.lastTestedAt),
     })),
   };
@@ -238,6 +273,11 @@ async function searchConsoleDashboard(principal: McpPrincipal, input: { site_id:
 async function searchConsoleInsights(principal: McpPrincipal, input: { site_id: string }) {
   await requireOwnedAllowedSite(principal, input.site_id);
   return { site_id: input.site_id, insights: await getSearchConsoleInsights(principal.userId, input.site_id) };
+}
+
+async function refreshSearchConsole(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  return { site_id: input.site_id, refresh: await searchConsoleToolCall(() => refreshSearchConsoleData(principal.userId, input.site_id)) };
 }
 
 async function inspectSearchConsole(principal: McpPrincipal, input: { site_id: string; url: string; force: boolean }) {
@@ -264,6 +304,7 @@ async function searchConsoleAnalytics(principal: McpPrincipal, input: {
   country?: string;
   device?: "DESKTOP" | "MOBILE" | "TABLET";
   limit: number;
+  include_preliminary: boolean;
 }) {
   await requireOwnedAllowedSite(principal, input.site_id);
   return {
@@ -276,6 +317,7 @@ async function searchConsoleAnalytics(principal: McpPrincipal, input: {
       country: input.country,
       device: input.device,
       limit: Math.min(input.limit, 100),
+      includePreliminary: input.include_preliminary,
     })),
   };
 }
@@ -334,6 +376,8 @@ async function listPosts(principal: McpPrincipal, input: ListPostsInput) {
       preferredIntegrationId: siteIntegrations.id,
       integrationSiteId: siteIntegrations.siteId,
       integrationStatus: siteIntegrations.status,
+      integrationLastTestedAt: siteIntegrations.lastTestedAt,
+      integrationCredentialsEncrypted: siteIntegrations.credentialsEncrypted,
       createdAt: posts.createdAt,
       updatedAt: posts.updatedAt,
     })
@@ -369,7 +413,7 @@ async function listPosts(principal: McpPrincipal, input: ListPostsInput) {
     routing_status: row.siteId
       && row.preferredIntegrationId
       && row.integrationSiteId === row.siteId
-      && row.integrationStatus === "connected"
+      && testedConnectionReady({ status: row.integrationStatus, lastTestedAt: row.integrationLastTestedAt, credentialsEncrypted: row.integrationCredentialsEncrypted })
       ? "ready"
       : "needs_routing",
     created_at: isoDate(row.createdAt),
@@ -443,6 +487,8 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       preferredIntegrationId: siteIntegrations.id,
       integrationSiteId: siteIntegrations.siteId,
       integrationStatus: siteIntegrations.status,
+      integrationLastTestedAt: siteIntegrations.lastTestedAt,
+      integrationCredentialsEncrypted: siteIntegrations.credentialsEncrypted,
       editorialState: posts.editorialState,
       approvedRevisionId: posts.approvedRevisionId,
       updatedAt: posts.updatedAt,
@@ -545,7 +591,7 @@ async function getPost(principal: McpPrincipal, input: { post_id: string }) {
       routing_status: post.siteId
         && post.preferredIntegrationId
         && post.integrationSiteId === post.siteId
-        && post.integrationStatus === "connected"
+        && testedConnectionReady({ status: post.integrationStatus, lastTestedAt: post.integrationLastTestedAt, credentialsEncrypted: post.integrationCredentialsEncrypted })
         ? "ready"
         : "needs_routing",
       preferred_integration_id: post.preferredIntegrationId,
@@ -592,6 +638,10 @@ type GenerateDraftInput = {
   generate_images: false;
 };
 
+export function mcpDraftModelId(personaBaseModel?: string | null) {
+  return personaBaseModel?.trim() || "openai/gpt-4o";
+}
+
 function validateMcpDraftSource(input: GenerateDraftInput) {
   if (input.source_type === "url" || input.source_type === "youtube") {
     let url: URL;
@@ -613,12 +663,14 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
   await requireOwnedAllowedSite(principal, input.site_id);
   validateMcpDraftSource(input);
 
+  let personaBaseModel: string | null = null;
   if (input.persona_id) {
-    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+    const [persona] = await db.select({ id: personas.id, baseModel: personas.baseModel }).from(personas).where(and(
       eq(personas.id, input.persona_id),
       eq(personas.userId, principal.userId),
     )).limit(1);
     if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas and choose an available persona.");
+    personaBaseModel = persona.baseModel;
   }
   if (input.preferred_integration_id) {
     const [integration] = await db.select({ id: siteIntegrations.id }).from(siteIntegrations).where(and(
@@ -637,14 +689,19 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
   )).limit(1);
   if (activeJob) throw new McpToolError("generation_busy", "A draft generation job is already running for this site.", `Call get_job with job_id ${activeJob.id}.`, true);
 
-  const openRouterKey = await getOpenRouterKey(principal.userId);
-  if (!openRouterKey) throw new McpToolError("configuration_missing", "OpenRouter is not configured.", "Add an OpenRouter API key in BlogFactory Settings.");
-
+  const access = await resolveOpenRouterAccess(principal.userId).catch(() => null);
+  if (!access) throw new McpToolError("configuration_missing", "AI access is not configured.", "Add an OpenRouter key or enable Managed AI Credits in BlogFactory Settings.");
   let modelId: string;
   try {
-    modelId = await resolveOpenRouterTextModel(openRouterKey, "openai/gpt-4o");
+    const requestedModel = mcpDraftModelId(personaBaseModel);
+    if (access.mode === "managed") {
+      if (personaBaseModel && !MANAGED_TEXT_MODELS.includes(requestedModel as typeof MANAGED_TEXT_MODELS[number])) throw new Error("Managed model unavailable");
+      modelId = personaBaseModel ? requestedModel : MANAGED_TEXT_MODELS[0];
+    } else {
+      modelId = await resolveOpenRouterTextModel(access.apiKey, requestedModel);
+    }
   } catch {
-    throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Review the OpenRouter model configuration in BlogFactory Settings.");
+    throw new McpToolError("configuration_missing", "The configured text model is unavailable.", "Choose a model available for the selected AI mode in BlogFactory Settings.");
   }
 
   const [job] = await db.insert(jobs).values({
@@ -655,7 +712,7 @@ async function generateDraft(principal: McpPrincipal, input: GenerateDraftInput)
     sourceValue: input.source_value,
     modelId,
     personaId: input.persona_id || null,
-    status: "running",
+    status: "pending",
     currentStep: "starting",
     generationPlan: { totalDrafts: input.variations, origin: "mcp" },
   }).returning({ id: jobs.id });
@@ -701,6 +758,119 @@ type UpdateDraftInput = {
   title?: string;
   content?: string;
 };
+
+type CreateDraftInput = {
+  site_id: string;
+  title: string;
+  content: string;
+  persona_id?: string;
+};
+
+type BatchDraftInput = Pick<CreateDraftInput, "title" | "content"> & { source_ref?: string };
+
+export function mcpDraftContentHash(title: string, content: string) {
+  return hashContent(`${title}\n${content}`);
+}
+
+async function createDraft(principal: McpPrincipal, input: CreateDraftInput) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  const title = cleanPostTitle(input.title);
+  const content = cleanGeneratedPostContent(input.content);
+  if (!title) throw new McpToolError("validation_error", "Title cannot be empty.", "Provide a non-empty title.");
+  if (!content) throw new McpToolError("validation_error", "Content cannot be empty.", "Provide non-empty Markdown content.");
+  if (input.persona_id) {
+    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+      eq(personas.id, input.persona_id),
+      eq(personas.userId, principal.userId),
+      eq(personas.status, "active"),
+    )).limit(1);
+    if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas to choose an active persona.");
+  }
+
+  const [post] = await withDraftQuota(principal.userId, "automated", `draft:mcp:${randomUUID()}`, (tx) => tx.insert(posts).values({
+    userId: principal.userId,
+    siteId: input.site_id,
+    title,
+    content,
+    summary: truncateAtWord(plainText(content, 500), 180),
+    status: "draft",
+    sourceType: "raw_text",
+    sourceRefId: "codex",
+    sourceContentHash: mcpDraftContentHash(title, content),
+    personaId: input.persona_id || null,
+    modelId: "openai/codex",
+  }).returning());
+  const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_create" });
+  if (seoJob.queued) waitUntil(drainSeoMetadata(principal.userId, 1));
+  return {
+    post_id: post.id,
+    site_id: input.site_id,
+    title: post.title,
+    seo_status: seoJob.status,
+    seo_job_id: seoJob.jobId,
+    updated_at: isoDate(post.updatedAt),
+    next_action: "Call get_post before any update or CMS delivery to use the current expected_updated_at.",
+  };
+}
+
+async function importDrafts(principal: McpPrincipal, input: { site_id: string; persona_id?: string; drafts: BatchDraftInput[] }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  if (input.drafts.reduce((total, draft) => total + draft.content.length, 0) > MCP_BATCH_TOTAL_CONTENT_LIMIT) {
+    throw new McpToolError("validation_error", "The batch is too large.", `Send at most ${MCP_BATCH_TOTAL_CONTENT_LIMIT} characters per batch.`);
+  }
+  if (input.persona_id) {
+    const [persona] = await db.select({ id: personas.id }).from(personas).where(and(
+      eq(personas.id, input.persona_id),
+      eq(personas.userId, principal.userId),
+      eq(personas.status, "active"),
+    )).limit(1);
+    if (!persona) throw new McpToolError("not_found", "Persona not found.", "Call list_personas and choose an active persona.");
+  }
+
+  const items: Array<{ title: string; post_id: string; status: "created" | "skipped_duplicate" }> = [];
+  let hasQueuedSeoMetadata = false;
+  for (const draft of input.drafts) {
+    const title = cleanPostTitle(draft.title);
+    const content = cleanGeneratedPostContent(draft.content);
+    if (!title) throw new McpToolError("validation_error", "A draft title cannot be empty.", "Provide a non-empty title for every draft.");
+    if (!content) throw new McpToolError("validation_error", "A draft cannot be empty.", "Provide non-empty Markdown for every draft.");
+    const sourceContentHash = mcpDraftContentHash(title, content);
+    const [existing] = await db.select({ id: posts.id }).from(posts).where(and(
+      eq(posts.userId, principal.userId),
+      eq(posts.siteId, input.site_id),
+      eq(posts.sourceContentHash, sourceContentHash),
+    )).limit(1);
+    if (existing) {
+      items.push({ title, post_id: existing.id, status: "skipped_duplicate" });
+      continue;
+    }
+    const [post] = await withDraftQuota(principal.userId, "automated", `draft:mcp-import:${randomUUID()}`, (tx) => tx.insert(posts).values({
+      userId: principal.userId,
+      siteId: input.site_id,
+      title,
+      content,
+      summary: truncateAtWord(plainText(content, 500), 180),
+      status: "draft",
+      sourceType: "mcp_batch_import",
+      sourceRefId: draft.source_ref?.trim() || "mcp",
+      sourceContentHash,
+      personaId: input.persona_id || null,
+      modelId: "openai/codex",
+    }).returning({ id: posts.id }));
+    const seoJob = await enqueueSeoMetadata({ userId: principal.userId, postId: post.id, trigger: "mcp_batch_import" });
+    hasQueuedSeoMetadata ||= seoJob.queued;
+    items.push({ title, post_id: post.id, status: "created" });
+  }
+  if (hasQueuedSeoMetadata) waitUntil(drainSeoMetadata(principal.userId, MCP_BATCH_DRAFT_LIMIT));
+  const created = items.filter((item) => item.status === "created").length;
+  return {
+    site_id: input.site_id,
+    created,
+    skipped_duplicates: items.length - created,
+    items,
+    next_action: "Batch import is complete. Call list_posts to review the imported drafts.",
+  };
+}
 
 async function updateDraft(principal: McpPrincipal, input: UpdateDraftInput) {
   if (input.title === undefined && input.content === undefined) {
@@ -777,13 +947,13 @@ async function pushToCmsDraft(principal: McpPrincipal, input: PushDraftInput) {
   )).limit(1);
   if (!post?.siteId) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
 
-  const [integration] = await db.select({ provider: siteIntegrations.provider, status: siteIntegrations.status }).from(siteIntegrations).where(and(
+  const [integration] = await db.select({ provider: siteIntegrations.provider, status: siteIntegrations.status, lastTestedAt: siteIntegrations.lastTestedAt, credentialsEncrypted: siteIntegrations.credentialsEncrypted }).from(siteIntegrations).where(and(
     eq(siteIntegrations.id, input.integration_id),
     eq(siteIntegrations.userId, principal.userId),
     eq(siteIntegrations.siteId, post.siteId),
   )).limit(1);
   if (!integration) throw new McpToolError("not_found", "Publishing target not found.", "Call list_publish_targets for this post's site.");
-  if (integration.status !== "connected") throw new McpToolError("destination_not_ready", "Publishing target is not connected.", "Reconnect the target in BlogFactory Integrations.");
+  if (!testedConnectionReady(integration)) throw new McpToolError("destination_not_ready", "Publishing target is not ready.", "Save and test the target in BlogFactory Integrations.");
 
   let result: Awaited<ReturnType<typeof publishPost>>;
   try {
@@ -797,6 +967,7 @@ async function pushToCmsDraft(principal: McpPrincipal, input: PushDraftInput) {
     });
   } catch (error) {
     if (error instanceof ExpectedPostVersionError) throw new McpToolError("conflict", error.message, "Call get_post and retry with its updated_at.");
+    if (error instanceof SavedRevisionRequiredError) throw new McpToolError("validation_error", error.message, "Save the draft in BlogFactory, then call review_post again.");
     if (error instanceof SeoMetadataNotReadyError) throw new McpToolError("seo_not_ready", error.message, "Wait for SEO metadata, review it in get_post, then retry.", true);
     throw error;
   }
@@ -905,6 +1076,131 @@ async function getJob(principal: McpPrincipal, input: { job_id: string }) {
   };
 }
 
+async function workspaceDigest(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  const workspace = await getWorkspaceDigest({ userId: principal.userId, siteId: input.site_id });
+  if (!workspace) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+  const nextAction = workspace.action_items[0]
+    ? `Call review_post with post_id ${workspace.action_items[0].object_id}.`
+    : workspace.runs.running
+      ? "Call get_workspace_digest again after the active run advances."
+      : "No immediate action is required. Start a draft when new content is needed.";
+  return { site_id: input.site_id, workspace, next_action: nextAction };
+}
+
+async function actionItems(principal: McpPrincipal, input: {
+  site_id: string;
+  severity?: ActionSeverity;
+  kind?: ActionKind;
+  limit: number;
+  page: number;
+}) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  const result = await listActionItems({
+    userId: principal.userId,
+    siteId: input.site_id,
+    severity: input.severity,
+    kind: input.kind,
+    limit: input.limit,
+    page: input.page,
+  });
+  if (!result) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+  return {
+    site_id: input.site_id,
+    ...result,
+    next_action: result.items[0] ? `Call review_post with post_id ${result.items[0].object_id}.` : "No matching action items remain.",
+  };
+}
+
+export function reviewPostNextAction(input: {
+  postId: string;
+  updatedAt: string;
+  hasBlockers: boolean;
+  canPushCmsDraft: boolean;
+  usableDestinationIds: string[];
+}) {
+  if (input.hasBlockers) return "Open the post in BlogFactory and resolve the blocker checks, then call review_post again.";
+  if (!input.canPushCmsDraft) return "Review is complete. Reconnect with publish:draft permission to deliver a CMS draft.";
+  if (!input.usableDestinationIds.length) return "Repair a CMS connection in BlogFactory, then call review_post again.";
+  if (input.usableDestinationIds.length > 1) return "Choose one destination from review.destinations, then call push_to_cms_draft with the current expected_updated_at.";
+  return `Call push_to_cms_draft with post_id ${input.postId}, integration_id ${input.usableDestinationIds[0]}, and expected_updated_at ${input.updatedAt}.`;
+}
+
+async function reviewPost(principal: McpPrincipal, input: { post_id: string }) {
+  const review = await getReviewPacket({
+    userId: principal.userId,
+    postId: input.post_id,
+    allowedSiteIds: principal.siteIds,
+    canPushCmsDraft: hasMcpScope(principal, "publish:draft"),
+  });
+  if (!review) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+  return {
+    site_id: review.post.site_id,
+    review,
+    next_action: reviewPostNextAction({
+      postId: review.post.id,
+      updatedAt: review.post.updated_at,
+      hasBlockers: review.preflight.has_blockers,
+      canPushCmsDraft: review.permissions.can_push_cms_draft,
+      usableDestinationIds: review.destinations.filter((destination) => destination.ready).map((destination) => destination.id),
+    }),
+  };
+}
+
+async function analyzePost(principal: McpPrincipal, input: { post_id: string; keyword?: string }) {
+  const [post] = await db.select({ siteId: posts.siteId }).from(posts)
+    .where(and(eq(posts.id, input.post_id), eq(posts.userId, principal.userId))).limit(1);
+  if (!post?.siteId || !principal.siteIds.has(post.siteId)) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+  const [analysis, structured] = await Promise.all([
+    analyzePostContent(principal.userId, input.post_id, input.keyword),
+    postStructuredData(principal.userId, input.post_id),
+  ]);
+  if (!analysis) throw new McpToolError("not_found", "Post not found.", "Call list_posts to choose an allowed post.");
+  return {
+    site_id: post.siteId,
+    post_id: input.post_id,
+    analysis,
+    structured_data: structured,
+    next_action: analysis.flags.length ? "Fix the flagged issues with update_draft, then analyze again." : "No analysis flags. Continue with review_post.",
+  };
+}
+
+async function discoverSiteTopics(principal: McpPrincipal, input: { site_id: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const result = await discoverTopics(principal.userId, input.site_id);
+    if (!result) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, topics: result.topics, queries_run: result.queriesRun, next_action: "Pick fresh topics (overlap is null) and call research_keyword before drafting." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Topic discovery failed.", "Generate the product profile in BlogFactory first.");
+  }
+}
+
+async function researchSiteKeyword(principal: McpPrincipal, input: { site_id: string; keyword: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const research = await researchKeyword(principal.userId, input.site_id, input.keyword);
+    if (!research) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, research: { ...research, plan_brief: toPlanBrief(research) }, next_action: "Use plan_brief.outline and questions in generate_draft instructions, then review the draft." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Keyword research failed.", "Check the keyword and try again.");
+  }
+}
+
+async function competitorGaps(principal: McpPrincipal, input: { site_id: string; competitor: string }) {
+  await requireOwnedAllowedSite(principal, input.site_id);
+  try {
+    const gap = await findContentGaps(principal.userId, input.site_id, input.competitor);
+    if (!gap) throw new McpToolError("not_found", "Site not found.", "Call list_sites to choose an allowed site.");
+    return { site_id: input.site_id, gap, next_action: gap.gaps.length ? "Call research_keyword for the top gap topics." : "No gaps found for this competitor." };
+  } catch (error) {
+    if (error instanceof McpToolError) throw error;
+    throw new McpToolError("validation_error", error instanceof Error ? error.message : "Gap analysis failed.", "Use a public competitor domain with a sitemap.");
+  }
+}
+
 type ToolDefinition = {
   name: typeof ACTIVE_MCP_TOOL_NAMES[number];
   description: string;
@@ -913,8 +1209,16 @@ type ToolDefinition = {
   requiredScope: McpScope;
   siteBound: boolean;
   annotations: ToolAnnotations;
+  uiResourceUri?: string;
   handler: (principal: McpPrincipal, input: any) => Promise<Record<string, unknown>> | Record<string, unknown>;
 };
+
+export type McpOperationLedger = {
+  start: typeof startOperationEvent;
+  finish: typeof finishOperationEvent;
+};
+
+const operationLedger: McpOperationLedger = { start: startOperationEvent, finish: finishOperationEvent };
 
 const siteItem = z.object({
   id: uuid,
@@ -939,6 +1243,7 @@ const targetItem = z.object({
   provider: z.string(),
   display_name: z.string(),
   status: z.string(),
+  ready: z.boolean(),
   credential_status: z.enum(["usable", "missing", "undecryptable"]),
   last_tested_at: nullableText,
 });
@@ -976,6 +1281,80 @@ const imageItem = z.object({
   license_label: nullableText,
   attribution_url: nullableText,
   position: z.number().int().nullable(),
+});
+const actionReasonItem = z.object({
+  kind: z.enum(ACTION_KINDS),
+  severity: z.enum(ACTION_SEVERITIES),
+  label: z.string(),
+  message: z.string(),
+});
+const actionItem = z.object({
+  id: uuid,
+  object_type: z.literal("post"),
+  object_id: uuid,
+  site_id: uuid,
+  title: z.string(),
+  summary: nullableText,
+  source_type: z.string(),
+  editorial_state: z.string(),
+  revision_number: z.number().int().positive().nullable(),
+  routing_status: z.enum(["ready", "needs_routing"]),
+  destination_id: uuid.nullable(),
+  destination_name: nullableText,
+  destination_provider: nullableText,
+  severity: z.enum(ACTION_SEVERITIES),
+  kind: z.enum(ACTION_KINDS),
+  reasons: z.array(actionReasonItem),
+  updated_at: z.string(),
+  suggested_action: z.string(),
+});
+const operationEventItem = z.object({
+  id: uuid,
+  site_id: uuid.nullable(),
+  origin: z.enum(["web", "mcp", "system"]),
+  connection_id: uuid.nullable(),
+  client_name: nullableText,
+  action: z.string(),
+  object_type: nullableText,
+  object_id: uuid.nullable(),
+  status: z.enum(["started", "succeeded", "failed"]),
+  duration_ms: z.number().int().nonnegative().nullable(),
+  error_code: nullableText,
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  created_at: z.string(),
+});
+const reviewPacket = z.object({
+  post: z.object({
+    id: uuid,
+    site_id: uuid,
+    title: z.string(),
+    summary: nullableText,
+    source_type: z.string(),
+    source_ref_id: nullableText,
+    status: z.string(),
+    updated_at: z.string(),
+    web_url: z.string().url(),
+  }),
+  source: z.object({ type: z.string(), reference: nullableText }),
+  editorial: z.object({
+    state: z.string(),
+    revision_id: uuid.nullable(),
+    revision_number: z.number().int().positive().nullable(),
+    revision_source: nullableText,
+    approved_revision_id: uuid.nullable(),
+    current_revision_approved: z.boolean(),
+  }),
+  changes: z.object({ changed_fields: z.array(z.string()), word_delta: z.number().int() }),
+  seo: z.object({ status: seoStatusSchema }),
+  preflight: z.object({
+    can_send: z.boolean(),
+    has_blockers: z.boolean(),
+    checks: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(["pass", "warning", "blocker"]), message: z.string() })),
+  }),
+  destinations: z.array(z.object({ id: uuid, provider: z.string(), display_name: z.string(), status: z.string(), ready: z.boolean(), credential_status: z.enum(["usable", "missing", "undecryptable"]), preferred: z.boolean() })),
+  publications: z.array(z.object({ id: uuid, status: z.string(), external_url: nullableText, external_edit_url: nullableText, updated_at: z.string() })),
+  permissions: z.object({ can_push_cms_draft: z.boolean() }),
+  links: z.object({ edit: z.string(), preview: z.string() }),
 });
 
 export const MCP_TOOL_REGISTRY = {
@@ -1107,6 +1486,53 @@ export const MCP_TOOL_REGISTRY = {
     annotations: READ_ONLY_ANNOTATIONS,
     handler: getPost,
   },
+  create_draft: {
+    name: "create_draft",
+    description: "Create one BlogFactory draft from caller-authored Markdown without running a text-generation provider.",
+    inputSchema: {
+      site_id: uuid,
+      title: z.string().trim().min(1).max(500),
+      content: z.string().trim().min(1).max(MCP_POST_CONTENT_LIMIT),
+      persona_id: uuid.optional(),
+    },
+    outputSchema: successOutputSchema({
+      post_id: uuid,
+      site_id: uuid,
+      title: z.string(),
+      seo_status: seoStatusSchema,
+      seo_job_id: uuid.nullable(),
+      updated_at: z.string(),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: UPDATE_ANNOTATIONS,
+    handler: createDraft,
+  },
+  import_drafts: {
+    name: "import_drafts",
+    description: `Create up to ${MCP_BATCH_DRAFT_LIMIT} caller-authored Markdown drafts in one idempotent batch. It never publishes to a CMS.`,
+    inputSchema: {
+      site_id: uuid,
+      persona_id: uuid.optional(),
+      drafts: z.array(z.object({
+        title: z.string().trim().min(1).max(500),
+        content: z.string().trim().min(1).max(MCP_POST_CONTENT_LIMIT),
+        source_ref: z.string().trim().min(1).max(500).optional(),
+      })).min(1).max(MCP_BATCH_DRAFT_LIMIT),
+    },
+    outputSchema: successOutputSchema({
+      site_id: uuid,
+      created: z.number().int().nonnegative(),
+      skipped_duplicates: z.number().int().nonnegative(),
+      items: z.array(z.object({ title: z.string(), post_id: uuid, status: z.enum(["created", "skipped_duplicate"]) })),
+      next_action: z.string(),
+    }),
+    requiredScope: "drafts:write",
+    siteBound: true,
+    annotations: UPDATE_ANNOTATIONS,
+    handler: importDrafts,
+  },
   generate_draft: {
     name: "generate_draft",
     description: "Start one asynchronous BlogFactory draft-generation job. This can consume the user's configured provider budget.",
@@ -1159,11 +1585,76 @@ export const MCP_TOOL_REGISTRY = {
     annotations: READ_ONLY_ANNOTATIONS,
     handler: getJob,
   },
+  get_workspace_digest: {
+    name: "get_workspace_digest",
+    description: "Summarize the current BlogFactory control plane for one allowed site, including attention, runs, outcomes, search growth, connections, and recent activity.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({
+      site_id: uuid,
+      workspace: z.object({
+        site: z.object({ id: uuid, name: z.string(), domain: z.string() }),
+        attention: z.object({ total: z.number().int(), blocker: z.number().int(), review: z.number().int(), warning: z.number().int() }),
+        action_items: z.array(actionItem),
+        runs: z.object({
+          running: z.number().int(), failed: z.number().int(),
+          recent: z.array(z.object({ id: uuid, status: z.string(), source_type: z.string(), current_step: z.string(), created_at: z.string() })),
+        }),
+        outcomes: z.object({ drafts: z.number().int(), published: z.number().int(), cms_drafts: z.number().int(), cost: z.number(), window_days: z.literal(30) }),
+        search_growth: z.object({ connected: z.boolean(), segments: z.record(z.string(), z.unknown()), totals: z.record(z.string(), z.unknown()) }),
+        recent_outputs: z.array(z.object({ id: uuid, title: z.string(), status: z.string(), editorial_state: z.string(), source_type: z.string(), updated_at: z.string() })),
+        connections: z.object({
+          generation: z.object({ ready: z.boolean(), credential_status: z.enum(["usable", "missing", "undecryptable"]) }),
+          active: z.number().int(),
+          cms: z.object({ total: z.number().int(), connected: z.number().int(), attention: z.number().int() }),
+          search_console: z.object({ connected: z.boolean() }),
+        }),
+        activity: z.array(operationEventItem),
+      }),
+      next_action: z.string(),
+    }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: workspaceDigest,
+  },
+  list_action_items: {
+    name: "list_action_items",
+    description: "List prioritized BlogFactory drafts that need editorial or delivery attention for one allowed site.",
+    inputSchema: {
+      site_id: uuid,
+      severity: z.enum(ACTION_SEVERITIES).optional(),
+      kind: z.enum(ACTION_KINDS).optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+      page: z.number().int().min(1).default(1),
+    },
+    outputSchema: successOutputSchema({
+      site_id: uuid,
+      items: z.array(actionItem),
+      counts: z.object({ total: z.number(), blocker: z.number(), review: z.number(), warning: z.number() }),
+      pagination: z.object({ page: z.number(), limit: z.number(), total: z.number(), total_pages: z.number() }),
+      next_action: z.string(),
+    }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: actionItems,
+  },
+  review_post: {
+    name: "review_post",
+    description: "Review one allowed BlogFactory draft with revision, SEO, delivery readiness, destinations, and safe CMS-draft permissions.",
+    inputSchema: { post_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, review: reviewPacket, next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    uiResourceUri: MCP_REVIEW_APP_URI,
+    handler: reviewPost,
+  },
   get_search_console_dashboard: {
     name: "get_search_console_dashboard",
     description: "Read the connected Search Console status and synchronized performance totals for one allowed site.",
     inputSchema: { site_id: uuid },
-    outputSchema: successOutputSchema({ site_id: uuid, dashboard: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, dashboard: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1173,11 +1664,21 @@ export const MCP_TOOL_REGISTRY = {
     name: "get_search_console_insights",
     description: "Read synchronized Search Console trends, opportunities, top pages, and top queries for one allowed site.",
     inputSchema: { site_id: uuid },
-    outputSchema: successOutputSchema({ site_id: uuid, insights: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, insights: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: searchConsoleInsights,
+  },
+  refresh_search_console: {
+    name: "refresh_search_console",
+    description: "Refresh the canonical 28-day Search Console totals and the bounded page-query opportunity snapshot for one allowed site.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, refresh: z.record(z.string(), z.unknown()) }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: REFRESH_ANNOTATIONS,
+    handler: refreshSearchConsole,
   },
   update_draft: {
     name: "update_draft",
@@ -1234,7 +1735,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "inspect_search_console_url",
     description: "Read Google's indexed status, crawl details, canonical choice, and rich-result verdict for one allowed URL.",
     inputSchema: { site_id: uuid, url: z.string().url(), force: z.boolean().default(false) },
-    outputSchema: successOutputSchema({ site_id: uuid, inspection: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, inspection: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1244,7 +1745,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "batch_inspect_search_console_urls",
     description: "Inspect Google's indexed status for 1-10 URLs while preserving per-URL failures.",
     inputSchema: { site_id: uuid, urls: z.array(z.string().url()).min(1).max(10), force: z.boolean().default(false) },
-    outputSchema: successOutputSchema({ site_id: uuid, results: z.array(z.record(z.unknown())), inspected: z.number().int(), failed: z.number().int() }),
+    outputSchema: successOutputSchema({ site_id: uuid, results: z.array(z.record(z.string(), z.unknown())), inspected: z.number().int(), failed: z.number().int() }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1254,7 +1755,7 @@ export const MCP_TOOL_REGISTRY = {
     name: "list_search_console_sitemaps",
     description: "List read-only Search Console sitemap health, processing state, errors, and warnings for one allowed site.",
     inputSchema: { site_id: uuid, sitemap_index: z.string().url().optional() },
-    outputSchema: successOutputSchema({ site_id: uuid, items: z.array(z.record(z.unknown())), cached: z.boolean() }),
+    outputSchema: successOutputSchema({ site_id: uuid, items: z.array(z.record(z.string(), z.unknown())), cached: z.boolean() }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
@@ -1272,12 +1773,53 @@ export const MCP_TOOL_REGISTRY = {
       country: z.string().regex(/^[a-zA-Z]{3}$/).optional(),
       device: z.enum(["DESKTOP", "MOBILE", "TABLET"]).optional(),
       limit: z.number().int().min(1).max(100).default(20),
+      include_preliminary: z.boolean().default(false),
     },
-    outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.unknown()) }),
+    outputSchema: successOutputSchema({ site_id: uuid, analytics: z.record(z.string(), z.unknown()) }),
     requiredScope: "content:read",
     siteBound: true,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: searchConsoleAnalytics,
+  },
+  analyze_post: {
+    name: "analyze_post",
+    description: "Analyze one allowed draft without AI: readability, keyword density, structure, stock AI phrases, near-duplicates against the site's other posts, plus BlogPosting and FAQPage JSON-LD.",
+    inputSchema: { post_id: uuid, keyword: z.string().min(2).max(90).optional() },
+    outputSchema: successOutputSchema({ site_id: uuid, post_id: uuid, analysis: z.record(z.string(), z.unknown()), structured_data: z.record(z.string(), z.unknown()).nullable(), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: analyzePost,
+  },
+  discover_topics: {
+    name: "discover_topics",
+    description: "Suggest product-led article topics for one allowed site from its saved product profile, ranked by demand signal, product fit and intent, flagging topics the site already covers. Does not change the plan.",
+    inputSchema: { site_id: uuid },
+    outputSchema: successOutputSchema({ site_id: uuid, topics: z.array(z.record(z.string(), z.unknown())), queries_run: z.number().int(), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: discoverSiteTopics,
+  },
+  research_keyword: {
+    name: "research_keyword",
+    description: "Research one keyword for an allowed site: a People-Also-Ask style question tree from autocomplete, related searches, and, when the operator configured a search provider, a SERP brief with shared headings and target length.",
+    inputSchema: { site_id: uuid, keyword: z.string().min(3).max(90) },
+    outputSchema: successOutputSchema({ site_id: uuid, research: z.record(z.string(), z.unknown()), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: researchSiteKeyword,
+  },
+  find_content_gaps: {
+    name: "find_content_gaps",
+    description: "Compare a public competitor sitemap with an allowed site's existing posts, plan and indexed pages and list the competitor topics the site does not cover, ranked by product fit.",
+    inputSchema: { site_id: uuid, competitor: z.string().min(3).max(200) },
+    outputSchema: successOutputSchema({ site_id: uuid, gap: z.record(z.string(), z.unknown()), next_action: z.string() }),
+    requiredScope: "content:read",
+    siteBound: true,
+    annotations: READ_ONLY_OPEN_WORLD_ANNOTATIONS,
+    handler: competitorGaps,
   },
 } satisfies Record<typeof ACTIVE_MCP_TOOL_NAMES[number], ToolDefinition>;
 
@@ -1301,17 +1843,33 @@ export function assertMcpToolRegistry() {
   }
 }
 
+function asMcpToolError(error: unknown) {
+  if (error instanceof McpToolError) return error;
+  if (error instanceof ApiError && error.code === "plan_quota_reached") {
+    if (/monthly draft/i.test(error.message)) {
+      const now = new Date();
+      const resetDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+      return new McpToolError("quota_exceeded", `${error.message}. Quota resets on ${resetDate}.`, `Upgrade at /billing or wait until ${resetDate}.`);
+    }
+    return new McpToolError("quota_exceeded", error.message, "Upgrade at /billing or reduce usage to the plan limit.");
+  }
+  if (error instanceof ApiError && error.status === 403 && /plan/i.test(error.message)) {
+    return new McpToolError("forbidden", error.message, "Open BlogFactory Billing at /billing to restore write access.");
+  }
+  return null;
+}
+
 function toolError(error: unknown) {
-  const known = error instanceof McpToolError;
-  const code = known ? error.code : "internal_error";
-  const message = known ? error.message : "BlogFactory could not complete this request.";
-  const nextAction = known ? error.nextAction : "Try again. If the problem continues, open BlogFactory.";
+  const mapped = asMcpToolError(error);
+  const code = mapped?.code || "internal_error";
+  const message = mapped?.message || "BlogFactory could not complete this request.";
+  const nextAction = mapped?.nextAction || "Try again. If the problem continues, open BlogFactory.";
   return {
     isError: true as const,
     content: [{ type: "text" as const, text: message }],
     structuredContent: {
       ok: false,
-      error: errorSchema.parse({ code, message, retryable: known ? error.retryable : false }),
+      error: errorSchema.parse({ code, message, retryable: mapped?.retryable ?? false }),
       next_action: nextAction,
     },
   };
@@ -1338,19 +1896,47 @@ function logMcpTool(
   });
 }
 
-function registerTool(server: McpServer, principal: McpPrincipal, definition: ToolDefinition) {
-  server.registerTool(definition.name, {
+function registerTool(server: McpServer, principal: McpPrincipal, definition: ToolDefinition, ledger: McpOperationLedger) {
+  const config = {
     description: definition.description,
     inputSchema: definition.inputSchema,
     outputSchema: definition.outputSchema,
     annotations: definition.annotations,
-  }, async (input, extra) => {
+  };
+  const callback = async (input: Record<string, unknown>, extra: { requestId: string | number }) => {
     const startedAt = Date.now();
     const inputSiteId = typeof input.site_id === "string" && principal.siteIds.has(input.site_id)
       ? input.site_id
       : undefined;
+    const objectId = [input.post_id, input.job_id, input.site_id].find((value) => typeof value === "string") as string | undefined;
+    const objectType = input.post_id ? "post" : input.job_id ? "job" : input.site_id ? "site" : null;
+    let eventId: string;
+    try {
+      eventId = await ledger.start({
+        userId: principal.userId,
+        siteId: inputSiteId,
+        origin: "mcp",
+        connectionId: principal.tokenId,
+        clientName: principal.clientName,
+        action: definition.name,
+        objectType,
+        objectId,
+        metadata: safeOperationMetadata(definition.name, input),
+      });
+    } catch (error) {
+      console.error("[mcp] Operation ledger unavailable:", error instanceof Error ? error.name : "UnknownError");
+      return toolError(new McpToolError("internal_error", "BlogFactory could not record this operation.", "Try again after the operation ledger is available.", true));
+    }
+    const finish = (status: "succeeded" | "failed", errorCode?: string, siteId?: string) => ledger.finish({
+      id: eventId,
+      status,
+      durationMs: Date.now() - startedAt,
+      errorCode,
+      siteId,
+    }).catch((error) => console.error("[mcp] Operation ledger finalize failed:", error instanceof Error ? error.name : "UnknownError"));
     if (!hasMcpScope(principal, definition.requiredScope)) {
       logMcpTool(principal, definition, extra.requestId, startedAt, "insufficient_scope", inputSiteId);
+      await finish("failed", "insufficient_scope", inputSiteId);
       return toolError(new McpToolError(
         "insufficient_scope",
         `${definition.requiredScope} permission is required.`,
@@ -1358,41 +1944,38 @@ function registerTool(server: McpServer, principal: McpPrincipal, definition: To
       ));
     }
     try {
+      if (!definition.annotations.readOnlyHint) {
+        const access = await getCloudAccess(principal.userId);
+        if (!access.allowed) throw new McpToolError("forbidden", "An active BlogFactory Cloud plan is required.", "Open BlogFactory Billing to restore write access.");
+      }
       const result = await definition.handler(principal, input);
       const nextAction = typeof result.next_action === "string" ? result.next_action : null;
       const resultSiteId = typeof result.site_id === "string" ? result.site_id : inputSiteId;
       logMcpTool(principal, definition, extra.requestId, startedAt, "ok", resultSiteId);
+      await finish("succeeded", undefined, resultSiteId);
       return {
-        content: [{ type: "text" as const, text: `${definition.name} completed.` }],
+        content: [{ type: "text" as const, text: definition.name === "review_post" ? JSON.stringify(result, null, 2) : `${definition.name} completed.` }],
         structuredContent: { ok: true, data: result, next_action: nextAction },
       };
     } catch (error) {
-      const code = error instanceof McpToolError ? error.code : "internal_error";
-      if (!(error instanceof McpToolError)) {
+      const mapped = asMcpToolError(error);
+      const code = mapped?.code || "internal_error";
+      if (!mapped) {
         console.error("[mcp] Tool failed:", error instanceof Error ? error.name : "UnknownError");
       }
       logMcpTool(principal, definition, extra.requestId, startedAt, code, inputSiteId);
-      return toolError(error);
+      await finish("failed", code, inputSiteId);
+      return toolError(mapped || error);
     }
-  });
+  };
+  if (definition.uiResourceUri) registerAppTool(server, definition.name, {
+    ...config,
+    _meta: { ui: { resourceUri: definition.uiResourceUri } },
+  }, callback as never);
+  else server.registerTool(definition.name, config, callback as never);
 }
 
-export function registerMcpTools(server: McpServer, principal: McpPrincipal) {
+export function registerMcpTools(server: McpServer, principal: McpPrincipal, ledger = operationLedger) {
   assertMcpToolRegistry();
-  registerTool(server, principal, MCP_TOOL_REGISTRY.whoami);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.list_sites);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.list_personas);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.list_publish_targets);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.list_posts);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.get_post);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.generate_draft);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.get_job);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_dashboard);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.get_search_console_insights);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.update_draft);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.push_to_cms_draft);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.inspect_search_console_url);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.batch_inspect_search_console_urls);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.list_search_console_sitemaps);
-  registerTool(server, principal, MCP_TOOL_REGISTRY.query_search_console_analytics);
+  for (const definition of Object.values(MCP_TOOL_REGISTRY)) registerTool(server, principal, definition, ledger);
 }

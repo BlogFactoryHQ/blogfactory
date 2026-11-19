@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError as ClientApiError } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { InputAffordance } from "@/components/ui/input-affordance";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { normalizeHttpUrl, stripHttpProtocol } from "@/lib/url-validation";
 import { safeFormatDistanceToNow } from "@/lib/date-format";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeploymentConfig } from "@/hooks/useDeploymentConfig";
 import { SourceType } from "@/components/content/GenerationProgress";
 import { LiveTextModelSelect, isUnavailableModel, preferredTextModelId } from "@/components/content/LiveTextModelSelect";
 import {
@@ -71,10 +74,14 @@ import {
 import { useTextModels } from "@/hooks/useTextModels";
 import { useImageModels } from "@/hooks/useImageModels";
 import { useUsageAnalytics } from "@/hooks/useUsageAnalytics";
+import { useSites } from "@/hooks/useSites";
 import { estimateGenerationCost, shouldWarnForCost, type CostEstimate } from "@/lib/cost-estimator";
 import { analyzeCampaignPattern, analyzeTopicFit, type TopicFitResult } from "@/lib/topic-fit";
 import { ProgrammaticPanel } from "@/pages/Programmatic";
-import { formatCompactCurrency, semanticToneClass, type SemanticTone } from "@/lib/search-insights";
+import { formatCompactCurrency } from "@/lib/search-insights";
+import { formatSourceType } from "@/lib/source-labels";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const DEFAULT_COVER_IMAGE_MODEL = "";
 const DEFAULT_INLINE_IMAGE_MODEL = "";
@@ -219,20 +226,20 @@ const formatCost = (value: number) =>
 
 function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
   return (
-    <div className="rounded-lg border border-byword-border bg-muted/20 p-4">
+    <div className="rounded-md border border-byword-border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <DollarSign className="h-4 w-4 text-byword-blue" />
           <p className="font-semibold">Projected cost</p>
         </div>
-        <p className="text-lg font-bold">{formatCost(estimate.totalExpected)}</p>
+        <p className="type-data text-lg font-semibold tabular-nums">{formatCost(estimate.totalExpected)}</p>
       </div>
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <span>Text {formatCost(estimate.textCost)}</span>
         <span>Cover {formatCost(estimate.coverImageCost)}</span>
         <span>Inline {formatCost(estimate.inlineImageCost)}</span>
       </div>
-      <div className="mt-3 rounded-md border border-byword-border bg-card p-3 text-xs text-muted-foreground">
+      <div className="mt-3 rounded-sm border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
         <div className="flex items-center justify-between gap-3 font-medium text-foreground">
           <span>Per draft text</span>
           <span>{formatCost(estimate.textCostPerPost)} × {estimate.postCount}</span>
@@ -249,23 +256,24 @@ function CostEstimateCard({ estimate }: { estimate: CostEstimate }) {
       <p className="mt-2 text-xs text-muted-foreground">
         {estimate.postCount} post{estimate.postCount === 1 ? "" : "s"} · high estimate {formatCost(estimate.totalHigh)}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">Managed AI reserve ceiling: {Math.ceil(estimate.totalHigh * 1_000 * 1.2).toLocaleString()} credits. Actual provider cost is settled after each call.</p>
     </div>
   );
 }
 
 function TopicFitNote({ result }: { result: TopicFitResult }) {
-  const toneClass = {
-    good: "border-[hsl(var(--status-success)/0.28)] bg-[hsl(var(--status-success)/0.08)]",
-    context: "border-[hsl(var(--status-warning)/0.32)] bg-[hsl(var(--status-warning)/0.1)]",
-    scale: "border-byword-blue/25 bg-byword-blue-soft/35",
-    neutral: "border-byword-border bg-muted/20 text-foreground",
-  }[result.tone];
+  const variant = ({
+    good: "success",
+    context: "warning",
+    scale: "info",
+    neutral: "default",
+  } as const)[result.tone];
 
   return (
-    <div className={cn("rounded-lg border border-l-4 px-4 py-3 text-sm text-foreground", toneClass)}>
-      <p className="font-semibold">{result.title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{result.detail}</p>
-    </div>
+    <Alert variant={variant}>
+      <AlertTitle>{result.title}</AlertTitle>
+      <AlertDescription className="text-xs">{result.detail}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -296,39 +304,40 @@ function GenerationBrief({
   topicFit: TopicFitResult;
   blockers: string[];
 }) {
-  const statusTone: SemanticTone = blockers.length ? "risk" : topicFit.tone === "good" ? "success" : topicFit.tone === "context" ? "opportunity" : "performance";
   const items = [
-    { label: "Source", value: source || "Missing", tone: source ? "performance" as SemanticTone : "risk" as SemanticTone },
-    { label: "Voice", value: persona || "No persona", tone: persona ? "success" as SemanticTone : "risk" as SemanticTone },
-    { label: "Model", value: model || "No model", tone: model ? "neutral" as SemanticTone : "risk" as SemanticTone },
-    { label: "Cost", value: formatCompactCurrency(estimate.totalExpected), tone: "opportunity" as SemanticTone },
-    { label: "Images", value: imagePlan, tone: imagePlan === "Off" ? "neutral" as SemanticTone : "performance" as SemanticTone },
-    { label: "Links", value: linkState, tone: linkState === "Off" ? "neutral" as SemanticTone : "success" as SemanticTone },
+    { label: "Source", value: source || "Missing" },
+    { label: "Voice", value: persona || "No persona" },
+    { label: "Model", value: model || "No model" },
+    { label: "Cost", value: formatCompactCurrency(estimate.totalExpected) },
+    { label: "Images", value: imagePlan },
+    { label: "Links", value: linkState },
   ];
 
   return (
-    <div className="rounded-lg border border-byword-border bg-card p-4">
+    <div className="rounded-md border border-byword-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-semibold">{title}</p>
           <p className="mt-1 text-xs text-muted-foreground">{topicFit.title}</p>
         </div>
-        <span className={cn("rounded-md border px-2.5 py-1 text-xs font-semibold", semanticToneClass(statusTone))}>
-          {blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "Ready"}
-        </span>
+        {blockers.length ? (
+          <StatusBadge status="error" label={`${blockers.length} blocker${blockers.length === 1 ? "" : "s"}`} />
+        ) : (
+          <StatusBadge status="success" label="Ready" />
+        )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
-          <div key={item.label} className={cn("rounded-md border px-3 py-2", semanticToneClass(item.tone))}>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{item.label}</p>
-            <p className="mt-1 truncate text-sm font-medium text-foreground">{item.value}</p>
+          <div key={item.label} className="rounded-sm border border-border bg-muted/40 px-3 py-2">
+            <p className="type-kicker">{item.label}</p>
+            <p className="mt-1 truncate text-sm font-medium text-foreground" title={item.value}>{item.value}</p>
           </div>
         ))}
       </div>
-      <div className={cn("mt-3 rounded-md border px-3 py-2", linksEnabled ? semanticToneClass("success") : semanticToneClass("neutral"))}>
+      <div className="mt-3 rounded-sm border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">Link density</p>
+            <p className="type-kicker">Link density</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{linksEnabled ? "Applies to this generation" : "Internal links off"}</p>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -338,11 +347,12 @@ function GenerationBrief({
                 type="button"
                 disabled={!linksEnabled}
                 onClick={() => onLinkDensityChange(option.value)}
+                aria-pressed={linksEnabled && linkDensity === option.value}
                 className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-semibold transition-calm disabled:cursor-not-allowed disabled:opacity-45",
+                  "rounded-sm border px-2.5 py-1 text-xs font-semibold transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
                   linksEnabled && linkDensity === option.value
-                    ? "border-[hsl(var(--status-success)/0.45)] bg-[hsl(var(--status-success)/0.16)] text-[hsl(var(--status-success))]"
-                    : "border-byword-border bg-card text-foreground hover:border-[hsl(var(--status-success)/0.45)]"
+                    ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
+                    : "border-byword-border bg-card text-foreground hover:border-byword-blue/40"
                 )}
                 title={option.label}
               >
@@ -353,14 +363,14 @@ function GenerationBrief({
         </div>
       </div>
       {blockers.length > 0 && (
-        <div className="mt-3 grid gap-2">
+        <ul className="mt-3 space-y-1" aria-live="polite">
           {blockers.map((blocker) => (
-            <p key={blocker} className="flex items-center gap-2 rounded-md border border-[hsl(var(--status-error)/0.35)] bg-[hsl(var(--status-error)/0.12)] px-3 py-2 text-xs font-medium text-[hsl(var(--status-error))]">
-              <AlertTriangle className="h-3.5 w-3.5" />
+            <li key={blocker} className="flex items-center gap-2 text-xs font-medium text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               {blocker}
-            </p>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -368,9 +378,19 @@ function GenerationBrief({
 
 export default function ContentCreator() {
   const { user } = useAuth();
+  const { activeSiteId } = useSites();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  const { managedAiEnabled } = useDeploymentConfig();
+  const openRouterKeyStatus = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => api.get<{ hasOpenrouterKey: boolean; openrouterCredentialStatus?: string }>("/settings/api-keys"),
+    staleTime: 60_000,
+  });
+  const needsOpenRouterKey = !managedAiEnabled && Boolean(openRouterKeyStatus.data)
+    && (!openRouterKeyStatus.data!.hasOpenrouterKey || openRouterKeyStatus.data!.openrouterCredentialStatus === "undecryptable");
+  const seoPlanParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialCreationMode = parseCreationMode(location.search);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const [sourceType, setSourceType] = useState("url");
@@ -413,6 +433,7 @@ export default function ContentCreator() {
 
   const refetchPostsRef = useRef<(() => void) | null>(null);
   const userSelectedModelRef = useRef(false);
+  const briefLoadedForRef = useRef<string | null>(null);
 
   const {
     activeJobs,
@@ -428,11 +449,39 @@ export default function ContentCreator() {
 
   useEffect(() => {
     setCreationMode(parseCreationMode(location.search));
-  }, [location.search]);
+    const itemId = seoPlanParams.get("seoPlanItemId");
+    if (!itemId) return;
+    const action = seoPlanParams.get("seoAction") || "new_content";
+    const targetQuery = seoPlanParams.get("targetQuery") || "";
+    const pageUrl = seoPlanParams.get("pageUrl") || "";
+    setCreationMode("article");
+    setArticleRelatedKeywords(targetQuery);
+    if (action === "new_content") {
+      setSourceType("article_keyword");
+      setArticleKeyword(targetQuery);
+      const briefSiteId = seoPlanParams.get("siteId") || activeSiteId;
+      if (briefSiteId && briefLoadedForRef.current !== itemId) {
+        briefLoadedForRef.current = itemId;
+        // A saved research brief prefills the outline, length and FAQ; anything the writer already typed wins.
+        api.get<{ brief: { targetWords: number | null } | null; outlineText: string }>(`/product-seo/plan-items/${encodeURIComponent(itemId)}/brief?siteId=${encodeURIComponent(briefSiteId)}`)
+          .then(({ brief, outlineText }) => {
+            if (!brief) return;
+            if (outlineText) setArticleOutline((current) => current || outlineText);
+            if (brief.targetWords) setArticleWordCount((current) => current || String(brief.targetWords));
+            toast.success("Outline and length prefilled from your research brief.");
+          })
+          .catch(() => undefined);
+      }
+    } else {
+      setSourceType("url");
+      setSourceUrl(stripHttpProtocol(pageUrl));
+      setArticleDirection(seoActionInstruction(action, targetQuery));
+    }
+  }, [location.search, seoPlanParams, activeSiteId]);
 
   const selectCreationMode = (mode: CreationMode) => {
     setCreationMode(mode);
-    navigate(mode === "article" ? "/content-creator" : `/content-creator?mode=${mode}`, { replace: true });
+    navigate(mode === "article" ? "/create" : `/create?mode=${mode}`, { replace: true });
   };
 
   // Fetch user settings for image defaults
@@ -503,6 +552,10 @@ export default function ContentCreator() {
   }, [fallbackTextModelId, modelId, textModels]);
 
   const handlePersonaChange = (nextPersonaId: string) => {
+    if (nextPersonaId === "default") {
+      setPersonaId("");
+      return;
+    }
     setPersonaId(nextPersonaId);
     const selectedPersona = activePersonas.find((persona) => persona.id === nextPersonaId);
     setModelId(resolveLiveModelId(selectedPersona?.base_model));
@@ -511,6 +564,24 @@ export default function ContentCreator() {
   const handleModelChange = (nextModelId: string) => {
     userSelectedModelRef.current = true;
     setModelId(nextModelId);
+  };
+
+  const showGenerationError = (error: unknown, fallback: string) => {
+    if (error instanceof ClientApiError && error.code === "ai_key_required") {
+      toast.error(error.message, { action: { label: "Add OpenRouter key", onClick: () => navigate("/control/article-settings?section=api-keys") } });
+      return;
+    }
+    // Plan-required responses already raise the app-wide "See plans" prompt.
+    if (error instanceof ClientApiError && error.billingUrl) return;
+    if (error instanceof ClientApiError && error.code === "managed_ai_credits_required") {
+      toast.error("Managed AI credits are required. You can buy credits or switch to your own OpenRouter key.", { action: { label: "Buy credits", onClick: () => navigate("/billing") } });
+      return;
+    }
+    if (error instanceof ClientApiError && (error.code === "plan_quota_reached" || error.status === 403)) {
+      toast.error(error.message, { action: { label: "View billing", onClick: () => navigate("/billing") } });
+      return;
+    }
+    toast.error(error instanceof Error ? error.message : fallback);
   };
 
   const handleCampaignPersonaChange = (nextPersonaId: string) => {
@@ -579,7 +650,7 @@ export default function ContentCreator() {
       const result = await api.upload<{ path: string }>("/content/upload-pdf", formData);
       setPdfFile(file);
       setPdfPath(result.path);
-      toast.success("PDF uploaded successfully!");
+      toast.success("PDF uploaded");
     } catch (err) {
       console.error("PDF upload error:", err);
       toast.error("Failed to upload PDF");
@@ -694,7 +765,6 @@ export default function ContentCreator() {
     ? `${imageConfig.cover.enabled ? "Cover AI" : "No cover"} · ${imageConfig.inline.enabled ? `${imageConfig.inline.count} inline ${selectedInlineImageSource === "stock" ? "stock" : "AI"}` : "No inline"}`
     : "Off";
   const articleBriefBlockers = [
-    !personaId ? "Select a voice persona." : "",
     !getSourceValue().trim() ? "Add source content." : "",
     selectedModelUnavailable ? "Pick a live OpenRouter model." : "",
     shouldWarnForCost(costWarningInput(articleCostEstimate)) ? "Projected cost needs confirmation." : "",
@@ -713,7 +783,7 @@ export default function ContentCreator() {
     const buildPayload = (draftIndex?: number) => ({
       sourceType,
       sourceValue,
-      personaId,
+      personaId: personaId || null,
       modelId,
       variations: 1,
       draftBatchId,
@@ -741,6 +811,9 @@ export default function ContentCreator() {
           resolution: imageConfig.inline.resolution || "1K",
         } : null,
       } : undefined,
+      siteId: seoPlanParams.get("siteId") || activeSiteId || undefined,
+      campaignId: seoPlanParams.get("campaignId") || undefined,
+      campaignItemId: seoPlanParams.get("seoPlanItemId") || undefined,
     });
 
     const startOneDraft = async (draftIndex?: number) => {
@@ -775,7 +848,8 @@ export default function ContentCreator() {
           Array.from({ length: variations }, (_, index) => startOneDraft(index + 1))
         );
         const failed = results.filter((result) => result.status === "rejected").length;
-        if (failed) throw new Error(`${failed}/${variations} drafts failed to start.`);
+        const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (failed) throw firstFailure?.reason || new Error(`${failed}/${variations} drafts failed to start.`);
         toast.info(`${variations} separate draft jobs started.`);
       } else {
         await startOneDraft();
@@ -783,16 +857,11 @@ export default function ContentCreator() {
       }
     } catch (err) {
       console.error("Generation error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate content";
-      toast.error(errorMessage);
+      showGenerationError(err, "Failed to generate content");
     }
   };
 
   const handleGenerate = async () => {
-    if (!personaId) {
-      toast.error("Please select a persona.");
-      return;
-    }
     if (selectedModelUnavailable) {
       toast.error("Selected model is no longer available on OpenRouter.");
       return;
@@ -835,7 +904,7 @@ export default function ContentCreator() {
       const plan = await api.post<ArticlePlanResponse>("/content/article-plan", {
         sourceType,
         sourceValue,
-        personaId,
+        personaId: personaId || null,
         modelId,
         relatedKeywords: articleRelatedKeywords.split(",").map((keyword) => keyword.trim()).filter(Boolean).slice(0, 5),
         articleDirection,
@@ -850,8 +919,7 @@ export default function ContentCreator() {
       setArticleOutline(plan.outline);
       toast.success("Title and outline ready.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to generate article plan";
-      toast.error(message);
+      showGenerationError(err, "Failed to generate article plan");
     } finally {
       setIsPlanningArticle(false);
     }
@@ -874,6 +942,7 @@ export default function ContentCreator() {
         imageDeliveryMode,
         manualImageProvider,
         imageConfig: imagesEnabled ? imageConfig : null,
+        siteId: activeSiteId || undefined,
       });
       if (campaignStartNow) await api.post(`/campaigns/${result.campaign.id}/start`);
       return result;
@@ -881,9 +950,9 @@ export default function ContentCreator() {
     onSuccess: ({ campaign }) => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       toast.success(campaignStartNow ? "Campaign started" : "Campaign created");
-      navigate(`/campaigns/${campaign.id}`);
+      navigate(`/sources/campaigns/${campaign.id}`);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create campaign"),
+    onError: (error) => showGenerationError(error, "Could not create campaign"),
   });
 
   const handleCreateCampaign = () => {
@@ -934,11 +1003,18 @@ export default function ContentCreator() {
     <BywordPageShell className="max-w-7xl">
       <PageHeader
         title="Create Content"
-        description={`Welcome to BlogFactory${user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}. Create article drafts or batch campaigns from one place.`}
+        description="Create one article draft, a batch campaign, or programmatic drafts from a template."
       />
 
+      {needsOpenRouterKey && (
+        <div role="alert" className="mx-auto mb-8 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-md border border-status-warning/30 bg-status-warning/10 p-4 text-sm text-foreground">
+          <p><strong>Add your OpenRouter key to generate drafts.</strong> BlogFactory uses your own OpenRouter account for AI generation.</p>
+          <Button asChild size="sm" variant="outline"><Link to="/control/article-settings?section=api-keys">Add OpenRouter key</Link></Button>
+        </div>
+      )}
+
       <div className={cn("mx-auto space-y-9", creationMode === "programmatic" ? "max-w-7xl" : "max-w-5xl")}>
-        <div className="flex items-center gap-4 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="type-kicker flex items-center gap-4 text-center">
           <div className="h-px flex-1 bg-byword-border" />
           Choose how to create
           <div className="h-px flex-1 bg-byword-border" />
@@ -979,7 +1055,7 @@ export default function ContentCreator() {
               </div>
             </div>
             <Button variant="outline" asChild>
-              <Link to="/batch-import">Open Batch Import</Link>
+              <Link to="/sources/batch-import">Open Batch Import</Link>
             </Button>
           </div>
         </BywordCard>
@@ -1030,7 +1106,7 @@ export default function ContentCreator() {
                   </TabsList>
 
                   <TabsContent value="article_keyword" className="space-y-2">
-                    <Label>Target Keyword</Label>
+                    <Label>Target keyword</Label>
                     <div className="relative">
                       <Sparkles className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -1047,7 +1123,7 @@ export default function ContentCreator() {
                   </TabsContent>
 
                   <TabsContent value="article_title" className="space-y-2">
-                    <Label>Article Title</Label>
+                    <Label>Article title</Label>
                     <div className="relative">
                       <FileText className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -1066,7 +1142,7 @@ export default function ContentCreator() {
 
                 {sourceType === "article_keyword" && articleTitlePreview && (
                   <div className="space-y-2">
-                    <Label>Title Preview</Label>
+                    <Label>Title preview</Label>
                     <Input
                       value={articleTitlePreview}
                       onChange={(e) => setArticleTitlePreview(e.target.value)}
@@ -1087,7 +1163,7 @@ export default function ContentCreator() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Custom Instructions</Label>
+                    <Label>Custom instructions</Label>
                     <Input
                       placeholder="Keep it practical, skeptical, and example-led"
                       value={articleCustomInstructions}
@@ -1110,7 +1186,7 @@ export default function ContentCreator() {
                   <CollapsibleContent className="mt-4 space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label>Article Type</Label>
+                        <Label>Article type</Label>
                         <Select value={articleType} onValueChange={(value) => setArticleType(value as ArticleType)}>
                           <SelectTrigger className="h-11">
                             <SelectValue />
@@ -1125,7 +1201,7 @@ export default function ContentCreator() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Related Keywords</Label>
+                        <Label>Related keywords</Label>
                         <Input
                           placeholder="free project management software, agile project management"
                           value={articleRelatedKeywords}
@@ -1135,7 +1211,7 @@ export default function ContentCreator() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Word Count</Label>
+                        <Label>Word count</Label>
                         <Input
                           type="number"
                           min={300}
@@ -1149,12 +1225,12 @@ export default function ContentCreator() {
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                      <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                         <Checkbox checked={articleIncludeToc} onCheckedChange={(checked) => setArticleIncludeToc(Boolean(checked))} />
                         Table of contents
                       </label>
 
-                      <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-card px-4 py-3 text-sm">
+                      <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                         <Checkbox checked={articleResearchFocus} onCheckedChange={(checked) => setArticleResearchFocus(Boolean(checked))} />
                         Research emphasis
                       </label>
@@ -1210,7 +1286,7 @@ export default function ContentCreator() {
               </TabsContent>
 
               <TabsContent value="pdf" className="space-y-4">
-                <Label>PDF Document</Label>
+                <Label>PDF document</Label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1219,7 +1295,7 @@ export default function ContentCreator() {
                   className="hidden"
                 />
                 {pdfFile ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/30 p-4">
+                  <div className="flex items-center gap-3 rounded-md border border-byword-border bg-muted/40 p-4">
                     <IconTile icon={FileText} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{pdfFile.name}</p>
@@ -1240,7 +1316,7 @@ export default function ContentCreator() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
-                    className="w-full rounded-lg border border-dashed border-byword-border bg-muted/20 p-9 text-center transition-calm hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
+                    className="w-full rounded-md border border-dashed border-byword-border bg-muted/20 p-9 text-center transition-calm hover:border-byword-blue/50 hover:bg-byword-blue-soft/30"
                   >
                     {isUploading ? (
                       <>
@@ -1262,7 +1338,7 @@ export default function ContentCreator() {
               </TabsContent>
 
               <TabsContent value="raw_text" className="space-y-2">
-                <Label>Source Content</Label>
+                <Label>Source content</Label>
                 <Textarea
                   placeholder="Paste or type your content here..."
                   value={rawText}
@@ -1305,29 +1381,25 @@ export default function ContentCreator() {
           <div className="space-y-7 p-6">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Voice Persona</Label>
-                <Select value={personaId} onValueChange={handlePersonaChange}>
+                <Label>Brand voice <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Select value={personaId || "default"} onValueChange={handlePersonaChange}>
                   <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Select persona..." />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {activePersonas.length === 0 ? (
-                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                        No personas yet. Create one first.
-                      </div>
-                    ) : (
-                      activePersonas.map((persona) => (
+                    <SelectItem value="default">Default editorial voice</SelectItem>
+                    {activePersonas.map((persona) => (
                         <SelectItem key={persona.id} value={persona.id}>
                           {persona.name}
                         </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Use the built-in editorial voice now; add a brand voice when you need one.</p>
               </div>
 
               <div className="space-y-2">
-                <Label>OpenRouter Text Model</Label>
+                <Label>OpenRouter text model</Label>
                 <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                 {selectedModelUnavailable && (
                   <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1341,7 +1413,7 @@ export default function ContentCreator() {
             <GenerationBrief
               title="Generation brief"
               source={getSourceLabel()}
-              persona={selectedPersona?.name || ""}
+              persona={selectedPersona?.name || "Default editorial voice"}
               model={selectedTextModel?.name || modelId}
               estimate={articleCostEstimate}
               imagePlan={imagePlanLabel}
@@ -1366,21 +1438,23 @@ export default function ContentCreator() {
             />
 
             <div className="space-y-3">
-              <Label>Output Variations</Label>
+              <Label>Output variations</Label>
               <div className="grid grid-cols-3 gap-3">
                 {([1, 3, 5] as const).map((num) => (
                   <button
                     key={num}
+                    type="button"
                     onClick={() => setVariations(num)}
+                    aria-pressed={variations === num}
                     className={cn(
-                      "rounded-lg border p-4 text-center transition-calm",
+                      "rounded-md border p-4 text-center transition-calm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       variations === num
                         ? "border-byword-blue bg-byword-blue-soft text-byword-blue"
                         : "border-byword-border bg-card hover:border-byword-blue/40"
                     )}
                   >
                     <p className="text-base font-semibold">
-                      {num} Draft{num > 1 ? "s" : ""}
+                      {num} draft{num > 1 ? "s" : ""}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {num === 1 ? "Fastest" : num === 3 ? "Recommended" : "Exploratory"}
@@ -1396,21 +1470,16 @@ export default function ContentCreator() {
 
             <Button
               onClick={handleGenerate}
-              disabled={activePersonas.length === 0 || selectedModelUnavailable}
-              className="h-12 w-full text-base"
+              disabled={selectedModelUnavailable}
+              size="lg"
+              className="w-full"
             >
-              <Sparkles className="mr-2 h-5 w-5" />
-              {runningCount > 0 ? `New Generation (${runningCount} running)` : "Generate Drafts"}
+              <Sparkles className="mr-2 h-4 w-4" />
+              {runningCount > 0 ? `New generation (${runningCount} running)` : "Generate drafts"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
-            {activePersonas.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground">
-                Create a persona first to start generating content.
-              </p>
-            )}
-
-            {activePersonas.length > 0 && !isGenerating && (
+            {!isGenerating && (
               <p className="flex items-center justify-center gap-1.5 text-center text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 Estimated generation time: about {variations * 15} seconds.
@@ -1427,18 +1496,22 @@ export default function ContentCreator() {
             title="Recent generations"
             description="The latest drafts created in this workspace."
           />
-          <div className="p-6">
+          <div className="px-4 py-2 sm:px-6">
             {recentPosts.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-byword-border p-8 text-center text-sm text-muted-foreground">
-                No posts generated yet. Create your first one.
-              </div>
+              <EmptyState
+                size="panel"
+                icon={FileText}
+                title="No drafts generated yet"
+                description="Pick a source above and the first draft appears here."
+                className="rounded-md border border-dashed border-byword-border"
+              />
             ) : (
-              <div className="grid gap-3">
+              <div className="divide-y divide-byword-border">
                 {recentPosts.map((post) => (
                   <Link
                     key={post.id}
-                    to={`/posts/${post.id}/edit`}
-                    className="flex items-start gap-3 rounded-lg border border-byword-border bg-card p-4 transition-calm hover:border-byword-blue/40 hover:bg-byword-blue-soft/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-byword-blue/40"
+                    to={`/library/posts/${post.id}/edit`}
+                    className="flex items-start gap-3 px-2 py-3 transition-calm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <IconTile icon={FileTextIcon} />
                     <div className="min-w-0 flex-1">
@@ -1446,7 +1519,7 @@ export default function ContentCreator() {
                         {post.title}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Generated from {post.source_type?.replace("_", " ") || "unknown"}
+                        Generated from {post.source_type ? formatSourceType(post.source_type) : "unknown source"}
                       </p>
                     </div>
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
@@ -1468,9 +1541,9 @@ export default function ContentCreator() {
               title="Your next campaign"
               description="Batch articles with shared voice, model, image settings, and context."
               action={
-                <span className="rounded-md border border-byword-border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground">
+                <Badge variant="outline">
                   {campaignItemCount} item{campaignItemCount === 1 ? "" : "s"}
-                </span>
+                </Badge>
               }
             />
             <div className="space-y-7 p-6">
@@ -1480,27 +1553,27 @@ export default function ContentCreator() {
                   <Input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder="Q1 product guides" className="h-11" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Input Mode</Label>
+                  <Label>Input mode</Label>
                   <Select value={campaignMode} onValueChange={(value) => setCampaignMode(value as CampaignMode)}>
                     <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="keyword">Keyword</SelectItem>
                       <SelectItem value="title">Title</SelectItem>
-                      <SelectItem value="title_outline">Title + Outline</SelectItem>
+                      <SelectItem value="title_outline">Title + outline</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Flat keyword list? Campaigns is right. Repeatable pattern with variables?{" "}
-                <Link to="/content-creator?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
-              </div>
+                <Link to="/create?mode=programmatic" className="font-medium text-byword-blue hover:underline">Use Programmatic</Link>.
+              </p>
 
               {campaignMode === "title_outline" && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Outline Mode</Label>
+                    <Label>Outline mode</Label>
                     <Select value={campaignOutlineMode} onValueChange={setCampaignOutlineMode}>
                       <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1511,7 +1584,7 @@ export default function ContentCreator() {
                   </div>
                   {campaignOutlineMode === "shared" && (
                     <div className="space-y-2">
-                      <Label>Shared Outline</Label>
+                      <Label>Shared outline</Label>
                       <Textarea value={campaignSharedOutline} onChange={(event) => setCampaignSharedOutline(event.target.value)} placeholder={"Introduction\nH3:Key details\nConclusion"} className="min-h-24" />
                       {campaignNeedsSharedOutline && <p className="text-xs text-destructive">Add at least one shared heading.</p>}
                     </div>
@@ -1536,7 +1609,7 @@ export default function ContentCreator() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Brand Voice</Label>
+                  <Label>Brand voice</Label>
                   <Select value={personaId || "none"} onValueChange={handleCampaignPersonaChange}>
                     <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1550,7 +1623,7 @@ export default function ContentCreator() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>OpenRouter Text Model</Label>
+                  <Label>OpenRouter text model</Label>
                   <LiveTextModelSelect value={modelId} onValueChange={handleModelChange} triggerClassName="h-11" />
                   {selectedModelUnavailable && (
                     <p className="text-xs text-destructive">Unavailable: {modelId}. Pick a live OpenRouter model.</p>
@@ -1559,7 +1632,7 @@ export default function ContentCreator() {
               </div>
 
               <div className="space-y-2">
-                <Label>Custom Instructions</Label>
+                <Label>Custom instructions</Label>
                 <Textarea value={campaignCustomInstructions} onChange={(event) => setCampaignCustomInstructions(event.target.value)} className="min-h-24" />
               </div>
 
@@ -1592,7 +1665,7 @@ export default function ContentCreator() {
                 blockers={campaignBriefBlockers}
               />
 
-              <label className="flex items-center gap-3 rounded-lg border border-byword-border bg-muted/20 px-4 py-3 text-sm">
+              <label className="flex items-center gap-3 rounded-md border border-byword-border bg-card px-4 py-3 text-sm">
                 <Checkbox checked={campaignStartNow} onCheckedChange={(checked) => setCampaignStartNow(Boolean(checked))} />
                 <span>
                   <span className="block font-medium">Start after create</span>
@@ -1607,10 +1680,11 @@ export default function ContentCreator() {
                 <Button
                   onClick={handleCreateCampaign}
                   disabled={createCampaignMutation.isPending || !campaignCanSubmit}
-                  className="h-11 sm:min-w-[220px]"
+                  size="lg"
+                  className="sm:min-w-[220px]"
                 >
                   {createCampaignMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create & Start Campaign" : "Create Campaign"}
+                  {createCampaignMutation.isPending ? "Creating..." : campaignStartNow ? "Create and start campaign" : "Create campaign"}
                   {!createCampaignMutation.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
               </div>
@@ -1632,14 +1706,14 @@ export default function ContentCreator() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+              <AlertTriangle className="h-5 w-5 text-status-warning" />
               Confirm projected cost
             </DialogTitle>
           </DialogHeader>
           {pendingCostAction && (
             <div className="space-y-4">
               <CostEstimateCard estimate={pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate} />
-              <div className="rounded-lg border border-byword-border p-3 text-sm text-muted-foreground">
+              <div className="rounded-md border border-byword-border p-3 text-sm text-muted-foreground">
                 {(pendingCostAction === "campaign" ? campaignCostEstimate : articleCostEstimate).assumptions.map((item) => (
                   <p key={item}>- {item}</p>
                 ))}
@@ -1649,7 +1723,7 @@ export default function ContentCreator() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingCostAction(null)}>Cancel</Button>
-            <Button onClick={confirmCost}>Continue</Button>
+            <Button onClick={confirmCost}>{pendingCostAction === "campaign" ? "Create campaign" : "Generate drafts"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1660,4 +1734,11 @@ export default function ContentCreator() {
 function parseCreationMode(search: string): CreationMode {
   const mode = new URLSearchParams(search).get("mode");
   return mode === "campaign" || mode === "programmatic" ? mode : "article";
+}
+
+function seoActionInstruction(action: string, targetQuery: string) {
+  const query = targetQuery ? ` for the target query “${targetQuery}”` : "";
+  if (action === "snippet_test") return `Refresh the article and improve its title and meta-description angle${query}. Preserve the canonical topic and do not change the URL.`;
+  if (action === "internal_link") return `Refresh only where useful${query}, and add relevant internal-link opportunities supported by the site index.`;
+  return `Refresh declining or outdated sections${query}. Preserve accurate material and make the smallest evidence-backed revision.`;
 }

@@ -13,6 +13,13 @@ const { deleteMock, getMock, postMock, toastErrorMock, toastSuccessMock, writeTe
   writeTextMock: vi.fn(),
 }));
 
+const capabilities = {
+  endpoint: "https://self-hosted.example.com/mcp",
+  oauth_enabled: true,
+  tool_count: 20,
+  tools: ["whoami", "list_sites", "list_personas", "list_publish_targets", "list_posts", "get_post", "generate_draft", "get_job", "get_workspace_digest", "list_action_items", "review_post", "get_search_console_dashboard", "get_search_console_insights", "refresh_search_console", "update_draft", "push_to_cms_draft", "inspect_search_console_url", "batch_inspect_search_console_urls", "list_search_console_sitemaps", "query_search_console_analytics"],
+};
+
 vi.mock("@/lib/api", () => ({
   api: { delete: deleteMock, get: getMock, post: postMock },
   retryTransientApiError: () => false,
@@ -48,8 +55,10 @@ function button(label: string) {
   return match as HTMLButtonElement;
 }
 
-async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[]) {
+async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: unknown[], capabilityData = capabilities) {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryDefaults(["mcp-capabilities"], { staleTime: Infinity });
+  queryClient.setQueryData(["mcp-capabilities"], capabilityData);
   if (initialTokens) queryClient.setQueryData(["mcp-tokens"], { tokens: initialTokens });
   if (initialOAuthConnections) {
     queryClient.setQueryData(["mcp-oauth-connections"], { connections: initialOAuthConnections });
@@ -72,7 +81,11 @@ async function renderPanel(initialTokens?: unknown[], initialOAuthConnections?: 
 beforeEach(() => {
   localStorage.clear();
   deleteMock.mockReset().mockResolvedValue({ revoked: true });
-  getMock.mockReset().mockResolvedValue({ tokens: [] });
+  getMock.mockReset().mockImplementation((path: string) => Promise.resolve(
+    path === "/mcp/capabilities" ? capabilities
+      : path === "/mcp/oauth/connections" ? { connections: [] }
+        : { tokens: [] },
+  ));
   postMock.mockReset();
   toastErrorMock.mockReset();
   toastSuccessMock.mockReset();
@@ -93,6 +106,16 @@ afterEach(async () => {
 });
 
 describe("MCP connections panel", () => {
+  it("shows the personal-token workflow when OAuth is disabled", async () => {
+    await renderPanel([], [], { ...capabilities, oauth_enabled: false });
+
+    expect(document.body).toHaveTextContent("Create a personal token");
+    expect(document.body).toHaveTextContent("Choose the site this client may access");
+    expect(document.body).not.toHaveTextContent("Use OAuth from Codex");
+    expect(button("Create personal token")).toBeEnabled();
+    expect(getMock).not.toHaveBeenCalledWith("/mcp/oauth/connections");
+  });
+
   it("creates a site-scoped read token and clears its one-time secret", async () => {
     const secret = "bf_mcp_one_time_secret";
     postMock.mockResolvedValue({
@@ -113,7 +136,7 @@ describe("MCP connections panel", () => {
 
     await act(async () => button("Copy OAuth setup").click());
     expect(writeTextMock).toHaveBeenCalledWith(
-      `codex mcp add blogfactory --url ${window.location.origin}/mcp`,
+      "codex mcp add blogfactory --url https://self-hosted.example.com/mcp",
     );
 
     await act(async () => button("Create personal token").click());
@@ -126,11 +149,11 @@ describe("MCP connections panel", () => {
       setValue?.call(nameInput, "  Personal Codex  ");
       nameInput?.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    getMock.mockImplementationOnce(() => new Promise(() => {}));
     await act(async () => button("Create token").click());
     await act(async () => {
       await vi.waitFor(() => expect(document.body).toHaveTextContent(secret));
     });
+    expect(document.body).toHaveTextContent("Where this token goes");
 
     expect(postMock).toHaveBeenCalledWith("/mcp/tokens", {
       name: "Personal Codex",
@@ -143,7 +166,7 @@ describe("MCP connections panel", () => {
     await act(async () => button("Copy token").click());
     expect(writeTextMock).toHaveBeenCalledWith(secret);
 
-    await act(async () => button("I saved it").click());
+    await act(async () => button("I connected my client").click());
     expect(document.body).not.toHaveTextContent(secret);
   });
 
@@ -207,27 +230,35 @@ describe("MCP connections panel", () => {
       id: "33333333-3333-4333-8333-333333333333",
       name: "OAuth MCP client",
       scopes: ["content:read"],
-      site_id: "11111111-1111-4111-8111-111111111111",
-      site_name: "Example",
-      site_domain: "example.com",
+      site_ids: [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+      sites: [
+        { id: "11111111-1111-4111-8111-111111111111", name: "Ortakalan", domain: "ortakalan.io" },
+        { id: "22222222-2222-4222-8222-222222222222", name: "Ideal Plastik", domain: "idealplastik.com.tr" },
+      ],
       last_used_at: "2026-07-27T12:30:00.000Z",
       revoked_at: null,
       created_at: "2026-07-27T12:00:00.000Z",
     };
     getMock.mockImplementation((path: string) => Promise.resolve(
-      path === "/mcp/oauth/connections"
-        ? { connections: [connection] }
-        : { tokens: [] },
+      path === "/mcp/oauth/connections" ? { connections: [connection] }
+        : path === "/mcp/capabilities" ? capabilities
+          : { tokens: [] },
     ));
     await renderPanel([], [connection]);
 
     expect(document.body).toHaveTextContent("MCP access");
     expect(document.body).toHaveTextContent("1 active");
-    expect(document.body).toHaveTextContent("10 available");
+    await act(async () => {
+      await vi.waitFor(() => expect(document.body).toHaveTextContent("20 available"));
+    });
     expect(document.body).toHaveTextContent("generate_draft");
     expect(document.body).toHaveTextContent("push_to_cms_draft");
+    expect(document.body).toHaveTextContent("review_post");
     expect(document.body).toHaveTextContent("OAuth MCP client");
-    expect(document.body).toHaveTextContent("Example — example.com");
+    expect(document.body).toHaveTextContent("Ortakalan — ortakalan.io, Ideal Plastik — idealplastik.com.tr");
     const revoke = document.querySelector<HTMLButtonElement>('[aria-label="Revoke OAuth MCP client"]');
     expect(revoke).toBeEnabled();
     await act(async () => revoke?.click());

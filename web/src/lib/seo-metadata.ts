@@ -83,7 +83,7 @@ export function normalizeSeoSlugInput(value: string) {
 
 export function seoErrorPresentation(value: string | null | undefined) {
   return /OpenRouter API key/i.test(value || "")
-    ? { message: "SEO üretimi için OpenRouter anahtarı gerekli.", settingsHref: "/settings?section=api-keys" }
+    ? { message: "SEO üretimi için OpenRouter anahtarı gerekli.", settingsHref: "/control/article-settings?section=api-keys" }
     : { message: value || "", settingsHref: null };
 }
 

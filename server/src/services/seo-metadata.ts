@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { campaigns, feeds, generationLogs, jobs, posts, sites } from "../db/schema.js";
-import { getOpenRouterKey } from "./api-keys.js";
+import { openRouterInferenceFetch, resolveOpenRouterAccess } from "./managed-openrouter.js";
 import { getEffectiveSettings } from "./user-settings.js";
 import { dispatchBackgroundDrain } from "./background-drain.js";
 
@@ -58,6 +58,8 @@ const emptyProvenance = (): SeoMetadataV1["provenance"] => ({
 });
 
 const SEO_MODEL_TIMEOUT_MS = 25_000;
+
+export const SEO_REQUEST_RESPONSE_FORMAT = { type: "json_object" } as const;
 
 export const SEO_RESPONSE_FORMAT = {
   type: "json_schema",
@@ -343,33 +345,46 @@ function combineUsage(...values: Record<string, unknown>[]) {
   };
 }
 
-async function requestCandidate(apiKey: string, modelId: string, prompt: string): Promise<CandidateResponse> {
+async function requestCandidate(userId: string, apiKey: string, modelId: string, prompt: string): Promise<CandidateResponse> {
   const startedAt = Date.now();
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    signal: AbortSignal.timeout(SEO_MODEL_TIMEOUT_MS),
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        { role: "system", content: "You are a rigorous multilingual SEO editor. Return only one valid JSON object and never copy or truncate the article opening." },
-        { role: "user", content: prompt },
-      ],
-      response_format: SEO_RESPONSE_FORMAT,
-      provider: { require_parameters: true },
-      max_tokens: 900,
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(`SEO metadata generation failed (${response.status}): ${body?.error?.message || response.statusText}`);
-  }
-  const payload = await response.json() as any;
+  const send = async (responseFormat?: typeof SEO_REQUEST_RESPONSE_FORMAT) => {
+    const response = await openRouterInferenceFetch(userId, "https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(SEO_MODEL_TIMEOUT_MS),
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          { role: "system", content: "You are a rigorous multilingual SEO editor. Return only one valid JSON object and never copy or truncate the article opening." },
+          { role: "user", content: prompt },
+        ],
+        // Strict json_schema with length/pattern keywords returned HTTP 200 with empty content
+        // on OpenAI routes (verified 2026-11-08). json_object works; validation and repair enforce limits.
+        ...(responseFormat ? { response_format: responseFormat } : {}),
+        max_tokens: 900,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(`SEO metadata generation failed (${response.status}): ${body?.error?.message || response.statusText}`);
+    }
+    return await response.json() as any;
+  };
+  let payload = await send(SEO_REQUEST_RESPONSE_FORMAT);
+  // A provider that silently ignores response_format must not break SEO: retry once as plain JSON-in-prompt.
+  if (!String(payload.choices?.[0]?.message?.content || "").trim()) payload = await send();
   const usage = payload.usage || {};
   const cost = Number(payload.usage?.cost || payload.usage?.total_cost || 0) || 0;
   const responseData = { id: payload.id, model: payload.model };
   const latencyMs = Date.now() - startedAt;
   const rawOutput = String(payload.choices?.[0]?.message?.content || "");
+  if (!rawOutput.trim()) {
+    const choice = payload.choices?.[0];
+    throw new SeoGenerationAttemptError(
+      `AI returned empty content (finish: ${choice?.finish_reason || "none"}, provider: ${payload.provider || "unknown"}${choice?.message?.refusal ? ", refusal" : ""})`,
+      usage, cost, latencyMs, responseData, rawOutput,
+    );
+  }
   let candidate: SeoCandidate;
   try {
     candidate = normalizeAiSeoCandidate(parseSeoCandidate(jsonFromModel(rawOutput)));
@@ -393,6 +408,7 @@ async function requestCandidate(apiKey: string, modelId: string, prompt: string)
 }
 
 type SeoGenerationInput = {
+  userId?: string;
   apiKey: string;
   modelId: string;
   title: string;
@@ -454,12 +470,13 @@ Provided keywords: ${input.keywords.join(", ") || "None; infer one"}
 Provided search intent: ${input.requestedIntent || "None; infer it"}`;
 }
 
-export async function generateValidatedCandidate(input: SeoGenerationInput, requester: CandidateRequester = requestCandidate) {
+export async function generateValidatedCandidate(input: SeoGenerationInput, requester?: CandidateRequester) {
+  const activeRequester = requester || ((apiKey, modelId, prompt) => requestCandidate(input.userId || "", apiKey, modelId, prompt));
   let first: CandidateResponse | null = null;
   let firstError: SeoGenerationAttemptError | null = null;
   let errors: string[];
   try {
-    first = await requester(input.apiKey, input.modelId, generationPrompt(input));
+    first = await activeRequester(input.apiKey, input.modelId, generationPrompt(input));
     errors = generationErrors(input, first.candidate);
     if (!errors.length) return { ...first, attempts: 1 };
   } catch (error) {
@@ -474,7 +491,7 @@ export async function generateValidatedCandidate(input: SeoGenerationInput, requ
   const previousOutput = first ? JSON.stringify(first.candidate) : firstError?.rawOutput || "No parseable JSON";
   let repaired: CandidateResponse;
   try {
-    repaired = await requester(input.apiKey, input.modelId, repairPrompt(input, previousOutput, errors));
+    repaired = await activeRequester(input.apiKey, input.modelId, repairPrompt(input, previousOutput, errors));
   } catch (error) {
     const repairError = error instanceof SeoGenerationAttemptError
       ? error
@@ -558,6 +575,18 @@ export async function enqueueUntrackedDraftSeoMetadata(limit = 100) {
     eq(posts.status, "draft"),
     sql`(
       ${posts.seoMetadata} IS NULL
+      OR (
+        ${posts.seoMetadata}->>'status' = 'failed'
+        AND ${posts.seoMetadata}->>'error' ~* 'JSON object|empty content|timed out|timeout|aborted'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jobs recent_seo_jobs
+          WHERE recent_seo_jobs.user_id = ${posts.userId}
+            AND recent_seo_jobs.source_type = 'seo_metadata'
+            AND recent_seo_jobs.source_value = (${posts.id}::text || ':' || (${posts.seoMetadata}->>'sourceHash'))
+            AND recent_seo_jobs.created_at > now() - interval '6 hours'
+        )
+      )
       OR (
         ${posts.seoMetadata}->>'status' = 'pending'
         AND NOT EXISTS (
@@ -659,8 +688,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
     return { processed: true, status: "superseded" };
   }
 
-  const apiKey = await getOpenRouterKey(job.userId);
-  if (!apiKey) throw new Error("Add your OpenRouter API key before generating SEO metadata");
+  const apiKey = (await resolveOpenRouterAccess(job.userId)).apiKey;
   const modelId = SEO_MODEL_ID;
   const [feed] = post.feedId ? await db.select({ keywords: feeds.keywords }).from(feeds).where(eq(feeds.id, post.feedId)).limit(1) : [];
   const [site] = post.siteId ? await db.select({ name: sites.name, language: sites.language, topics: sites.topics, editorialTopics: sites.editorialTopics }).from(sites).where(eq(sites.id, post.siteId)).limit(1) : [];
@@ -690,6 +718,7 @@ async function processSeoJob(job: typeof jobs.$inferSelect) {
     site?.editorialTopics?.length && `Editorial topics: ${site.editorialTopics.join(", ")}`,
   ].filter(Boolean).join("; ");
   const result = await generateValidatedCandidate({
+    userId: job.userId,
     apiKey, modelId, title: post.title, content: post.content, sourceRef,
     keywords: programmaticKeywords.length ? programmaticKeywords : post.sourceType === "article_keyword" && post.sourceRefId ? [post.sourceRefId] : feed?.keywords || [],
     siteName: site?.name || "",
