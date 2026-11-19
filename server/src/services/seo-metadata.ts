@@ -14,7 +14,8 @@ export const SEO_LIMITS = {
   titleMin: 45,
   titleMax: 60,
   descriptionMin: 120,
-  descriptionMax: 145,
+  descriptionMax: 155,
+  descriptionSentenceMin: 90,
 } as const;
 
 export type SeoStatus = "missing" | "pending" | "ready" | "needs_review" | "failed";
@@ -73,7 +74,8 @@ export const SEO_RESPONSE_FORMAT = {
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+){2,}$",
         },
         metaTitle: { type: "string", minLength: 48, maxLength: 56 },
-        metaDescription: { type: "string", minLength: 125, maxLength: 138 },
+        // No maxLength: strict decoding cut descriptions mid-word at the limit. The prompt asks for <=155; fitMetaDescription enforces it.
+        metaDescription: { type: "string", minLength: SEO_LIMITS.descriptionMin },
         primaryQuery: { type: "string", minLength: 1 },
         searchIntent: { type: "string", enum: ["informational", "navigational", "commercial", "transactional"] },
         language: { type: "string", minLength: 2 },
@@ -119,12 +121,34 @@ function endsWithSentence(value: string) {
   return /[.!?…]["'”’)}\]]*$/.test(value.trim());
 }
 
+const TRAILING_SEPARATORS = /[\s,;:–—-]+$/u;
+
+/**
+ * Keeps a meta description within SEO_LIMITS.descriptionMax without cutting a word.
+ * Over the limit: end at the last sentence boundary at or after descriptionSentenceMin,
+ * otherwise at the last word boundary, and never append a period to a cut text.
+ * Within the limit: add a period only to complete, uncut text that has room for it.
+ */
+export function fitMetaDescription(value: string, max: number = SEO_LIMITS.descriptionMax) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= max) {
+    if (!text || endsWithSentence(text)) return text;
+    const base = text.replace(TRAILING_SEPARATORS, "");
+    return base.length < max ? `${base}.` : base;
+  }
+  const head = text.slice(0, max + 1);
+  const sentenceEnds = [...head.matchAll(/[.!?…]["'”’)}\]]*(?=\s)/gu)]
+    .map((match) => (match.index ?? 0) + match[0].length)
+    .filter((end) => end >= SEO_LIMITS.descriptionSentenceMin && end <= max);
+  if (sentenceEnds.length) return text.slice(0, sentenceEnds[sentenceEnds.length - 1]);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? head.slice(0, lastSpace) : text.slice(0, max);
+  return cut.replace(TRAILING_SEPARATORS, "");
+}
+
 export function normalizeAiSeoCandidate(candidate: SeoCandidate): SeoCandidate {
-  if (endsWithSentence(candidate.metaDescription)) return candidate;
-  return {
-    ...candidate,
-    metaDescription: `${candidate.metaDescription.replace(/[,;:–—-]+$/u, "").trim()}.`,
-  };
+  const metaDescription = fitMetaDescription(candidate.metaDescription);
+  return metaDescription === candidate.metaDescription ? candidate : { ...candidate, metaDescription };
 }
 
 function hasDanglingEnding(value: string) {
@@ -384,7 +408,7 @@ type SeoGenerationInput = {
 function generationPrompt(input: SeoGenerationInput) {
   return `Create an independent SEO metadata package for the finished article below.
 Infer the real primary search query and intent unless supplied. When a keyword is supplied, return it unchanged as primaryQuery. Match the article language.
-Hard rules: slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} lowercase ASCII characters; target metaTitle 48-56 characters; target metaDescription 125-138 characters and one complete sentence. Count every character, including spaces and punctuation, before returning. Do not concatenate or repeat the H1. Do not cut a sentence.
+Hard rules: slug ${SEO_LIMITS.slugMin}-${SEO_LIMITS.slugMax} lowercase ASCII characters; target metaTitle 48-56 characters; target metaDescription 130-150 characters (never more than ${SEO_LIMITS.descriptionMax}) and one complete sentence that ends with a period. Count every character, including spaces and punctuation, before returning. Do not concatenate or repeat the H1. Do not cut a sentence.
 Return exactly: {"slug":"...","metaTitle":"...","metaDescription":"...","primaryQuery":"...","searchIntent":"informational|navigational|commercial|transactional","language":"..."}
 
 Site: ${input.siteName || "Unknown"}
@@ -422,7 +446,7 @@ function repairPrompt(input: SeoGenerationInput, previousOutput: string, errors:
 Errors:
 - ${errors.join("\n- ")}
 ${lengths}
-Rewrite invalid text as a complete phrase or sentence; never truncate it. Target 50-54 characters for metaTitle and 128-135 characters for metaDescription. Count spaces and punctuation before returning.
+Rewrite invalid text as a complete phrase or sentence; never truncate it. Target 50-54 characters for metaTitle and 130-150 characters (never more than ${SEO_LIMITS.descriptionMax}) for metaDescription, written as a complete sentence. Count spaces and punctuation before returning.
 Previous object: ${previousOutput}
 Article title: ${input.title}
 Requested language: ${input.requestedLanguage || "Infer from the article"}
